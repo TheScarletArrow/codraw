@@ -1,9 +1,16 @@
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createBrowserRouter, RouterProvider } from 'react-router'
+import { createQueryClient } from './queryClient.ts'
+import { routes } from './routes.tsx'
+
+const queryClient = createQueryClient()
+const router = createBrowserRouter(routes)
+
 function App() {
   return (
-    <main className="app">
-      <h1>CoDraw</h1>
-      <p>Совместный редактор диаграмм. Редактор появится в следующих изменениях.</p>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   )
 }
 
