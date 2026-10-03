@@ -23,3 +23,7 @@ build/
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
+
+# Playwright
+test-results/
+playwright-report/

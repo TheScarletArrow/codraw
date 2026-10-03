@@ -1,6 +1,7 @@
 packages:
   - frontend
   - collab
+  - e2e
 
 onlyBuiltDependencies:
   - esbuild

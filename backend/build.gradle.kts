@@ -51,6 +51,10 @@ tasks.withType<Test> {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
+tasks.bootJar {
+    archiveFileName = "codraw-backend.jar"
+}
+
 tasks.bootRun {
     // Local development uses the dev profile with defaults for the docker-compose PostgreSQL.
     systemProperty("spring.profiles.active", "dev")
