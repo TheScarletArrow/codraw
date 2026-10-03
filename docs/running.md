@@ -1,0 +1,228 @@
+# Запуск CoDraw
+
+Инструкция для локального запуска: от установки инструментов до открытой доски в двух браузерах.
+
+## Коротко
+
+Если всё нужное уже установлено:
+
+```bash
+git clone https://github.com/TheScarletArrow/codraw.git && cd codraw
+corepack enable && pnpm install
+docker compose up -d postgres
+
+# каждый сервис — в отдельном терминале, в таком порядке
+cd backend && ./gradlew bootRun    # API:            http://localhost:8080
+pnpm dev:collab                    # синхронизация:  ws://localhost:1234
+pnpm dev:frontend                  # приложение:     http://localhost:5173
+```
+
+Откройте http://localhost:5173.
+
+## 1. Что установить
+
+| Инструмент | Версия | Зачем | Проверка |
+|---|---|---|---|
+| JDK | 25 | backend | `java -version` |
+| Node.js | 22.12 или новее, рекомендуется версия из `.nvmrc` | frontend и collab | `node --version` |
+| pnpm | 10, ставится через Corepack из Node.js | зависимости frontend и collab | `pnpm --version` |
+| Docker с Compose v2 | любая актуальная | PostgreSQL; тесты backend | `docker compose version` |
+| Git | любая | получить код | `git --version` |
+
+- JDK 25 подойдёт любой: Temurin, Liberica, Corretto и т. п. Gradle находит его сам, даже если по умолчанию
+  в системе другая Java (Gradle при этом должен запускаться на JDK 17 или новее).
+- `corepack enable` включает pnpm той версии, что указана в `package.json`. При первом запуске Corepack
+  может спросить разрешения скачать pnpm — ответьте `Y`. На Linux и macOS команде могут понадобиться права
+  администратора (`sudo corepack enable`).
+- Gradle и Maven-зависимости скачиваются при первом запуске backend автоматически, ставить Gradle не нужно.
+
+## 2. Код и зависимости
+
+```bash
+git clone https://github.com/TheScarletArrow/codraw.git
+cd codraw
+corepack enable
+pnpm install
+```
+
+`pnpm install` ставит зависимости всех JS-подпроектов: `frontend`, `collab` и `e2e`.
+
+## 3. PostgreSQL
+
+```bash
+docker compose up -d postgres
+docker compose ps
+```
+
+В выводе `docker compose ps` у `postgres` должен быть статус `healthy`. База `codraw` (пользователь и пароль
+тоже `codraw`) доступна на `localhost:5432`, данные лежат в Docker-томе и переживают перезапуск.
+
+## 4. Сервисы
+
+Запускайте каждый сервис в отдельном терминале, из корня репозитория, в этом порядке.
+
+### backend
+
+```bash
+cd backend
+./gradlew bootRun          # Windows: gradlew.bat bootRun
+```
+
+Первый запуск дольше: Gradle скачивает себя и зависимости. Backend готов, когда в логе появится
+`Started CodrawApplicationKt`. Таблицы в базе создаются при старте автоматически (миграции Flyway).
+
+Проверка:
+
+```bash
+curl http://localhost:8080/actuator/health
+# {"groups":["liveness","readiness"],"status":"UP"}
+```
+
+### collab
+
+```bash
+pnpm dev:collab
+```
+
+Готов, когда в логе `Hocuspocus v… running at`. Проверка:
+
+```bash
+curl http://localhost:1234/health
+# {"status":"UP"}
+```
+
+### frontend
+
+```bash
+pnpm dev:frontend
+```
+
+Готов, когда Vite напишет `Local: http://localhost:5173/`. Dev-сервер проксирует `/api` в backend
+и `/collab` в collab, поэтому приложение нужно открывать именно на порту 5173.
+
+## 5. Проверка
+
+1. Откройте http://localhost:5173 и нажмите «Создать доску».
+2. Статус рядом с названием доски должен смениться на «Синхронизировано».
+3. Откройте тот же адрес в другом браузере или в окне инкогнито: в списке участников появится второй гость.
+4. Добавьте фигуру в одном окне — она сразу появится во втором.
+
+Как работать в редакторе:
+
+| Действие | Как |
+|---|---|
+| Добавить фигуру | перетащить из панели слева на холст или щёлкнуть по ней в панели |
+| Соединить фигуры | навести на фигуру и тянуть синюю точку у её правой границы к другой фигуре |
+| Подпись | двойной щелчок по фигуре или связи; сохраняется щелчком вне её |
+| Удалить | выделить и нажать Delete или Backspace |
+| Отменить и повторить | Ctrl+Z и Ctrl+Shift+Z (на macOS — Cmd), отменяются только свои действия |
+| Масштаб | Ctrl + колесо мыши или кнопки на панели инструментов |
+
+## Порты и настройки
+
+| Порт | Что |
+|---|---|
+| 5173 | frontend, dev-сервер Vite |
+| 8080 | backend |
+| 1234 | collab |
+| 5432 | PostgreSQL |
+| 4173 | frontend в режиме `vite preview` (сборка и e2e) |
+| 1235 | второй collab в e2e-тесте перезапуска |
+
+Для локальной разработки переменные окружения не нужны, значения по умолчанию согласованы между собой:
+
+- `./gradlew bootRun` включает профиль `dev` — `backend/src/main/resources/application-dev.yaml`;
+- `pnpm dev:collab` читает `collab/.env.development`;
+- `docker compose` использует значения по умолчанию из `docker-compose.yml`.
+
+Полный список переменных для других окружений — в `.env.example`.
+
+## Остановка и сброс
+
+- Сервисы останавливаются через Ctrl+C в их терминалах.
+- `docker compose stop` останавливает PostgreSQL, данные сохраняются.
+- `docker compose down -v` удаляет контейнер вместе с данными: все доски пропадут.
+
+## Запуск собранной версии
+
+Так можно проверить production-сборку локально. Каждая команда — в отдельном терминале, токен
+`CODRAW_INTERNAL_TOKEN` должен совпадать у backend и collab.
+
+```bash
+# сборка
+(cd backend && ./gradlew bootJar)
+pnpm --filter @codraw/collab --filter @codraw/frontend build
+
+# backend
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/codraw \
+SPRING_DATASOURCE_USERNAME=codraw SPRING_DATASOURCE_PASSWORD=codraw \
+CODRAW_INTERNAL_TOKEN=local-secret \
+java -jar backend/build/libs/codraw-backend.jar
+
+# collab
+BACKEND_URL=http://localhost:8080 CODRAW_INTERNAL_TOKEN=local-secret node collab/dist/index.js
+
+# frontend: http://localhost:4173, проксирует /api и /collab так же, как dev-сервер
+pnpm --filter @codraw/frontend exec vite preview --port 4173
+```
+
+В PowerShell переменные задаются иначе: `$env:CODRAW_INTERNAL_TOKEN="local-secret"` перед командой.
+
+`vite preview` — средство проверки, а не production-сервер. Docker-образы и nginx появятся отдельным
+изменением.
+
+## Тесты
+
+```bash
+pnpm typecheck && pnpm lint && pnpm test   # frontend и collab
+cd backend && ./gradlew test               # backend
+```
+
+Тестам backend нужен запущенный Docker: Testcontainers сам поднимает PostgreSQL 18 в контейнере,
+`docker compose` для них не нужен.
+
+Сквозные тесты (Playwright) запускают собранные сервисы и ходят в PostgreSQL из docker compose. Dev-серверы
+перед этим нужно остановить: порты 8080, 1234, 1235 и 4173 должны быть свободны.
+
+```bash
+docker compose up -d postgres
+(cd backend && ./gradlew bootJar)
+pnpm --filter @codraw/collab --filter @codraw/frontend build
+pnpm --filter @codraw/e2e exec playwright install chromium   # один раз
+pnpm test:e2e
+```
+
+## Частые проблемы
+
+**Backend не стартует: `Connection to localhost:5432 refused`.**
+PostgreSQL не запущен. Выполните `docker compose up -d postgres` и дождитесь `healthy` в `docker compose ps`.
+
+**Порт 5432 занят локальным PostgreSQL.**
+Поднимите контейнер на другом порту и передайте адрес backend:
+
+```bash
+POSTGRES_PORT=5433 docker compose up -d postgres
+cd backend && SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/codraw ./gradlew bootRun
+```
+
+**Gradle пишет `Cannot find a Java installation on your machine … languageVersion=25`.**
+Не установлен JDK 25. Если он установлен в нестандартное место, укажите путь в `~/.gradle/gradle.properties`:
+`org.gradle.java.installations.paths=/путь/к/jdk-25`.
+
+**`pnpm: command not found`.**
+Выполните `corepack enable` (возможно, с `sudo`). Если Corepack недоступен — `npm install -g pnpm@10`.
+
+**Главная страница показывает «Не удалось загрузить доски».**
+Не запущен backend или frontend открыт не на порту 5173.
+
+**На доске «Нет связи», а вместо холста «Загрузка доски…».**
+Не запущен collab: `pnpm dev:collab`.
+
+**Доска висит в статусе «Подключение».**
+Collab не может получить документ у backend. Если в логе collab есть `backend responded with 401`,
+у backend и collab разные `CODRAW_INTERNAL_TOKEN`. По умолчанию в dev-режиме они совпадают, так что это
+бывает, только если токен задавали вручную.
+
+**Ошибка «порт уже занят» при запуске сервиса.**
+Порт занят другим процессом, часто — ранее запущенной копией того же сервиса. Остановите её: dev-сервер
+Vite проксирует запросы на фиксированные порты 8080 и 1234.
