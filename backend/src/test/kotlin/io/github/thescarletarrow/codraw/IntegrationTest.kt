@@ -1,0 +1,17 @@
+package io.github.thescarletarrow.codraw
+
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.context.annotation.Import
+
+/** Full application context with MockMvc, a PostgreSQL container and a controllable clock, shared by all integration tests. */
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+@SpringBootTest(properties = ["codraw.internal-token=${IntegrationTest.INTERNAL_TOKEN}"])
+@AutoConfigureMockMvc
+@Import(TestcontainersConfiguration::class, TestClockConfiguration::class)
+annotation class IntegrationTest {
+    companion object {
+        const val INTERNAL_TOKEN = "test-internal-token"
+    }
+}

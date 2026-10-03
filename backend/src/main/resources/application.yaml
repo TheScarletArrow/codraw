@@ -1,6 +1,9 @@
 spring:
   application:
     name: codraw-backend
+  mvc:
+    problemdetails:
+      enabled: true
 
 server:
   port: ${PORT:8080}

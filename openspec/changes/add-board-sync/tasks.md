@@ -2,14 +2,14 @@
 
 ## 1. Инфраструктура
 
-- [ ] 1.1 Добавить в корень `docker-compose.yml` с PostgreSQL 18 (volume, healthcheck) и `.env.example`; проверка: `docker compose up -d postgres` и `pg_isready` внутри контейнера
-- [ ] 1.2 backend: подключить JDBC, Flyway, драйвер PostgreSQL и Testcontainers, настроить datasource через переменные окружения; проверка: `./gradlew build` с тестом, который поднимает PostgreSQL в контейнере
+- [x] 1.1 Добавить в корень `docker-compose.yml` с PostgreSQL 18 (volume, healthcheck) и `.env.example`; проверка: `docker compose up -d postgres` и `pg_isready` внутри контейнера
+- [x] 1.2 backend: подключить JDBC, Flyway, драйвер PostgreSQL и Testcontainers, настроить datasource через переменные окружения; проверка: `./gradlew build` с тестом, который поднимает PostgreSQL в контейнере
 
 ## 2. backend: доски
 
-- [ ] 2.1 Создать пару миграций V1/U1 с таблицами `boards` и `board_documents`; проверка: тест применяет миграции к чистой БД
-- [ ] 2.2 Реализовать `POST /api/boards`, `GET /api/boards`, `GET /api/boards/{id}` с валидацией названия; проверка: MockMvc-тесты на все сценарии `board-management` про API
-- [ ] 2.3 Реализовать `GET`/`PUT /internal/boards/{id}/document` с проверкой `X-Internal-Token`; проверка: тесты на ответы 200, 204, 401 и 404 и на обновление `updated_at`
+- [x] 2.1 Создать пару миграций V1/U1 с таблицами `boards` и `board_documents`; проверка: тест применяет миграции к чистой БД
+- [x] 2.2 Реализовать `POST /api/boards`, `GET /api/boards`, `GET /api/boards/{id}` с валидацией названия; проверка: MockMvc-тесты на все сценарии `board-management` про API
+- [x] 2.3 Реализовать `GET`/`PUT /internal/boards/{id}/document` с проверкой `X-Internal-Token`; проверка: тесты на ответы 200, 204, 401 и 404 и на обновление `updated_at`
 
 ## 3. collab: хранение документов
 

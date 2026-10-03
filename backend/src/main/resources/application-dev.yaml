@@ -1,0 +1,9 @@
+# Defaults for local development against `docker compose up postgres`.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/codraw
+    username: codraw
+    password: codraw
+
+codraw:
+  internal-token: dev-internal-token
