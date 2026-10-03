@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@hocuspocus/provider": "^4.7.0",
+    "@maxgraph/core": "0.24.0",
     "@tanstack/react-query": "^5.104.1",
+    "fractional-indexing": "^4.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.4.0",

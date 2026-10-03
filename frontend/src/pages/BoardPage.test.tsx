@@ -9,6 +9,8 @@ import { BoardPage } from './BoardPage.tsx'
 vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
+// maxGraph needs real SVG layout; the canvas is covered by unit tests of the binding and by e2e tests.
+vi.mock('../diagram/DiagramCanvas.tsx', () => ({ DiagramCanvas: () => <div data-testid="diagram-canvas" /> }))
 
 const boardId = '0199a000-0000-7000-8000-000000000001'
 const board: Board = { id: boardId, title: 'Архитектура', createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' }
@@ -54,6 +56,15 @@ describe('BoardPage', () => {
     })
 
     expect(screen.getByRole('status')).toHaveTextContent('Синхронизировано')
+  })
+
+  it('shows the canvas once the document is synced', async () => {
+    const provider = await openBoard()
+    expect(screen.queryByTestId('diagram-canvas')).toBeNull()
+
+    act(() => provider.emitSynced())
+
+    expect(screen.getByTestId('diagram-canvas')).toBeInTheDocument()
   })
 
   it('shows "Нет связи" after losing the connection and recovers after resync', async () => {

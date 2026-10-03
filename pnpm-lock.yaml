@@ -59,9 +59,15 @@ importers:
       '@hocuspocus/provider':
         specifier: ^4.7.0
         version: 4.7.0(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
+      '@maxgraph/core':
+        specifier: 0.24.0
+        version: 0.24.0
       '@tanstack/react-query':
         specifier: ^5.104.1
         version: 5.104.1(react@19.3.0)
+      fractional-indexing:
+        specifier: ^4.0.0
+        version: 4.0.0
       react:
         specifier: ^19.2.8
         version: 19.3.0
@@ -375,6 +381,9 @@ packages:
 
   '@lifeomic/attempt@3.1.0':
     resolution: {integrity: sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw==}
+
+  '@maxgraph/core@0.24.0':
+    resolution: {integrity: sha512-OgzCL86pTEa/8MpxbIX44S+xk0qAfmlAu0yZhQ9RFaEB8E5M2rJlPHNWeFpsD/ybWb5J5oPmZYszIcvzG/Kg4g==}
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
@@ -788,6 +797,10 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fractional-indexing@4.0.0:
+    resolution: {integrity: sha512-Nr2P1Yyaj2sy1Qdt/wI3GcByxrUdbSKg5+cGvw8f18hT2SkQt6V72iOjBpk7IO3UkzBsdlGRs2a4z6dLrJprgw==}
+    engines: {node: ^14.13.1 || >=16.0.0}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -1377,6 +1390,8 @@ snapshots:
 
   '@lifeomic/attempt@3.1.0': {}
 
+  '@maxgraph/core@0.24.0': {}
+
   '@oxc-project/types@0.152.0': {}
 
   '@oxlint/binding-android-arm-eabi@1.86.0':
@@ -1666,6 +1681,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
+
+  fractional-indexing@4.0.0: {}
 
   fsevents@2.3.3:
     optional: true

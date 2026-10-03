@@ -4,6 +4,10 @@ import { defineConfig } from 'vitest/config'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // The lazily loaded board page carries maxGraph (~580 kB, ~155 kB gzipped).
+    chunkSizeWarningLimit: 700,
+  },
   server: {
     port: 5173,
     proxy: {
@@ -11,6 +15,12 @@ export default defineConfig({
       '/collab': {
         target: 'ws://localhost:1234',
         ws: true,
+        configure: (proxy) => {
+          // Browsers drop sync sockets abruptly when a tab closes; that is not an error worth logging.
+          proxy.on('error', (error) => {
+            if ((error as NodeJS.ErrnoException).code !== 'ECONNRESET') console.error('collab proxy error:', error)
+          })
+        },
       },
     },
   },

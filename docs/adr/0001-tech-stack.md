@@ -97,15 +97,17 @@ CoDraw — браузерный редактор диаграмм (аналог 
 ```
 Y.Doc
 ├── meta:  Y.Map                       { title, schemaVersion }
-└── pages: Y.Map<pageId, Y.Map>        страница = <diagram>
-      ├── name, order
-      └── cells: Y.Map<cellId, Y.Map>  ячейка = <mxCell>
-            ├── parent, kind (vertex | edge), value, order
-            ├── geometry               { x, y, width, height, points, relative, offset }
-            ├── source, target
-            ├── style: Y.Map           ключ → значение
-            └── attrs: Y.Map           пользовательские свойства (<object>)
+├── pages: Y.Map<pageId, …>            страница = <diagram>: { name, order }
+└── cells:<pageId>: Y.Map<cellId, Y.Map>   ячейка = <mxCell>
+      ├── parent, kind (root | layer | vertex | edge), value, order
+      ├── geometry                     { x, y, width, height, points, relative, offset }
+      ├── source, target
+      ├── style: Y.Map                 ключ → значение
+      └── attrs: Y.Map                 пользовательские свойства (<object>)
 ```
+
+Ячейки страницы хранятся в отдельном Y.Map верхнего уровня: вложенный Y.Map, созданный двумя
+клиентами одновременно, достаётся только одному из них, а типы верхнего уровня не конфликтуют.
 
 - Слои, группы и контейнеры — это ячейки-родители, как в mxGraph. Импорт и экспорт сводятся
   к прямому отображению.

@@ -110,3 +110,16 @@ button:disabled {
 .participant-self {
   opacity: 0.7;
 }
+
+.diagram-canvas {
+  position: relative;
+  overflow: auto;
+  height: 70vh;
+  margin-top: 16px;
+  border: 1px solid rgb(128 128 128 / 0.3);
+  border-radius: 8px;
+  background-color: #ffffff;
+  background-image: radial-gradient(rgb(128 128 128 / 0.35) 1px, transparent 1px);
+  background-size: 10px 10px;
+  outline: none;
+}

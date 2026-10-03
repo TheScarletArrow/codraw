@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useParams } from 'react-router'
 import { fetchBoard, isNotFound, type Board } from '../api/boards.ts'
 import { getGuestIdentity } from '../board/guest.ts'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
+import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
+import type { DiagramEditor } from '../diagram/editor.ts'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Подключение',
@@ -22,7 +25,8 @@ export function BoardPage() {
 }
 
 function BoardWorkspace({ board }: { board: Board }) {
-  const { status, participants } = useBoardConnection(board.id, getGuestIdentity())
+  const { status, participants, document } = useBoardConnection(board.id, getGuestIdentity())
+  const [, setEditor] = useState<DiagramEditor | null>(null)
 
   if (status === 'not-found') return <BoardNotFound />
 
@@ -44,6 +48,7 @@ function BoardWorkspace({ board }: { board: Board }) {
           </li>
         ))}
       </ul>
+      {document && <DiagramCanvas document={document} onEditor={setEditor} />}
     </section>
   )
 }

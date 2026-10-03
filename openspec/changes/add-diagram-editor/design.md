@@ -25,17 +25,20 @@
 ### Модель документа
 
 ```
-meta:  Y.Map                      { title, schemaVersion: 1 }
-pages: Y.Map<pageId, Y.Map>
-  └── cells: Y.Map<cellId, Y.Map>
-        parent, kind (vertex | edge), value, order,
-        geometry { x, y, width, height, points },
-        source, target,
-        style: Y.Map<ключ, значение>
+meta:          Y.Map                   { schemaVersion: 1 }
+pages:         Y.Map<pageId, { name, order }>
+cells:<pageId>: Y.Map<cellId, Y.Map>
+  parent, kind (root | layer | vertex | edge), value, order,
+  geometry { x, y, width, height, points },
+  source, target,
+  style: Y.Map<ключ, значение>
 ```
 
 - При создании доски документ получает одну страницу и корневую ячейку со слоем по умолчанию, как
   в mxGraph.
+- Ячейки страницы лежат в отдельном Y.Map верхнего уровня, а не внутри записи страницы. Вложенный
+  Y.Map, созданный двумя клиентами одновременно, достаётся только одному из них, и ячейки другого
+  пропали бы. Типы верхнего уровня не конфликтуют.
 - `style` — отдельный `Y.Map`, чтобы смена заливки и обводки разными участниками не конфликтовала.
 - `geometry` — значение целиком: перемещение и ресайз всё равно меняют его всё.
 - `order` — дробный индекс (`fractional-indexing`) для порядка отрисовки.
