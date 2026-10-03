@@ -54,6 +54,13 @@ export class DiagramBinding {
     this.origin = origin
     // Cells are created by several clients at once, so ids must be globally unique.
     model.createId = () => newId()
+    // maxGraph's ConnectionHandler inserts edges with the id '' and the model only generates ids for null,
+    // so the first edge would get the id '' and never be synced.
+    const cellAdded = model.cellAdded.bind(model)
+    model.cellAdded = (cell) => {
+      if (cell?.getId() === '') cell.id = null
+      cellAdded(cell)
+    }
     this.applyRemote(new Set(cells.keys()))
     cells.observeDeep(this.handleRemoteChanges)
     model.addListener(InternalEvent.CHANGE, this.handleLocalChanges)
@@ -313,5 +320,6 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 /** Undo/redo of this client's own edits: other participants' changes are never undone. */
 export function createUndoManager(cells: CellsMap, origin: unknown = LOCAL_ORIGIN): Y.UndoManager {
-  return new Y.UndoManager(cells, { trackedOrigins: new Set([origin]), captureTimeout: 300 })
+  // The binding writes one transaction per user action, so every transaction is its own undo step.
+  return new Y.UndoManager(cells, { trackedOrigins: new Set([origin]), captureTimeout: 0 })
 }

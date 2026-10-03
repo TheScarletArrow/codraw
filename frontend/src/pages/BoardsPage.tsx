@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
+import { Button } from '@/components/ui/button'
 import { createBoard, fetchBoards } from '../api/boards.ts'
 
 export const NEW_BOARD_TITLE = 'Новая доска'
@@ -19,24 +20,36 @@ export function BoardsPage() {
   })
 
   return (
-    <section>
-      <div className="page-header">
-        <h2>Доски</h2>
-        <button type="button" onClick={() => create.mutate()} disabled={create.isPending}>
+    <section className="mx-auto w-full max-w-3xl overflow-auto px-4 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-2xl font-semibold">Доски</h2>
+        <Button type="button" onClick={() => create.mutate()} disabled={create.isPending}>
           Создать доску
-        </button>
+        </Button>
       </div>
-      {create.isError && <p role="alert">Не удалось создать доску</p>}
+      {create.isError && (
+        <p role="alert" className="mt-4 text-destructive">
+          Не удалось создать доску
+        </p>
+      )}
 
-      {boards.isPending && <p>Загрузка…</p>}
-      {boards.isError && <p role="alert">Не удалось загрузить доски</p>}
-      {boards.data?.length === 0 && <p>Досок пока нет</p>}
+      {boards.isPending && <p className="mt-4 text-muted-foreground">Загрузка…</p>}
+      {boards.isError && (
+        <p role="alert" className="mt-4 text-destructive">
+          Не удалось загрузить доски
+        </p>
+      )}
+      {boards.data?.length === 0 && <p className="mt-4 text-muted-foreground">Досок пока нет</p>}
       {boards.data && boards.data.length > 0 && (
-        <ul className="board-list">
+        <ul className="mt-4 divide-y">
           {boards.data.map((board) => (
-            <li key={board.id}>
-              <Link to={`/boards/${board.id}`}>{board.title}</Link>
-              <time dateTime={board.updatedAt}>{dateFormat.format(new Date(board.updatedAt))}</time>
+            <li key={board.id} className="flex justify-between gap-4 py-3">
+              <Link to={`/boards/${board.id}`} className="font-medium hover:underline">
+                {board.title}
+              </Link>
+              <time dateTime={board.updatedAt} className="whitespace-nowrap text-muted-foreground">
+                {dateFormat.format(new Date(board.updatedAt))}
+              </time>
             </li>
           ))}
         </ul>

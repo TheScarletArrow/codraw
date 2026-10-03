@@ -1,7 +1,10 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, fireEvent, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
 import { PARTICIPANT_COLORS, resetGuestIdentityCache } from '../board/guest.ts'
+import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
+import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { mockFetch, renderRoutes } from '../test/render.tsx'
 import { BoardPage } from './BoardPage.tsx'
@@ -10,7 +13,20 @@ vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
 // maxGraph needs real SVG layout; the canvas is covered by unit tests of the binding and by e2e tests.
-vi.mock('../diagram/DiagramCanvas.tsx', () => ({ DiagramCanvas: () => <div data-testid="diagram-canvas" /> }))
+// The stand-in hands a fake editor to the page, like the real canvas does.
+const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
+vi.mock('../diagram/DiagramCanvas.tsx', async () => {
+  const { useEffect } = await import('react')
+  return {
+    DiagramCanvas: ({ onEditor }: { onEditor: (editor: FakeEditor | null) => void }) => {
+      useEffect(() => {
+        onEditor(canvas.editor)
+        return () => onEditor(null)
+      }, [onEditor])
+      return <div data-testid="diagram-canvas" />
+    },
+  }
+})
 
 const boardId = '0199a000-0000-7000-8000-000000000001'
 const board: Board = { id: boardId, title: 'Архитектура', createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' }
@@ -30,6 +46,7 @@ async function openBoard() {
 
 describe('BoardPage', () => {
   beforeEach(() => {
+    canvas.editor = createFakeEditor()
     FakeHocuspocusProvider.instances = []
     sessionStorage.clear()
     resetGuestIdentityCache()
@@ -135,5 +152,80 @@ describe('BoardPage', () => {
     provider.unmount()
 
     expect(provider.destroyed).toBe(true)
+  })
+
+  describe('editor', () => {
+    async function openEditor() {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      return canvas.editor!
+    }
+
+    it('shows the shape palette, the toolbar and the participants', async () => {
+      await openEditor()
+
+      const palette = screen.getByRole('complementary', { name: 'Фигуры' })
+      expect(within(palette).getAllByRole('button').map((button) => button.textContent)).toEqual([
+        'Прямоугольник',
+        'Скруглённый прямоугольник',
+        'Эллипс',
+        'Ромб',
+        'Текст',
+      ])
+      const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
+      expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeDisabled()
+      expect(within(toolbar).getByRole('button', { name: 'Повторить' })).toBeDisabled()
+      expect(within(toolbar).getByRole('button', { name: 'Масштаб' })).toHaveTextContent('100%')
+      expect(screen.getByRole('list', { name: 'Участники' })).toBeInTheDocument()
+    })
+
+    it('disables the palette and the toolbar until the canvas is ready', async () => {
+      await openBoard()
+
+      expect(screen.getByRole('button', { name: 'Прямоугольник' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Увеличить' })).toBeDisabled()
+    })
+
+    it('adds a shape to the middle of the view on click', async () => {
+      const editor = await openEditor()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Эллипс' }))
+
+      expect(editor.addShape).toHaveBeenCalledWith('ellipse')
+    })
+
+    it('puts the shape id into the drag data', async () => {
+      await openEditor()
+      const setData = vi.fn()
+
+      fireEvent.dragStart(screen.getByRole('button', { name: 'Ромб' }), { dataTransfer: { setData } })
+
+      expect(setData).toHaveBeenCalledWith(SHAPE_DRAG_TYPE, 'rhombus')
+    })
+
+    it('zooms with the toolbar buttons and shows the scale', async () => {
+      const editor = await openEditor()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Увеличить' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Уменьшить' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Масштаб' }))
+      act(() => editor.setState({ scale: 1.5 }))
+
+      expect(editor.zoomIn).toHaveBeenCalled()
+      expect(editor.zoomOut).toHaveBeenCalled()
+      expect(editor.zoomActual).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Масштаб' })).toHaveTextContent('150%')
+    })
+
+    it('undoes and redoes when the editor allows it', async () => {
+      const editor = await openEditor()
+
+      act(() => editor.setState({ canUndo: true, canRedo: true }))
+      await userEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+
+      expect(editor.undo).toHaveBeenCalled()
+      expect(editor.redo).toHaveBeenCalled()
+    })
   })
 })

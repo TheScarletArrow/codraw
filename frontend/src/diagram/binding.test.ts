@@ -1,9 +1,9 @@
-import { Geometry, GraphDataModel } from '@maxgraph/core'
+import { Cell, Geometry, GraphDataModel } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { DiagramBinding } from './binding.ts'
 import { getCells, initializeDocument, LAYER_CELL_ID, orderBetween, readCell, writeCell, type CellData } from './model.ts'
-import { addEdge, addVertex, childIds, connect, createClient, REMOTE_ORIGIN } from './testing.ts'
+import { addEdge, addVertex, childIds, connect, createClient, layer, REMOTE_ORIGIN } from './testing.ts'
 
 const vertexData = (id: string, overrides: Partial<CellData> = {}): CellData => ({
   id,
@@ -134,6 +134,25 @@ describe('maxGraph → Yjs (local changes)', () => {
 
     expect(a.getId()).not.toBe(b.getId())
     expect(childIds(alice.model)).toEqual(childIds(bob.model))
+  })
+
+  it('gives an id to cells inserted with an empty id, as maxGraph does for new edges', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const a = addVertex(alice.model, 'A')
+    const b = addVertex(alice.model, 'B')
+    const edge = new Cell('', new Geometry(), {})
+    edge.setEdge(true)
+    edge.setId('')
+
+    alice.model.beginUpdate()
+    alice.model.add(layer(alice.model), edge)
+    alice.model.setTerminals(edge, a, b)
+    alice.model.endUpdate()
+
+    expect(edge.getId()).toMatch(/^[0-9a-f-]{36}$/)
+    expect(bob.model.getCell(edge.getId()!)?.getTerminal(false)?.getId()).toBe(b.getId())
   })
 
   it('propagates geometry, style and value changes', () => {
