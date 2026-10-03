@@ -110,7 +110,7 @@ CLI ставится через `npm i -g @fission-ai/openspec`. В Claude Code 
 ## План работ
 
 1. ~~`bootstrap-monorepo` — каркасы подпроектов и CI~~ — готово.
-2. `add-board-sync` — доски в PostgreSQL и синхронизация в реальном времени.
+2. ~~`add-board-sync` — доски в PostgreSQL и синхронизация в реальном времени~~ — готово.
 3. `add-diagram-editor` — холст maxGraph: фигуры, связи, подписи, undo, курсоры участников.
 4. `add-user-auth` — вход через GitHub/Google и доступ только к своим доскам.
 
