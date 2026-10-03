@@ -29,8 +29,8 @@ CoDraw — браузерный редактор диаграмм (аналог 
 | Collab-сервер      | Hocuspocus (Node.js, TypeScript)                               |
 | Backend API        | Kotlin, Spring Boot 4, JDK 25, Gradle (Kotlin DSL)             |
 | БД                 | PostgreSQL, Flyway, Spring Data JDBC                           |
-| Файлы              | S3-совместимое хранилище (MinIO локально)                      |
-| Аутентификация     | OIDC + JWT (Keycloak локально; Google/GitHub)                  |
+| Файлы              | S3-совместимое хранилище (MinIO локально), после MVP           |
+| Аутентификация     | Вход через GitHub/Google, JWT от backend; Keycloak — при необходимости SSO |
 | Масштабирование    | Redis pub/sub между инстансами collab-сервера (когда понадобится) |
 | Контракт API       | OpenAPI (springdoc) → сгенерированный TS-клиент                |
 | Тесты              | JUnit 5, Testcontainers; Vitest; Playwright (e2e, в т.ч. несколько клиентов) |
@@ -65,6 +65,27 @@ CoDraw — браузерный редактор диаграмм (аналог 
 - `onAuthenticate` — collab проверяет JWT и запрашивает у backend права пользователя на документ.
 - `onLoadDocument` / `onStoreDocument` — загрузка и сохранение снапшота документа (`bytea`) через
   внутренний API backend, а не напрямую в БД.
+
+### Сервисы
+
+Собственного кода — два сервиса и статика. Backend — модульный монолит; дробить его на микросервисы
+незачем.
+
+| Компонент  | Что это                                                    | Когда нужен          | Масштабирование |
+|------------|------------------------------------------------------------|----------------------|-----------------|
+| `frontend` | Статическая сборка Vite, раздаётся nginx                   | MVP                  | CDN / любое число копий |
+| `backend`  | Kotlin + Spring Boot                                       | MVP                  | Stateless, любое число инстансов за балансировщиком |
+| `collab`   | Hocuspocus                                                 | MVP                  | Stateful: >1 инстанса — Redis + sticky-маршрутизация по id документа |
+| PostgreSQL | Метаданные, снапшоты и версии документов                   | MVP                  | — |
+| MinIO / S3 | Картинки в диаграммах, результаты экспорта                 | Загрузка изображений | — |
+| Redis      | Обмен апдейтами между инстансами `collab`                  | >1 инстанса `collab` | — |
+| Keycloak   | Собственный IdP                                            | SSO / self-hosted    | — |
+
+- Для MVP достаточно 4 контейнеров: `frontend`, `backend`, `collab`, PostgreSQL.
+- nginx раздаёт фронтенд и проксирует `/api` → `backend` и `/collab` → `collab`: один origin,
+  без CORS.
+- Вход в MVP — через GitHub/Google средствами Spring Security (OAuth2 Client). Backend выпускает
+  собственный JWT, `collab` проверяет его по публичному ключу backend (JWKS). Отдельный IdP не нужен.
 
 ### Модель документа в Yjs (набросок)
 
@@ -150,9 +171,14 @@ C-биндинги `yffi` и Foreign Function & Memory API (JDK 22+).
 ### Backend: Kotlin + Spring Boot
 
 - Экспертиза команды.
-- Экосистема: Spring Security (OAuth2 Resource Server), Flyway, Actuator + Micrometer,
+- Экосистема: Spring Security (OAuth2 Client, выпуск JWT), Flyway, Actuator + Micrometer,
   интеграция с Testcontainers, springdoc-openapi.
 - **Ktor** — легче и изначально построен на корутинах, но ради экосистемы выбран Spring Boot.
+- **Node.js (TypeScript)** — убрал бы отдельный `collab` (Yjs работает на сервере нативно) и дал бы
+  общие типы с фронтендом, но ценой экспертизы команды и строгости типов во время выполнения.
+- **Go** — лёгкий рантайм и маленькие образы, но зрелой реализации Yjs нет и там, так что `collab`
+  на Node всё равно понадобится. По сравнению с Kotlin выигрыша нет, а доменную модель описывать
+  менее выразительно.
 - **Kotlin на фронтенде** (Kotlin/JS, Compose for Web) не рассматривается: для Yjs и движков
   диаграмм пришлось бы писать обёртки.
 

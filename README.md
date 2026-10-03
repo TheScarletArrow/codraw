@@ -32,7 +32,7 @@
 | Collab-сервер      | Hocuspocus (Node.js, WebSocket)                                |
 | Backend API        | Kotlin, Spring Boot 4, JDK 25                                  |
 | Хранение           | PostgreSQL + Flyway, S3-совместимое хранилище (MinIO локально) |
-| Аутентификация     | OIDC (Keycloak локально; вход через Google/GitHub), JWT        |
+| Аутентификация     | Вход через GitHub/Google, JWT от backend                       |
 | Тесты              | JUnit 5, Testcontainers, Vitest, Playwright                    |
 | Инфраструктура     | Docker, Docker Compose, GitHub Actions                         |
 
