@@ -14,6 +14,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.development
 *.local
 
 # IDE and OS

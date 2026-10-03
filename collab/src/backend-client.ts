@@ -1,0 +1,58 @@
+export class BoardNotFoundError extends Error {
+  /** Sent to the client when Hocuspocus rejects the connection because of this error. */
+  readonly reason = "board-not-found";
+
+  constructor(boardId: string) {
+    super(`Board ${boardId} does not exist`);
+    this.name = "BoardNotFoundError";
+  }
+}
+
+/** Client for the backend internal API that stores board documents. */
+export interface BackendClient {
+  /** Returns the stored Yjs state of the board, or `null` when the board has no state yet. */
+  loadDocument(boardId: string): Promise<Uint8Array | null>;
+  storeDocument(boardId: string, state: Uint8Array): Promise<void>;
+}
+
+export interface BackendClientOptions {
+  baseUrl: string;
+  internalToken: string;
+}
+
+export function createBackendClient({ baseUrl, internalToken }: BackendClientOptions): BackendClient {
+  const documentUrl = (boardId: string) =>
+    new URL(`/internal/boards/${encodeURIComponent(boardId)}/document`, baseUrl);
+  const headers = { "X-Internal-Token": internalToken };
+
+  return {
+    async loadDocument(boardId) {
+      const response = await fetch(documentUrl(boardId), { headers });
+      switch (response.status) {
+        case 200:
+          return new Uint8Array(await response.arrayBuffer());
+        case 204:
+          return null;
+        case 404:
+          throw new BoardNotFoundError(boardId);
+        default:
+          throw new Error(`Loading board ${boardId} failed: backend responded with ${response.status}`);
+      }
+    },
+
+    async storeDocument(boardId, state) {
+      const response = await fetch(documentUrl(boardId), {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/octet-stream" },
+        // Copy into a plain ArrayBuffer-backed array, which is what fetch accepts as a body.
+        body: new Uint8Array(state),
+      });
+      if (response.status === 404) {
+        throw new BoardNotFoundError(boardId);
+      }
+      if (!response.ok) {
+        throw new Error(`Storing board ${boardId} failed: backend responded with ${response.status}`);
+      }
+    },
+  };
+}
