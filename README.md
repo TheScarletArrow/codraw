@@ -26,7 +26,7 @@
 | Слой               | Технологии                                                     |
 |--------------------|----------------------------------------------------------------|
 | Frontend           | TypeScript, React, Vite                                        |
-| Холст диаграмм     | React Flow (`@xyflow/react`)                                   |
+| Холст диаграмм     | maxGraph (наследник mxGraph — движка draw.io)                  |
 | UI                 | Tailwind CSS, shadcn/ui                                        |
 | Совместная работа  | Yjs (CRDT), y-protocols awareness, y-indexeddb (офлайн)        |
 | Collab-сервер      | Hocuspocus (Node.js, WebSocket)                                |
