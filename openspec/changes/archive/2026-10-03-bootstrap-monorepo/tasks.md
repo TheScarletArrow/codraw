@@ -23,5 +23,5 @@
 
 ## 5. CI и документация
 
-- [ ] 5.1 Добавить workflow GitHub Actions: backend, frontend + collab, `openspec validate --all --strict`; проверка: все три job зелёные на GitHub
+- [x] 5.1 Добавить workflow GitHub Actions: backend, frontend + collab, `openspec validate --all --strict`; проверка: все три job зелёные на GitHub
 - [x] 5.2 Описать локальный запуск в README (раздел «Разработка»); проверка: команды из README выполняются как написано
