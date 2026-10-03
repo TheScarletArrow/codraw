@@ -36,16 +36,57 @@
 | Тесты              | JUnit 5, Testcontainers, Vitest, Playwright                    |
 | Инфраструктура     | Docker, Docker Compose, GitHub Actions                         |
 
-## Структура репозитория (план)
+## Структура репозитория
 
 ```
 codraw/
-├── frontend/   # React-приложение с редактором
-├── collab/     # сервер синхронизации Yjs (Hocuspocus)
 ├── backend/    # Kotlin + Spring Boot: пользователи, доски, права, версии
+├── collab/     # сервер синхронизации Yjs (Hocuspocus)
+├── frontend/   # React-приложение с редактором
+├── openspec/   # спецификации и запланированные изменения (OpenSpec)
 └── docs/adr/   # архитектурные решения
 ```
 
-## Статус
+## Разработка
 
-Проект на стадии проектирования.
+Нужны JDK 25, Node.js 22.12+ (рекомендуется версия из `.nvmrc`) и pnpm 10 (`corepack enable`).
+
+```bash
+pnpm install                       # зависимости frontend и collab
+
+# каждый сервис — в отдельном терминале
+cd backend && ./gradlew bootRun    # API: http://localhost:8080
+pnpm dev:collab                    # синхронизация: ws://localhost:1234
+pnpm dev:frontend                  # приложение: http://localhost:5173
+```
+
+Приложение открывается на http://localhost:5173. Dev-сервер Vite проксирует `/api` в backend
+и `/collab` в collab, поэтому всё работает с одного origin.
+
+Проверки, которые запускает CI:
+
+```bash
+pnpm typecheck && pnpm lint && pnpm test && pnpm build   # frontend и collab
+cd backend && ./gradlew build                            # backend
+```
+
+## Спецификации
+
+Работа ведётся по [OpenSpec](https://github.com/Fission-AI/OpenSpec):
+
+- `openspec/specs/` — действующие требования к системе;
+- `openspec/changes/` — запланированные изменения: зачем (`proposal.md`), как (`design.md`),
+  что поменяется в требованиях (`specs/`) и задачи (`tasks.md`).
+
+CLI ставится через `npm i -g @fission-ai/openspec`. В Claude Code доступны команды `/opsx:propose`,
+`/opsx:apply` и `/opsx:archive`.
+
+## План работ
+
+1. `bootstrap-monorepo` — каркасы подпроектов и CI.
+2. `add-board-sync` — доски в PostgreSQL и синхронизация в реальном времени.
+3. `add-diagram-editor` — холст maxGraph: фигуры, связи, подписи, undo, курсоры участников.
+4. `add-user-auth` — вход через GitHub/Google и доступ только к своим доскам.
+
+Дальше: совместный доступ и роли, импорт и экспорт `.drawio`, несколько страниц, история версий,
+офлайн-режим, Docker-образы и деплой.
