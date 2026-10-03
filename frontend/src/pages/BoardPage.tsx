@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 import { fetchBoard, isNotFound, type Board } from '../api/boards.ts'
 import { getGuestIdentity } from '../board/guest.ts'
 import { Participants } from '../board/Participants.tsx'
+import { PresenceLayer } from '../board/PresenceLayer.tsx'
+import { usePresencePublisher } from '../board/presence.ts'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
@@ -36,8 +38,9 @@ export function BoardPage() {
 }
 
 function BoardWorkspace({ board }: { board: Board }) {
-  const { status, participants, document } = useBoardConnection(board.id, getGuestIdentity())
+  const { status, participants, document, awareness } = useBoardConnection(board.id, getGuestIdentity())
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
+  usePresencePublisher(editor, awareness)
 
   if (status === 'not-found') return <BoardNotFound />
 
@@ -56,7 +59,10 @@ function BoardWorkspace({ board }: { board: Board }) {
         <ShapePalette editor={editor} />
         <div className="relative min-w-0 flex-1">
           {document ? (
-            <DiagramCanvas document={document} onEditor={setEditor} />
+            <>
+              <DiagramCanvas document={document} onEditor={setEditor} />
+              <PresenceLayer editor={editor} awareness={awareness} />
+            </>
           ) : (
             <Message>Загрузка доски…</Message>
           )}

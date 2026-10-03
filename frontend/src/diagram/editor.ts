@@ -23,6 +23,13 @@ export interface Point {
   y: number
 }
 
+export interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface EditorState {
   canUndo: boolean
   canRedo: boolean
@@ -36,6 +43,18 @@ export interface DiagramEditor {
   addShape(shape: ShapeId, center?: Point): Cell | null
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
+  /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
+  toCanvasPoint(point: Point): Point
+  /** Bounds of a cell relative to the visible top-left corner of the canvas, or `null` if it is not shown. */
+  cellBounds(id: string): Box | null
+  /** Reports the pointer position over the canvas in diagram coordinates, and `null` when it leaves. */
+  onPointerMove(listener: (point: Point | null) => void): () => void
+  /** Reports the ids of the selected cells whenever the selection changes. */
+  onSelectionChange(listener: (ids: string[]) => void): () => void
+  /** Reports that the picture on the screen moved: scrolling, zooming or changed cells. */
+  onViewChange(listener: () => void): () => void
+  /** Increases with every view change; lets React re-render positions computed from the view. */
+  getViewVersion(): number
   undo(): void
   redo(): void
   zoomIn(): void
@@ -148,6 +167,41 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
     return toDiagramPoint(rect.left + container.clientWidth / 2, rect.top + container.clientHeight / 2)
   }
 
+  const pointerListeners = new Set<(point: Point | null) => void>()
+  const handlePointerMove = (event: PointerEvent) => {
+    const point = toDiagramPoint(event.clientX, event.clientY)
+    pointerListeners.forEach((listener) => listener(point))
+  }
+  const handlePointerLeave = () => pointerListeners.forEach((listener) => listener(null))
+  container.addEventListener('pointermove', handlePointerMove)
+  container.addEventListener('pointerleave', handlePointerLeave)
+
+  const selectionListeners = new Set<(ids: string[]) => void>()
+  const handleSelectionChange = () => {
+    const ids = graph.getSelectionCells().flatMap((cell) => cell.getId() ?? [])
+    selectionListeners.forEach((listener) => listener(ids))
+  }
+  graph.getSelectionModel().addListener(InternalEvent.CHANGE, handleSelectionChange)
+
+  let viewVersion = 0
+  const viewListeners = new Set<() => void>()
+  const notifyView = () => {
+    viewVersion++
+    viewListeners.forEach((listener) => listener())
+  }
+  container.addEventListener('scroll', notifyView)
+  graph.getView().addListener(InternalEvent.SCALE, notifyView)
+  graph.getView().addListener(InternalEvent.TRANSLATE, notifyView)
+  graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
+  model.addListener(InternalEvent.CHANGE, notifyView)
+
+  const listen = <T>(set: Set<T>, listener: T) => {
+    set.add(listener)
+    return () => {
+      set.delete(listener)
+    }
+  }
+
   const editor: DiagramEditor = {
     graph,
     addShape(shapeId, center = visibleCenter()) {
@@ -188,6 +242,23 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       return cell
     },
     toDiagramPoint,
+    toCanvasPoint({ x, y }) {
+      const { scale, translate } = graph.getView()
+      return {
+        x: (x + translate.x) * scale - container.scrollLeft,
+        y: (y + translate.y) * scale - container.scrollTop,
+      }
+    },
+    cellBounds(id) {
+      const cell = model.getCell(id)
+      const state = cell ? graph.getView().getState(cell) : null
+      if (!state) return null
+      return { x: state.x - container.scrollLeft, y: state.y - container.scrollTop, width: state.width, height: state.height }
+    },
+    onPointerMove: (listener) => listen(pointerListeners, listener),
+    onSelectionChange: (listener) => listen(selectionListeners, listener),
+    onViewChange: (listener) => listen(viewListeners, listener),
+    getViewVersion: () => viewVersion,
     undo() {
       graph.stopEditing(false)
       undoManager.undo()
@@ -200,14 +271,19 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
     zoomOut: () => graph.zoomOut(),
     zoomActual: () => graph.zoomActual(),
     getState: () => state,
-    subscribe(listener) {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
+    subscribe: (listener) => listen(listeners, listener),
     destroy() {
       Reflect.deleteProperty(container, EDITOR_PROPERTY)
       container.removeEventListener('pointerdown', focusCanvas, true)
+      container.removeEventListener('pointermove', handlePointerMove)
+      container.removeEventListener('pointerleave', handlePointerLeave)
+      container.removeEventListener('scroll', notifyView)
+      graph.getSelectionModel().removeListener(handleSelectionChange)
+      model.removeListener(notifyView)
       listeners.clear()
+      pointerListeners.clear()
+      selectionListeners.clear()
+      viewListeners.clear()
       InternalEvent.removeAllListeners(container)
       keyHandler.onDestroy()
       undoManager.destroy()

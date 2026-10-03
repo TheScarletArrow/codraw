@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import * as Y from 'yjs'
 import { initializeDocument } from '../diagram/model.ts'
 import type { ParticipantIdentity } from './guest.ts'
+import type { Awareness } from './presence.ts'
 
 export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found'
 
@@ -22,8 +23,8 @@ export function collabUrl(location: Location = window.location) {
 export function useBoardConnection(boardId: string, identity: ParticipantIdentity) {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [participants, setParticipants] = useState<Participant[]>([])
-  /** The board document, available once it has been synced for the first time. */
-  const [document, setDocument] = useState<Y.Doc | null>(null)
+  /** The board document and the participants' awareness, available once the document has been synced. */
+  const [session, setSession] = useState<{ document: Y.Doc; awareness: Awareness } | null>(null)
 
   useEffect(() => {
     const document = new Y.Doc()
@@ -35,7 +36,7 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
         if (!state) return
         // Initialize only after the stored state has arrived, so that a non-empty board is never overwritten.
         initializeDocument(document)
-        setDocument(document)
+        setSession((current) => current ?? { document, awareness: provider.awareness! })
         setStatus('synced')
       },
       onStatus: ({ status }) => {
@@ -68,11 +69,11 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
 
     return () => {
       awareness.off('change', updateParticipants)
-      setDocument(null)
+      setSession(null)
       provider.destroy()
       document.destroy()
     }
   }, [boardId, identity])
 
-  return { status, participants, document }
+  return { status, participants, document: session?.document ?? null, awareness: session?.awareness ?? null }
 }

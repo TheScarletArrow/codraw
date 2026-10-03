@@ -1,0 +1,139 @@
+import { act, render, renderHook, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
+import { FakeAwareness } from '../test/fakeProvider.ts'
+import { PresenceLayer } from './PresenceLayer.tsx'
+import { CURSOR_INTERVAL_MS, usePresencePublisher, type Awareness } from './presence.ts'
+
+const asAwareness = (awareness: FakeAwareness) => awareness as unknown as Awareness
+const bob = { name: 'Гость 7', color: '#dc2626' }
+
+describe('usePresencePublisher', () => {
+  let editor: FakeEditor
+  let awareness: FakeAwareness
+  const local = () => awareness.getStates().get(awareness.clientID) ?? {}
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    editor = createFakeEditor()
+    awareness = new FakeAwareness(1)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('publishes the pointer position in diagram coordinates', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+
+    editor.movePointer({ x: 120.4, y: 80.6 })
+
+    expect(local().cursor).toEqual({ x: 120, y: 81 })
+  })
+
+  it('sends at most one update per interval and then the latest position', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+    const updates: unknown[] = []
+    awareness.on('change', () => updates.push(local().cursor))
+
+    editor.movePointer({ x: 1, y: 1 })
+    editor.movePointer({ x: 2, y: 2 })
+    editor.movePointer({ x: 3, y: 3 })
+    expect(updates).toEqual([{ x: 1, y: 1 }])
+
+    vi.advanceTimersByTime(CURSOR_INTERVAL_MS)
+    expect(updates).toEqual([
+      { x: 1, y: 1 },
+      { x: 3, y: 3 },
+    ])
+  })
+
+  it('clears the cursor when the pointer leaves the canvas', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+    editor.movePointer({ x: 1, y: 1 })
+    editor.movePointer({ x: 2, y: 2 })
+
+    editor.movePointer(null)
+    vi.advanceTimersByTime(CURSOR_INTERVAL_MS)
+
+    expect(local().cursor).toBeNull()
+  })
+
+  it('publishes the selection', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+
+    editor.select(['a', 'b'])
+
+    expect(local().selection).toEqual(['a', 'b'])
+  })
+
+  it('clears cursor and selection when the editor goes away', () => {
+    const { unmount } = renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+    editor.movePointer({ x: 1, y: 1 })
+    editor.select(['a'])
+
+    unmount()
+
+    expect(local()).toMatchObject({ cursor: null, selection: [] })
+  })
+})
+
+describe('PresenceLayer', () => {
+  let editor: FakeEditor
+  let awareness: FakeAwareness
+
+  beforeEach(() => {
+    editor = createFakeEditor()
+    awareness = new FakeAwareness(1)
+    awareness.setLocalStateField('user', { name: 'Гость 1', color: '#2563eb' })
+  })
+
+  const renderLayer = () => render(<PresenceLayer editor={editor} awareness={asAwareness(awareness)} />)
+
+  it('shows the cursors of other participants with their names at their diagram position', () => {
+    awareness.setLocalStateField('cursor', { x: 5, y: 5 })
+    awareness.setState(7, { user: bob, cursor: { x: 200, y: 150 } })
+
+    renderLayer()
+
+    const cursors = screen.getAllByTestId('remote-cursor')
+    expect(cursors).toHaveLength(1)
+    expect(cursors[0]).toHaveTextContent('Гость 7')
+    expect(cursors[0]!.style.transform).toBe('translate(200px, 150px)')
+  })
+
+  it('moves cursors with scrolling and removes them when the participant leaves the canvas', () => {
+    awareness.setState(7, { user: bob, cursor: { x: 200, y: 150 } })
+    renderLayer()
+
+    act(() => editor.scrollTo({ x: 50, y: 30 }))
+    expect(screen.getByTestId('remote-cursor').style.transform).toBe('translate(150px, 120px)')
+
+    act(() => awareness.setState(7, { user: bob, cursor: null }))
+    expect(screen.queryByTestId('remote-cursor')).toBeNull()
+  })
+
+  it('outlines cells selected by other participants in their color', () => {
+    editor.placeCell('box', { x: 100, y: 50, width: 120, height: 60 })
+    awareness.setLocalStateField('selection', ['box'])
+    awareness.setState(7, { user: bob, selection: ['box', 'deleted'] })
+
+    renderLayer()
+
+    const outlines = screen.getAllByTestId('remote-selection')
+    expect(outlines).toHaveLength(1)
+    expect(outlines[0]).toHaveAttribute('data-participant', 'Гость 7')
+    expect(outlines[0]).toHaveStyle({ left: '97px', top: '47px', width: '126px', height: '66px' })
+    expect(outlines[0]!.style.borderColor).toBe('rgb(220, 38, 38)')
+  })
+
+  it('follows a selected cell when it moves', () => {
+    editor.placeCell('box', { x: 100, y: 50, width: 120, height: 60 })
+    awareness.setState(7, { user: bob, selection: ['box'] })
+    renderLayer()
+
+    act(() => editor.placeCell('box', { x: 300, y: 250, width: 120, height: 60 }))
+
+    expect(screen.getByTestId('remote-selection')).toHaveStyle({ left: '297px', top: '247px' })
+  })
+})
