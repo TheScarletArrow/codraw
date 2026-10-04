@@ -4,6 +4,17 @@ spring:
     url: jdbc:postgresql://localhost:5432/codraw
     username: codraw
     password: codraw
+  # Sign-in works once the OAuth applications are set up, see README.md; until then the backend starts without them.
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID:not-configured}
+            client-secret: ${GITHUB_CLIENT_SECRET:not-configured}
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:not-configured}
+            client-secret: ${GOOGLE_CLIENT_SECRET:not-configured}
 
 codraw:
   internal-token: dev-internal-token

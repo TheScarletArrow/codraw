@@ -27,3 +27,6 @@ build/
 # Playwright
 test-results/
 playwright-report/
+
+# Local backend configuration with secrets (Spring Boot reads backend/config/ automatically)
+backend/config/

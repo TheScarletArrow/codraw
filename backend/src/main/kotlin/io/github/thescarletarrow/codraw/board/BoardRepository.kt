@@ -8,7 +8,13 @@ import java.util.UUID
 
 interface BoardRepository : ListCrudRepository<Board, UUID> {
 
-    fun findAllByOrderByUpdatedAtDesc(): List<Board>
+    fun findAllByOwnerIdOrderByUpdatedAtDesc(ownerId: UUID): List<Board>
+
+    fun findByIdAndOwnerId(id: UUID, ownerId: UUID): Board?
+
+    @Modifying
+    @Query("UPDATE boards SET owner_id = :newOwnerId WHERE owner_id = :ownerId")
+    fun changeOwner(ownerId: UUID, newOwnerId: UUID): Int
 
     @Modifying
     @Query("UPDATE boards SET updated_at = :updatedAt WHERE id = :id")

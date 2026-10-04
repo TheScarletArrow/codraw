@@ -2,6 +2,10 @@ package io.github.thescarletarrow.codraw.internal
 
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
+import io.github.thescarletarrow.codraw.gitHubUser
+import io.github.thescarletarrow.codraw.session
+import io.github.thescarletarrow.codraw.user.User
+import io.github.thescarletarrow.codraw.user.UserService
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -9,6 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -22,14 +27,17 @@ class BoardDocumentApiTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val jdbcClient: JdbcClient,
     @Autowired private val clock: MutableClock,
+    @Autowired private val users: UserService,
 ) {
 
     private val unknownBoard = "0199a000-0000-7000-8000-000000000000"
     private val state = byteArrayOf(1, 2, 3, 0, -1)
+    private lateinit var owner: User
 
     @BeforeEach
     fun cleanDatabase() {
         jdbcClient.sql("DELETE FROM boards").update()
+        owner = users.gitHubUser("Owner")
     }
 
     @Test
@@ -75,7 +83,7 @@ class BoardDocumentApiTest(
 
         putDocument(first, state)
 
-        mockMvc.get("/api/boards").andExpect {
+        mockMvc.get("/api/boards") { with(owner.session()) }.andExpect {
             jsonPath("$[0].id") { value(first) }
             jsonPath("$[0].updatedAt") { value(clock.instant().toString()) }
             jsonPath("$[1].id") { value(second) }
@@ -119,6 +127,8 @@ class BoardDocumentApiTest(
 
     private fun createBoard(title: String): String {
         val response = mockMvc.post("/api/boards") {
+            with(owner.session())
+            with(csrf())
             contentType = MediaType.APPLICATION_JSON
             content = """{"title": "$title"}"""
         }.andExpect { status { isCreated() } }.andReturn().response

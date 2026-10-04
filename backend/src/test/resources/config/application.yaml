@@ -1,0 +1,12 @@
+# Test-only additions to the application configuration. Tests never reach GitHub or Google.
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: test-github-client
+            client-secret: test-github-secret
+          google:
+            client-id: test-google-client
+            client-secret: test-google-secret

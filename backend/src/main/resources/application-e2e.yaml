@@ -1,0 +1,12 @@
+# End-to-end tests sign in through the test login endpoint (TestLoginController), not through GitHub or Google.
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: e2e
+            client-secret: e2e
+          google:
+            client-id: e2e
+            client-secret: e2e

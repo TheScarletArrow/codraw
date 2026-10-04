@@ -1,10 +1,13 @@
 package io.github.thescarletarrow.codraw.board
 
+import io.github.thescarletarrow.codraw.user.userId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -21,17 +24,20 @@ import java.util.UUID
 class BoardController(private val boards: BoardService) {
 
     @PostMapping
-    fun create(@Valid @RequestBody request: CreateBoardRequest): ResponseEntity<BoardResponse> {
-        val board = boards.create(request.title.trim()).toResponse()
+    fun create(
+        @Valid @RequestBody request: CreateBoardRequest,
+        @AuthenticationPrincipal user: OAuth2User,
+    ): ResponseEntity<BoardResponse> {
+        val board = boards.create(request.title.trim(), user.userId).toResponse()
         return ResponseEntity.created(URI.create("/api/boards/${board.id}")).body(board)
     }
 
     @GetMapping
-    fun list(): List<BoardResponse> = boards.list().map { it.toResponse() }
+    fun list(@AuthenticationPrincipal user: OAuth2User): List<BoardResponse> = boards.list(user.userId).map { it.toResponse() }
 
     @GetMapping("/{id}")
-    fun get(@PathVariable id: String): BoardResponse =
-        BoardIds.parse(id)?.let(boards::find)?.toResponse()
+    fun get(@PathVariable id: String, @AuthenticationPrincipal user: OAuth2User): BoardResponse =
+        BoardIds.parse(id)?.let { boards.find(it, user.userId) }?.toResponse()
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
 }
 

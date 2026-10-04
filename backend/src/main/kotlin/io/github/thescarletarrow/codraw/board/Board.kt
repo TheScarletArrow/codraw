@@ -9,6 +9,7 @@ import java.util.UUID
 data class Board(
     @Id val id: UUID? = null,
     val title: String,
+    val ownerId: UUID,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

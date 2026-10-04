@@ -1,6 +1,5 @@
 package io.github.thescarletarrow.codraw.board
 
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -13,14 +12,22 @@ class BoardService(
     private val clock: Clock,
 ) {
 
-    fun create(title: String): Board {
+    /** Creates a board owned by the user [ownerId]. */
+    fun create(title: String, ownerId: UUID): Board {
         val now = now()
-        return boards.save(Board(title = title, createdAt = now, updatedAt = now))
+        return boards.save(Board(title = title, ownerId = ownerId, createdAt = now, updatedAt = now))
     }
 
-    fun list(): List<Board> = boards.findAllByOrderByUpdatedAtDesc()
+    /** Boards of the user [ownerId], most recently changed first. */
+    fun list(ownerId: UUID): List<Board> = boards.findAllByOwnerIdOrderByUpdatedAtDesc(ownerId)
 
-    fun find(id: UUID): Board? = boards.findByIdOrNull(id)
+    /** Returns the board, or `null` when it does not exist or belongs to another user. */
+    fun find(id: UUID, ownerId: UUID): Board? = boards.findByIdAndOwnerId(id, ownerId)
+
+    /** Passes all boards of the user [ownerId] to the user [newOwnerId]. */
+    fun changeOwner(ownerId: UUID, newOwnerId: UUID) {
+        boards.changeOwner(ownerId, newOwnerId)
+    }
 
     // PostgreSQL stores microseconds, so truncate to return exactly what is persisted.
     private fun now(): Instant = clock.instant().truncatedTo(ChronoUnit.MICROS)
