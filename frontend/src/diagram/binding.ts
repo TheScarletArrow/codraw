@@ -171,6 +171,7 @@ export class DiagramBinding {
           if (geometry) model.setGeometry(cell, geometry)
         }
         if (!deepEqual(fromStyle(cell.getStyle()), data.style)) model.setStyle(cell, { ...data.style } as CellStyle)
+        cell.setConnectable(isConnectable(data))
         if (data.kind === 'edge') {
           const source = this.find(data.source)
           const target = this.find(data.target)
@@ -248,7 +249,13 @@ function createCell(data: CellData): Cell {
   cell.setId(data.id)
   if (data.kind === 'edge') cell.setEdge(true)
   else cell.setVertex(true)
+  cell.setConnectable(isConnectable(data))
   return cell
+}
+
+/** `connectable=0` in the style keeps edges off a cell, as in draw.io, e.g. a label of an edge. */
+function isConnectable(data: CellData): boolean {
+  return data.style.connectable !== false && data.style.connectable !== 0
 }
 
 /** Orders cells by their position in the model tree, parents before children. */

@@ -18,6 +18,9 @@ import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
+import { DrawioActions } from '../drawio/DrawioActions.tsx'
+import { takePendingImport } from '../drawio/files.ts'
+import { importPages } from '../drawio/importPages.ts'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
@@ -76,6 +79,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
   }, [currentPage, requestedPage, selectPage])
 
+  // A board created from a file on the list of boards gets the pages of the file once its document is synced.
+  useEffect(() => {
+    const pending = document && takePendingImport(board.id)
+    if (!pending) return
+    const [first] = importPages(document, pending)
+    if (first) selectPage(first)
+  }, [document, board.id, selectPage])
+
   // Going to another participant: switch to their page, then centre their cursor once that page is shown.
   const following = useRef<number | null>(null)
   const centreOn = useCallback(
@@ -113,6 +124,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
           {STATUS_LABELS[status]}
         </span>
+        <DrawioActions document={document} title={board.title} onImported={selectPage} />
+        <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <EditorToolbar editor={editor} />
         <Participants
           participants={participants}

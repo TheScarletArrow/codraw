@@ -1,5 +1,6 @@
 import {
   ActorShape,
+  CylinderShape,
   EdgeMarkerRegistry,
   RectangleShape,
   Shape,
@@ -479,6 +480,8 @@ export function registerDiagramExtensions() {
   ShapeRegistry.add('rectangle', ClickThroughRectangleShape)
   ShapeRegistry.add('document', DocumentShape)
   ShapeRegistry.add('mxgraph.c4.person2', C4PersonShape)
+  // The cylinder of the draw.io palette.
+  ShapeRegistry.add('cylinder3', CylinderShape)
   for (const [name, shape] of Object.entries(SYSTEM_DESIGN_SHAPES)) ShapeRegistry.add(name, shape)
   for (const [name, parts] of Object.entries(CROWS_FEET)) {
     EdgeMarkerRegistry.add(name, crowsFoot(parts))

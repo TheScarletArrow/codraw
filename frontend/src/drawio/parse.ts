@@ -1,0 +1,209 @@
+import { generateNKeysBetween } from 'fractional-indexing'
+import { newId } from '../diagram/ids.ts'
+import { LAYER_CELL_ID, ROOT_CELL_ID, type CellData, type GeometryData, type PointData } from '../diagram/model.ts'
+import { htmlToText } from './labels.ts'
+import { parseStyle } from './style.ts'
+
+/** The file is not a draw.io diagram. */
+export class DrawioFormatError extends Error {
+  constructor(message = 'Это не файл draw.io', options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'DrawioFormatError'
+  }
+}
+
+/** A cell of a page as the board document stores it, with the custom properties of `<object>`. */
+export interface DrawioCell extends CellData {
+  attrs?: Record<string, string>
+}
+
+/** A page (`<diagram>`) of a draw.io file; the root and the layer cells are implied. */
+export interface DrawioPage {
+  /** Id of the diagram in the file, if it has one. */
+  id: string | null
+  name: string
+  cells: DrawioCell[]
+}
+
+/** Reads the pages of a `.drawio` file, of a single `<mxGraphModel>` or of a `.drawio.svg` file. */
+export async function parseDrawio(text: string): Promise<DrawioPage[]> {
+  let root = parseXml(text)
+  if (root.localName === 'svg') {
+    const content = root.getAttribute('content')
+    if (!content) throw new DrawioFormatError()
+    root = parseXml(content)
+  }
+  if (root.nodeName === 'mxGraphModel') return [readModel(root, null, 'Страница 1')]
+  if (root.nodeName !== 'mxfile') throw new DrawioFormatError()
+
+  const diagrams = childElements(root, 'diagram')
+  if (diagrams.length === 0) throw new DrawioFormatError()
+  const pages: DrawioPage[] = []
+  for (const [index, diagram] of diagrams.entries()) {
+    const model = childElements(diagram, 'mxGraphModel')[0] ?? parseXml(await decompress(diagram.textContent ?? ''))
+    if (model.nodeName !== 'mxGraphModel') throw new DrawioFormatError()
+    pages.push(readModel(model, diagram.getAttribute('id'), diagram.getAttribute('name') || `Страница ${index + 1}`))
+  }
+  return pages
+}
+
+function parseXml(text: string): Element {
+  const document = new DOMParser().parseFromString(text, 'text/xml')
+  if (document.getElementsByTagName('parsererror').length > 0) throw new DrawioFormatError()
+  return document.documentElement
+}
+
+function childElements(element: Element, name?: string): Element[] {
+  return Array.from(element.children).filter((child) => name === undefined || child.nodeName === name)
+}
+
+/** Unpacks a compressed diagram: base64 of raw deflate of the URI-encoded XML, as draw.io writes it. */
+async function decompress(content: string): Promise<string> {
+  const data = content.trim()
+  if (data.startsWith('<')) return data
+  let bytes: Uint8Array
+  try {
+    bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0))
+  } catch (error) {
+    throw new DrawioFormatError(undefined, { cause: error })
+  }
+  const inflated = await inflateRaw(bytes).catch((error: unknown) => {
+    throw new DrawioFormatError(undefined, { cause: error })
+  })
+  try {
+    return decodeURIComponent(inflated)
+  } catch {
+    // Old files are compressed without URI encoding.
+    return inflated
+  }
+}
+
+async function inflateRaw(bytes: Uint8Array): Promise<string> {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes)
+      controller.close()
+    },
+  }).pipeThrough(new DecompressionStream('deflate-raw') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>)
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    text += decoder.decode(value, { stream: true })
+  }
+  return text + decoder.decode()
+}
+
+interface RawCell {
+  id: string
+  parent: string | null
+  element: Element
+  value: string
+  attrs: Record<string, string>
+}
+
+/** Converts the cells of a model: the root becomes `0`, all layers become `1`, and the order follows the file. */
+function readModel(model: Element, id: string | null, name: string): DrawioPage {
+  const rootElement = childElements(model, 'root')[0]
+  if (!rootElement) throw new DrawioFormatError()
+
+  const raw: RawCell[] = []
+  for (const element of childElements(rootElement)) {
+    if (element.nodeName === 'mxCell') {
+      raw.push({
+        id: element.getAttribute('id') ?? '',
+        parent: element.getAttribute('parent'),
+        element,
+        value: element.getAttribute('value') ?? '',
+        attrs: {},
+      })
+    } else if (element.nodeName === 'object' || element.nodeName === 'UserObject') {
+      // A cell with custom properties: the attributes of the wrapper and the cell inside it.
+      const cell = childElements(element, 'mxCell')[0]
+      if (!cell) continue
+      const attrs: Record<string, string> = {}
+      for (const attribute of Array.from(element.attributes)) {
+        if (attribute.name !== 'id' && attribute.name !== 'label') attrs[attribute.name] = attribute.value
+      }
+      raw.push({ id: element.getAttribute('id') ?? '', parent: cell.getAttribute('parent'), element: cell, value: element.getAttribute('label') ?? '', attrs })
+    }
+  }
+
+  const root = raw.find((cell) => !cell.parent)
+  const layers = new Set(root ? raw.filter((cell) => cell.parent === root.id).map((cell) => cell.id) : [])
+  const ids = new Map<string, string>()
+  if (root) ids.set(root.id, ROOT_CELL_ID)
+  layers.forEach((layer) => ids.set(layer, LAYER_CELL_ID))
+  const used = new Set([ROOT_CELL_ID, LAYER_CELL_ID])
+  const content = raw.filter((cell) => cell !== root && !layers.has(cell.id))
+  for (const cell of content) {
+    const kept = cell.id && !used.has(cell.id) ? cell.id : newId()
+    used.add(kept)
+    ids.set(cell.id, kept)
+  }
+  const reference = (value: string | null) => (value !== null && ids.has(value) ? ids.get(value)! : null)
+
+  const cells: DrawioCell[] = content.map((cell) => {
+    const element = cell.element
+    const kind = element.getAttribute('edge') === '1' ? 'edge' : 'vertex'
+    const styleText = element.getAttribute('style') ?? ''
+    const style = parseStyle(styleText, kind)
+    if (element.getAttribute('connectable') === '0') style.connectable = false
+    const html = /(^|;)\s*html=1\s*(;|$)/.test(styleText)
+    const parent = reference(cell.parent)
+    return {
+      id: ids.get(cell.id)!,
+      kind,
+      // Cells of other layers, and cells whose parent is missing, go to the layer of the page.
+      parent: parent === null || parent === ROOT_CELL_ID ? LAYER_CELL_ID : parent,
+      order: '',
+      value: html ? htmlToText(cell.value) : cell.value,
+      geometry: readGeometry(childElements(element, 'mxGeometry')[0]),
+      source: kind === 'edge' ? reference(element.getAttribute('source')) : null,
+      target: kind === 'edge' ? reference(element.getAttribute('target')) : null,
+      style,
+      ...(Object.keys(cell.attrs).length > 0 && { attrs: cell.attrs }),
+    }
+  })
+
+  // Siblings are drawn in the order of the file.
+  const siblings = new Map<string, DrawioCell[]>()
+  for (const cell of cells) siblings.set(cell.parent!, [...(siblings.get(cell.parent!) ?? []), cell])
+  siblings.forEach((group) => {
+    const keys = generateNKeysBetween(null, null, group.length)
+    group.forEach((cell, index) => (cell.order = keys[index]!))
+  })
+  return { id, name, cells }
+}
+
+const number = (element: Element, name: string) => {
+  const value = Number(element.getAttribute(name) ?? 0)
+  return Number.isFinite(value) ? value : 0
+}
+
+const readPoint = (element: Element): PointData => ({ x: number(element, 'x'), y: number(element, 'y') })
+
+function readGeometry(element: Element | undefined): GeometryData | null {
+  if (!element) return null
+  const geometry: GeometryData = {
+    x: number(element, 'x'),
+    y: number(element, 'y'),
+    width: number(element, 'width'),
+    height: number(element, 'height'),
+  }
+  if (element.getAttribute('relative') === '1') geometry.relative = true
+  for (const child of childElements(element)) {
+    const as = child.getAttribute('as')
+    if (child.nodeName === 'mxPoint' && (as === 'sourcePoint' || as === 'targetPoint' || as === 'offset')) {
+      const point = readPoint(child)
+      // draw.io writes an empty offset for every label of an edge.
+      if (as !== 'offset' || point.x !== 0 || point.y !== 0) geometry[as] = point
+    } else if (child.nodeName === 'Array' && as === 'points') {
+      const points = childElements(child, 'mxPoint').map(readPoint)
+      if (points.length > 0) geometry.points = points
+    }
+  }
+  return geometry
+}

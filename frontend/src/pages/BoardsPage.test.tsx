@@ -2,6 +2,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
+import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
+import { takePendingImport } from '../drawio/files.ts'
 import { mockFetch, renderRoutes } from '../test/render.tsx'
 import { BoardsPage } from './BoardsPage.tsx'
 
@@ -60,5 +62,32 @@ describe('BoardsPage', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/boards/new-id'))
     const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
     expect(JSON.parse(init!.body as string)).toEqual({ title: 'Новая доска' })
+  })
+
+  it('opens a draw.io file as a new board named after the file', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/boards': { body: [] },
+      'POST /api/boards': { status: 201, body: board('file-id', 'Платёжный сервис') },
+    })
+    const { router } = renderRoutes(routes)
+    await screen.findByText('Досок пока нет')
+
+    await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Платёжный сервис.drawio'))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/boards/file-id'))
+    const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(JSON.parse(init!.body as string)).toEqual({ title: 'Платёжный сервис' })
+    expect(takePendingImport('file-id')?.map((page) => page.name)).toEqual(['Контекст', 'Слои'])
+  })
+
+  it('does not create a board from a file that is not a draw.io diagram', async () => {
+    const fetchMock = mockFetch({ 'GET /api/boards': { body: [] } })
+    renderRoutes(routes)
+    await screen.findByText('Досок пока нет')
+
+    await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File(['просто текст'], 'заметки.xml'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл draw.io')
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
   })
 })

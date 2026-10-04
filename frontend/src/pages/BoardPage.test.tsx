@@ -7,6 +7,9 @@ import * as Y from 'yjs'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
+import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
+import { setPendingImport } from '../drawio/files.ts'
+import { parseDrawio } from '../drawio/parse.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
@@ -403,6 +406,67 @@ describe('BoardPage', () => {
       expect(shownPage()).toBe(second)
       await waitFor(() => expect(canvas.editor!.centerOn).toHaveBeenCalledWith({ x: 1500, y: 900 }))
       expect(canvas.editor!.pageId).toBe(second)
+    })
+  })
+
+  describe('draw.io files', () => {
+    async function openSynced() {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      return provider
+    }
+    const tabNames = () => within(screen.getByRole('tablist', { name: 'Страницы' })).getAllByRole('tab').map((tab) => tab.textContent)
+
+    it('imports the pages of a file into the board and opens the first of them', async () => {
+      const provider = await openSynced()
+      act(() => {
+        provider.document.transact(() =>
+          getCells(provider.document).set('own', new Y.Map<unknown>([['kind', 'vertex'] as [string, unknown]])),
+        )
+      })
+
+      await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Архитектура.drawio'))
+
+      await waitFor(() => expect(tabNames()).toEqual(['Страница 1', 'Контекст', 'Слои']))
+      expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
+    })
+
+    it('reports a file that is not a draw.io diagram and leaves the board as it is', async () => {
+      const provider = await openSynced()
+
+      await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File(['<notes>просто заметки</notes>'], 'notes.xml'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл draw.io')
+      expect(listPages(provider.document)).toHaveLength(1)
+    })
+
+    it('exports all pages of the board to a file named after the board', async () => {
+      const provider = await openSynced()
+      act(() => {
+        renamePage(provider.document, DEFAULT_PAGE_ID, 'Контекст')
+        addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+      })
+      const blobs: Blob[] = []
+      vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn((blob: Blob) => (blobs.push(blob), 'blob:test')), revokeObjectURL: vi.fn() }))
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        expect(this.download).toBe('Архитектура.drawio')
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Экспорт в .drawio' }))
+
+      expect(click).toHaveBeenCalled()
+      const xml = await blobs[0]!.text()
+      expect(Array.from(xml.matchAll(/<diagram [^>]*name="([^"]+)"/g), (match) => match[1])).toEqual(['Контекст', 'Контейнеры'])
+      click.mockRestore()
+    })
+
+    it('fills a board created from a file once its document is synced', async () => {
+      setPendingImport(boardId, await parseDrawio(SAMPLE_DRAWIO))
+
+      await openSynced()
+
+      expect(tabNames()).toEqual(['Контекст', 'Слои'])
+      expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
     })
   })
 })

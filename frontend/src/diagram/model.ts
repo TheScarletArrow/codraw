@@ -226,3 +226,20 @@ export function compareCells(a: Pick<CellData, 'order' | 'id'>, b: Pick<CellData
   if (a.order !== b.order) return a.order < b.order ? -1 : 1
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
+
+/** Custom properties of a cell (attributes of `<object>` in `.drawio`); the editor does not use them. */
+export function readAttrs(cell: CellMap): Record<string, string> {
+  const attrs = cell.get('attrs')
+  return attrs instanceof Y.Map ? (attrs.toJSON() as Record<string, string>) : {}
+}
+
+/** Sets the custom properties of a cell; an empty set removes them. */
+export function writeAttrs(cell: CellMap, attrs: Record<string, string>) {
+  if (Object.keys(attrs).length === 0) {
+    cell.delete('attrs')
+    return
+  }
+  const map = new Y.Map<string>()
+  for (const [key, value] of Object.entries(attrs)) map.set(key, value)
+  cell.set('attrs', map)
+}
