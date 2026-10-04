@@ -27,6 +27,7 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     tableSelected: false,
     edgeMarkers: null,
     colors: null,
+    quickConnect: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -51,6 +52,7 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     pageId,
     addShape: vi.fn(() => null),
     addTableField: vi.fn(() => null),
+    addConnectedShape: vi.fn(() => null),
     setEdgeMarker: vi.fn(),
     setColor: vi.fn(),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),

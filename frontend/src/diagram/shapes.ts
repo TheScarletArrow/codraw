@@ -50,7 +50,12 @@ export type ShapeId =
  * maxGraph style with draw.io keys and values that maxGraph does not type: `childLayout`, and port constraints
  * written as in draw.io (`eastwest`), which maxGraph reads as well.
  */
-export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & { childLayout?: string; portConstraint?: string }
+export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & {
+  childLayout?: string
+  portConstraint?: string
+  /** The palette shape the cell was created from; see {@link markedStyle}. */
+  codrawShape?: string
+}
 
 /** A cell created inside the shape, e.g. a field of a table. It spans the width of the shape. */
 export interface ChildPreset {
@@ -69,8 +74,12 @@ export interface ShapePreset {
   children?: ChildPreset[]
 }
 
+/** Notation of a shape: quick connect offers only shapes of the same notation. */
+export type ShapeGroup = 'basic' | 'tables' | 'system' | 'uml' | 'c4'
+
 export interface ShapeSection {
   title: string
+  group: ShapeGroup
   shapes: ShapePreset[]
 }
 
@@ -132,6 +141,7 @@ const c4Style = (fillColor: string, strokeColor: string, fontColor = '#ffffff'):
 export const SHAPE_SECTIONS: ShapeSection[] = [
   {
     title: 'Основные',
+    group: 'basic',
     shapes: [
       { id: 'rectangle', label: 'Прямоугольник', width: 120, height: 60, value: '', style: {} },
       { id: 'rounded', label: 'Скруглённый прямоугольник', width: 120, height: 60, value: '', style: { rounded: true } },
@@ -163,6 +173,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'База данных',
+    group: 'tables',
     shapes: [
       {
         id: 'table',
@@ -177,6 +188,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'Архитектура',
+    group: 'system',
     shapes: [
       { id: 'service', label: 'Сервис', width: 120, height: 60, value: 'Сервис', style: { rounded: true } },
       { id: 'database', label: 'База данных', width: 100, height: 90, value: 'База данных', style: { shape: 'cylinder' } },
@@ -204,6 +216,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'Инфраструктура',
+    group: 'system',
     shapes: [
       {
         id: 'load-balancer',
@@ -246,6 +259,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'Данные и сообщения',
+    group: 'system',
     shapes: [
       {
         id: 'object-storage',
@@ -293,6 +307,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'Клиенты',
+    group: 'system',
     shapes: [
       {
         id: 'browser',
@@ -331,6 +346,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'UML',
+    group: 'uml',
     shapes: [
       {
         id: 'uml-component',
@@ -369,6 +385,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
   },
   {
     title: 'C4',
+    group: 'c4',
     shapes: [
       {
         id: 'c4-person',
@@ -435,6 +452,53 @@ export const SHAPES: ShapePreset[] = SHAPE_SECTIONS.flatMap((section) => section
 
 export function findShape(id: string): ShapePreset | undefined {
   return SHAPES.find((shape) => shape.id === id)
+}
+
+/** Frames and text: they belong to no group, so nothing is connected to them with the arrows. */
+export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>(['text', 'boundary', 'kubernetes-cluster', 'c4-boundary'])
+
+const GROUPS = new Map<ShapeId, ShapeGroup>(
+  SHAPE_SECTIONS.flatMap((section) =>
+    section.shapes.filter((shape) => !UNGROUPED_SHAPES.has(shape.id)).map((shape) => [shape.id, section.group] as const),
+  ),
+)
+
+export function shapeGroup(id: ShapeId): ShapeGroup | null {
+  return GROUPS.get(id) ?? null
+}
+
+/** Shapes of a group in the order of the palette. */
+export function groupShapes(group: ShapeGroup): ShapePreset[] {
+  return SHAPES.filter((shape) => GROUPS.get(shape.id) === group)
+}
+
+/** Style of a new cell of the shape, marked with the shape so that its group is known for sure. */
+export function markedStyle(shape: ShapePreset): ShapeStyle {
+  return { ...shape.style, codrawShape: shape.id }
+}
+
+/**
+ * The palette shape of a cell: by its mark, or, for cells without it (older boards, `.drawio` files), the first
+ * grouped shape of the palette drawn the same way. Text, frames and unknown shapes have none.
+ */
+export function shapeOf(style: ShapeStyle): ShapePreset | null {
+  const marked = style.codrawShape ? findShape(style.codrawShape) : undefined
+  if (marked) return marked
+  if (isTableStyle(style)) return findShape('table')!
+  if (style.pointerEvents === false) return null
+  const shape = String(style.shape ?? 'rectangle')
+  if (shape === 'rectangle' && style.fillColor === 'none' && style.strokeColor === 'none') return null
+  if (shape.startsWith('mxgraph.c4.')) return findShape('c4-person')!
+  return (
+    SHAPES.find(
+      (preset) => GROUPS.has(preset.id) && !isTableStyle(preset.style) && (preset.style.shape ?? 'rectangle') === shape,
+    ) ?? null
+  )
+}
+
+export function shapeGroupOf(style: ShapeStyle): ShapeGroup | null {
+  const shape = shapeOf(style)
+  return shape ? shapeGroup(shape.id) : null
 }
 
 /** A table is a cell whose children are stacked fields. */

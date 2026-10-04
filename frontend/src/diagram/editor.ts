@@ -23,13 +23,20 @@ import * as Y from 'yjs'
 import { createUndoManager, DiagramBinding } from './binding.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { DEFAULT_PAGE_ID, getCells } from './model.ts'
+import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import {
   findShape,
+  groupShapes,
   isTableStyle,
+  markedStyle,
+  shapeGroup,
+  shapeGroupOf,
   TABLE_FIELD_HEIGHT,
   TABLE_FIELD_STYLE,
   TABLE_HEADER_HEIGHT,
   type ShapeId,
+  type ShapeGroup,
+  type ShapePreset,
   type ShapeStyle,
 } from './shapes.ts'
 
@@ -64,6 +71,12 @@ export interface SelectionColors {
   hasShapes: boolean
 }
 
+/** The selected shape that the arrows continue, and the shapes of its group they offer. */
+export interface QuickConnectSource {
+  cellId: string
+  shapes: ShapeId[]
+}
+
 export interface EditorState {
   canUndo: boolean
   canRedo: boolean
@@ -74,6 +87,8 @@ export interface EditorState {
   edgeMarkers: EdgeMarkers | null
   /** Colors of the selection, or `null` when nothing is selected. */
   colors: SelectionColors | null
+  /** The single selected shape with a group, or `null` when there is none. */
+  quickConnect: QuickConnectSource | null
 }
 
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
@@ -85,6 +100,11 @@ export interface DiagramEditor {
   addShape(shape: ShapeId, center?: Point): Cell | null
   /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
   addTableField(): Cell | null
+  /**
+   * Adds a shape of the group of the selected shape on its `side` and connects the selected shape to it, as one undo
+   * step, and selects the new shape.
+   */
+  addConnectedShape(side: Side, shape: ShapeId): Cell | null
   /** Sets the marker of the start or the end of the selected edges. */
   setEdgeMarker(end: EdgeEnd, marker: string): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
@@ -187,6 +207,17 @@ export function createDiagramEditor(
     const parent = cell.getParent()
     return isTable(parent) ? parent : null
   }
+  /** The single selected shape with a group; a table field is part of its table, not a shape of its own. */
+  const quickConnectSource = (): { cell: Cell; group: ShapeGroup } | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    if (!cell?.isVertex() || isTable(cell.getParent())) return null
+    const group = shapeGroupOf(cell.getStyle() as ShapeStyle)
+    return group ? { cell, group } : null
+  }
+  const quickConnect = (): QuickConnectSource | null => {
+    const source = quickConnectSource()
+    return source ? { cellId: source.cell.getId()!, shapes: groupShapes(source.group).map((shape) => shape.id) } : null
+  }
   const markerOf = (edge: Cell, end: EdgeEnd) =>
     String(graph.getCellStyle(edge)[end === 'start' ? 'startArrow' : 'endArrow'] ?? 'none')
   const sameMarker = (edges: Cell[], end: EdgeEnd) => same(edges.map((edge) => markerOf(edge, end)))
@@ -218,6 +249,7 @@ export function createDiagramEditor(
       tableSelected: selectedTable() !== null,
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
+      quickConnect: quickConnect(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -316,6 +348,29 @@ export function createDiagramEditor(
     }
   }
 
+  /** Inserts a palette shape with its children; the caller wraps it in a model update. */
+  const insertShape = (shape: ShapePreset, parent: Cell, x: number, y: number): Cell => {
+    const cell = graph.insertVertex({
+      parent,
+      value: shape.value,
+      position: [x, y],
+      size: [shape.width, shape.height],
+      style: markedStyle(shape) as CellStyle,
+    })
+    let childY = isTableStyle(shape.style) ? TABLE_HEADER_HEIGHT : 0
+    for (const child of shape.children ?? []) {
+      graph.insertVertex({
+        parent: cell,
+        value: child.value,
+        position: [0, childY],
+        size: [shape.width, child.height],
+        style: { ...child.style } as CellStyle,
+      })
+      childY += child.height
+    }
+    return cell
+  }
+
   const editor: DiagramEditor = {
     graph,
     pageId,
@@ -349,24 +404,7 @@ export function createDiagramEditor(
       model.beginUpdate()
       let cell: Cell
       try {
-        cell = graph.insertVertex({
-          parent,
-          value: shape.value,
-          position: [x, y],
-          size: [shape.width, shape.height],
-          style: { ...shape.style } as CellStyle,
-        })
-        let childY = isTableStyle(shape.style) ? TABLE_HEADER_HEIGHT : 0
-        for (const child of shape.children ?? []) {
-          graph.insertVertex({
-            parent: cell,
-            value: child.value,
-            position: [0, childY],
-            size: [shape.width, child.height],
-            style: { ...child.style } as CellStyle,
-          })
-          childY += child.height
-        }
+        cell = insertShape(shape, parent, x, y)
       } finally {
         model.endUpdate()
       }
@@ -389,6 +427,32 @@ export function createDiagramEditor(
       graph.setSelectionCell(field)
       graph.startEditingAtCell(field)
       return field
+    },
+    addConnectedShape(side, shapeId) {
+      const shape = findShape(shapeId)
+      const selected = quickConnectSource()
+      const geometry = selected?.cell.getGeometry()
+      // Only shapes of the same notation are connected this way.
+      if (!shape || !selected || !geometry || shapeGroup(shape.id) !== selected.group) return null
+      const source = selected.cell
+      graph.stopEditing(false)
+      const parent = source.getParent()!
+      const obstacles = parent
+        .getChildren()
+        .filter((cell) => cell !== source && cell.isVertex() && blocksPlacement(cell.getStyle() as ShapeStyle))
+        .flatMap((cell) => cell.getGeometry() ?? [])
+      const { x, y } = placeConnected(geometry, shape, side, obstacles)
+      model.beginUpdate()
+      let cell: Cell
+      try {
+        cell = insertShape(shape, parent, x, y)
+        graph.insertEdge({ parent, value: '', source, target: cell })
+      } finally {
+        model.endUpdate()
+      }
+      graph.setSelectionCell(cell)
+      container.focus({ preventScroll: true })
+      return cell
     },
     setEdgeMarker(end, marker) {
       const edges = selectedEdges()

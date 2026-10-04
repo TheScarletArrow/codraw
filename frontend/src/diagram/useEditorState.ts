@@ -8,6 +8,7 @@ const NO_EDITOR: EditorState = {
   tableSelected: false,
   edgeMarkers: null,
   colors: null,
+  quickConnect: null,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

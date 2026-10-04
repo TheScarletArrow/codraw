@@ -17,6 +17,7 @@ import { PageHistories } from '../diagram/binding.ts'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
+import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
@@ -143,6 +144,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
               <>
                 <DiagramCanvas document={document} pageId={currentPage.id} histories={histories} onEditor={setEditor} />
                 <PresenceLayer editor={editor} awareness={awareness} />
+                <QuickConnect editor={editor} />
               </>
             ) : (
               <Message>Загрузка доски…</Message>

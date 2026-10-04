@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
+import { parseStyle } from '../drawio/style.ts'
 import { fromStyle } from './binding.ts'
-import { findShape, isTableStyle, SHAPE_SECTIONS, SHAPES, TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
+import {
+  findShape,
+  groupShapes,
+  isTableStyle,
+  markedStyle,
+  SHAPE_SECTIONS,
+  shapeGroup,
+  shapeGroupOf,
+  shapeOf,
+  SHAPES,
+  TABLE_FIELD_HEIGHT,
+  TABLE_HEADER_HEIGHT,
+  UNGROUPED_SHAPES,
+  type ShapeStyle,
+} from './shapes.ts'
 
 describe('shape presets', () => {
   it('are grouped into the sections of the palette', () => {
@@ -81,5 +96,76 @@ describe('shape presets', () => {
     for (const id of ['boundary', 'c4-boundary', 'kubernetes-cluster']) {
       expect(findShape(id)!.style).toMatchObject({ fillColor: 'none', dashed: true, pointerEvents: false })
     }
+  })
+})
+
+describe('shape groups', () => {
+  const ids = (shapes: { id: string }[]) => shapes.map((shape) => shape.id)
+  const drawio = (style: string) => parseStyle(style, 'vertex') as ShapeStyle
+
+  it('join the sections of the palette into notations', () => {
+    expect(SHAPE_SECTIONS.map((section) => section.group)).toEqual([
+      'basic',
+      'tables',
+      'system',
+      'system',
+      'system',
+      'system',
+      'uml',
+      'c4',
+    ])
+  })
+
+  it('hold every shape of the palette but frames and text, in the group of its section', () => {
+    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'boundary', 'kubernetes-cluster', 'c4-boundary'])
+    for (const section of SHAPE_SECTIONS) {
+      for (const shape of section.shapes) {
+        expect(shapeGroup(shape.id)).toBe(UNGROUPED_SHAPES.has(shape.id) ? null : section.group)
+      }
+    }
+  })
+
+  it('list the shapes of a group in the order of the palette', () => {
+    expect(ids(groupShapes('tables'))).toEqual(['table'])
+    expect(ids(groupShapes('basic'))).toEqual(['rectangle', 'rounded', 'ellipse', 'rhombus'])
+    const system = ids(groupShapes('system'))
+    expect(system.slice(0, 3)).toEqual(['service', 'database', 'queue'])
+    expect(system).toContain('load-balancer')
+    expect(system).toContain('iot-device')
+    expect(system).not.toContain('boundary')
+    expect(system).not.toContain('kubernetes-cluster')
+    expect(ids(groupShapes('c4'))).not.toContain('c4-boundary')
+  })
+
+  it('mark a style with the palette shape it comes from', () => {
+    expect(markedStyle(findShape('service')!)).toEqual({ rounded: true, codrawShape: 'service' })
+    for (const shape of SHAPES) expect(shapeOf(markedStyle(shape))).toBe(shape)
+  })
+
+  it('tell apart shapes with the same style by the mark', () => {
+    expect(shapeGroupOf(markedStyle(findShape('rounded')!))).toBe('basic')
+    expect(shapeGroupOf(markedStyle(findShape('service')!))).toBe('system')
+    expect(shapeGroupOf(markedStyle(findShape('c4-database')!))).toBe('c4')
+    expect(shapeGroupOf(markedStyle(findShape('boundary')!))).toBeNull()
+  })
+
+  it('recognize unmarked shapes by their style', () => {
+    expect(shapeOf({})?.id).toBe('rectangle')
+    expect(shapeOf({ rounded: true })?.id).toBe('rectangle')
+    expect(shapeOf({ shape: 'ellipse' })?.id).toBe('ellipse')
+    expect(shapeOf({ shape: 'cylinder' })?.id).toBe('database')
+    expect(shapeOf({ shape: 'component' })?.id).toBe('uml-component')
+    expect(shapeOf({ shape: 'mxgraph.c4.person2' })?.id).toBe('c4-person')
+    expect(shapeOf(drawio('swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;html=1;'))?.id).toBe(
+      'table',
+    )
+    expect(shapeOf(drawio('shape=cylinder3;whiteSpace=wrap;html=1;'))).toBeNull()
+  })
+
+  it('leave text, frames, lanes and unknown shapes without a group', () => {
+    expect(shapeGroupOf(drawio('text;html=1;align=center;'))).toBeNull()
+    expect(shapeGroupOf(findShape('boundary')!.style)).toBeNull()
+    expect(shapeGroupOf(drawio('swimlane;startSize=23;'))).toBeNull()
+    expect(shapeGroupOf(drawio('shape=mxgraph.aws4.lambda_function;'))).toBeNull()
   })
 })
