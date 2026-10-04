@@ -14,7 +14,14 @@ export type FakeEditor = DiagramEditor & {
 
 /** Editor stand-in for page tests: records calls and lets tests drive its events. */
 export function createFakeEditor(): FakeEditor {
-  let state: EditorState = { canUndo: false, canRedo: false, scale: 1, tableSelected: false, edgeMarkers: null }
+  let state: EditorState = {
+    canUndo: false,
+    canRedo: false,
+    scale: 1,
+    tableSelected: false,
+    edgeMarkers: null,
+    colors: null,
+  }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
   const cells = new Map<string, Box | null>()
@@ -38,6 +45,7 @@ export function createFakeEditor(): FakeEditor {
     addShape: vi.fn(() => null),
     addTableField: vi.fn(() => null),
     setEdgeMarker: vi.fn(),
+    setColor: vi.fn(),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
     toCanvasPoint: ({ x, y }) => ({ x: x - offset.x, y: y - offset.y }),
     cellBounds: (id) => {

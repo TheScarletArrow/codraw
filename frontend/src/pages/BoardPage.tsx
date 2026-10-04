@@ -51,14 +51,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-3 py-2">
-        <h2 className="font-semibold">{board.title}</h2>
-        <span role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      {/* One line: the tools that appear with a selection must not move the canvas down. */}
+      <div className="flex items-center gap-x-4 border-b px-3 py-2">
+        <h2 className="max-w-64 shrink-0 truncate font-semibold">{board.title}</h2>
+        <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
           {STATUS_LABELS[status]}
         </span>
         <EditorToolbar editor={editor} />
-        <Participants participants={participants} className="ml-auto" />
+        <Participants participants={participants} className="ml-auto shrink-0" />
       </div>
       <div className="flex min-h-0 flex-1">
         <ShapePalette editor={editor} />

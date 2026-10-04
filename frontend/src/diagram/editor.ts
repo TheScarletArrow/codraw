@@ -53,6 +53,17 @@ export interface EdgeMarkers {
   end: string | null
 }
 
+export type ColorTarget = 'fill' | 'stroke' | 'font'
+
+/** Colors of the selected objects; `null` for a color that differs between them. */
+export interface SelectionColors {
+  fill: string | null
+  stroke: string | null
+  font: string | null
+  /** Shapes are selected, so the fill can be changed; edges have no fill. */
+  hasShapes: boolean
+}
+
 export interface EditorState {
   canUndo: boolean
   canRedo: boolean
@@ -61,6 +72,8 @@ export interface EditorState {
   tableSelected: boolean
   /** Markers of the selected edges, or `null` when no edge is selected. */
   edgeMarkers: EdgeMarkers | null
+  /** Colors of the selection, or `null` when nothing is selected. */
+  colors: SelectionColors | null
 }
 
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
@@ -72,6 +85,8 @@ export interface DiagramEditor {
   addTableField(): Cell | null
   /** Sets the marker of the start or the end of the selected edges. */
   setEdgeMarker(end: EdgeEnd, marker: string): void
+  /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
+  setColor(target: ColorTarget, color: string): void
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
   /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
@@ -154,9 +169,24 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
   }
   const markerOf = (edge: Cell, end: EdgeEnd) =>
     String(graph.getCellStyle(edge)[end === 'start' ? 'startArrow' : 'endArrow'] ?? 'none')
-  const sameMarker = (edges: Cell[], end: EdgeEnd) => {
-    const markers = new Set(edges.map((edge) => markerOf(edge, end)))
-    return markers.size === 1 ? [...markers][0]! : null
+  const sameMarker = (edges: Cell[], end: EdgeEnd) => same(edges.map((edge) => markerOf(edge, end)))
+  // The stored color, or the default of shapes or edges; the merged style drops `none`, so it cannot tell.
+  const colorOf = (cell: Cell, target: ColorTarget) => {
+    const stylesheet = graph.getStylesheet()
+    const defaults = cell.isEdge() ? stylesheet.getDefaultEdgeStyle() : stylesheet.getDefaultVertexStyle()
+    const key = COLOR_KEYS[target]
+    return String(cell.getStyle()[key] ?? defaults[key] ?? 'none')
+  }
+  const selectionColors = (): SelectionColors | null => {
+    const cells = graph.getSelectionCells()
+    if (cells.length === 0) return null
+    const shapes = cells.filter((cell) => cell.isVertex())
+    return {
+      fill: shapes.length > 0 ? same(shapes.map((cell) => colorOf(cell, 'fill'))) : null,
+      stroke: same(cells.map((cell) => colorOf(cell, 'stroke'))),
+      font: same(cells.map((cell) => colorOf(cell, 'font'))),
+      hasShapes: shapes.length > 0,
+    }
   }
 
   const readState = (): EditorState => {
@@ -167,6 +197,7 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       scale: graph.getView().scale,
       tableSelected: selectedTable() !== null,
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
+      colors: selectionColors(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -343,6 +374,12 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       graph.stopEditing(false)
       graph.setCellStyles(end === 'start' ? 'startArrow' : 'endArrow', marker as StyleArrowValue, edges)
     },
+    setColor(target, color) {
+      const cells = graph.getSelectionCells().filter((cell) => target !== 'fill' || cell.isVertex())
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      graph.setCellStyles(COLOR_KEYS[target], color, cells)
+    },
     toDiagramPoint,
     toCanvasPoint({ x, y }) {
       const { scale, translate } = graph.getView()
@@ -398,6 +435,14 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
   }
   Object.defineProperty(container, EDITOR_PROPERTY, { value: editor, configurable: true })
   return editor
+}
+
+const COLOR_KEYS = { fill: 'fillColor', stroke: 'strokeColor', font: 'fontColor' } as const
+
+/** The value shared by all items, or `null` when they differ. */
+function same(values: string[]): string | null {
+  const distinct = new Set(values)
+  return distinct.size === 1 ? values[0]! : null
 }
 
 function isTable(cell: Cell | null): boolean {

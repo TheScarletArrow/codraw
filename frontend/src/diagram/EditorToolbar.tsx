@@ -1,14 +1,15 @@
 import { Plus, Redo2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
 import { useEditorState } from './useEditorState.ts'
 
 export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
-  const { canUndo, canRedo, scale, tableSelected, edgeMarkers } = useEditorState(editor)
+  const { canUndo, canRedo, scale, tableSelected, edgeMarkers, colors } = useEditorState(editor)
 
   return (
-    <div role="toolbar" aria-label="Инструменты" className="flex items-center gap-1">
+    <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
       <Button
         type="button"
         variant="ghost"
@@ -73,6 +74,33 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
             <Plus />
             Добавить поле
           </Button>
+        </>
+      )}
+      {colors && (
+        <>
+          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+          {colors.hasShapes && (
+            <ColorPicker
+              label="Заливка"
+              name="Цвет заливки"
+              noneLabel="Без заливки"
+              value={colors.fill}
+              onChange={(color) => editor?.setColor('fill', color)}
+            />
+          )}
+          <ColorPicker
+            label="Линия"
+            name="Цвет линии"
+            noneLabel="Без линии"
+            value={colors.stroke}
+            onChange={(color) => editor?.setColor('stroke', color)}
+          />
+          <ColorPicker
+            label="Текст"
+            name="Цвет текста"
+            value={colors.font}
+            onChange={(color) => editor?.setColor('font', color)}
+          />
         </>
       )}
       {edgeMarkers && (

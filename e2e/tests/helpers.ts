@@ -188,3 +188,32 @@ export async function connect(page: Page, source: string, target: string) {
   await page.mouse.move(from.x + from.width - 2, point.y, { steps: 3 })
   await drag(page, point, center(to))
 }
+
+/**
+ * Routes the page's sync connection through the test so that it can be held: while paused, messages
+ * in both directions are queued, as if the network were slow. Resuming delivers them in order.
+ */
+export async function controllableSync(page: Page) {
+  let paused = false
+  const toServer: (string | Buffer)[] = []
+  const toPage: (string | Buffer)[] = []
+  const flushers: (() => void)[] = []
+  await page.routeWebSocket(/\/collab/, (ws) => {
+    const server = ws.connectToServer()
+    ws.onMessage((message) => (paused ? toServer.push(message) : server.send(message)))
+    server.onMessage((message) => (paused ? toPage.push(message) : ws.send(message)))
+    flushers.push(() => {
+      toServer.splice(0).forEach((message) => server.send(message))
+      toPage.splice(0).forEach((message) => ws.send(message))
+    })
+  })
+  return {
+    pause() {
+      paused = true
+    },
+    resume() {
+      paused = false
+      flushers.forEach((flush) => flush())
+    },
+  }
+}

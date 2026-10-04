@@ -1,7 +1,14 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { DiagramEditor, EditorState } from './editor.ts'
 
-const NO_EDITOR: EditorState = { canUndo: false, canRedo: false, scale: 1, tableSelected: false, edgeMarkers: null }
+const NO_EDITOR: EditorState = {
+  canUndo: false,
+  canRedo: false,
+  scale: 1,
+  tableSelected: false,
+  edgeMarkers: null,
+  colors: null,
+}
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */
 export function useEditorState(editor: DiagramEditor | null): EditorState {
