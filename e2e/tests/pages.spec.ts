@@ -56,6 +56,7 @@ test('the address keeps the page, and undo works within a page across switching'
   const page = await userPage(browser, 'Алиса')
   await createBoard(page)
   await page.getByRole('button', { name: 'Добавить страницу' }).click()
+  await expect(tab(page, 'Страница 2')).toHaveAttribute('aria-selected', 'true')
   const second = await addShape(page, 'Эллипс')
 
   await page.reload()
@@ -64,6 +65,8 @@ test('the address keeps the page, and undo works within a page across switching'
   await expect.poll(async () => (await vertices(page)).map((cell) => cell.id)).toEqual([second])
 
   await tab(page, 'Страница 1').click()
+  // The canvas of the first page replaces the canvas of the second one.
+  await expect.poll(async () => (await vertices(page)).length).toBe(0)
   await addShape(page, 'Прямоугольник')
   await tab(page, 'Страница 2').click()
   await expect.poll(async () => (await vertices(page)).length).toBe(1)

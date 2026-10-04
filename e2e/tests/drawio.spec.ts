@@ -30,6 +30,9 @@ test('a board is exported with all its pages and opens again as a new board from
   await connect(alice, client, server)
   await expect.poll(async () => (await edges(alice)).length).toBe(1)
   await alice.getByRole('button', { name: 'Добавить страницу' }).click()
+  // The canvas of the new page replaces the canvas of the first one.
+  await expect(tab(alice, 'Страница 2')).toHaveAttribute('aria-selected', 'true')
+  await expect.poll(async () => (await vertices(alice)).length).toBe(0)
   await addShape(alice, 'Таблица')
 
   const { name, xml } = await exportBoard(alice)
