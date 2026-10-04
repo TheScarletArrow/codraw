@@ -15,18 +15,21 @@ import {
   Point as GraphPoint,
   RubberBandHandler,
   StackLayout,
+  StyleDefaultsConfig,
   getDefaultPlugins,
   type CellState,
   type CellStyle,
+  type EventObject,
   type ImageShape,
   type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
+import { allowsAutoWidth, anchoredX, AUTO_WIDTH_KEY, fittedWidth, hasAutoWidth, measureLabel, type Align } from './autoWidth.ts'
 import { createUndoManager, DiagramBinding } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { clipboard } from './clipboard.ts'
 import { registerDiagramExtensions } from './extensions.ts'
-import { DEFAULT_PAGE_ID, getCells } from './model.ts'
+import { DEFAULT_PAGE_ID, getCells, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import {
@@ -44,6 +47,7 @@ import {
   type ShapePreset,
   type ShapeStyle,
 } from './shapes.ts'
+import { clampFontSize, nextFontSize, tableFieldHeight, tableHeaderHeight } from './textSize.ts'
 
 export interface Point {
   x: number
@@ -76,6 +80,27 @@ export interface SelectionColors {
   hasShapes: boolean
 }
 
+/** Text of the selected objects. */
+export interface SelectionText {
+  /** Size of the text; `null` when it differs between the selected objects. */
+  fontSize: number | null
+  /**
+   * The width of the selected shapes follows their labels: `true` when it does for all of them that allow it, `null`
+   * when no selected shape allows it.
+   */
+  autoWidth: boolean | null
+}
+
+/** Position and size of the selected shapes; `null` for a value that differs between them. */
+export interface SelectionGeometry {
+  x: number | null
+  y: number | null
+  width: number | null
+  height: number | null
+  /** A selected shape is not a table, whose height its fields set, so the height can be changed. */
+  canSetHeight: boolean
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -92,6 +117,10 @@ export interface EditorState {
   edgeMarkers: EdgeMarkers | null
   /** Colors of the selection, or `null` when nothing is selected. */
   colors: SelectionColors | null
+  /** Text of the selection, or `null` when nothing is selected. */
+  text: SelectionText | null
+  /** Position and size of the selected shapes, or `null` when no shape is selected; fields are not shapes here. */
+  geometry: SelectionGeometry | null
   /** The single selected shape with a group, or `null` when there is none. */
   quickConnect: QuickConnectSource | null
   /** The clipboard of the browser tab holds something to paste. */
@@ -147,6 +176,14 @@ export interface DiagramEditor {
   setEdgeMarker(end: EdgeEnd, marker: string): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
   setColor(target: ColorTarget, color: string): void
+  /** Sets the text size of the selected objects and of the fields of selected tables as one undo step. */
+  setFontSize(size: number): void
+  /** Makes the text of each object {@link setFontSize} would change one size of the row larger or smaller. */
+  stepFontSize(direction: 1 | -1): void
+  /** Turns on or off the width that follows the label for the selected shapes that allow it; on, it fits them at once. */
+  setAutoWidth(enabled: boolean): void
+  /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
+  setGeometry(changes: Partial<Box>): void
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
   /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
@@ -185,6 +222,9 @@ const CONNECT_ICON = new ImageBox(
   16,
   16,
 )
+
+/** The smallest width and height of a shape that can be typed in. */
+export const MIN_SHAPE_SIZE = 10
 
 /** Property of the canvas element that exposes the editor to end-to-end tests. */
 export const EDITOR_PROPERTY = '__codrawEditor'
@@ -288,6 +328,131 @@ export function createDiagramEditor(
     }
   }
 
+  /** Selected cells and the fields of selected tables: the text of a table is its name and its fields. */
+  const textCells = (): Cell[] => {
+    const cells = new Set<Cell>()
+    for (const cell of graph.getSelectionCells()) {
+      cells.add(cell)
+      if (isTable(cell)) cell.getChildren().forEach((field) => cells.add(field))
+    }
+    return [...cells]
+  }
+  const fontSizeOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontSize ?? StyleDefaultsConfig.fontSize)
+  /** A shape with a size of its own: not a field, which its table places, nor a label of an edge. */
+  const isFreeShape = (cell: Cell) =>
+    cell.isVertex() && !isTable(cell.getParent()) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
+  const allowsAutoWidthCell = (cell: Cell) => isFreeShape(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+  const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
+  const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
+  const selectionText = (): SelectionText | null => {
+    const cells = textCells()
+    if (cells.length === 0) return null
+    const shapes = autoWidthCells()
+    return {
+      fontSize: same(cells.map(fontSizeOf)),
+      autoWidth: shapes.length > 0 ? shapes.every((cell) => hasAutoWidth(cell.getStyle())) : null,
+    }
+  }
+  const selectionGeometry = (): SelectionGeometry | null => {
+    const cells = geometryCells()
+    if (cells.length === 0) return null
+    const value = (key: keyof Box) => same(cells.map((cell) => cell.getGeometry()![key]))
+    return {
+      x: value('x'),
+      y: value('y'),
+      width: value('width'),
+      height: value('height'),
+      canSetHeight: cells.some((cell) => !isTable(cell)),
+    }
+  }
+
+  /** Sets a style key of cells, or removes it with `undefined`, in one change of the model. */
+  const setStyleValue = (cells: Cell[], key: string, value: StyleValue | undefined) => {
+    model.batchUpdate(() => {
+      for (const cell of cells) {
+        const style = cell.getClonedStyle() as Record<string, unknown>
+        if (style[key] === value) continue
+        if (value === undefined) delete style[key]
+        else style[key] = value
+        model.setStyle(cell, style as CellStyle)
+      }
+    })
+  }
+  const setHeight = (cell: Cell, height: number) => {
+    const geometry = cell.getGeometry()
+    if (!geometry || geometry.height === height) return
+    const resized = geometry.clone()
+    resized.height = height
+    model.setGeometry(cell, resized)
+  }
+  /** Width that fits the longest line of the label of a shape, or of a table and its fields; `null` without text. */
+  const fittedWidthOf = (shape: Cell): number | null => {
+    const gridSize = graph.isGridEnabled() ? graph.getGridSize() : 0
+    const widths = (isTable(shape) ? [shape, ...shape.getChildren()] : [shape]).flatMap((part) => {
+      const label = graph.getLabel(part)
+      if (!label) return []
+      const style = { fontSize: fontSizeOf(part), ...graph.getCellStyle(part) }
+      return [fittedWidth(measureLabel(label, style), style, gridSize)]
+    })
+    return widths.length > 0 ? Math.max(...widths) : null
+  }
+  /**
+   * Fits the width of the shapes with auto width among `cells`, and of the tables of the fields among them, to their
+   * labels, keeping the place of the label. Called inside the change that changed the labels, so it is the same undo step.
+   */
+  const fitAutoWidth = (cells: Cell[]) => {
+    const shapes = new Set<Cell>()
+    for (const cell of cells) {
+      const shape = isTable(cell.getParent()) ? cell.getParent()! : cell
+      if (allowsAutoWidthCell(shape) && hasAutoWidth(shape.getStyle())) shapes.add(shape)
+    }
+    if (shapes.size === 0) return
+    model.batchUpdate(() => {
+      for (const shape of shapes) {
+        const geometry = shape.getGeometry()!
+        const width = fittedWidthOf(shape)
+        if (width === null || width === geometry.width) continue
+        const fitted = geometry.clone()
+        // A table keeps its left edge, so that its fields stay where they are while one of them changes.
+        fitted.x = anchoredX(geometry.x, geometry.width, width, isTable(shape) ? 'left' : alignOf(graph.getCellStyle(shape)))
+        fitted.width = width
+        model.setGeometry(shape, fitted)
+      }
+    })
+  }
+  /**
+   * Sets text sizes in one change: fields and headers of tables get the height that fits their text, and shapes with
+   * auto width fit their width.
+   */
+  const applyFontSizes = (cells: Cell[], sizeOf: (cell: Cell) => number) => {
+    if (cells.length === 0) return
+    graph.stopEditing(false)
+    model.batchUpdate(() => {
+      for (const cell of cells) {
+        const size = sizeOf(cell)
+        setStyleValue([cell], 'fontSize', size)
+        if (isTable(cell)) setStyleValue([cell], 'startSize', tableHeaderHeight(size))
+        else if (isTable(cell.getParent())) setHeight(cell, tableFieldHeight(size))
+      }
+      fitAutoWidth(cells)
+    })
+  }
+
+  // The label of a shape with auto width changes inside this event, so the new width is a part of the same change.
+  const handleLabelChanged = (_sender: unknown, event: EventObject) => fitAutoWidth([event.getProperty('cell') as Cell])
+  graph.addListener(InternalEvent.LABEL_CHANGED, handleLabelChanged)
+  // Only the participant resizes cells this way (layouts set geometries directly): a width set by hand replaces the
+  // auto width, in the same change.
+  const handleResize = (_sender: unknown, event: EventObject) => {
+    const cells = event.getProperty('cells') as Cell[]
+    const previous = event.getProperty('prev') as (Geometry | null)[]
+    const resized = cells.filter(
+      (cell, index) => hasAutoWidth(cell.getStyle()) && previous[index] && previous[index].width !== cell.getGeometry()?.width,
+    )
+    setStyleValue(resized, AUTO_WIDTH_KEY, undefined)
+  }
+  graph.addListener(InternalEvent.RESIZE_CELLS, handleResize)
+
   const readState = (): EditorState => {
     const edges = selectedEdges()
     return {
@@ -297,6 +462,8 @@ export function createDiagramEditor(
       tableSelected: selectedTable() !== null,
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
+      text: selectionText(),
+      geometry: selectionGeometry(),
       quickConnect: quickConnect(),
       canPaste: clipboard.read() !== null,
     }
@@ -318,9 +485,14 @@ export function createDiagramEditor(
   model.addListener(InternalEvent.CHANGE, notify)
 
   const removeSelection = () => {
-    if (!graph.isEditing() && !graph.isSelectionEmpty()) {
-      graph.removeCells(graph.getSelectionCells(), true)
-    }
+    if (graph.isEditing() || graph.isSelectionEmpty()) return
+    const cells = graph.getSelectionCells()
+    const tables = cells.flatMap((cell) => (isTable(cell.getParent()) ? [cell.getParent()!] : []))
+    model.batchUpdate(() => {
+      graph.removeCells(cells, true)
+      // A table with auto width fits the fields that are left; a removed table has no parent any more.
+      fitAutoWidth(tables.filter((table) => table.getParent() !== null))
+    })
   }
   const keyHandler = new KeyHandler(graph)
   // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
@@ -457,6 +629,7 @@ export function createDiagramEditor(
       })
       childY += child.height
     }
+    fitAutoWidth([cell])
     return cell
   }
 
@@ -532,9 +705,13 @@ export function createDiagramEditor(
       const selected = graph.getSelectionCell()
       const fields = Array.from({ length: table.getChildCount() }, (_, index) => table.getChildAt(index))
       const after = selected !== table ? selected : (fields.at(-1) ?? null)
+      // The new field has the text size and the height of the field it follows.
+      const fontSize = (after?.getStyle() as ShapeStyle | undefined)?.fontSize
+      const height = after?.getGeometry()?.height ?? TABLE_FIELD_HEIGHT
       // The table layout stacks fields in the order of the cells and fixes the position.
-      const field = new Cell('', new Geometry(0, TABLE_HEADER_HEIGHT, table.getGeometry()!.width, TABLE_FIELD_HEIGHT), {
+      const field = new Cell('', new Geometry(0, TABLE_HEADER_HEIGHT, table.getGeometry()!.width, height), {
         ...TABLE_FIELD_STYLE,
+        ...(fontSize !== undefined && { fontSize }),
       } as CellStyle)
       field.setVertex(true)
       graph.addCell(field, table, after ? table.getIndex(after) + 1 : fields.length)
@@ -664,6 +841,47 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       graph.setCellStyles(COLOR_KEYS[target], color, cells)
     },
+    setFontSize(size) {
+      applyFontSizes(textCells(), () => clampFontSize(size))
+    },
+    stepFontSize(direction) {
+      applyFontSizes(textCells(), (cell) => nextFontSize(fontSizeOf(cell), direction))
+    },
+    setAutoWidth(enabled) {
+      const cells = autoWidthCells()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue(cells, AUTO_WIDTH_KEY, enabled ? true : undefined)
+        fitAutoWidth(cells)
+      })
+    },
+    setGeometry({ x, y, width, height }) {
+      const cells = geometryCells()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        for (const cell of cells) {
+          const geometry = cell.getGeometry()!
+          const next = geometry.clone()
+          if (graph.isCellMovable(cell)) {
+            if (x !== undefined) next.x = x
+            if (y !== undefined) next.y = y
+          }
+          if (graph.isCellResizable(cell)) {
+            if (width !== undefined) next.width = Math.max(MIN_SHAPE_SIZE, width)
+            // The fields of a table set its height.
+            if (height !== undefined && !isTable(cell)) next.height = Math.max(MIN_SHAPE_SIZE, height)
+          }
+          if (next.x === geometry.x && next.y === geometry.y && next.width === geometry.width && next.height === geometry.height) {
+            continue
+          }
+          model.setGeometry(cell, next)
+          // A width set by hand replaces the auto width.
+          if (next.width !== geometry.width) setStyleValue([cell], AUTO_WIDTH_KEY, undefined)
+        }
+      })
+    },
     toDiagramPoint,
     toCanvasPoint({ x, y }) {
       const { scale, translate } = graph.getView()
@@ -721,6 +939,8 @@ export function createDiagramEditor(
       container.removeEventListener('scroll', notifyView)
       graph.getSelectionModel().removeListener(handleSelectionChange)
       graph.getSelectionModel().removeListener(notify)
+      graph.removeListener(handleLabelChanged)
+      graph.removeListener(handleResize)
       model.removeListener(notifyView)
       model.removeListener(notify)
       layoutManager.destroy()
@@ -755,9 +975,14 @@ const END_STYLE_KEYS = [
 ] as const
 
 /** The value shared by all items, or `null` when they differ. */
-function same(values: string[]): string | null {
+function same<T>(values: T[]): T | null {
   const distinct = new Set(values)
   return distinct.size === 1 ? values[0]! : null
+}
+
+/** Where the label of a shape is drawn horizontally, and so which point of the shape its fitted width keeps. */
+function alignOf(style: CellStyle): Align {
+  return style.align === 'left' || style.align === 'right' ? style.align : 'center'
 }
 
 function isTable(cell: Cell | null): boolean {
@@ -787,9 +1012,10 @@ class TableLayout extends StackLayout {
     }
     // Without fields the table is just its header.
     const geometry = parent.getGeometry()
-    if (geometry && geometry.height !== TABLE_HEADER_HEIGHT) {
+    const header = Number(this.graph.getCellStyle(parent).startSize ?? TABLE_HEADER_HEIGHT)
+    if (geometry && geometry.height !== header) {
       const fitted = geometry.clone()
-      fitted.height = TABLE_HEADER_HEIGHT
+      fitted.height = header
       this.graph.getDataModel().setGeometry(parent, fitted)
     }
   }

@@ -1,12 +1,16 @@
-import { Plus, Redo2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
+import { AArrowDown, AArrowUp, Plus, Redo2, Undo2, UnfoldHorizontal, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { ColorPicker } from './ColorPicker.tsx'
-import type { DiagramEditor, EdgeEnd } from './editor.ts'
+import type { DiagramEditor, EdgeEnd, SelectionText } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
+import { GeometryPicker } from './GeometryPicker.tsx'
+import { NumberField } from './NumberField.tsx'
+import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
 
 export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
-  const { canUndo, canRedo, scale, tableSelected, edgeMarkers, colors } = useEditorState(editor)
+  const { canUndo, canRedo, scale, tableSelected, edgeMarkers, colors, text, geometry } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
@@ -103,6 +107,8 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
           />
         </>
       )}
+      {text && <TextTools text={text} editor={editor} />}
+      {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
       {edgeMarkers && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -111,6 +117,57 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
         </>
       )}
     </div>
+  )
+}
+
+/** Text size of the selected objects, and the width of the selected shapes that follows their labels. */
+function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEditor | null }) {
+  return (
+    <>
+      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Уменьшить текст"
+        title="Уменьшить текст"
+        onClick={() => editor?.stepFontSize(-1)}
+      >
+        <AArrowDown />
+      </Button>
+      <NumberField
+        label="Размер текста"
+        value={text.fontSize}
+        min={MIN_FONT_SIZE}
+        max={MAX_FONT_SIZE}
+        className="w-12 shrink-0 text-center"
+        onCommit={(size) => editor?.setFontSize(size)}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Увеличить текст"
+        title="Увеличить текст"
+        onClick={() => editor?.stepFontSize(1)}
+      >
+        <AArrowUp />
+      </Button>
+      {text.autoWidth !== null && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={text.autoWidth}
+          title="Автоширина: ширина фигуры следует за её подписью"
+          className={cn(text.autoWidth && 'bg-accent text-accent-foreground')}
+          onClick={() => editor?.setAutoWidth(!text.autoWidth)}
+        >
+          <UnfoldHorizontal />
+          Автоширина
+        </Button>
+      )}
+    </>
   )
 }
 

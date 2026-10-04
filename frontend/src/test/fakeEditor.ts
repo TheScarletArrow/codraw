@@ -29,6 +29,8 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     tableSelected: false,
     edgeMarkers: null,
     colors: null,
+    text: null,
+    geometry: null,
     quickConnect: null,
     canPaste: false,
   }
@@ -71,6 +73,10 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
     setColor: vi.fn(),
+    setFontSize: vi.fn(),
+    stepFontSize: vi.fn(),
+    setAutoWidth: vi.fn(),
+    setGeometry: vi.fn(),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
     toCanvasPoint: ({ x, y }) => ({ x: x - offset.x, y: y - offset.y }),
     cellBounds: (id) => {

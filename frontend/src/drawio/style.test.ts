@@ -29,6 +29,11 @@ describe('parseStyle', () => {
     expect(parseStyle('swimlane;startSize=30;', 'vertex')).toMatchObject({ shape: 'swimlane', startSize: 30, fontStyle: 1 })
   })
 
+  it('reads autosize of draw.io texts as auto width', () => {
+    expect(parseStyle('text;autosize=1;', 'vertex')).toMatchObject({ autosize: true })
+    expect(formatStyle({ autosize: true }, 'vertex')).toContain('autosize=1;')
+  })
+
   it('keeps unknown named styles', () => {
     expect(parseStyle('shadowCard;fillColor=#ffffff;', 'vertex').baseStyleNames).toEqual(['shadowCard'])
   })

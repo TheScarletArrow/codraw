@@ -55,6 +55,8 @@ export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & {
   portConstraint?: string
   /** The palette shape the cell was created from; see {@link markedStyle}. */
   codrawShape?: string
+  /** The width follows the label; see `autoWidth.ts`. The key of draw.io, which writes it as 0 or 1. */
+  autosize?: boolean | number | string
 }
 
 /** A cell created inside the shape, e.g. a field of a table. It spans the width of the shape. */
@@ -167,7 +169,8 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         width: 100,
         height: 30,
         value: 'Текст',
-        style: { fillColor: 'none', strokeColor: 'none' },
+        // As in draw.io, the width of a text follows the text.
+        style: { fillColor: 'none', strokeColor: 'none', autosize: true },
       },
     ],
   },
