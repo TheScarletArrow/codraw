@@ -13,6 +13,7 @@
   "dependencies": {
     "@hocuspocus/extension-database": "^4.7.0",
     "@hocuspocus/server": "^4.7.0",
+    "jose": "^6.2.12",
     "yjs": "^13.6.33"
   },
   "devDependencies": {

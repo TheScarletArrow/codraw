@@ -1,5 +1,6 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
+import type { TokenVerifier } from "./auth.js";
 import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
 
 const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -7,6 +8,7 @@ const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 export interface CollabServerOptions {
   port: number;
   backend: BackendClient;
+  verifyToken: TokenVerifier;
   quiet?: boolean;
   /** Delay after the last change before the document is stored, in milliseconds. */
   debounce?: number;
@@ -19,6 +21,7 @@ export interface CollabServerOptions {
 export function createCollabServer({
   port,
   backend,
+  verifyToken,
   quiet = false,
   debounce = 2_000,
   maxDebounce = 10_000,
@@ -52,6 +55,10 @@ export function createCollabServer({
         },
       }),
     ],
+    // Runs before the document is loaded: a rejected client gets neither the document nor the awareness of others.
+    async onAuthenticate({ token, documentName }) {
+      return { user: await verifyToken(token, documentName) };
+    },
     async onRequest({ request, response }) {
       if (request.method === "GET" && request.url === "/health") {
         response.writeHead(200, { "Content-Type": "application/json" });

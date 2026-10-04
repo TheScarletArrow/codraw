@@ -46,21 +46,26 @@ describe("backend client", () => {
 });
 
 describe("config", () => {
+  const env: NodeJS.ProcessEnv = {
+    BACKEND_URL: "http://backend:8080",
+    CODRAW_INTERNAL_TOKEN: "secret",
+    BACKEND_JWKS_URL: "http://backend:8080/.well-known/jwks.json",
+  };
+
   it("reads settings from the environment", () => {
-    expect(loadConfig({ PORT: "4321", BACKEND_URL: "http://backend:8080", CODRAW_INTERNAL_TOKEN: "secret" })).toEqual({
+    expect(loadConfig({ ...env, PORT: "4321" })).toEqual({
       port: 4321,
       backendUrl: "http://backend:8080",
       internalToken: "secret",
+      jwksUrl: "http://backend:8080/.well-known/jwks.json",
     });
   });
 
   it("defaults the port to 1234", () => {
-    expect(loadConfig({ BACKEND_URL: "http://backend:8080", CODRAW_INTERNAL_TOKEN: "secret" }).port).toBe(1234);
+    expect(loadConfig(env).port).toBe(1234);
   });
 
-  it.each(["BACKEND_URL", "CODRAW_INTERNAL_TOKEN"])("requires %s", (name) => {
-    const env: NodeJS.ProcessEnv = { BACKEND_URL: "http://backend:8080", CODRAW_INTERNAL_TOKEN: "secret", [name]: " " };
-
-    expect(() => loadConfig(env)).toThrow(`Environment variable ${name} is required`);
+  it.each(["BACKEND_URL", "CODRAW_INTERNAL_TOKEN", "BACKEND_JWKS_URL"])("requires %s", (name) => {
+    expect(() => loadConfig({ ...env, [name]: " " })).toThrow(`Environment variable ${name} is required`);
   });
 });

@@ -1,7 +1,9 @@
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import type { Server } from "@hocuspocus/server";
+import { createRemoteJWKSet, generateKeyPair } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
+import { createTokenVerifier } from "../src/auth.js";
 import { createBackendClient } from "../src/backend-client.js";
 import { createCollabServer, type CollabServerOptions } from "../src/server.js";
 import { FakeBackend } from "./fake-backend.js";
@@ -32,6 +34,8 @@ describe("collab server", () => {
       quiet: true,
       stopOnSignals: false,
       backend: createBackendClient({ baseUrl: backend.url, internalToken: backend.token }),
+      // Without a cooldown a token with an unknown key id refetches the keys at once.
+      verifyToken: createTokenVerifier(createRemoteJWKSet(new URL(backend.jwksUrl), { cooldownDuration: 0 })),
       debounce: 50,
       maxDebounce: 200,
       ...options,
@@ -42,13 +46,15 @@ describe("collab server", () => {
 
   type Connection = { document: Y.Doc; provider: HocuspocusProvider };
 
-  function connect(name: string): Promise<Connection> {
+  /** Connects to the document; by default with a fresh valid token for it before every connection, like the app. */
+  function connect(name: string, token: string | (() => Promise<string>) = () => backend.issueToken(name)) {
     const document = new Y.Doc();
-    return new Promise((resolve, reject) => {
+    return new Promise<Connection>((resolve, reject) => {
       const provider = new HocuspocusProvider({
         url: `ws://127.0.0.1:${server!.address.port}`,
         name,
         document,
+        token,
         onSynced: () => resolve({ document, provider }),
         onAuthenticationFailed: ({ reason }) => reject(new Error(reason)),
       });
@@ -166,5 +172,95 @@ describe("collab server", () => {
     await expect(connect("not-a-uuid")).rejects.toThrow("board-not-found");
 
     expect(backend.requests).toEqual([]);
+  });
+
+  describe("access to documents", () => {
+    async function expectRejected(token: string, name = board) {
+      await startServer();
+      const stored = new Y.Doc();
+      stored.getMap("meta").set("title", "Secret");
+      backend.documents.set(board, Y.encodeStateAsUpdate(stored));
+
+      await expect(connect(name, token)).rejects.toThrow("permission-denied");
+
+      expect(backend.requests).toEqual([]);
+    }
+
+    it("rejects a connection without a token", async () => {
+      await expectRejected("");
+    });
+
+    it("rejects an expired token", async () => {
+      await expectRejected(await backend.issueToken(board, { expiresAt: Math.floor(Date.now() / 1000) - 1 }));
+    });
+
+    it("rejects a token issued for another board", async () => {
+      await expectRejected(await backend.issueToken(otherBoard));
+    });
+
+    it("rejects a token with a forged signature", async () => {
+      const { privateKey } = await generateKeyPair("RS256");
+
+      await expectRejected(await backend.issueToken(board, { signWith: privateKey }));
+    });
+
+    it("rejects a token for another audience", async () => {
+      await expectRejected(await backend.issueToken(board, { audience: "another-service" }));
+    });
+
+    it("rejects a value that is not a token", async () => {
+      await expectRejected("not-a-jwt");
+    });
+
+    it("does not send changes of the document to a rejected client", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const intruder = new Y.Doc();
+      const rejected = new Promise<string>((resolve) => {
+        providers.push(
+          new HocuspocusProvider({
+            url: `ws://127.0.0.1:${server!.address.port}`,
+            name: board,
+            document: intruder,
+            token: "",
+            onAuthenticationFailed: ({ reason }) => resolve(reason),
+          }),
+        );
+      });
+      await expect(rejected).resolves.toBe("permission-denied");
+
+      owner.document.getMap("meta").set("title", "Private");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(intruder.getMap("meta").get("title")).toBeUndefined();
+    });
+
+    it("accepts tokens signed with a new key after the backend rotates its key", async () => {
+      await startServer();
+      await connect(board);
+
+      await backend.rotateKey();
+
+      expect(title(await connect(otherBoard))).toBeUndefined();
+    });
+
+    it("reconnects with a new token after the previous one has expired", async () => {
+      await startServer();
+      // The first token is valid for one to two seconds only.
+      const expiresAt = Math.ceil(Date.now() / 1000) + 1;
+      let issued = 0;
+      const participant = await connect(board, () => {
+        issued++;
+        return backend.issueToken(board, issued === 1 ? { expiresAt } : {});
+      });
+      await new Promise((resolve) => setTimeout(resolve, expiresAt * 1000 - Date.now() + 50));
+      const resynced = new Promise<void>((resolve) => participant.provider.on("synced", () => resolve()));
+
+      // The connection drops; the provider reconnects on its own.
+      participant.provider.configuration.websocketProvider.webSocket!.close();
+
+      await resynced;
+      expect(issued).toBe(2);
+    }, 10_000);
   });
 });
