@@ -6,6 +6,7 @@ import type { CurrentUser } from '../api/auth.ts'
 import { fetchBoard, type Board } from '../api/boards.ts'
 import { isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { BoardHeading } from '../board/BoardHeading.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants } from '../board/Participants.tsx'
@@ -52,7 +53,7 @@ export function BoardPage() {
 
 function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const identity = useMemo(() => participantIdentity(user), [user])
-  const { status, participants, document, awareness } = useBoardConnection(board.id, identity)
+  const { status, participants, document, awareness, notifyBoardChanged } = useBoardConnection(board.id, identity)
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
   const pages = usePages(document)
@@ -121,7 +122,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
       <div className="flex items-center gap-x-4 border-b px-3 py-2">
-        <h2 className="max-w-64 shrink-0 truncate font-semibold">{board.title}</h2>
+        <BoardHeading board={board} onChanged={notifyBoardChanged} />
         <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
           {STATUS_LABELS[status]}

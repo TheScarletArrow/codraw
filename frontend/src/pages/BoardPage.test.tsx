@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
 import { participantColor } from '../board/identity.ts'
+import { BOARD_CHANGED } from '../board/messages.ts'
 import * as Y from 'yjs'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
@@ -38,8 +39,21 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
 })
 
 const boardId = '0199a000-0000-7000-8000-000000000001'
-const board: Board = { id: boardId, title: 'Архитектура', createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' }
-const routes = [{ path: '/boards/:boardId', element: <BoardPage /> }]
+const board: Board = {
+  id: boardId,
+  title: 'Архитектура',
+  createdAt: '2026-10-01T10:00:00Z',
+  updatedAt: '2026-10-01T10:00:00Z',
+  owner: { id: ALICE.id, name: ALICE.name, avatarUrl: ALICE.avatarUrl },
+  role: 'owner',
+}
+/** The board of Алиса as Боб sees it, having opened it through its link. */
+const boardOfAnother: Board = { ...board, role: 'editor' }
+const routes = [
+  { path: '/', element: <p>Список досок</p> },
+  { path: '/boards/:boardId', element: <BoardPage /> },
+]
+const boardUrl = `/api/boards/${boardId}`
 
 const toRgb = (hex: string) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
@@ -204,6 +218,100 @@ describe('BoardPage', () => {
     provider.unmount()
 
     expect(provider.destroyed).toBe(true)
+  })
+
+  describe('managing the board', () => {
+    it('lets the owner rename the board with a click on its title and tells the other participants', async () => {
+      const provider = await openBoard({
+        [`PATCH ${boardUrl}`]: { body: { ...board, title: 'Платежи' } },
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Архитектура' }))
+      const input = screen.getByRole('textbox', { name: 'Название доски' })
+      await userEvent.clear(input)
+      await userEvent.type(input, 'Платежи{Enter}')
+
+      expect(await screen.findByRole('heading', { name: 'Платежи', level: 2 })).toBeInTheDocument()
+      const [[, init]] = requests(provider.fetchMock, 'PATCH', boardUrl)
+      expect(JSON.parse(init!.body as string)).toEqual({ title: 'Платежи' })
+      expect(provider.sentStateless).toEqual([BOARD_CHANGED])
+    })
+
+    it('keeps the title when renaming is cancelled with Escape or the title is left empty', async () => {
+      const provider = await openBoard()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Архитектура' }))
+      await userEvent.type(screen.getByRole('textbox', { name: 'Название доски' }), 'Другое{Escape}')
+      await userEvent.click(screen.getByRole('button', { name: 'Архитектура' }))
+      await userEvent.clear(screen.getByRole('textbox', { name: 'Название доски' }))
+      await userEvent.keyboard('{Enter}')
+
+      expect(screen.getByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
+      expect(requests(provider.fetchMock, 'PATCH', boardUrl)).toHaveLength(0)
+      expect(provider.sentStateless).toEqual([])
+    })
+
+    it('lets the owner delete the board after confirmation, tells the participants and opens the list', async () => {
+      const provider = await openBoard({ [`DELETE ${boardUrl}`]: { status: 204 }, 'GET /api/boards': { body: [] } })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Удалить доску' }))
+      const confirmation = screen.getByRole('alertdialog', { name: 'Удаление доски' })
+      expect(confirmation).toHaveTextContent('Удалить доску «Архитектура»? Её нельзя будет восстановить.')
+      await userEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }))
+
+      await waitFor(() => expect(provider.router.state.location.pathname).toBe('/'))
+      expect(requests(provider.fetchMock, 'DELETE', boardUrl)).toHaveLength(1)
+      expect(provider.sentStateless).toEqual([BOARD_CHANGED])
+      expect(provider.destroyed).toBe(true)
+    })
+
+    it('shows a participant who does not own the board its title only', async () => {
+      await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+
+      expect(screen.getByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Архитектура' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).not.toBeInTheDocument()
+    })
+
+    it('shows the new title when another participant renamed the board', async () => {
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: { ...boardOfAnother, title: 'Платежи' } }],
+      })
+
+      act(() => provider.emitStateless(BOARD_CHANGED))
+
+      expect(await screen.findByRole('heading', { name: 'Платежи', level: 2 })).toBeInTheDocument()
+    })
+
+    it('ignores other stateless messages', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+
+      act(() => provider.emitStateless('{"type":"something-else"}'))
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(1)
+    })
+
+    it('shows "Доска не найдена" when the owner deleted the board on its page', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 404 }] })
+      act(() => provider.emitSynced())
+
+      act(() => provider.emitStateless(BOARD_CHANGED))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Доска не найдена')
+      expect(provider.destroyed).toBe(true)
+    })
+
+    it('shows "Доска не найдена" and stops reconnecting when collab closes the connection of a deleted board', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+
+      act(() => provider.emitClose('board-not-found'))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Доска не найдена')
+      expect(provider.disconnected).toBe(true)
+    })
   })
 
   describe('editor', () => {

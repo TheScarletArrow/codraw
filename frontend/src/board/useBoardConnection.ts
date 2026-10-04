@@ -1,12 +1,13 @@
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { fetchCollabToken } from '../api/boards.ts'
 import { isNotFound, isUnauthorized } from '../api/http.ts'
 import { recheckSession } from '../auth/session.ts'
 import { initializeDocument } from '../diagram/model.ts'
 import type { ParticipantIdentity } from './identity.ts'
+import { BOARD_CHANGED, isBoardChanged } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
 export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found'
@@ -18,7 +19,7 @@ export interface Participant extends ParticipantIdentity {
   page: string
 }
 
-/** Reason that collab sends when the board does not exist. */
+/** Reason that collab sends when the board does not exist, also when it closes the connections of a deleted board. */
 const BOARD_NOT_FOUND = 'board-not-found'
 
 export function collabUrl(location: Location = window.location) {
@@ -32,6 +33,7 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
   const [participants, setParticipants] = useState<Participant[]>([])
   /** The board document and the participants' awareness, available once the document has been synced. */
   const [session, setSession] = useState<{ document: Y.Doc; awareness: Awareness } | null>(null)
+  const providerRef = useRef<HocuspocusProvider | null>(null)
 
   useEffect(() => {
     const document = new Y.Doc()
@@ -70,7 +72,19 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
           provider.disconnect()
         }
       },
+      // Collab closes the connections of a board that was deleted while participants worked on it.
+      onClose: ({ event }) => {
+        if (event.reason === BOARD_NOT_FOUND) {
+          setStatus('not-found')
+          provider.disconnect()
+        }
+      },
+      // Another participant renamed or deleted the board: its title, or its absence, comes from the API.
+      onStateless: ({ payload }) => {
+        if (isBoardChanged(payload)) void queryClient.invalidateQueries({ queryKey: ['boards', boardId], exact: true })
+      },
     })
+    providerRef.current = provider
 
     const awareness = provider.awareness!
     const updateParticipants = () => {
@@ -98,10 +112,20 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
     return () => {
       awareness.off('change', updateParticipants)
       setSession(null)
+      providerRef.current = null
       provider.destroy()
       document.destroy()
     }
   }, [boardId, identity, queryClient])
 
-  return { status, participants, document: session?.document ?? null, awareness: session?.awareness ?? null }
+  /** Tells the other participants that the board changed, e.g. its title, so that they fetch it again. */
+  const notifyBoardChanged = useCallback(() => providerRef.current?.sendStateless(BOARD_CHANGED), [])
+
+  return {
+    status,
+    participants,
+    document: session?.document ?? null,
+    awareness: session?.awareness ?? null,
+    notifyBoardChanged,
+  }
 }

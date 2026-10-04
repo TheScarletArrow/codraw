@@ -3,10 +3,12 @@ package io.github.thescarletarrow.codraw.board
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
 import io.github.thescarletarrow.codraw.gitHubUser
+import io.github.thescarletarrow.codraw.internal.InternalTokenInterceptor
 import io.github.thescarletarrow.codraw.session
 import io.github.thescarletarrow.codraw.user.User
 import io.github.thescarletarrow.codraw.user.UserService
 import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.hasSize
 import org.hamcrest.Matchers.matchesPattern
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -17,8 +19,12 @@ import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import java.time.Duration
 import kotlin.test.assertEquals
 
@@ -54,6 +60,8 @@ class BoardApiTest(
             jsonPath("$.id") { value(matchesPattern(uuidPattern)) }
             jsonPath("$.title") { value("Архитектура") }
             jsonPath("$.createdAt") { value(clock.instant().toString()) }
+            jsonPath("$.owner.id") { value(alice.id.toString()) }
+            jsonPath("$.role") { value("owner") }
         }
     }
 
@@ -160,10 +168,190 @@ class BoardApiTest(
         mockMvc.get("/api/boards") { with(bob.session()) }.andExpect { content { json("[]") } }
     }
 
+    @Test
+    fun `returns the owner of a board and the role of the user who asks`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect {
+            jsonPath("$.owner.id") { value(alice.id.toString()) }
+            jsonPath("$.owner.name") { value("Alice") }
+            jsonPath("$.owner.avatarUrl") { value("https://avatars.example.com/Alice.png") }
+            jsonPath("$.role") { value("owner") }
+        }
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect {
+            jsonPath("$.owner.id") { value(alice.id.toString()) }
+            jsonPath("$.owner.name") { value("Alice") }
+            jsonPath("$.role") { value("editor") }
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = ["0199a000-0000-7000-8000-000000000000", "not-a-uuid", "1-1-1-1-1"])
     fun `returns 404 for an unknown board`(id: String) {
         mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `the owner renames a board, which trims the title and marks the board as changed`() {
+        val id = createBoard("Новая доска", alice)
+        clock.advance(Duration.ofMinutes(1))
+
+        rename(id, alice, """{"title": "  Платежи  "}""").andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("Платежи") }
+            jsonPath("$.updatedAt") { value(clock.instant().toString()) }
+            jsonPath("$.role") { value("owner") }
+        }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect {
+            jsonPath("$.title") { value("Платежи") }
+            jsonPath("$.updatedAt") { value(clock.instant().toString()) }
+        }
+    }
+
+    @Test
+    fun `accepts a new title of exactly 200 characters`() {
+        val id = createBoard("Доска", alice)
+
+        rename(id, alice, """{"title": " ${"a".repeat(200)} "}""").andExpect { status { isOk() } }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["{}", """{"title": null}""", """{"title": ""}""", """{"title": "   "}"""])
+    fun `rejects a missing or blank new title`(body: String) {
+        val id = createBoard("Доска", alice)
+
+        rename(id, alice, body).andExpect { status { isBadRequest() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.title") { value("Доска") } }
+    }
+
+    @Test
+    fun `rejects a new title longer than 200 characters`() {
+        val id = createBoard("Доска", alice)
+
+        rename(id, alice, """{"title": "${"a".repeat(201)}"}""").andExpect { status { isBadRequest() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.title") { value("Доска") } }
+    }
+
+    @Test
+    fun `only the owner renames a board`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        rename(id, bob, """{"title": "Доска Боба"}""").andExpect { status { isForbidden() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.title") { value("Доска Алисы") } }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["0199a000-0000-7000-8000-000000000000", "not-a-uuid"])
+    fun `renaming an unknown board answers 404`(id: String) {
+        rename(id, alice, """{"title": "Схема"}""").andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `the owner deletes a board with its document`() {
+        val id = createBoard("Черновик", alice)
+        mockMvc.put("/internal/boards/$id/document") {
+            header(InternalTokenInterceptor.HEADER, IntegrationTest.INTERNAL_TOKEN)
+            contentType = MediaType.APPLICATION_OCTET_STREAM
+            content = byteArrayOf(1, 2, 3)
+        }.andExpect { status { isNoContent() } }
+
+        delete(id, alice).andExpect { status { isNoContent() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { status { isNotFound() } }
+        mockMvc.get("/api/boards") { with(alice.session()) }.andExpect { content { json("[]") } }
+        mockMvc.get("/internal/boards/$id/document") { header(InternalTokenInterceptor.HEADER, IntegrationTest.INTERNAL_TOKEN) }
+            .andExpect { status { isNotFound() } }
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_documents").query(Int::class.java).single())
+    }
+
+    @Test
+    fun `only the owner deletes a board`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        delete(id, bob).andExpect { status { isForbidden() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { status { isOk() } }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["0199a000-0000-7000-8000-000000000000", "not-a-uuid"])
+    fun `deleting an unknown board answers 404`(id: String) {
+        delete(id, alice).andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `lists boards of other users opened through their links, most recently opened first`() {
+        val x = createBoard("X", alice)
+        val y = createBoard("Y", alice)
+        open(x, bob)
+        clock.advance(Duration.ofMinutes(1))
+        open(y, bob)
+
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$[*].id") { value(contains(y, x)) }
+            jsonPath("$[0].title") { value("Y") }
+            jsonPath("$[0].owner.id") { value(alice.id.toString()) }
+            jsonPath("$[0].owner.name") { value("Alice") }
+            jsonPath("$[0].owner.avatarUrl") { value("https://avatars.example.com/Alice.png") }
+            jsonPath("$[0].role") { value("editor") }
+            jsonPath("$[0].openedAt") { value(clock.instant().toString()) }
+        }
+        mockMvc.get("/api/boards") { with(bob.session()) }.andExpect { content { json("[]") } }
+    }
+
+    @Test
+    fun `opening a board again moves it to the top of the boards opened through links`() {
+        val x = createBoard("X", alice)
+        val y = createBoard("Y", alice)
+        open(x, bob)
+        clock.advance(Duration.ofMinutes(1))
+        open(y, bob)
+        clock.advance(Duration.ofMinutes(1))
+
+        open(x, bob)
+
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(x, y)) }
+        }
+    }
+
+    @Test
+    fun `own boards are not among the boards opened through links`() {
+        val own = createBoard("Своя", alice)
+
+        open(own, alice)
+
+        mockMvc.get("/api/boards/shared") { with(alice.session()) }.andExpect { content { json("[]") } }
+    }
+
+    @Test
+    fun `a deleted board leaves the boards opened through links`() {
+        val x = createBoard("X", alice)
+        open(x, bob)
+
+        delete(x, alice).andExpect { status { isNoContent() } }
+
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { content { json("[]") } }
+    }
+
+    @Test
+    fun `lists at most 50 boards opened through links`() {
+        val ids = (1..51).map { index ->
+            createBoard("Доска $index", alice).also {
+                open(it, bob)
+                clock.advance(Duration.ofSeconds(1))
+            }
+        }
+
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$") { value(hasSize<Any>(50)) }
+            jsonPath("$[0].id") { value(ids.last()) }
+            jsonPath("$[49].id") { value(ids[1]) }
+        }
     }
 
     private fun assertBadRequest(body: String) {
@@ -175,6 +363,22 @@ class BoardApiTest(
         }.andExpect { status { isBadRequest() } }
 
         assertEquals(0, jdbcClient.sql("SELECT count(*) FROM boards").query(Int::class.java).single())
+    }
+
+    private fun rename(id: String, user: User, body: String): ResultActionsDsl = mockMvc.patch("/api/boards/$id") {
+        with(user.session())
+        with(csrf())
+        contentType = MediaType.APPLICATION_JSON
+        content = body
+    }
+
+    private fun delete(id: String, user: User): ResultActionsDsl = mockMvc.delete("/api/boards/$id") {
+        with(user.session())
+        with(csrf())
+    }
+
+    private fun open(id: String, user: User) {
+        mockMvc.get("/api/boards/$id") { with(user.session()) }.andExpect { status { isOk() } }
     }
 
     private fun createBoard(title: String, owner: User): String {

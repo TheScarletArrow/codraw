@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.board
 
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -10,6 +11,7 @@ import java.util.UUID
 @Service
 class BoardService(
     private val boards: BoardRepository,
+    private val visits: BoardVisits,
     private val clock: Clock,
 ) {
 
@@ -25,11 +27,34 @@ class BoardService(
     /** Returns the board of any user: a link to a board gives access to it. */
     fun find(id: UUID): Board? = boards.findByIdOrNull(id)
 
-    /** Passes all boards of the user [ownerId] to the user [newOwnerId]. */
-    fun changeOwner(ownerId: UUID, newOwnerId: UUID) {
-        boards.changeOwner(ownerId, newOwnerId)
+    /** Records that the user [userId] opened the [board] of another user through its link. */
+    fun recordVisit(board: Board, userId: UUID) {
+        if (board.ownerId != userId) visits.record(userId, checkNotNull(board.id), now())
+    }
+
+    /** Boards of other users that the user [userId] opened through their links, most recently opened first. */
+    fun visitedBy(userId: UUID): List<VisitedBoard> = visits.visitedBy(userId, VISITED_LIMIT)
+
+    /** Gives the [board] a new [title]; renaming is a change of the board. */
+    fun rename(board: Board, title: String): Board = boards.save(board.copy(title = title, updatedAt = now()))
+
+    /** Deletes the [board] for good, with its document and the visits of other users. */
+    fun delete(board: Board) {
+        boards.deleteById(checkNotNull(board.id))
+    }
+
+    /** Passes all boards of the user [fromUserId], and the boards they opened through links, to the user [toUserId]. */
+    @Transactional
+    fun transfer(fromUserId: UUID, toUserId: UUID) {
+        boards.changeOwner(fromUserId, toUserId)
+        visits.transfer(fromUserId, toUserId)
     }
 
     // PostgreSQL stores microseconds, so truncate to return exactly what is persisted.
     private fun now(): Instant = clock.instant().truncatedTo(ChronoUnit.MICROS)
+
+    companion object {
+        /** The most boards the list of boards opened through links holds. */
+        const val VISITED_LIMIT = 50
+    }
 }
