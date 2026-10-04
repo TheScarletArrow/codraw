@@ -33,6 +33,8 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     geometry: null,
     quickConnect: null,
     canPaste: false,
+    hasCells: false,
+    hasSelection: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -69,6 +71,7 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     reverseEdge: vi.fn(),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
+    exportSvg: vi.fn(() => null),
     focus: vi.fn(),
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),

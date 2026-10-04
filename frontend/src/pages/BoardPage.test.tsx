@@ -19,6 +19,9 @@ import { BoardPage } from './BoardPage.tsx'
 vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
+// jsdom draws no images; the conversion of SVG to PNG is covered by e2e tests.
+const png = vi.hoisted(() => ({ svgToPng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })) }))
+vi.mock('../image/png.ts', () => png)
 // maxGraph needs real SVG layout; the canvas is covered by unit tests of the binding and by e2e tests.
 // The stand-in hands a fake editor to the page, like the real canvas does.
 // A canvas of another page gets a new fake editor, which becomes `canvas.editor`.
@@ -363,6 +366,7 @@ describe('BoardPage', () => {
       expect(screen.queryByRole('button', { name: 'Добавить страницу' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Импорт из .drawio' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Экспорт в .drawio' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Экспорт в изображение' })).toBeEnabled()
       expect(screen.getByRole('button', { name: 'Увеличить' })).toBeInTheDocument()
     })
 
@@ -691,6 +695,93 @@ describe('BoardPage', () => {
 
       expect(tabNames()).toEqual(['Контекст', 'Слои'])
       expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
+    })
+  })
+
+  describe('image export', () => {
+    const image = { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="140" height="80"/>', width: 140, height: 80 }
+
+    /** Records the files the page saves: their names and contents. */
+    function recordDownloads() {
+      const files: { name: string; blob: Blob }[] = []
+      let last: Blob | null = null
+      vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn((blob: Blob) => ((last = blob), 'blob:test')), revokeObjectURL: vi.fn() }))
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        files.push({ name: this.download, blob: last! })
+      })
+      return { files, restore: () => click.mockRestore() }
+    }
+
+    async function openSynced() {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      return provider
+    }
+
+    async function openExport() {
+      await userEvent.click(screen.getByRole('button', { name: 'Экспорт в изображение' }))
+      return screen.getByRole('dialog', { name: 'Экспорт в изображение' })
+    }
+
+    it('saves the page as SVG named after the board and the page', async () => {
+      const provider = await openSynced()
+      act(() => {
+        renamePage(provider.document, DEFAULT_PAGE_ID, 'Контекст')
+        addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+      })
+      const editor = canvas.editor!
+      vi.mocked(editor.exportSvg).mockReturnValue(image)
+      act(() => editor.setState({ hasCells: true }))
+      const downloads = recordDownloads()
+
+      await userEvent.click(within(await openExport()).getByRole('button', { name: 'Сохранить SVG' }))
+
+      await waitFor(() => expect(downloads.files).toHaveLength(1))
+      expect(downloads.files[0]!.name).toBe('Архитектура — Контекст.svg')
+      expect(downloads.files[0]!.blob.type).toBe('image/svg+xml')
+      expect(await downloads.files[0]!.blob.text()).toBe(image.svg)
+      expect(editor.exportSvg).toHaveBeenCalledWith(false)
+      downloads.restore()
+    })
+
+    it('saves only the selection as PNG', async () => {
+      await openSynced()
+      const editor = canvas.editor!
+      vi.mocked(editor.exportSvg).mockReturnValue(image)
+      act(() => editor.setState({ hasCells: true, hasSelection: true }))
+      const downloads = recordDownloads()
+      const dialog = await openExport()
+
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Только выделенное' }))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Сохранить PNG' }))
+
+      await waitFor(() => expect(downloads.files).toHaveLength(1))
+      expect(downloads.files[0]!.name).toBe('Архитектура.png')
+      expect(downloads.files[0]!.blob.type).toBe('image/png')
+      expect(editor.exportSvg).toHaveBeenCalledWith(true)
+      expect(png.svgToPng).toHaveBeenCalledWith(image)
+      downloads.restore()
+    })
+
+    it('saves the whole page when nothing is selected', async () => {
+      await openSynced()
+      act(() => canvas.editor!.setState({ hasCells: true, hasSelection: false }))
+
+      const dialog = await openExport()
+
+      expect(within(dialog).getByRole('checkbox', { name: 'Только выделенное' })).toBeDisabled()
+      expect(within(dialog).getByRole('checkbox', { name: 'Только выделенное' })).not.toBeChecked()
+      expect(within(dialog).getByRole('button', { name: 'Сохранить PNG' })).toBeEnabled()
+    })
+
+    it('has nothing to save on an empty page', async () => {
+      await openSynced()
+
+      const dialog = await openExport()
+
+      expect(dialog).toHaveTextContent('На странице нет объектов')
+      expect(within(dialog).getByRole('button', { name: 'Сохранить PNG' })).toBeDisabled()
+      expect(within(dialog).getByRole('button', { name: 'Сохранить SVG' })).toBeDisabled()
     })
   })
 })

@@ -33,6 +33,7 @@ import { registerDiagramExtensions } from './extensions.ts'
 import { DEFAULT_PAGE_ID, getCells, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { touchedByRegion } from './regionSelection.ts'
+import { renderSvg, type ExportedImage } from './svgExport.ts'
 import {
   findShape,
   groupShapes,
@@ -126,6 +127,10 @@ export interface EditorState {
   quickConnect: QuickConnectSource | null
   /** The clipboard of the browser tab holds something to paste. */
   canPaste: boolean
+  /** The page has shapes or edges, so it has an image. */
+  hasCells: boolean
+  /** Something is selected. */
+  hasSelection: boolean
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -171,6 +176,11 @@ export interface DiagramEditor {
   deleteSelection(): void
   /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
   focus(): void
+  /**
+   * Draws the page, or only the selected shapes and edges (a selected field as its table), into an SVG image at 100%;
+   * `null` when there is nothing to draw.
+   */
+  exportSvg(selectionOnly: boolean): ExportedImage | null
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
@@ -473,6 +483,8 @@ export function createDiagramEditor(
       geometry: selectionGeometry(),
       quickConnect: quickConnect(),
       canPaste: clipboard.read() !== null,
+      hasCells: graph.getDefaultParent().getChildCount() > 0,
+      hasSelection: !graph.isSelectionEmpty(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -832,6 +844,16 @@ export function createDiagramEditor(
       if (cell) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
+    exportSvg(selectionOnly) {
+      const owner = (cell: Cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)
+      const selected = new Set(graph.getSelectionCells().map(owner))
+      // In the order of the page, so that what lies on top on the canvas lies on top in the image.
+      const cells = graph
+        .getDefaultParent()
+        .getChildren()
+        .filter((cell) => !selectionOnly || selected.has(cell))
+      return renderSvg(graph, cells)
+    },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
     },

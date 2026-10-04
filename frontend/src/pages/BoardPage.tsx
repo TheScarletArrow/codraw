@@ -24,6 +24,7 @@ import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
+import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { importPages } from '../drawio/importPages.ts'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 
@@ -141,6 +142,12 @@ function BoardWorkspace({ board, user, readOnly }: { board: Board; user: Current
           </span>
         )}
         <DrawioActions document={document} title={board.title} onImported={selectPage} readOnly={readOnly} />
+        <ImageExportMenu
+          editor={editor}
+          boardTitle={board.title}
+          pageName={currentPage?.name ?? ''}
+          pageCount={pages.length}
+        />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <EditorToolbar editor={editor} readOnly={readOnly} />
         <div className="ml-auto flex shrink-0 items-center gap-3">

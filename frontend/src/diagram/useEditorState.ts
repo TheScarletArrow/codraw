@@ -12,6 +12,8 @@ const NO_EDITOR: EditorState = {
   geometry: null,
   quickConnect: null,
   canPaste: false,
+  hasCells: false,
+  hasSelection: false,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */
