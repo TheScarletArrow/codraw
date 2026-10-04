@@ -48,7 +48,7 @@ async function openBoard(responses: Record<string, MockResponse | MockResponse[]
     ...responses,
   })
   const { unmount } = renderRoutes(routes, `/boards/${boardId}`)
-  await screen.findByRole('heading', { name: 'Архитектура' })
+  await screen.findByRole('heading', { name: 'Архитектура', level: 2 })
   return Object.assign(FakeHocuspocusProvider.latest(), { unmount, fetchMock })
 }
 
@@ -206,7 +206,14 @@ describe('BoardPage', () => {
       await openEditor()
 
       const palette = screen.getByRole('complementary', { name: 'Фигуры' })
-      expect(within(palette).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      expect(within(palette).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual([
+        'Основные',
+        'База данных',
+        'Архитектура',
+        'C4',
+      ])
+      const basic = within(palette).getByRole('group', { name: 'Основные' })
+      expect(within(basic).getAllByRole('button').map((button) => button.textContent)).toEqual([
         'Прямоугольник',
         'Скруглённый прямоугольник',
         'Эллипс',

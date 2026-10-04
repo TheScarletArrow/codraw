@@ -1,22 +1,37 @@
 import {
+  Cell,
   CellEditorHandler,
   ConnectionHandler,
+  Geometry,
   Graph,
   GraphDataModel,
   ImageBox,
   InternalEvent,
   KeyHandler,
+  LayoutManager,
+  SelectionHandler,
   Point as GraphPoint,
   RubberBandHandler,
+  StackLayout,
   getDefaultPlugins,
-  type Cell,
   type CellState,
+  type CellStyle,
   type ImageShape,
+  type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
 import { createUndoManager, DiagramBinding } from './binding.ts'
+import { registerDiagramExtensions } from './extensions.ts'
 import { getCells } from './model.ts'
-import { findShape, type ShapeId } from './shapes.ts'
+import {
+  findShape,
+  isTableStyle,
+  TABLE_FIELD_HEIGHT,
+  TABLE_FIELD_STYLE,
+  TABLE_HEADER_HEIGHT,
+  type ShapeId,
+  type ShapeStyle,
+} from './shapes.ts'
 
 export interface Point {
   x: number
@@ -30,10 +45,22 @@ export interface Box {
   height: number
 }
 
+export type EdgeEnd = 'start' | 'end'
+
+/** Markers of the selected edges; `null` for an end where the edges have different markers. */
+export interface EdgeMarkers {
+  start: string | null
+  end: string | null
+}
+
 export interface EditorState {
   canUndo: boolean
   canRedo: boolean
   scale: number
+  /** A table or a field of a table is selected, so a field can be added. */
+  tableSelected: boolean
+  /** Markers of the selected edges, or `null` when no edge is selected. */
+  edgeMarkers: EdgeMarkers | null
 }
 
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
@@ -41,6 +68,10 @@ export interface DiagramEditor {
   readonly graph: Graph
   /** Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area. */
   addShape(shape: ShapeId, center?: Point): Cell | null
+  /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
+  addTableField(): Cell | null
+  /** Sets the marker of the start or the end of the selected edges. */
+  setEdgeMarker(end: EdgeEnd, marker: string): void
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
   /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
@@ -87,29 +118,57 @@ const KEY_Z = 90
 export function createDiagramEditor(container: HTMLElement, document: Y.Doc): DiagramEditor {
   const model = new GraphDataModel()
   const cells = getCells(document)
-  const binding = new DiagramBinding(model, cells)
   const undoManager = createUndoManager(cells)
 
   const graph = new Graph(container, model, [...getDefaultPlugins(), RubberBandHandler])
+  // After the graph: the first graph registers the default shapes of maxGraph, including its own `rectangle`.
+  registerDiagramExtensions()
   graph.setPanning(true)
   graph.setConnectable(true)
   graph.setAllowDanglingEdges(false)
   graph.setDropEnabled(false)
   graph.setGridEnabled(true)
   graph.setGridSize(10)
+  // Tables are the only containers, and they are never collapsed.
+  graph.options.foldingEnabled = false
   // Labels are plain text: rendering HTML from other participants would allow script injection.
   graph.setHtmlLabels(false)
   configureStyles(graph)
   configureConnections(graph)
+  configureSelection(graph)
+  const layoutManager = new LayoutManager(graph)
+  const tableLayout = new TableLayout(graph)
+  layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
+  // Bound only now, so that the stored cells are laid out like any later change of other participants.
+  const binding = new DiagramBinding(model, cells)
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
 
-  const readState = (): EditorState => ({
-    canUndo: undoManager.canUndo(),
-    canRedo: undoManager.canRedo(),
-    scale: graph.getView().scale,
-  })
+  const selectedEdges = () => graph.getSelectionCells().filter((cell) => cell.isEdge())
+  const selectedTable = (): Cell | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    if (!cell || isTable(cell)) return cell
+    const parent = cell.getParent()
+    return isTable(parent) ? parent : null
+  }
+  const markerOf = (edge: Cell, end: EdgeEnd) =>
+    String(graph.getCellStyle(edge)[end === 'start' ? 'startArrow' : 'endArrow'] ?? 'none')
+  const sameMarker = (edges: Cell[], end: EdgeEnd) => {
+    const markers = new Set(edges.map((edge) => markerOf(edge, end)))
+    return markers.size === 1 ? [...markers][0]! : null
+  }
+
+  const readState = (): EditorState => {
+    const edges = selectedEdges()
+    return {
+      canUndo: undoManager.canUndo(),
+      canRedo: undoManager.canRedo(),
+      scale: graph.getView().scale,
+      tableSelected: selectedTable() !== null,
+      edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
+    }
+  }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
   let state = readState()
   const listeners = new Set<() => void>()
@@ -122,6 +181,9 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
   undoManager.on('stack-cleared', notify)
   graph.getView().addListener(InternalEvent.SCALE, notify)
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notify)
+  // The selection and the markers of the selected edges, also when another participant changes them.
+  graph.getSelectionModel().addListener(InternalEvent.CHANGE, notify)
+  model.addListener(InternalEvent.CHANGE, notify)
 
   const removeSelection = () => {
     if (!graph.isEditing() && !graph.isSelectionEmpty()) {
@@ -230,16 +292,56 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       }
       const x = snap(cx - shape.width / 2)
       const y = snap(cy - shape.height / 2)
-      const cell = graph.insertVertex({
-        parent,
-        value: shape.value,
-        position: [x, y],
-        size: [shape.width, shape.height],
-        style: { ...shape.style },
-      })
+      // The shape and its children, e.g. the first field of a table, are one change and one undo step.
+      model.beginUpdate()
+      let cell: Cell
+      try {
+        cell = graph.insertVertex({
+          parent,
+          value: shape.value,
+          position: [x, y],
+          size: [shape.width, shape.height],
+          style: { ...shape.style } as CellStyle,
+        })
+        let childY = isTableStyle(shape.style) ? TABLE_HEADER_HEIGHT : 0
+        for (const child of shape.children ?? []) {
+          graph.insertVertex({
+            parent: cell,
+            value: child.value,
+            position: [0, childY],
+            size: [shape.width, child.height],
+            style: { ...child.style } as CellStyle,
+          })
+          childY += child.height
+        }
+      } finally {
+        model.endUpdate()
+      }
       graph.setSelectionCell(cell)
       container.focus({ preventScroll: true })
       return cell
+    },
+    addTableField() {
+      const table = selectedTable()
+      if (!table) return null
+      const selected = graph.getSelectionCell()
+      const fields = Array.from({ length: table.getChildCount() }, (_, index) => table.getChildAt(index))
+      const after = selected !== table ? selected : (fields.at(-1) ?? null)
+      // The table layout stacks fields in the order of the cells and fixes the position.
+      const field = new Cell('', new Geometry(0, TABLE_HEADER_HEIGHT, table.getGeometry()!.width, TABLE_FIELD_HEIGHT), {
+        ...TABLE_FIELD_STYLE,
+      } as CellStyle)
+      field.setVertex(true)
+      graph.addCell(field, table, after ? table.getIndex(after) + 1 : fields.length)
+      graph.setSelectionCell(field)
+      graph.startEditingAtCell(field)
+      return field
+    },
+    setEdgeMarker(end, marker) {
+      const edges = selectedEdges()
+      if (edges.length === 0) return
+      graph.stopEditing(false)
+      graph.setCellStyles(end === 'start' ? 'startArrow' : 'endArrow', marker as StyleArrowValue, edges)
     },
     toDiagramPoint,
     toCanvasPoint({ x, y }) {
@@ -279,7 +381,10 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       container.removeEventListener('pointerleave', handlePointerLeave)
       container.removeEventListener('scroll', notifyView)
       graph.getSelectionModel().removeListener(handleSelectionChange)
+      graph.getSelectionModel().removeListener(notify)
       model.removeListener(notifyView)
+      model.removeListener(notify)
+      layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()
       selectionListeners.clear()
@@ -293,6 +398,50 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
   }
   Object.defineProperty(container, EDITOR_PROPERTY, { value: editor, configurable: true })
   return editor
+}
+
+function isTable(cell: Cell | null): boolean {
+  return cell?.isVertex() === true && isTableStyle(cell.getStyle() as ShapeStyle)
+}
+
+/**
+ * Stacks the fields of a table under its header in the order of the cells, across the whole width of the table,
+ * and fits the table height to them.
+ */
+class TableLayout extends StackLayout {
+  constructor(graph: Graph) {
+    super(graph, false)
+    this.fill = true
+    this.resizeParent = true
+  }
+
+  // Fields cannot be dragged by the user, but the layout places them.
+  override isVertexMovable(_cell: Cell) {
+    return true
+  }
+
+  override execute(parent: Cell) {
+    if (parent.getChildCount() > 0) {
+      super.execute(parent)
+      return
+    }
+    // Without fields the table is just its header.
+    const geometry = parent.getGeometry()
+    if (geometry && geometry.height !== TABLE_HEADER_HEIGHT) {
+      const fitted = geometry.clone()
+      fitted.height = TABLE_HEADER_HEIGHT
+      this.graph.getDataModel().setGeometry(parent, fitted)
+    }
+  }
+}
+
+function configureSelection(graph: Graph) {
+  const handler = graph.getPlugin<SelectionHandler>('SelectionHandler')
+  if (!handler) return
+  const propagate = handler.isPropagateSelectionCell.bind(handler)
+  // A second click on a selected field would select its table, and Delete would then remove the whole table.
+  // The table is selected by its header instead.
+  handler.isPropagateSelectionCell = (cell, immediate, me) => !isTable(cell.getParent()) && propagate(cell, immediate, me)
 }
 
 function configureConnections(graph: Graph) {
