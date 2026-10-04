@@ -1,4 +1,5 @@
 import type { CellStyle } from '@maxgraph/core'
+import { BROWSER_BAR_HEIGHT } from './extensions.ts'
 
 export type ShapeId =
   | 'rectangle'
@@ -15,6 +16,28 @@ export type ShapeId =
   | 'external-system'
   | 'document'
   | 'boundary'
+  | 'load-balancer'
+  | 'api-gateway'
+  | 'cdn'
+  | 'server'
+  | 'container'
+  | 'kubernetes-cluster'
+  | 'firewall'
+  | 'dns'
+  | 'object-storage'
+  | 'search-index'
+  | 'data-warehouse'
+  | 'event-topic'
+  | 'scheduler'
+  | 'function'
+  | 'browser'
+  | 'mobile-app'
+  | 'desktop-app'
+  | 'iot-device'
+  | 'uml-component'
+  | 'uml-interface'
+  | 'uml-package'
+  | 'uml-note'
   | 'c4-person'
   | 'c4-system'
   | 'c4-container'
@@ -93,6 +116,9 @@ const boundaryStyle = (strokeColor: string): ShapeStyle => ({
   spacingTop: 6,
   pointerEvents: false,
 })
+
+/** Icon-like shapes are captioned under the shape, like «Пользователь». */
+const captionBelow: ShapeStyle = { verticalLabelPosition: 'bottom', verticalAlign: 'top' }
 
 const c4Style = (fillColor: string, strokeColor: string, fontColor = '#ffffff'): ShapeStyle => ({
   rounded: true,
@@ -174,6 +200,171 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
       { id: 'external-system', label: 'Внешняя система', width: 140, height: 90, value: 'Внешняя система', style: { shape: 'cloud' } },
       { id: 'document', label: 'Документ', width: 110, height: 80, value: 'Документ', style: { shape: 'document' } },
       { id: 'boundary', label: 'Граница', width: 360, height: 240, value: 'Граница', style: boundaryStyle('#1f2328') },
+    ],
+  },
+  {
+    title: 'Инфраструктура',
+    shapes: [
+      {
+        id: 'load-balancer',
+        label: 'Балансировщик нагрузки',
+        // Plain-text captions do not wrap, so the shape is as wide as its caption.
+        width: 180,
+        height: 70,
+        value: 'Балансировщик нагрузки',
+        style: { shape: 'hexagon', perimeter: 'hexagonPerimeter' },
+      },
+      { id: 'api-gateway', label: 'API-шлюз', width: 120, height: 60, value: 'API-шлюз', style: { shape: 'process' } },
+      {
+        id: 'cdn',
+        label: 'CDN',
+        width: 100,
+        height: 70,
+        value: 'CDN',
+        style: { shape: 'doubleEllipse', perimeter: 'ellipsePerimeter' },
+      },
+      { id: 'server', label: 'Сервер', width: 50, height: 70, value: 'Сервер', style: { shape: 'codraw.server', ...captionBelow } },
+      { id: 'container', label: 'Контейнер', width: 110, height: 70, value: 'Контейнер', style: { shape: 'cube' } },
+      {
+        id: 'kubernetes-cluster',
+        label: 'Кластер Kubernetes',
+        width: 400,
+        height: 260,
+        value: 'Кластер Kubernetes',
+        style: { ...boundaryStyle('#326ce5'), rounded: true, arcSize: 4, fontColor: '#326ce5' },
+      },
+      {
+        id: 'firewall',
+        label: 'Брандмауэр',
+        width: 70,
+        height: 50,
+        value: 'Брандмауэр',
+        style: { shape: 'codraw.firewall', ...captionBelow },
+      },
+      { id: 'dns', label: 'DNS', width: 90, height: 60, value: 'DNS', style: { shape: 'card' } },
+    ],
+  },
+  {
+    title: 'Данные и сообщения',
+    shapes: [
+      {
+        id: 'object-storage',
+        label: 'Хранилище объектов',
+        width: 60,
+        height: 64,
+        value: 'Хранилище объектов',
+        style: { shape: 'codraw.bucket', ...captionBelow },
+      },
+      {
+        id: 'search-index',
+        label: 'Поисковый индекс',
+        width: 140,
+        height: 70,
+        value: 'Поисковый индекс',
+        // The caption keeps clear of the lines along the top and the left side.
+        style: { shape: 'internalStorage', spacingLeft: 10, spacingTop: 10 },
+      },
+      {
+        id: 'data-warehouse',
+        label: 'Хранилище данных',
+        width: 130,
+        height: 90,
+        value: 'Хранилище данных',
+        style: { shape: 'datastore', spacingTop: 20 },
+      },
+      {
+        id: 'event-topic',
+        label: 'Топик событий',
+        width: 140,
+        height: 36,
+        value: 'Топик событий',
+        style: { shape: 'codraw.topic', ...captionBelow },
+      },
+      {
+        id: 'scheduler',
+        label: 'Планировщик задач',
+        width: 56,
+        height: 56,
+        value: 'Планировщик задач',
+        style: { shape: 'codraw.clock', perimeter: 'ellipsePerimeter', ...captionBelow },
+      },
+      { id: 'function', label: 'Функция', width: 120, height: 60, value: 'Функция', style: { shape: 'parallelogram' } },
+    ],
+  },
+  {
+    title: 'Клиенты',
+    shapes: [
+      {
+        id: 'browser',
+        label: 'Веб-браузер',
+        width: 140,
+        height: 90,
+        value: 'Веб-браузер',
+        // The caption sits below the title bar of the window.
+        style: { shape: 'codraw.browser', spacingTop: BROWSER_BAR_HEIGHT },
+      },
+      {
+        id: 'mobile-app',
+        label: 'Мобильное приложение',
+        width: 44,
+        height: 76,
+        value: 'Мобильное приложение',
+        style: { shape: 'codraw.mobile', ...captionBelow },
+      },
+      {
+        id: 'desktop-app',
+        label: 'Десктоп-приложение',
+        width: 80,
+        height: 64,
+        value: 'Десктоп-приложение',
+        style: { shape: 'codraw.desktop', ...captionBelow },
+      },
+      {
+        id: 'iot-device',
+        label: 'IoT-устройство',
+        width: 60,
+        height: 60,
+        value: 'IoT-устройство',
+        style: { shape: 'codraw.chip', ...captionBelow },
+      },
+    ],
+  },
+  {
+    title: 'UML',
+    shapes: [
+      {
+        id: 'uml-component',
+        label: 'Компонент',
+        width: 140,
+        height: 70,
+        value: 'Компонент',
+        style: { shape: 'component', spacingLeft: 10 },
+      },
+      {
+        id: 'uml-interface',
+        label: 'Интерфейс',
+        width: 30,
+        height: 30,
+        value: 'Интерфейс',
+        style: { shape: 'ellipse', perimeter: 'ellipsePerimeter', ...captionBelow },
+      },
+      {
+        id: 'uml-package',
+        label: 'Пакет',
+        width: 140,
+        height: 90,
+        value: 'Пакет',
+        // The caption sits in the body, under the tab.
+        style: { shape: 'folder', spacingTop: 20 },
+      },
+      {
+        id: 'uml-note',
+        label: 'Заметка',
+        width: 120,
+        height: 80,
+        value: 'Заметка',
+        style: { shape: 'note', fillColor: '#fff2cc', strokeColor: '#d6b656' },
+      },
     ],
   },
   {

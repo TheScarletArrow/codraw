@@ -1,6 +1,7 @@
 import { EdgeMarkerRegistry, Point, ShapeRegistry, type AbstractCanvas2D, type Shape } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
-import { crowsFoot, EDGE_MARKERS, registerDiagramExtensions } from './extensions.ts'
+import { crowsFoot, EDGE_MARKERS, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
+import { SHAPES } from './shapes.ts'
 
 /** Records the path drawn by a marker. */
 function recordingCanvas() {
@@ -35,6 +36,17 @@ describe('diagram extensions', () => {
     expect(ShapeRegistry.get('mxgraph.c4.person2')).toBeDefined()
     for (const { value } of EDGE_MARKERS.filter((marker) => marker.value.startsWith('ER'))) {
       expect(EdgeMarkerRegistry.get(value)).toBeDefined()
+    }
+  })
+
+  it('register every system design shape that the palette uses', () => {
+    registerDiagramExtensions()
+
+    for (const name of Object.keys(SYSTEM_DESIGN_SHAPES)) expect(ShapeRegistry.get(name)).toBe(SYSTEM_DESIGN_SHAPES[name as keyof typeof SYSTEM_DESIGN_SHAPES])
+    const builtIn = ['ellipse', 'rhombus', 'cylinder', 'actor', 'cloud', 'hexagon', 'doubleEllipse', 'swimlane', 'document', 'mxgraph.c4.person2']
+    for (const shape of SHAPES) {
+      const name = shape.style.shape
+      if (name) expect([...builtIn, ...Object.keys(SYSTEM_DESIGN_SHAPES)]).toContain(name)
     }
   })
 

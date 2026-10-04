@@ -14,8 +14,24 @@ describe('ShapePalette', () => {
       ['Основные', 5],
       ['База данных', 1],
       ['Архитектура', 8],
+      ['Инфраструктура', 8],
+      ['Данные и сообщения', 6],
+      ['Клиенты', 4],
+      ['UML', 4],
       ['C4', 7],
     ])
+  })
+
+  it('collapses and expands a section with a click on its title', async () => {
+    render(<ShapePalette editor={createFakeEditor()} />)
+    const c4 = screen.getByRole('group', { name: 'C4' })
+
+    await userEvent.click(within(c4).getByText('C4'))
+    expect(c4).not.toHaveAttribute('open')
+    expect(screen.getByRole('button', { name: 'Container' })).not.toBeVisible()
+
+    await userEvent.click(within(c4).getByText('C4'))
+    expect(screen.getByRole('button', { name: 'Container' })).toBeVisible()
   })
 
   it('adds a table with a click', async () => {

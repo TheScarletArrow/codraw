@@ -12,6 +12,16 @@ describe('shape presets', () => {
         ['Сервис', 'База данных', 'Очередь', 'Кэш', 'Пользователь', 'Внешняя система', 'Документ', 'Граница'],
       ],
       [
+        'Инфраструктура',
+        ['Балансировщик нагрузки', 'API-шлюз', 'CDN', 'Сервер', 'Контейнер', 'Кластер Kubernetes', 'Брандмауэр', 'DNS'],
+      ],
+      [
+        'Данные и сообщения',
+        ['Хранилище объектов', 'Поисковый индекс', 'Хранилище данных', 'Топик событий', 'Планировщик задач', 'Функция'],
+      ],
+      ['Клиенты', ['Веб-браузер', 'Мобильное приложение', 'Десктоп-приложение', 'IoT-устройство']],
+      ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка']],
+      [
         'C4',
         ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы'],
       ],
@@ -54,8 +64,21 @@ describe('shape presets', () => {
     expect(findShape('c4-component')!.style.fontColor).toBe('#000000')
   })
 
+  it('caption system design shapes with their names and draw them with registered shapes', () => {
+    const sections = ['Инфраструктура', 'Данные и сообщения', 'Клиенты', 'UML']
+    const shapes = SHAPE_SECTIONS.filter((section) => sections.includes(section.title)).flatMap((section) => section.shapes)
+
+    for (const shape of shapes) {
+      expect(shape.value).toBe(shape.label)
+      if (shape.id !== 'kubernetes-cluster') expect(shape.style.shape).toBeDefined()
+    }
+    expect(findShape('server')!.style).toMatchObject({ shape: 'codraw.server', verticalLabelPosition: 'bottom' })
+    expect(findShape('dns')!.style.shape).toBe('card')
+    expect(findShape('uml-note')!.style).toMatchObject({ shape: 'note', fillColor: '#fff2cc' })
+  })
+
   it('let clicks inside a boundary reach the shapes under it', () => {
-    for (const id of ['boundary', 'c4-boundary']) {
+    for (const id of ['boundary', 'c4-boundary', 'kubernetes-cluster']) {
       expect(findShape(id)!.style).toMatchObject({ fillColor: 'none', dashed: true, pointerEvents: false })
     }
   })
