@@ -1,8 +1,10 @@
 import type { RouteObject } from 'react-router'
 import { Layout } from './Layout.tsx'
 import { BoardsPage } from './pages/BoardsPage.tsx'
+import { LoginPage } from './pages/LoginPage.tsx'
 
 export const routes: RouteObject[] = [
+  { path: '/login', element: <LoginPage /> },
   {
     path: '/',
     element: <Layout />,

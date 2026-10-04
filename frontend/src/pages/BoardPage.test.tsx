@@ -1,12 +1,12 @@
-import { act, fireEvent, screen, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
-import { PARTICIPANT_COLORS, resetGuestIdentityCache } from '../board/guest.ts'
+import { participantColor } from '../board/identity.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
-import { mockFetch, renderRoutes } from '../test/render.tsx'
+import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
 import { BoardPage } from './BoardPage.tsx'
 
 vi.mock('@hocuspocus/provider', async () => ({
@@ -37,19 +37,28 @@ const toRgb = (hex: string) => {
   return `rgb(${r}, ${g}, ${b})`
 }
 
-async function openBoard() {
-  mockFetch({ [`GET /api/boards/${boardId}`]: { body: board } })
+const tokenUrl = `POST /api/boards/${boardId}/collab-token`
+const collabToken = (token: string): MockResponse => ({ body: { token, expiresAt: '2026-10-01T10:05:00Z' } })
+
+async function openBoard(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+  const fetchMock = mockFetch({
+    'GET /api/me': { body: ALICE },
+    [`GET /api/boards/${boardId}`]: { body: board },
+    [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
+    ...responses,
+  })
   const { unmount } = renderRoutes(routes, `/boards/${boardId}`)
   await screen.findByRole('heading', { name: 'Архитектура' })
-  return Object.assign(FakeHocuspocusProvider.latest(), { unmount })
+  return Object.assign(FakeHocuspocusProvider.latest(), { unmount, fetchMock })
 }
+
+const requests = (fetchMock: ReturnType<typeof mockFetch>, method: string, url: string) =>
+  fetchMock.mock.calls.filter(([input, init]) => (init?.method ?? 'GET') === method && input.toString() === url)
 
 describe('BoardPage', () => {
   beforeEach(() => {
     canvas.editor = createFakeEditor()
     FakeHocuspocusProvider.instances = []
-    sessionStorage.clear()
-    resetGuestIdentityCache()
   })
 
   afterEach(() => {
@@ -101,8 +110,34 @@ describe('BoardPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Синхронизировано')
   })
 
+  it('gets a new collab token for the board before every connection', async () => {
+    const provider = await openBoard()
+
+    await expect(provider.requestToken()).resolves.toBe('token-1')
+    await expect(provider.requestToken()).resolves.toBe('token-2')
+
+    expect(requests(provider.fetchMock, 'POST', `/api/boards/${boardId}/collab-token`)).toHaveLength(2)
+  })
+
+  it('shows "Доска не найдена" and stops connecting when no token is issued for the board', async () => {
+    const provider = await openBoard({ [tokenUrl]: { status: 404 } })
+
+    await act(() => expect(provider.requestToken()).rejects.toThrow('404'))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Доска не найдена')
+    expect(provider.disconnected).toBe(true)
+  })
+
+  it('checks the session again when the token request gets 401', async () => {
+    const provider = await openBoard({ [tokenUrl]: { status: 401 } })
+
+    await act(() => expect(provider.requestToken()).rejects.toThrow('401'))
+
+    await waitFor(() => expect(requests(provider.fetchMock, 'GET', '/api/me')).toHaveLength(2))
+  })
+
   it('shows "Доска не найдена" when the board does not exist', async () => {
-    mockFetch({ [`GET /api/boards/${boardId}`]: { status: 404 } })
+    mockFetch({ 'GET /api/me': { body: ALICE }, [`GET /api/boards/${boardId}`]: { status: 404 } })
 
     renderRoutes(routes, `/boards/${boardId}`)
 
@@ -122,13 +157,19 @@ describe('BoardPage', () => {
     expect(provider.disconnected).toBe(true)
   })
 
-  it('lists the participant itself as a guest with a palette color', async () => {
-    await openBoard()
+  it('lists the participant itself with the name, the avatar and the color of the profile', async () => {
+    const provider = await openBoard()
 
     const participants = screen.getByRole('list', { name: 'Участники' })
-    expect(participants).toHaveTextContent(/^Гость \d{1,3} \(вы\)$/)
+    expect(participants).toHaveTextContent(/^Алиса \(вы\)$/)
+    expect(participants.querySelector('img')).toHaveAttribute('src', ALICE.avatarUrl)
     const color = participants.querySelector<HTMLElement>('.participant-color')!.style.backgroundColor
-    expect(PARTICIPANT_COLORS.map(toRgb)).toContain(color)
+    expect(color).toBe(toRgb(participantColor(ALICE.id)))
+    expect(provider.awareness.getStates().get(provider.awareness.clientID)?.user).toEqual({
+      name: 'Алиса',
+      avatarUrl: ALICE.avatarUrl,
+      color: participantColor(ALICE.id),
+    })
   })
 
   it('updates the list when other participants join and leave', async () => {
@@ -138,9 +179,9 @@ describe('BoardPage', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent)
 
-    act(() => provider.awareness.setState(7, { user: { name: 'Гость 42', color: '#dc2626' } }))
+    act(() => provider.awareness.setState(7, { user: { name: 'Боб', color: '#dc2626', avatarUrl: null } }))
     expect(participants()).toHaveLength(2)
-    expect(participants()).toContain('Гость 42')
+    expect(participants()).toContain('Боб')
 
     act(() => provider.awareness.setState(7, null))
     expect(participants()).toHaveLength(1)

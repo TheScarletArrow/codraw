@@ -1,8 +1,12 @@
 import { HocuspocusProvider } from '@hocuspocus/provider'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import * as Y from 'yjs'
+import { fetchCollabToken } from '../api/boards.ts'
+import { isNotFound, isUnauthorized } from '../api/http.ts'
+import { recheckSession } from '../auth/session.ts'
 import { initializeDocument } from '../diagram/model.ts'
-import type { ParticipantIdentity } from './guest.ts'
+import type { ParticipantIdentity } from './identity.ts'
 import type { Awareness } from './presence.ts'
 
 export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found'
@@ -21,6 +25,7 @@ export function collabUrl(location: Location = window.location) {
 
 /** Connects to the shared document of a board and tracks the connection status and participants. */
 export function useBoardConnection(boardId: string, identity: ParticipantIdentity) {
+  const queryClient = useQueryClient()
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [participants, setParticipants] = useState<Participant[]>([])
   /** The board document and the participants' awareness, available once the document has been synced. */
@@ -32,6 +37,20 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
       url: collabUrl(),
       name: boardId,
       document,
+      // Called before every connection, so a reconnect after the previous token has expired gets a new one.
+      token: async () => {
+        try {
+          return (await fetchCollabToken(boardId)).token
+        } catch (error) {
+          if (isNotFound(error)) {
+            setStatus('not-found')
+            provider.disconnect()
+          } else if (isUnauthorized(error)) {
+            void recheckSession(queryClient)
+          }
+          throw error
+        }
+      },
       onSynced: ({ state }) => {
         if (!state) return
         // Initialize only after the stored state has arrived, so that a non-empty board is never overwritten.
@@ -57,7 +76,13 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
       awareness.getStates().forEach((state, clientId) => {
         const user = state.user as ParticipantIdentity | undefined
         if (user?.name && user.color) {
-          list.push({ clientId, name: user.name, color: user.color, isSelf: clientId === awareness.clientID })
+          list.push({
+            clientId,
+            name: user.name,
+            color: user.color,
+            avatarUrl: user.avatarUrl,
+            isSelf: clientId === awareness.clientID,
+          })
         }
       })
       list.sort((a, b) => Number(b.isSelf) - Number(a.isSelf) || a.name.localeCompare(b.name, 'ru'))
@@ -73,7 +98,7 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
       provider.destroy()
       document.destroy()
     }
-  }, [boardId, identity])
+  }, [boardId, identity, queryClient])
 
   return { status, participants, document: session?.document ?? null, awareness: session?.awareness ?? null }
 }

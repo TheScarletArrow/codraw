@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { DiagramEditor } from '../diagram/editor.ts'
+import { Avatar } from './Participants.tsx'
 import { useRemotePresence, type Awareness } from './presence.ts'
 
 const SELECTION_PADDING = 3
@@ -52,9 +53,10 @@ export function PresenceLayer({ editor, awareness }: { editor: DiagramEditor | n
               <path d="M1 1 L1 17 L5.5 13 L8.5 19 L11 18 L8 12 L14 12 Z" fill={participant.color} stroke="white" strokeWidth="1.2" />
             </svg>
             <span
-              className="absolute top-4 left-3 rounded px-1.5 py-0.5 text-xs whitespace-nowrap text-white"
+              className="absolute top-4 left-3 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs whitespace-nowrap text-white"
               style={{ backgroundColor: participant.color }}
             >
+              <Avatar url={participant.avatarUrl} className="size-4" />
               {participant.name}
             </span>
           </div>

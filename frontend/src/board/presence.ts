@@ -1,7 +1,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider'
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { DiagramEditor, Point } from '../diagram/editor.ts'
-import type { ParticipantIdentity } from './guest.ts'
+import type { ParticipantIdentity } from './identity.ts'
 
 export type Awareness = NonNullable<HocuspocusProvider['awareness']>
 
@@ -91,6 +91,7 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
       clientId,
       name: user.name,
       color: user.color,
+      avatarUrl: user.avatarUrl,
       cursor: cursor && Number.isFinite(cursor.x) && Number.isFinite(cursor.y) ? cursor : null,
       selection: Array.isArray(selection) ? selection.filter((id): id is string => typeof id === 'string') : [],
     })

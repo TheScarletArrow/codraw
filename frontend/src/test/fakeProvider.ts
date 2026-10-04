@@ -76,6 +76,12 @@ export class FakeHocuspocusProvider {
     this.configuration.onSynced?.({ state: true })
   }
 
+  /** Asks for a token like the provider does before each connection. */
+  async requestToken(): Promise<string | null> {
+    const { token } = this.configuration
+    return typeof token === 'function' ? await token() : (token ?? null)
+  }
+
   emitAuthenticationFailed(reason: string) {
     this.configuration.onAuthenticationFailed?.({ reason })
   }

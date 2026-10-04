@@ -6,7 +6,7 @@ import { PresenceLayer } from './PresenceLayer.tsx'
 import { CURSOR_INTERVAL_MS, usePresencePublisher, type Awareness } from './presence.ts'
 
 const asAwareness = (awareness: FakeAwareness) => awareness as unknown as Awareness
-const bob = { name: 'Гость 7', color: '#dc2626' }
+const bob = { name: 'Боб', color: '#dc2626', avatarUrl: 'https://avatars.example.com/bob.png' }
 
 describe('usePresencePublisher', () => {
   let editor: FakeEditor
@@ -85,12 +85,12 @@ describe('PresenceLayer', () => {
   beforeEach(() => {
     editor = createFakeEditor()
     awareness = new FakeAwareness(1)
-    awareness.setLocalStateField('user', { name: 'Гость 1', color: '#2563eb' })
+    awareness.setLocalStateField('user', { name: 'Алиса', color: '#2563eb', avatarUrl: null })
   })
 
   const renderLayer = () => render(<PresenceLayer editor={editor} awareness={asAwareness(awareness)} />)
 
-  it('shows the cursors of other participants with their names at their diagram position', () => {
+  it('shows the cursors of other participants with their names and avatars at their diagram position', () => {
     awareness.setLocalStateField('cursor', { x: 5, y: 5 })
     awareness.setState(7, { user: bob, cursor: { x: 200, y: 150 } })
 
@@ -98,7 +98,8 @@ describe('PresenceLayer', () => {
 
     const cursors = screen.getAllByTestId('remote-cursor')
     expect(cursors).toHaveLength(1)
-    expect(cursors[0]).toHaveTextContent('Гость 7')
+    expect(cursors[0]).toHaveTextContent('Боб')
+    expect(cursors[0]!.querySelector('img')).toHaveAttribute('src', bob.avatarUrl)
     expect(cursors[0]!.style.transform).toBe('translate(200px, 150px)')
   })
 
@@ -122,7 +123,7 @@ describe('PresenceLayer', () => {
 
     const outlines = screen.getAllByTestId('remote-selection')
     expect(outlines).toHaveLength(1)
-    expect(outlines[0]).toHaveAttribute('data-participant', 'Гость 7')
+    expect(outlines[0]).toHaveAttribute('data-participant', 'Боб')
     expect(outlines[0]).toHaveStyle({ left: '97px', top: '47px', width: '126px', height: '66px' })
     expect(outlines[0]!.style.borderColor).toBe('rgb(220, 38, 38)')
   })

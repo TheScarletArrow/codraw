@@ -16,7 +16,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080',
+      // Keep the Host header: the backend builds the OAuth callback URL from it, and it must point to this origin.
+      '/api': { target: 'http://localhost:8080' },
       '/collab': {
         target: 'ws://localhost:1234',
         ws: true,
