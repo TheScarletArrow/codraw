@@ -28,6 +28,7 @@ import { clipboard } from './clipboard.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { DEFAULT_PAGE_ID, getCells } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
+import { touchedByRegion } from './regionSelection.ts'
 import {
   findShape,
   groupShapes,
@@ -237,6 +238,7 @@ export function createDiagramEditor(
   configureStyles(graph)
   configureConnections(graph)
   configureSelection(graph)
+  configureRegionSelection(graph)
   const layoutManager = new LayoutManager(graph)
   const tableLayout = new TableLayout(graph)
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
@@ -800,6 +802,31 @@ function configureSelection(graph: Graph) {
   // A second click on a selected field would select its table, and Delete would then remove the whole table.
   // The table is selected by its header instead.
   handler.isPropagateSelectionCell = (cell, immediate, me) => !isTable(cell.getParent()) && propagate(cell, immediate, me)
+}
+
+/** The selection frame selects what it touches, as on the desktop of Windows; see {@link touchedByRegion}. */
+function configureRegionSelection(graph: Graph) {
+  const rubberBand = graph.getPlugin<RubberBandHandler>('RubberBandHandler')
+  // The frame is translucent through its stylesheet; the opacity of maxGraph would fade its border as well.
+  if (rubberBand) rubberBand.defaultOpacity = 100
+  graph.selectRegion = (region, event) => {
+    const view = graph.getView()
+    const cells = graph
+      .getDefaultParent()
+      .getChildren()
+      .filter((cell) => {
+        const state = view.getState(cell)
+        if (!state) return false
+        if (cell.isEdge()) {
+          const points = state.absolutePoints.filter((point) => point !== null)
+          return touchedByRegion(region, { kind: 'edge', box: state, points })
+        }
+        const frame = (cell.getStyle() as ShapeStyle).pointerEvents === false
+        return touchedByRegion(region, { kind: frame ? 'frame' : 'shape', box: state })
+      })
+    graph.selectCellsForEvent(cells, event)
+    return cells
+  }
 }
 
 function configureConnections(graph: Graph) {

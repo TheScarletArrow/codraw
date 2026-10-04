@@ -74,6 +74,14 @@
 }
 
 /* The diagram page stays white in both themes, like a sheet of paper. */
+/* The selection frame of maxGraph; the stylesheet of maxGraph is not used. */
+.diagram-canvas .mxRubberband {
+  position: absolute;
+  overflow: hidden;
+  border: 1px solid #2563eb;
+  background-color: rgb(37 99 235 / 0.12);
+}
+
 .diagram-canvas {
   position: absolute;
   inset: 0;
