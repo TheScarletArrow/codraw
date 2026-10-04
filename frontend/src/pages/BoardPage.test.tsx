@@ -428,7 +428,8 @@ describe('BoardPage', () => {
       await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Архитектура.drawio'))
 
       await waitFor(() => expect(tabNames()).toEqual(['Страница 1', 'Контекст', 'Слои']))
-      expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
+      // The tabs follow the document at once; the address, and with it the canvas, switch to the page a moment later.
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page'))
     })
 
     it('reports a file that is not a draw.io diagram and leaves the board as it is', async () => {
