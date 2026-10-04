@@ -1,6 +1,7 @@
 import {
   Cell,
   CellEditorHandler,
+  Client,
   ConnectionHandler,
   Geometry,
   Graph,
@@ -9,6 +10,7 @@ import {
   InternalEvent,
   KeyHandler,
   LayoutManager,
+  PopupMenuHandler,
   SelectionHandler,
   Point as GraphPoint,
   RubberBandHandler,
@@ -21,6 +23,8 @@ import {
 } from '@maxgraph/core'
 import * as Y from 'yjs'
 import { createUndoManager, DiagramBinding } from './binding.ts'
+import type { MenuTarget } from './canvasMenu.ts'
+import { clipboard } from './clipboard.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { DEFAULT_PAGE_ID, getCells } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
@@ -89,6 +93,18 @@ export interface EditorState {
   colors: SelectionColors | null
   /** The single selected shape with a group, or `null` when there is none. */
   quickConnect: QuickConnectSource | null
+  /** The clipboard of the browser tab holds something to paste. */
+  canPaste: boolean
+}
+
+/** A right click on the canvas, reported after maxGraph has updated the selection for it. */
+export interface ContextMenuRequest {
+  /** Point of the click relative to the visible top-left corner of the canvas. */
+  x: number
+  y: number
+  /** The same point in diagram coordinates. */
+  point: Point
+  target: MenuTarget
 }
 
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
@@ -105,6 +121,27 @@ export interface DiagramEditor {
    * step, and selects the new shape.
    */
   addConnectedShape(side: Side, shape: ShapeId): Cell | null
+  /** Puts the selected shapes, tables of selected fields and the edges between them into the clipboard. */
+  copy(): void
+  /** Copies like {@link copy} and removes what was copied, as one undo step. */
+  cut(): void
+  /** Adds the clipboard as one undo step: shifted further with every paste, or with its top-left corner at `at`. */
+  paste(at?: Point): void
+  /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
+  duplicate(): void
+  bringToFront(): void
+  sendToBack(): void
+  /** Selects all shapes and edges of the page. */
+  selectAll(): void
+  /** Swaps the ends of the selected edge with its bend points, as one undo step. */
+  reverseEdge(): void
+  /** Starts editing the label of the selected element. */
+  editLabel(): void
+  deleteSelection(): void
+  /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
+  focus(): void
+  /** Reports right clicks on the canvas; returns an unsubscribe function. */
+  onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
   setEdgeMarker(end: EdgeEnd, marker: string): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
@@ -153,8 +190,17 @@ export const EDITOR_PROPERTY = '__codrawEditor'
 
 const KEY_BACKSPACE = 8
 const KEY_DELETE = 46
+const KEY_A = 65
+const KEY_C = 67
+const KEY_D = 68
+const KEY_V = 86
+const KEY_X = 88
 const KEY_Y = 89
 const KEY_Z = 90
+const KEY_F2 = 113
+
+/** Shift of a duplicate, and of every next paste of the same clipboard with the keyboard. */
+const PASTE_OFFSET = 20
 
 export interface DiagramEditorOptions {
   /** The page to show; the default page of a new board by default. */
@@ -250,6 +296,7 @@ export function createDiagramEditor(
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
       quickConnect: quickConnect(),
+      canPaste: clipboard.read() !== null,
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -274,11 +321,19 @@ export function createDiagramEditor(
     }
   }
   const keyHandler = new KeyHandler(graph)
+  // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
+  keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
   keyHandler.bindKey(KEY_DELETE, removeSelection)
   keyHandler.bindKey(KEY_BACKSPACE, removeSelection)
   keyHandler.bindControlKey(KEY_Z, () => editor.undo())
   keyHandler.bindControlShiftKey(KEY_Z, () => editor.redo())
   keyHandler.bindControlKey(KEY_Y, () => editor.redo())
+  keyHandler.bindControlKey(KEY_C, () => editor.copy())
+  keyHandler.bindControlKey(KEY_X, () => editor.cut())
+  keyHandler.bindControlKey(KEY_V, () => editor.paste())
+  keyHandler.bindControlKey(KEY_D, () => editor.duplicate())
+  keyHandler.bindControlKey(KEY_A, () => editor.selectAll())
+  keyHandler.bindKey(KEY_F2, () => editor.editLabel())
 
   // maxGraph cancels pointerdown, so the canvas would not take focus and its keyboard shortcuts would
   // not work after clicking a palette button. The in-place label editor keeps its own focus.
@@ -321,6 +376,38 @@ export function createDiagramEditor(
   // Captured: maxGraph stops pointer events on connection points and selection handles from bubbling up.
   container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
+
+  const menuListeners = new Set<(request: ContextMenuRequest) => void>()
+  const menuTarget = (): MenuTarget => {
+    const cells = graph.getSelectionCells()
+    if (cells.length === 0) return 'canvas'
+    if (cells.length > 1) return 'selection'
+    const cell = cells[0]!
+    if (cell.isEdge()) return 'edge'
+    if (isTable(cell.getParent())) return 'field'
+    return isTable(cell) ? 'table' : 'shape'
+  }
+  // maxGraph decides when a right click is a menu click (not panning), and selects the cell under the pointer
+  // first. It shows no menu of its own: the factory adds no items to it.
+  const popupMenu = graph.getPlugin<PopupMenuHandler>('PopupMenuHandler')
+  if (popupMenu) {
+    popupMenu.factoryMethod = (_menu, _cell, event) => {
+      if (graph.isEditing()) return
+      const rect = container.getBoundingClientRect()
+      const request: ContextMenuRequest = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        point: toDiagramPoint(event.clientX, event.clientY),
+        target: menuTarget(),
+      }
+      menuListeners.forEach((listener) => listener(request))
+    }
+  }
+  // The label editor keeps the menu of the browser, with its text actions and spelling suggestions.
+  const preventBrowserMenu = (event: MouseEvent) => {
+    if (!(event.target instanceof HTMLElement && event.target.isContentEditable)) event.preventDefault()
+  }
+  container.addEventListener('contextmenu', preventBrowserMenu)
 
   const selectionListeners = new Set<(ids: string[]) => void>()
   const handleSelectionChange = () => {
@@ -370,6 +457,31 @@ export function createDiagramEditor(
     }
     return cell
   }
+
+  /** The selection with fields replaced by their tables, and the edges of the page between those shapes. */
+  const cellsToCopy = (): Cell[] => {
+    const owner = (cell: Cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)
+    const shapes = new Set(
+      graph
+        .getSelectionCells()
+        .filter((cell) => cell.isVertex())
+        .map(owner),
+    )
+    const copied = (terminal: Cell | null) => terminal !== null && shapes.has(owner(terminal))
+    const edges = graph
+      .getDefaultParent()
+      .getChildren()
+      .filter((cell) => cell.isEdge() && copied(cell.getTerminal(true)) && copied(cell.getTerminal(false)))
+    return [...shapes, ...edges]
+  }
+  /** Adds clones of `cells` moved by (dx, dy) as one undo step and selects them. */
+  const insertCopies = (cells: Cell[], dx: number, dy: number) => {
+    graph.stopEditing(false)
+    graph.setSelectionCells(graph.importCells(cells, dx, dy, graph.getDefaultParent()))
+    container.focus({ preventScroll: true })
+  }
+  /** Selected cells without table fields: the table layout, not the user, orders fields. */
+  const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()))
 
   const editor: DiagramEditor = {
     graph,
@@ -454,6 +566,90 @@ export function createDiagramEditor(
       container.focus({ preventScroll: true })
       return cell
     },
+    copy() {
+      const cells = cellsToCopy()
+      if (cells.length === 0) return
+      // Clones without a graph: the copied cells may change or be removed before they are pasted.
+      clipboard.put(graph.cloneCells(cells, false))
+      notify()
+    },
+    cut() {
+      const cells = cellsToCopy()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      clipboard.put(graph.cloneCells(cells, false))
+      graph.removeCells(cells, true)
+      notify()
+    },
+    paste(at) {
+      const cells = clipboard.read()
+      if (!cells) return
+      if (at) {
+        const bounds = graph.getBoundingBoxFromGeometry(cells, false)
+        insertCopies(cells, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0))
+      } else {
+        const shift = clipboard.nextPaste() * PASTE_OFFSET
+        insertCopies(cells, shift, shift)
+      }
+    },
+    duplicate() {
+      const cells = cellsToCopy()
+      if (cells.length > 0) insertCopies(cells, PASTE_OFFSET, PASTE_OFFSET)
+    },
+    bringToFront() {
+      const cells = selectedShapesAndEdges()
+      if (cells.length > 0) graph.orderCells(false, cells)
+    },
+    sendToBack() {
+      const cells = selectedShapesAndEdges()
+      if (cells.length > 0) graph.orderCells(true, cells)
+    },
+    selectAll() {
+      graph.stopEditing(false)
+      graph.selectAll()
+    },
+    reverseEdge() {
+      const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+      if (!edge?.isEdge()) return
+      graph.stopEditing(false)
+      const source = edge.getTerminal(true)
+      const target = edge.getTerminal(false)
+      model.beginUpdate()
+      try {
+        model.setTerminal(edge, target, true)
+        model.setTerminal(edge, source, false)
+        const geometry = edge.getGeometry()
+        if (geometry) {
+          const reversed = geometry.clone()
+          reversed.points = geometry.points ? [...geometry.points].reverse() : geometry.points
+          reversed.sourcePoint = geometry.targetPoint
+          reversed.targetPoint = geometry.sourcePoint
+          model.setGeometry(edge, reversed)
+        }
+        const style = edge.getStyle() as Record<string, unknown>
+        if (END_STYLE_KEYS.some(([exit, entry]) => exit in style || entry in style)) {
+          const swapped = { ...style }
+          for (const [exit, entry] of END_STYLE_KEYS) {
+            delete swapped[exit]
+            delete swapped[entry]
+            if (style[entry] !== undefined) swapped[exit] = style[entry]
+            if (style[exit] !== undefined) swapped[entry] = style[exit]
+          }
+          model.setStyle(edge, swapped as CellStyle)
+        }
+      } finally {
+        model.endUpdate()
+      }
+    },
+    editLabel() {
+      const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+      if (cell) graph.startEditingAtCell(cell)
+    },
+    deleteSelection: removeSelection,
+    focus() {
+      if (!graph.isEditing()) container.focus({ preventScroll: true })
+    },
+    onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker(end, marker) {
       const edges = selectedEdges()
       if (edges.length === 0) return
@@ -517,6 +713,7 @@ export function createDiagramEditor(
     destroy() {
       Reflect.deleteProperty(container, EDITOR_PROPERTY)
       container.removeEventListener('pointerdown', focusCanvas, true)
+      container.removeEventListener('contextmenu', preventBrowserMenu)
       container.removeEventListener('pointermove', handlePointerMove, true)
       container.removeEventListener('pointerleave', handlePointerLeave)
       container.removeEventListener('scroll', notifyView)
@@ -528,6 +725,7 @@ export function createDiagramEditor(
       listeners.clear()
       pointerListeners.clear()
       selectionListeners.clear()
+      menuListeners.clear()
       viewListeners.clear()
       InternalEvent.removeAllListeners(container)
       keyHandler.onDestroy()
@@ -544,6 +742,15 @@ export function createDiagramEditor(
 }
 
 const COLOR_KEYS = { fill: 'fillColor', stroke: 'strokeColor', font: 'fontColor' } as const
+
+/** Style keys of where an edge leaves its source and enters its target; reversing the edge swaps them. */
+const END_STYLE_KEYS = [
+  ['exitX', 'entryX'],
+  ['exitY', 'entryY'],
+  ['exitDx', 'entryDx'],
+  ['exitDy', 'entryDy'],
+  ['exitPerimeter', 'entryPerimeter'],
+] as const
 
 /** The value shared by all items, or `null` when they differ. */
 function same(values: string[]): string | null {

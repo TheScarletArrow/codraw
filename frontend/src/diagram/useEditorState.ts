@@ -9,6 +9,7 @@ const NO_EDITOR: EditorState = {
   edgeMarkers: null,
   colors: null,
   quickConnect: null,
+  canPaste: false,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

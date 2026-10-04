@@ -14,6 +14,7 @@ import { readRemotePresence, usePresencePublisher } from '../board/presence.ts'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import { PageHistories } from '../diagram/binding.ts'
+import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
@@ -145,6 +146,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                 <DiagramCanvas document={document} pageId={currentPage.id} histories={histories} onEditor={setEditor} />
                 <PresenceLayer editor={editor} awareness={awareness} />
                 <QuickConnect editor={editor} />
+                <CanvasMenu editor={editor} />
               </>
             ) : (
               <Message>Загрузка доски…</Message>

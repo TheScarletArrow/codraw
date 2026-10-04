@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { Box, DiagramEditor, EditorState, Point } from '../diagram/editor.ts'
+import type { Box, ContextMenuRequest, DiagramEditor, EditorState, Point } from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -7,6 +7,8 @@ export type FakeEditor = DiagramEditor & {
   /** Simulates the local pointer over the canvas (diagram coordinates) or leaving it (`null`). */
   movePointer(point: Point | null): void
   select(ids: string[]): void
+  /** Simulates a right click on the canvas. */
+  rightClick(request: ContextMenuRequest): void
   /** Sets where a cell is shown; `cellBounds` returns it. */
   placeCell(id: string, bounds: Box | null): void
   /** Simulates scrolling: canvas points are diagram points shifted by this offset. */
@@ -28,6 +30,7 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     edgeMarkers: null,
     colors: null,
     quickConnect: null,
+    canPaste: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -35,6 +38,7 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
   const listeners = new Set<() => void>()
   const pointerListeners = new Set<(point: Point | null) => void>()
   const selectionListeners = new Set<(ids: string[]) => void>()
+  const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const viewListeners = new Set<() => void>()
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
@@ -53,6 +57,18 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     addShape: vi.fn(() => null),
     addTableField: vi.fn(() => null),
     addConnectedShape: vi.fn(() => null),
+    copy: vi.fn(),
+    cut: vi.fn(),
+    paste: vi.fn(),
+    duplicate: vi.fn(),
+    bringToFront: vi.fn(),
+    sendToBack: vi.fn(),
+    selectAll: vi.fn(),
+    reverseEdge: vi.fn(),
+    editLabel: vi.fn(),
+    deleteSelection: vi.fn(),
+    focus: vi.fn(),
+    onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
     setColor: vi.fn(),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
@@ -88,6 +104,9 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
     },
     select(ids) {
       selectionListeners.forEach((listener) => listener(ids))
+    },
+    rightClick(request) {
+      menuListeners.forEach((listener) => listener(request))
     },
     placeCell(id, bounds) {
       cells.set(id, bounds)
