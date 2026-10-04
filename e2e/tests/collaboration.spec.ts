@@ -1,5 +1,17 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, cellBox, cells, center, connect, createBoard, drag, edges, openBoard, vertices } from './helpers.ts'
+import {
+  addShape,
+  cellBox,
+  cells,
+  center,
+  connect,
+  createBoard,
+  drag,
+  edges,
+  openBoard,
+  userPage,
+  vertices,
+} from './helpers.ts'
 
 /**
  * Routes the page's sync connection through the test so that it can be held: while paused, messages
@@ -42,8 +54,8 @@ function setFillColor(page: Page, id: string, color: string) {
 }
 
 test('a shape, an edge and a label made by one participant appear for the other', async ({ browser }) => {
-  const alice = await (await browser.newContext()).newPage()
-  const bob = await (await browser.newContext()).newPage()
+  const alice = await userPage(browser, 'Алиса')
+  const bob = await userPage(browser, 'Алиса')
   const url = await createBoard(alice)
   await openBoard(bob, url)
 
@@ -66,8 +78,8 @@ test('a shape, an edge and a label made by one participant appear for the other'
 })
 
 test('concurrent changes of the colour and the position of one shape are merged', async ({ browser }) => {
-  const alice = await (await browser.newContext()).newPage()
-  const bob = await (await browser.newContext()).newPage()
+  const alice = await userPage(browser, 'Алиса')
+  const bob = await userPage(browser, 'Алиса')
   const bobSync = await controllableSync(bob)
   const url = await createBoard(alice)
   await openBoard(bob, url)

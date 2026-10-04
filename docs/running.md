@@ -12,12 +12,13 @@ corepack enable && pnpm install
 docker compose up -d postgres
 
 # каждый сервис — в отдельном терминале, в таком порядке
-cd backend && ./gradlew bootRun    # API:            http://localhost:8080
+cd backend && GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… ./gradlew bootRun   # API: http://localhost:8080
 pnpm dev:collab                    # синхронизация:  ws://localhost:1234
 pnpm dev:frontend                  # приложение:     http://localhost:5173
 ```
 
-Откройте http://localhost:5173.
+Откройте http://localhost:5173 и войдите. Client id и secret выдаёт OAuth-приложение GitHub или Google — как его
+создать, описано в [README](../README.md#вход-через-github-и-google).
 
 ## 1. Что установить
 
@@ -65,11 +66,16 @@ docker compose ps
 
 ```bash
 cd backend
-./gradlew bootRun          # Windows: gradlew.bat bootRun
+GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… ./gradlew bootRun          # Windows: gradlew.bat bootRun
 ```
+
+Переменные `GITHUB_*` и `GOOGLE_*` — client id и secret OAuth-приложений, через которые входят в CoDraw
+(см. [README](../README.md#вход-через-github-и-google)). Достаточно одного провайдера. Без них backend
+запускается, но работает только режим гостя.
 
 Первый запуск дольше: Gradle скачивает себя и зависимости. Backend готов, когда в логе появится
 `Started CodrawApplicationKt`. Таблицы в базе создаются при старте автоматически (миграции Flyway).
+Доски, созданные до появления входа в систему, при этом удаляются: у них нет владельца.
 
 Проверка:
 
@@ -102,9 +108,13 @@ pnpm dev:frontend
 
 ## 5. Проверка
 
-1. Откройте http://localhost:5173 и нажмите «Создать доску».
-2. Статус рядом с названием доски должен смениться на «Синхронизировано».
-3. Откройте тот же адрес в другом браузере или в окне инкогнито: в списке участников появится второй гость.
+1. Откройте http://localhost:5173: откроется страница входа. Войдите через GitHub или Google — откроется
+   список досок, а в шапке появятся ваши имя и аватар. Без OAuth-приложений нажмите «Продолжить без входа»:
+   вы войдёте гостем «Гость N».
+2. Нажмите «Создать доску». Статус рядом с названием доски должен смениться на «Синхронизировано».
+3. Откройте тот же адрес в другом браузере или в окне инкогнито и войдите под тем же аккаунтом: в списке
+   участников появится второй участник. Под другим аккаунтом доска откроется как «Доска не найдена»:
+   доступ к доске есть только у её владельца.
 4. Добавьте фигуру в одном окне — она сразу появится во втором.
 
 Как работать в редакторе:
@@ -129,7 +139,8 @@ pnpm dev:frontend
 | 4173 | frontend в режиме `vite preview` (сборка и e2e) |
 | 1235 | второй collab в e2e-тесте перезапуска |
 
-Для локальной разработки переменные окружения не нужны, значения по умолчанию согласованы между собой:
+Для локальной разработки нужны только переменные OAuth-приложений, остальные значения по умолчанию
+согласованы между собой:
 
 - `./gradlew bootRun` включает профиль `dev` — `backend/src/main/resources/application-dev.yaml`;
 - `pnpm dev:collab` читает `collab/.env.development`;
@@ -146,7 +157,9 @@ pnpm dev:frontend
 ## Запуск собранной версии
 
 Так можно проверить production-сборку локально. Каждая команда — в отдельном терминале, токен
-`CODRAW_INTERNAL_TOKEN` должен совпадать у backend и collab.
+`CODRAW_INTERNAL_TOKEN` должен совпадать у backend и collab. Вход работает, если в OAuth-приложении указан
+callback URL с портом 4173, например `http://localhost:4173/api/login/oauth2/code/github`; переменные
+провайдера, которым не пользуетесь, можно задать любыми непустыми значениями.
 
 ```bash
 # сборка
@@ -157,10 +170,12 @@ pnpm --filter @codraw/collab --filter @codraw/frontend build
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/codraw \
 SPRING_DATASOURCE_USERNAME=codraw SPRING_DATASOURCE_PASSWORD=codraw \
 CODRAW_INTERNAL_TOKEN=local-secret \
+GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… \
 java -jar backend/build/libs/codraw-backend.jar
 
 # collab
-BACKEND_URL=http://localhost:8080 CODRAW_INTERNAL_TOKEN=local-secret node collab/dist/index.js
+BACKEND_URL=http://localhost:8080 BACKEND_JWKS_URL=http://localhost:8080/.well-known/jwks.json \
+CODRAW_INTERNAL_TOKEN=local-secret node collab/dist/index.js
 
 # frontend: http://localhost:4173, проксирует /api и /collab так же, как dev-сервер
 pnpm --filter @codraw/frontend exec vite preview --port 4173
@@ -182,7 +197,9 @@ cd backend && ./gradlew test               # backend
 `docker compose` для них не нужен.
 
 Сквозные тесты (Playwright) запускают собранные сервисы и ходят в PostgreSQL из docker compose. Dev-серверы
-перед этим нужно остановить: порты 8080, 1234, 1235 и 4173 должны быть свободны.
+перед этим нужно остановить: порты 8080, 1234, 1235 и 4173 должны быть свободны. Backend в них работает
+в профиле `e2e`: тесты входят через тестовый эндпоинт, а не через GitHub или Google. В остальных профилях
+этого эндпоинта нет.
 
 ```bash
 docker compose up -d postgres
@@ -212,8 +229,20 @@ cd backend && SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/codraw ./gr
 **`pnpm: command not found`.**
 Выполните `corepack enable` (возможно, с `sudo`). Если Corepack недоступен — `npm install -g pnpm@10`.
 
-**Главная страница показывает «Не удалось загрузить доски».**
+**Главная страница показывает «Не удалось загрузить профиль» или «Не удалось загрузить доски».**
 Не запущен backend или frontend открыт не на порту 5173.
+
+**GitHub или Google пишут, что адрес возврата (redirect_uri) не совпадает.**
+В OAuth-приложении указан другой callback URL. Для dev-сервера он должен быть
+`http://localhost:5173/api/login/oauth2/code/github` (или `…/google`): именно порт фронтенда, а не 8080.
+
+**После входа снова открывается страница входа с сообщением «Вход не выполнен».**
+Провайдер не подтвердил вход: доступ отменён, неверный client secret или, для Google, аккаунт не добавлен
+в Test users. Подробности — в логе backend.
+
+**Backend не стартует: `Client id of registration 'github' must not be empty`.**
+Backend запущен не в профиле `dev`, а там переменные OAuth-приложений обязательны. Задайте `GITHUB_*`
+и `GOOGLE_*` или запускайте через `./gradlew bootRun`.
 
 **На доске «Нет связи», а вместо холста «Загрузка доски…».**
 Не запущен collab: `pnpm dev:collab`.
@@ -221,7 +250,9 @@ cd backend && SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/codraw ./gr
 **Доска висит в статусе «Подключение».**
 Collab не может получить документ у backend. Если в логе collab есть `backend responded with 401`,
 у backend и collab разные `CODRAW_INTERNAL_TOKEN`. По умолчанию в dev-режиме они совпадают, так что это
-бывает, только если токен задавали вручную.
+бывает, только если токен задавали вручную. Если в логе `[onAuthenticate] Access to board … denied`,
+collab не принял токен доступа: проверьте `BACKEND_JWKS_URL` и что collab видит тот же backend, что
+и фронтенд.
 
 **Ошибка «порт уже занят» при запуске сервиса.**
 Порт занят другим процессом, часто — ранее запущенной копией того же сервиса. Остановите её: dev-сервер

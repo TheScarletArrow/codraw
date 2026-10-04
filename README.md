@@ -65,6 +65,80 @@ pnpm dev:frontend                  # приложение: http://localhost:5173
 Подробная инструкция — проверки на каждом шаге, порты, запуск собранной версии, тесты и частые
 проблемы — в [docs/running.md](docs/running.md).
 
+## Вход через GitHub и Google
+
+В CoDraw входят через GitHub или Google, а каждый видит только свои доски. Для входа нужны
+OAuth-приложения у провайдеров: создайте их один раз и передайте backend их client id и secret.
+Без них backend запускается, но работает только режим гостя.
+
+**Без входа.** На странице входа можно нажать «Продолжить без входа»: CoDraw создаст гостя «Гость N»,
+который так же работает только со своими досками. Гостевой сеанс хранится в cookie браузера 30 дней
+с последнего обращения. Если гость затем войдёт через GitHub или Google, его доски перейдут к аккаунту;
+если очистит cookie, не войдя, доски станут ему недоступны.
+
+Адрес возврата (callback URL) — адрес приложения, к которому добавлен путь
+`/api/login/oauth2/code/<провайдер>`. Для локальной разработки это
+`http://localhost:5173/api/login/oauth2/code/github` и `http://localhost:5173/api/login/oauth2/code/google`,
+в продакшене — `https://<домен>/api/login/oauth2/code/github` и `…/google`. Порт 5173 — порт фронтенда:
+вход идёт через него, как и остальные запросы к API.
+
+### GitHub
+
+1. Откройте [Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)
+   и нажмите **New OAuth App**.
+2. **Application name** — любое, например `CoDraw local`; **Homepage URL** — `http://localhost:5173`;
+   **Authorization callback URL** — `http://localhost:5173/api/login/oauth2/code/github`.
+3. Нажмите **Register application**, скопируйте **Client ID**, затем нажмите **Generate a new client secret**
+   и скопируйте секрет: GitHub показывает его один раз.
+
+Для каждого адреса приложения (локально, продакшен) нужно отдельное OAuth-приложение: у приложения GitHub
+один callback URL.
+
+### Google
+
+1. В [Google Cloud Console](https://console.cloud.google.com/) создайте проект или выберите существующий.
+2. **APIs & Services → OAuth consent screen**: тип пользователей **External**, заполните название
+   и контактный email. Дополнительные scopes не нужны: CoDraw запрашивает только `profile`. Пока приложение
+   в статусе **Testing**, добавьте в **Test users** аккаунты, которыми будете входить.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**: тип **Web application**,
+   в **Authorized redirect URIs** добавьте `http://localhost:5173/api/login/oauth2/code/google`
+   (и адрес продакшена, если нужен).
+4. Скопируйте **Client ID** и **Client secret**.
+
+### Переменные окружения
+
+| Переменная | Сервис | Что |
+|---|---|---|
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | backend | OAuth-приложение GitHub |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | backend | OAuth-приложение Google |
+| `CODRAW_COLLAB_TOKEN_SIGNING_KEY` | backend | RSA-ключ подписи токенов синхронизации (PEM, PKCS#8) |
+| `CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY` | backend | предыдущий ключ подписи на время смены ключа |
+| `BACKEND_JWKS_URL` | collab | открытые ключи backend: `<адрес backend>/.well-known/jwks.json` |
+
+Локально достаточно задать переменные провайдеров при запуске backend; если нужен только один провайдер,
+переменные другого можно не задавать. Вместо переменных можно положить значения в
+`backend/config/application-dev.yaml` — backend читает его в профиле `dev`, а файл в `.gitignore`:
+
+```bash
+cd backend
+GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… ./gradlew bootRun
+```
+
+Затем откройте http://localhost:5173 и нажмите «Войти через GitHub» — после подтверждения доступа
+у провайдера откроется список ваших досок, а в шапке появятся ваши имя и аватар.
+
+В продакшене обязательны все переменные backend, кроме предыдущего ключа подписи. Ключ подписи — один
+и тот же у всех экземпляров backend; без него backend генерирует ключ при каждом старте, и выданные токены
+перестают действовать после перезапуска. Создать ключ:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out collab-signing-key.pem
+```
+
+и передать его содержимое: `CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat collab-signing-key.pem)"`. При смене
+ключа прежний перенесите в `CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY` хотя бы на 5 минут — срок жизни
+токена.
+
 ## Спецификации
 
 Работа ведётся по [OpenSpec](https://github.com/Fission-AI/OpenSpec):

@@ -1,16 +1,21 @@
-import { HocuspocusProvider } from '@hocuspocus/provider'
 import { expect, test } from '@playwright/test'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import * as Y from 'yjs'
 import { env } from './env.ts'
+import { collabToken, connectToCollab, createBoardViaApi, signIn } from './helpers.ts'
 
 // A separate collab instance that the test can kill and start again.
 const port = 1235
 
 async function startCollab(): Promise<ChildProcess> {
   const collab = spawn('node', ['../collab/dist/index.js'], {
-    env: { ...process.env, PORT: String(port), BACKEND_URL: env.backendUrl, CODRAW_INTERNAL_TOKEN: env.internalToken },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      BACKEND_URL: env.backendUrl,
+      BACKEND_JWKS_URL: env.jwksUrl,
+      CODRAW_INTERNAL_TOKEN: env.internalToken,
+    },
     stdio: 'inherit',
   })
   await expect
@@ -19,24 +24,10 @@ async function startCollab(): Promise<ChildProcess> {
   return collab
 }
 
-async function connect(boardId: string) {
-  const document = new Y.Doc()
-  const provider = await new Promise<HocuspocusProvider>((resolve, reject) => {
-    const created: HocuspocusProvider = new HocuspocusProvider({
-      url: `ws://localhost:${port}`,
-      name: boardId,
-      document,
-      onSynced: () => resolve(created),
-      onAuthenticationFailed: ({ reason }) => reject(new Error(reason)),
-    })
-  })
-  return { document, provider }
-}
-
 test('the document survives a crash and restart of collab', async ({ request }) => {
-  const response = await request.post('/api/boards', { data: { title: 'Переживёт перезапуск' } })
-  expect(response.status()).toBe(201)
-  const { id: boardId } = (await response.json()) as { id: string }
+  await signIn(request, 'Алиса')
+  const boardId = await createBoardViaApi(request, 'Переживёт перезапуск')
+  const connect = (boardId: string) => connectToCollab(`ws://localhost:${port}`, boardId, () => collabToken(request, boardId))
 
   let collab = await startCollab()
   try {

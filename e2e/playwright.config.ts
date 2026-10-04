@@ -29,6 +29,8 @@ export default defineConfig({
       command: 'java -jar ../backend/build/libs/codraw-backend.jar',
       url: `${env.backendUrl}/actuator/health/readiness`,
       env: {
+        // The e2e profile adds a test login: the tests cannot sign in through GitHub or Google.
+        SPRING_PROFILES_ACTIVE: 'e2e',
         SPRING_DATASOURCE_URL: env.databaseUrl,
         SPRING_DATASOURCE_USERNAME: env.databaseUser,
         SPRING_DATASOURCE_PASSWORD: env.databasePassword,
@@ -40,7 +42,12 @@ export default defineConfig({
       name: 'collab',
       command: 'node ../collab/dist/index.js',
       url: `http://localhost:${env.collabPort}/health`,
-      env: { BACKEND_URL: env.backendUrl, CODRAW_INTERNAL_TOKEN: env.internalToken, PORT: String(env.collabPort) },
+      env: {
+        BACKEND_URL: env.backendUrl,
+        BACKEND_JWKS_URL: env.jwksUrl,
+        CODRAW_INTERNAL_TOKEN: env.internalToken,
+        PORT: String(env.collabPort),
+      },
     },
     {
       name: 'frontend',

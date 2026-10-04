@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
+import { signIn, userPage } from './helpers.ts'
 
 test('participants of a board see each other and the list updates when one leaves', async ({ browser }) => {
-  const alice = await browser.newContext()
-  const bob = await browser.newContext()
-  const alicePage = await alice.newPage()
+  // The same user on two devices: boards are not shared between users yet.
+  const alicePage = await userPage(browser, 'Алиса')
 
   await alicePage.goto('/')
   await alicePage.getByRole('button', { name: 'Создать доску' }).click()
@@ -11,7 +11,7 @@ test('participants of a board see each other and the list updates when one leave
   await expect(alicePage.getByRole('heading', { name: 'Новая доска' })).toBeVisible()
   await expect(alicePage.getByRole('status')).toHaveText('Синхронизировано')
 
-  const bobPage = await bob.newPage()
+  const bobPage = await userPage(browser, 'Алиса')
   await bobPage.goto(alicePage.url())
   await expect(bobPage.getByRole('status')).toHaveText('Синхронизировано')
 
@@ -19,28 +19,34 @@ test('participants of a board see each other and the list updates when one leave
   const bobParticipants = bobPage.getByRole('list', { name: 'Участники' }).getByRole('listitem')
   await expect(aliceParticipants).toHaveCount(2)
   await expect(bobParticipants).toHaveCount(2)
-  await expect(aliceParticipants.first()).toHaveText(/^Гость \d+ \(вы\)$/)
-  await expect(aliceParticipants.nth(1)).toHaveText(/^Гость \d+$/)
+  await expect(aliceParticipants.first()).toHaveText('Алиса (вы)')
+  await expect(aliceParticipants.nth(1)).toHaveText('Алиса')
 
-  await bob.close()
+  await bobPage.context().close()
   await expect(aliceParticipants).toHaveCount(1, { timeout: 30_000 })
 
-  await alice.close()
+  await alicePage.context().close()
 })
 
-test('the created board appears in the list on the home page', async ({ page }) => {
-  await page.goto('/')
-  await page.getByRole('button', { name: 'Создать доску' }).click()
-  await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}$/)
-  const boardUrl = new URL(page.url()).pathname
+test.describe('signed in', () => {
+  test.beforeEach(async ({ context }) => {
+    await signIn(context.request, 'Алиса')
+  })
 
-  await page.getByRole('link', { name: 'CoDraw' }).click()
+  test('the created board appears in the list on the home page', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Создать доску' }).click()
+    await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}$/)
+    const boardUrl = new URL(page.url()).pathname
 
-  await expect(page.locator(`a[href="${boardUrl}"]`)).toHaveText('Новая доска')
-})
+    await page.getByRole('link', { name: 'CoDraw' }).click()
 
-test('shows "Доска не найдена" for an unknown board', async ({ page }) => {
-  await page.goto('/boards/0199a000-0000-7000-8000-000000000099')
+    await expect(page.locator(`a[href="${boardUrl}"]`)).toHaveText('Новая доска')
+  })
 
-  await expect(page.getByRole('alert')).toHaveText('Доска не найдена')
+  test('shows "Доска не найдена" for an unknown board', async ({ page }) => {
+    await page.goto('/boards/0199a000-0000-7000-8000-000000000099')
+
+    await expect(page.getByRole('alert')).toHaveText('Доска не найдена')
+  })
 })

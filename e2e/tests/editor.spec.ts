@@ -9,11 +9,13 @@ import {
   drag,
   edgePoints,
   edges,
+  signIn,
   twoParticipants,
   vertices,
 } from './helpers.ts'
 
-test('a board shows the diagram canvas', async ({ page }) => {
+test('a board shows the diagram canvas', async ({ context, page }) => {
+  await signIn(context.request, 'Алиса')
   await createBoard(page)
 
   const canvas = page.getByTestId('diagram-canvas')

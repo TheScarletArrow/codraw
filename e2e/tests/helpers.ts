@@ -1,4 +1,58 @@
-import { expect, type Browser, type Page } from '@playwright/test'
+import { HocuspocusProvider } from '@hocuspocus/provider'
+import { expect, type APIRequestContext, type Browser, type Page } from '@playwright/test'
+import * as Y from 'yjs'
+
+/** Signs in as the test user with this name through the test login of the backend `e2e` profile. */
+export async function signIn(request: APIRequestContext, name: string) {
+  const response = await request.post('/api/e2e/login', { data: { name } })
+  expect(response.status()).toBe(204)
+}
+
+/** A page in a fresh browser context signed in as the test user with this name. */
+export async function userPage(browser: Browser, name: string): Promise<Page> {
+  const context = await browser.newContext()
+  await signIn(context.request, name)
+  return context.newPage()
+}
+
+/** Headers that let a signed-in API client change data: the CSRF token from the XSRF-TOKEN cookie. */
+export async function csrfHeaders(request: APIRequestContext): Promise<Record<string, string>> {
+  await request.get('/api/me')
+  const { cookies } = await request.storageState()
+  return { 'X-XSRF-TOKEN': cookies.find((cookie) => cookie.name === 'XSRF-TOKEN')!.value }
+}
+
+/** Creates a board through the API as the signed-in user and returns its id. */
+export async function createBoardViaApi(request: APIRequestContext, title: string): Promise<string> {
+  const response = await request.post('/api/boards', { data: { title }, headers: await csrfHeaders(request) })
+  expect(response.status()).toBe(201)
+  return ((await response.json()) as { id: string }).id
+}
+
+/** Requests a collab token for the board as the signed-in user. */
+export async function collabToken(request: APIRequestContext, boardId: string): Promise<string> {
+  const response = await request.post(`/api/boards/${boardId}/collab-token`, { headers: await csrfHeaders(request) })
+  expect(response.status()).toBe(200)
+  return ((await response.json()) as { token: string }).token
+}
+
+/** Connects to the document of a board in collab directly, as the app does; rejects with the reason of a refusal. */
+export function connectToCollab(url: string, boardId: string, token: string | (() => Promise<string>)) {
+  const document = new Y.Doc()
+  return new Promise<{ document: Y.Doc; provider: HocuspocusProvider }>((resolve, reject) => {
+    const provider: HocuspocusProvider = new HocuspocusProvider({
+      url,
+      name: boardId,
+      document,
+      token,
+      onSynced: () => resolve({ document, provider }),
+      onAuthenticationFailed: ({ reason }) => {
+        provider.destroy()
+        reject(new Error(reason))
+      },
+    })
+  })
+}
 
 /** Creates a board from the home page and waits until its document is synced. */
 export async function createBoard(page: Page): Promise<string> {
@@ -15,10 +69,13 @@ export async function openBoard(page: Page, url: string) {
   await expect(page.getByRole('status')).toHaveText('Синхронизировано')
 }
 
-/** Two participants on one fresh board, each in an own browser context. */
+/**
+ * Two participants on one fresh board, each in an own browser context. Boards are not shared between users yet,
+ * so both are the same user signed in twice.
+ */
 export async function twoParticipants(browser: Browser) {
-  const alice = await (await browser.newContext()).newPage()
-  const bob = await (await browser.newContext()).newPage()
+  const alice = await userPage(browser, 'Алиса')
+  const bob = await userPage(browser, 'Алиса')
   const url = await createBoard(alice)
   await openBoard(bob, url)
   return { alice, bob, close: () => Promise.all([alice.context().close(), bob.context().close()]) }
