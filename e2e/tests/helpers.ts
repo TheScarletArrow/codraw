@@ -54,13 +54,15 @@ export function connectToCollab(url: string, boardId: string, token: string | ((
   })
 }
 
-/** Creates a board from the home page and waits until its document is synced. */
+/** Creates a board from the home page, waits until its document is synced and returns its address without the page. */
 export async function createBoard(page: Page): Promise<string> {
   await page.goto('/')
   await page.getByRole('button', { name: 'Создать доску' }).click()
-  await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}$/)
+  await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}(\?page=[^&]+)?$/)
   await expect(page.getByRole('status')).toHaveText('Синхронизировано')
-  return page.url()
+  const url = new URL(page.url())
+  url.search = ''
+  return url.toString()
 }
 
 /** Opens a board and waits until it is synced. */

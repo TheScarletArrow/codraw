@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import type { Box, DiagramEditor, EditorState, Point } from '../diagram/editor.ts'
+import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
   setState(state: Partial<EditorState>): void
@@ -12,8 +13,13 @@ export type FakeEditor = DiagramEditor & {
   scrollTo(offset: Point): void
 }
 
+export interface FakeEditorOptions {
+  pageId?: string
+  viewport?: { width: number; height: number }
+}
+
 /** Editor stand-in for page tests: records calls and lets tests drive its events. */
-export function createFakeEditor(): FakeEditor {
+export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width: 800, height: 600 } }: FakeEditorOptions = {}): FakeEditor {
   let state: EditorState = {
     canUndo: false,
     canRedo: false,
@@ -42,6 +48,7 @@ export function createFakeEditor(): FakeEditor {
 
   return {
     graph: undefined as never,
+    pageId,
     addShape: vi.fn(() => null),
     addTableField: vi.fn(() => null),
     setEdgeMarker: vi.fn(),
@@ -52,6 +59,12 @@ export function createFakeEditor(): FakeEditor {
       const box = cells.get(id)
       return box ? { ...box, x: box.x - offset.x, y: box.y - offset.y } : null
     },
+    viewportSize: () => viewport,
+    // Scrolls so that the point is in the middle of the viewport.
+    centerOn: vi.fn(({ x, y }: Point) => {
+      offset = { x: x - viewport.width / 2, y: y - viewport.height / 2 }
+      changeView()
+    }),
     onPointerMove: (listener) => listen(pointerListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),

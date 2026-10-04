@@ -76,6 +76,20 @@ describe('Yjs → maxGraph (remote changes)', () => {
     expect(edge.getTerminal(false)?.getId()).toBe('b')
   })
 
+  it('keeps edges off cells with connectable=0 in the style, as draw.io does', () => {
+    const { doc, model } = createClient()
+
+    remote(doc, (cells) => {
+      writeCell(cells, vertexData('label', { style: { connectable: false } }))
+      writeCell(cells, vertexData('box'))
+    })
+    expect(model.getCell('label')!.isConnectable()).toBe(false)
+    expect(model.getCell('box')!.isConnectable()).toBe(true)
+
+    remote(doc, (cells) => writeCell(cells, vertexData('label', { style: {} })))
+    expect(model.getCell('label')!.isConnectable()).toBe(true)
+  })
+
   it('removes deleted cells', () => {
     const { doc, model } = createClient()
     remote(doc, (cells) => writeCell(cells, vertexData('box')))

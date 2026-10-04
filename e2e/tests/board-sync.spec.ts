@@ -6,7 +6,7 @@ test('participants of a board see each other and the list updates when one leave
 
   await alicePage.goto('/')
   await alicePage.getByRole('button', { name: 'Создать доску' }).click()
-  await expect(alicePage).toHaveURL(/\/boards\/[0-9a-f-]{36}$/)
+  await expect(alicePage).toHaveURL(/\/boards\/[0-9a-f-]{36}(\?page=[^&]+)?$/)
   await expect(alicePage.getByRole('heading', { name: 'Новая доска' })).toBeVisible()
   await expect(alicePage.getByRole('status')).toHaveText('Синхронизировано')
 
@@ -37,7 +37,7 @@ test.describe('signed in', () => {
   test('the created board appears in the list on the home page', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Создать доску' }).click()
-    await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}$/)
+    await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}(\?page=[^&]+)?$/)
     const boardUrl = new URL(page.url()).pathname
 
     await page.getByRole('link', { name: 'CoDraw' }).click()

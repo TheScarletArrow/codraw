@@ -10,6 +10,7 @@ import {
   LAYER_CELL_ID,
   orderBetween,
   readCell,
+  readPage,
   ROOT_CELL_ID,
   SCHEMA_VERSION,
   writeCell,
@@ -42,7 +43,8 @@ describe('initializeDocument', () => {
     initializeDocument(doc)
 
     expect(getMeta(doc).get('schemaVersion')).toBe(SCHEMA_VERSION)
-    expect(getPages(doc).get(DEFAULT_PAGE_ID)?.name).toBe('Страница 1')
+    expect(readPage(getPages(doc).get(DEFAULT_PAGE_ID)!).name).toBe('Страница 1')
+    expect(getPages(doc).get(DEFAULT_PAGE_ID)).toBeInstanceOf(Y.Map)
     const cells = getCells(doc)
     expect(readCell(ROOT_CELL_ID, cells.get(ROOT_CELL_ID)!)).toMatchObject({ kind: 'root', parent: null })
     expect(readCell(LAYER_CELL_ID, cells.get(LAYER_CELL_ID)!)).toMatchObject({ kind: 'layer', parent: ROOT_CELL_ID })
@@ -74,6 +76,68 @@ describe('initializeDocument', () => {
       expect(Array.from(getCells(doc).keys()).sort()).toEqual([ROOT_CELL_ID, LAYER_CELL_ID, 'alice-box', 'bob-box'].sort())
     }
     expect(alice.getMap('cells:page-1').toJSON()).toEqual(bob.getMap('cells:page-1').toJSON())
+  })
+
+  it('migrates version 1 page entries to maps with the same fields', () => {
+    const doc = new Y.Doc()
+    doc.transact(() => {
+      getMeta(doc).set('schemaVersion', 1)
+      getPages(doc).set(DEFAULT_PAGE_ID, { name: 'Контекст', order: 'a0' })
+      writeCell(getCells(doc), vertex('box'))
+    })
+
+    initializeDocument(doc)
+
+    expect(getMeta(doc).get('schemaVersion')).toBe(SCHEMA_VERSION)
+    const entry = getPages(doc).get(DEFAULT_PAGE_ID)
+    expect(entry).toBeInstanceOf(Y.Map)
+    expect(readPage(entry!)).toEqual({ name: 'Контекст', order: 'a0' })
+    expect(Array.from(getCells(doc).keys()).sort()).toEqual([ROOT_CELL_ID, LAYER_CELL_ID, 'box'].sort())
+  })
+
+  it('converges when two clients migrate the same version 1 document', () => {
+    const original = new Y.Doc()
+    original.transact(() => {
+      getMeta(original).set('schemaVersion', 1)
+      getPages(original).set(DEFAULT_PAGE_ID, { name: 'Контекст', order: 'a0' })
+    })
+    const alice = new Y.Doc()
+    const bob = new Y.Doc()
+    sync(original, alice)
+    sync(original, bob)
+
+    initializeDocument(alice)
+    initializeDocument(bob)
+    sync(alice, bob)
+
+    for (const doc of [alice, bob]) {
+      expect(Array.from(getPages(doc).keys())).toEqual([DEFAULT_PAGE_ID])
+      expect(readPage(getPages(doc).get(DEFAULT_PAGE_ID)!)).toEqual({ name: 'Контекст', order: 'a0' })
+    }
+  })
+
+  it('does not bring back the default page when the board has other pages', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    doc.transact(() => {
+      getPages(doc).set('other', (getPages(doc).get(DEFAULT_PAGE_ID) as Y.Map<unknown>).clone())
+      getPages(doc).delete(DEFAULT_PAGE_ID)
+    })
+
+    initializeDocument(doc)
+
+    expect(Array.from(getPages(doc).keys())).toEqual(['other'])
+    expect(getCells(doc, 'other').has(LAYER_CELL_ID)).toBe(true)
+  })
+
+  it('creates the default page again when concurrent deletions left the board without pages', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    doc.transact(() => getPages(doc).delete(DEFAULT_PAGE_ID))
+
+    initializeDocument(doc)
+
+    expect(Array.from(getPages(doc).keys())).toEqual([DEFAULT_PAGE_ID])
   })
 })
 

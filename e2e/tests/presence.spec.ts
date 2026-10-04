@@ -78,3 +78,78 @@ test('a shape selected by another participant is outlined in their color', async
 
   await close()
 })
+
+const tab = (page: Page, name: string) => page.getByRole('tab', { name, exact: true })
+
+test('the cursor follows the pointer while an edge is drawn to another shape', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const source = await addShape(bob, 'Прямоугольник')
+  const target = await addShape(bob, 'Прямоугольник')
+  await bob.mouse.click(5, 300)
+  const canvas = (await bob.getByTestId('diagram-canvas').boundingBox())!
+  const from = await cellBox(bob, source)
+  const to = center(await cellBox(bob, target))
+  const relative = (point: { x: number; y: number }) => ({ x: Math.round(point.x - canvas.x), y: Math.round(point.y - canvas.y) })
+
+  // The connection point is shown just outside the right border of a hovered shape.
+  const point = { x: from.x + from.width + 8, y: from.y + from.height / 2 }
+  await bob.mouse.move(from.x + from.width / 2, point.y)
+  await bob.mouse.move(from.x + from.width - 2, point.y, { steps: 3 })
+  await bob.mouse.move(point.x, point.y, { steps: 2 })
+  await expect.poll(() => cursorPosition(alice)).toEqual(relative(point))
+
+  // maxGraph stops the pointer events over the target shape while the edge is drawn.
+  await bob.mouse.down()
+  await bob.mouse.move(point.x + 40, point.y + 40, { steps: 5 })
+  await bob.mouse.move(to.x, to.y, { steps: 8 })
+  await bob.mouse.move(to.x + 10, to.y + 5, { steps: 2 })
+  await expect.poll(() => cursorPosition(alice)).toEqual(relative({ x: to.x + 10, y: to.y + 5 }))
+  await bob.mouse.up()
+
+  await close()
+})
+
+test('cursors are shown only on the same page, and the list tells where the others are', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const bobName = await ownName(bob)
+  const canvas = (await bob.getByTestId('diagram-canvas').boundingBox())!
+  await bob.mouse.move(canvas.x + 300, canvas.y + 200, { steps: 3 })
+  await expect(alice.getByTestId('remote-cursor')).toHaveCount(1)
+
+  await alice.getByRole('button', { name: 'Добавить страницу' }).click()
+  await bob.mouse.move(canvas.x + 320, canvas.y + 220, { steps: 3 })
+
+  await expect(alice.getByTestId('remote-cursor')).toHaveCount(0)
+  const bobInList = alice.getByRole('list', { name: 'Участники' }).getByRole('button', { name: new RegExp(bobName) })
+  await expect(bobInList).toHaveText(`${bobName} · Страница 1`)
+  await expect(tab(alice, 'Страница 1').getByTestId('page-visitor')).toHaveCount(1)
+
+  // Going to Bob brings Alice to his page and his cursor.
+  await bobInList.click()
+  await expect(tab(alice, 'Страница 1')).toHaveAttribute('aria-selected', 'true')
+  await expect(alice.getByTestId('remote-cursor')).toHaveText(bobName)
+
+  await close()
+})
+
+test('a cursor outside the visible area is shown at the edge and brought into view with a click', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const bobName = await ownName(bob)
+  for (let i = 0; i < 4; i++) await alice.getByRole('button', { name: 'Увеличить' }).click()
+
+  const canvas = (await bob.getByTestId('diagram-canvas').boundingBox())!
+  await bob.mouse.move(canvas.x + canvas.width - 20, canvas.y + canvas.height - 20, { steps: 3 })
+
+  const label = alice.getByRole('button', { name: `Показать курсор: ${bobName}` })
+  await expect(label).toBeVisible()
+  await expect(alice.getByTestId('remote-cursor')).toHaveCount(0)
+
+  await label.click()
+  await expect(alice.getByTestId('remote-cursor')).toBeVisible()
+  const view = (await alice.getByTestId('diagram-canvas').boundingBox())!
+  const position = await cursorPosition(alice)
+  expect(Math.abs(position.x - view.width / 2)).toBeLessThanOrEqual(30)
+  expect(Math.abs(position.y - view.height / 2)).toBeLessThanOrEqual(30)
+
+  await close()
+})
