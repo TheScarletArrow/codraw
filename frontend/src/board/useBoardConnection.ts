@@ -7,13 +7,15 @@ import { isNotFound, isUnauthorized } from '../api/http.ts'
 import { recheckSession } from '../auth/session.ts'
 import { initializeDocument } from '../diagram/model.ts'
 import type { ParticipantIdentity } from './identity.ts'
-import type { Awareness } from './presence.ts'
+import { participantPage, type Awareness } from './presence.ts'
 
 export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found'
 
 export interface Participant extends ParticipantIdentity {
   clientId: number
   isSelf: boolean
+  /** The page the participant works on. */
+  page: string
 }
 
 /** Reason that collab sends when the board does not exist. */
@@ -82,6 +84,7 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
             color: user.color,
             avatarUrl: user.avatarUrl,
             isSelf: clientId === awareness.clientID,
+            page: participantPage(state),
           })
         }
       })

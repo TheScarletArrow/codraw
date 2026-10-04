@@ -1,4 +1,5 @@
 import { act, render, renderHook, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeAwareness } from '../test/fakeProvider.ts'
@@ -57,6 +58,13 @@ describe('usePresencePublisher', () => {
     vi.advanceTimersByTime(CURSOR_INTERVAL_MS)
 
     expect(local().cursor).toBeNull()
+  })
+
+  it('publishes the page of the editor', () => {
+    editor = createFakeEditor({ pageId: 'p2' })
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+
+    expect(local().page).toBe('p2')
   })
 
   it('publishes the selection', () => {
@@ -136,5 +144,35 @@ describe('PresenceLayer', () => {
     act(() => editor.placeCell('box', { x: 300, y: 250, width: 120, height: 60 }))
 
     expect(screen.getByTestId('remote-selection')).toHaveStyle({ left: '297px', top: '247px' })
+  })
+
+  it('shows only the cursors and selections of participants on the same page', () => {
+    editor = createFakeEditor({ pageId: 'p2' })
+    editor.placeCell('box', { x: 100, y: 50, width: 120, height: 60 })
+    awareness.setState(7, { user: bob, page: 'p2', cursor: { x: 200, y: 150 }, selection: ['box'] })
+    awareness.setState(8, { user: { ...bob, name: 'Ева' }, page: 'p3', cursor: { x: 300, y: 150 }, selection: ['box'] })
+    // A client that does not publish its page works on the default page.
+    awareness.setState(9, { user: { ...bob, name: 'Старый' }, cursor: { x: 400, y: 150 }, selection: ['box'] })
+
+    renderLayer()
+
+    expect(screen.getAllByTestId('remote-cursor').map((cursor) => cursor.textContent)).toEqual(['Боб'])
+    expect(screen.getAllByTestId('remote-selection').map((outline) => outline.dataset.participant)).toEqual(['Боб'])
+  })
+
+  it('shows a cursor outside the visible area as a label at the edge that brings it into view', async () => {
+    editor = createFakeEditor({ viewport: { width: 800, height: 600 } })
+    awareness.setState(7, { user: bob, cursor: { x: 1200, y: 300 } })
+    renderLayer()
+
+    expect(screen.queryByTestId('remote-cursor')).toBeNull()
+    const label = screen.getByRole('button', { name: 'Показать курсор: Боб' })
+    expect(label.style.transform).toBe('translate(794px, 300px) translate(-100%, -50%)')
+
+    await userEvent.click(label)
+
+    expect(editor.centerOn).toHaveBeenCalledWith({ x: 1200, y: 300 })
+    expect(screen.getByTestId('remote-cursor').style.transform).toBe('translate(400px, 300px)')
+    expect(screen.queryByRole('button', { name: 'Показать курсор: Боб' })).toBeNull()
   })
 })

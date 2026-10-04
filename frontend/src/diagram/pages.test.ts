@@ -1,0 +1,172 @@
+import { describe, expect, it } from 'vitest'
+import * as Y from 'yjs'
+import {
+  DEFAULT_PAGE_ID,
+  getCells,
+  getPages,
+  initializeDocument,
+  LAYER_CELL_ID,
+  orderBetween,
+  readCell,
+  ROOT_CELL_ID,
+  writeCell,
+  type CellData,
+} from './model.ts'
+import {
+  addPage,
+  deletePage,
+  duplicatePage,
+  isPageEmpty,
+  listPages,
+  movePage,
+  nextPageName,
+  PAGES_ORIGIN,
+  renamePage,
+} from './pages.ts'
+
+function board() {
+  const doc = new Y.Doc()
+  initializeDocument(doc)
+  return doc
+}
+
+const names = (doc: Y.Doc) => listPages(doc).map((page) => page.name)
+
+const cell = (id: string, overrides: Partial<CellData> = {}): CellData => ({
+  id,
+  kind: 'vertex',
+  parent: LAYER_CELL_ID,
+  order: orderBetween(null, null),
+  value: id,
+  geometry: { x: 10, y: 20, width: 120, height: 60 },
+  source: null,
+  target: null,
+  style: { fillColor: '#dae8fc' },
+  ...overrides,
+})
+
+function sync(a: Y.Doc, b: Y.Doc) {
+  Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)))
+  Y.applyUpdate(a, Y.encodeStateAsUpdate(b, Y.encodeStateVector(a)))
+}
+
+describe('pages', () => {
+  it('names a new page by the number of pages, skipping taken names', () => {
+    expect(nextPageName([{ id: 'a', name: 'Страница 1', order: 'a0' }])).toBe('Страница 2')
+    expect(
+      nextPageName([
+        { id: 'a', name: 'Страница 2', order: 'a0' },
+        { id: 'b', name: 'Схема', order: 'a1' },
+      ]),
+    ).toBe('Страница 3')
+    expect(nextPageName([{ id: 'a', name: 'Страница 2', order: 'a0' }])).toBe('Страница 3')
+  })
+
+  it('adds a page with its root and layer cells after the given page', () => {
+    const doc = board()
+    const third = addPage(doc, DEFAULT_PAGE_ID)
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+
+    expect(listPages(doc).map((page) => page.id)).toEqual([DEFAULT_PAGE_ID, second, third])
+    expect(names(doc)).toEqual(['Страница 1', 'Страница 3', 'Страница 2'])
+    expect(getPages(doc).get(second)).toBeInstanceOf(Y.Map)
+    expect(Array.from(getCells(doc, second).keys()).sort()).toEqual([ROOT_CELL_ID, LAYER_CELL_ID].sort())
+    expect(isPageEmpty(doc, second)).toBe(true)
+  })
+
+  it('adds a page at the end without a current page', () => {
+    const doc = board()
+    const id = addPage(doc, null, 'Схема БД')
+
+    expect(listPages(doc).at(-1)).toMatchObject({ id, name: 'Схема БД' })
+  })
+
+  it('renames a page, ignoring empty names', () => {
+    const doc = board()
+
+    renamePage(doc, DEFAULT_PAGE_ID, '  Контекст ')
+    renamePage(doc, DEFAULT_PAGE_ID, '   ')
+
+    expect(names(doc)).toEqual(['Контекст'])
+  })
+
+  it('moves a page to a position', () => {
+    const doc = board()
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+    const third = addPage(doc, second)
+
+    movePage(doc, third, 0)
+    expect(listPages(doc).map((page) => page.id)).toEqual([third, DEFAULT_PAGE_ID, second])
+
+    movePage(doc, third, 2)
+    expect(listPages(doc).map((page) => page.id)).toEqual([DEFAULT_PAGE_ID, second, third])
+  })
+
+  it('keeps both a rename and a move made at the same time', () => {
+    const alice = board()
+    const second = addPage(alice, DEFAULT_PAGE_ID)
+    const bob = new Y.Doc()
+    sync(alice, bob)
+
+    renamePage(alice, second, 'Контейнеры')
+    movePage(bob, second, 0)
+    sync(alice, bob)
+
+    for (const doc of [alice, bob]) {
+      expect(listPages(doc)[0]).toMatchObject({ id: second, name: 'Контейнеры' })
+    }
+  })
+
+  it('duplicates a page with new cell ids and remapped references right after it', () => {
+    const doc = board()
+    const last = addPage(doc, DEFAULT_PAGE_ID)
+    const cells = getCells(doc)
+    doc.transact(() => {
+      writeCell(cells, cell('a'))
+      writeCell(cells, cell('b'))
+      writeCell(cells, cell('edge', { kind: 'edge', source: 'a', target: 'b', geometry: { x: 0, y: 0, width: 0, height: 0, relative: true } }))
+    })
+
+    const copy = duplicatePage(doc, DEFAULT_PAGE_ID)!
+
+    expect(listPages(doc).map((page) => page.id)).toEqual([DEFAULT_PAGE_ID, copy, last])
+    expect(listPages(doc)[1]!.name).toBe('Страница 1 (копия)')
+    const copied = getCells(doc, copy)
+    const byValue = new Map(Array.from(copied.entries(), ([id, map]) => [readCell(id, map).value, readCell(id, map)]))
+    expect(byValue.get('a')!.id).not.toBe('a')
+    expect(byValue.get('edge')).toMatchObject({ source: byValue.get('a')!.id, target: byValue.get('b')!.id, parent: LAYER_CELL_ID })
+    expect(byValue.get('a')!.style).toEqual({ fillColor: '#dae8fc' })
+
+    // The copy is independent of the original.
+    const copiedA = copied.get(byValue.get('a')!.id)!
+    doc.transact(() => (copiedA.get('style') as Y.Map<unknown>).set('fillColor', '#f8cecc'))
+    expect(readCell('a', cells.get('a')!).style.fillColor).toBe('#dae8fc')
+  })
+
+  it('deletes a page with its cells but never the last page', () => {
+    const doc = board()
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+    doc.transact(() => writeCell(getCells(doc, second), cell('a')))
+
+    expect(deletePage(doc, second)).toBe(true)
+    expect(listPages(doc).map((page) => page.id)).toEqual([DEFAULT_PAGE_ID])
+    expect(getCells(doc, second).size).toBe(0)
+
+    expect(deletePage(doc, DEFAULT_PAGE_ID)).toBe(false)
+    expect(listPages(doc)).toHaveLength(1)
+  })
+
+  it('writes page operations with their own origin', () => {
+    const doc = board()
+    const origins: unknown[] = []
+    doc.on('afterTransaction', (transaction: Y.Transaction) => origins.push(transaction.origin))
+
+    const id = addPage(doc, DEFAULT_PAGE_ID)
+    renamePage(doc, id, 'Схема')
+    movePage(doc, id, 0)
+    duplicatePage(doc, id)
+    deletePage(doc, id)
+
+    expect(origins).toEqual(Array(5).fill(PAGES_ORIGIN))
+  })
+})

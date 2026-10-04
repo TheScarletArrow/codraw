@@ -3,6 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
 import { participantColor } from '../board/identity.ts'
+import * as Y from 'yjs'
+import { DEFAULT_PAGE_ID, getCells, initializeDocument } from '../diagram/model.ts'
+import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
@@ -14,16 +17,19 @@ vi.mock('@hocuspocus/provider', async () => ({
 }))
 // maxGraph needs real SVG layout; the canvas is covered by unit tests of the binding and by e2e tests.
 // The stand-in hands a fake editor to the page, like the real canvas does.
+// A canvas of another page gets a new fake editor, which becomes `canvas.editor`.
 const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
+  const { createFakeEditor } = await import('../test/fakeEditor.ts')
   return {
-    DiagramCanvas: ({ onEditor }: { onEditor: (editor: FakeEditor | null) => void }) => {
+    DiagramCanvas: ({ pageId, onEditor }: { pageId: string; onEditor: (editor: FakeEditor | null) => void }) => {
       useEffect(() => {
+        if (canvas.editor?.pageId !== pageId) canvas.editor = createFakeEditor({ pageId })
         onEditor(canvas.editor)
         return () => onEditor(null)
-      }, [onEditor])
-      return <div data-testid="diagram-canvas" />
+      }, [pageId, onEditor])
+      return <div data-testid="diagram-canvas" data-page={pageId} />
     },
   }
 })
@@ -40,16 +46,18 @@ const toRgb = (hex: string) => {
 const tokenUrl = `POST /api/boards/${boardId}/collab-token`
 const collabToken = (token: string): MockResponse => ({ body: { token, expiresAt: '2026-10-01T10:05:00Z' } })
 
-async function openBoard(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+async function openBoard(responses: Record<string, MockResponse | MockResponse[]> = {}, search = '') {
   const fetchMock = mockFetch({
     'GET /api/me': { body: ALICE },
     [`GET /api/boards/${boardId}`]: { body: board },
     [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
     ...responses,
   })
-  const { unmount } = renderRoutes(routes, `/boards/${boardId}`)
+  const { unmount, router } = renderRoutes(routes, `/boards/${boardId}${search}`)
   await screen.findByRole('heading', { name: 'Архитектура', level: 2 })
-  return Object.assign(FakeHocuspocusProvider.latest(), { unmount, fetchMock })
+  const provider = FakeHocuspocusProvider.latest()
+  const document = (provider.configuration as { document: Y.Doc }).document
+  return Object.assign(provider, { unmount, fetchMock, router, document })
 }
 
 const requests = (fetchMock: ReturnType<typeof mockFetch>, method: string, url: string) =>
@@ -278,6 +286,123 @@ describe('BoardPage', () => {
 
       expect(editor.undo).toHaveBeenCalled()
       expect(editor.redo).toHaveBeenCalled()
+    })
+  })
+
+  describe('pages', () => {
+    async function openPages(search = '') {
+      const provider = await openBoard({}, search)
+      act(() => provider.emitSynced())
+      return provider
+    }
+    const tabs = () => within(screen.getByRole('tablist', { name: 'Страницы' })).getAllByRole('tab')
+    const currentTab = () => tabs().find((tab) => tab.getAttribute('aria-selected') === 'true')
+    const shownPage = () => screen.getByTestId('diagram-canvas').dataset.page
+
+    it('starts with one page and shows it on the canvas', async () => {
+      await openPages()
+
+      expect(tabs().map((tab) => tab.textContent)).toEqual(['Страница 1'])
+      expect(shownPage()).toBe(DEFAULT_PAGE_ID)
+    })
+
+    it('adds a page after the current one, opens it and puts it into the address', async () => {
+      const { router, document } = await openPages()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+      expect(tabs().map((tab) => tab.textContent)).toEqual(['Страница 1', 'Страница 2'])
+      const added = listPages(document)[1]!.id
+      expect(currentTab()).toHaveTextContent('Страница 2')
+      expect(shownPage()).toBe(added)
+      expect(router.state.location.search).toBe(`?page=${added}`)
+    })
+
+    it('shows pages that other participants add without leaving the current page', async () => {
+      const { document } = await openPages()
+
+      act(() => {
+        const id = addPage(document, DEFAULT_PAGE_ID)
+        renamePage(document, id, 'Контейнеры')
+      })
+
+      expect(tabs().map((tab) => tab.textContent)).toEqual(['Страница 1', 'Контейнеры'])
+      expect(shownPage()).toBe(DEFAULT_PAGE_ID)
+    })
+
+    it('opens the page from the address', async () => {
+      const document = new Y.Doc()
+      initializeDocument(document)
+      const second = addPage(document, DEFAULT_PAGE_ID)
+      const provider = await openBoard({}, `?page=${second}`)
+      act(() => {
+        Y.applyUpdate(provider.document, Y.encodeStateAsUpdate(document))
+        provider.emitSynced()
+      })
+
+      expect(shownPage()).toBe(second)
+      expect(currentTab()).toHaveTextContent('Страница 2')
+    })
+
+    it('goes to the first page when another participant deletes the current one', async () => {
+      const { document, router } = await openPages()
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+      const added = listPages(document)[1]!.id
+
+      act(() => {
+        document.transact(() => document.getMap('pages').delete(added))
+      })
+
+      expect(tabs()).toHaveLength(1)
+      expect(shownPage()).toBe(DEFAULT_PAGE_ID)
+      expect(router.state.location.search).toBe(`?page=${DEFAULT_PAGE_ID}`)
+    })
+
+    it('duplicates and deletes pages from the tab menu', async () => {
+      const { document } = await openPages()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню страницы «Страница 1»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Дублировать' }))
+      expect(tabs().map((tab) => tab.textContent)).toEqual(['Страница 1', 'Страница 1 (копия)'])
+      expect(currentTab()).toHaveTextContent('Страница 1 (копия)')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню страницы «Страница 1 (копия)»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+      await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Удалить' }))
+      expect(listPages(document).map((page) => page.name)).toEqual(['Страница 1'])
+      expect(getCells(document, DEFAULT_PAGE_ID).size).toBe(2)
+    })
+
+    it('names the page of a participant who is on another page and shows them on its tab', async () => {
+      const provider = await openPages()
+      let second = ''
+      act(() => {
+        second = addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+        provider.awareness.setState(7, { user: { name: 'Боб', color: '#dc2626', avatarUrl: null }, page: second })
+      })
+
+      const participants = screen.getByRole('list', { name: 'Участники' })
+      expect(within(participants).getByRole('button', { name: /Боб/ })).toHaveTextContent('Боб · Контейнеры')
+      expect(within(tabs()[1]!).getByTestId('page-visitor')).toBeInTheDocument()
+    })
+
+    it('goes to the page of another participant and centres their cursor', async () => {
+      const provider = await openPages()
+      let second = ''
+      act(() => {
+        second = addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+        provider.awareness.setState(7, {
+          user: { name: 'Боб', color: '#dc2626', avatarUrl: null },
+          page: second,
+          cursor: { x: 1500, y: 900 },
+        })
+      })
+
+      await userEvent.click(within(screen.getByRole('list', { name: 'Участники' })).getByRole('button', { name: /Боб/ }))
+
+      expect(shownPage()).toBe(second)
+      await waitFor(() => expect(canvas.editor!.centerOn).toHaveBeenCalledWith({ x: 1500, y: 900 }))
+      expect(canvas.editor!.pageId).toBe(second)
     })
   })
 })

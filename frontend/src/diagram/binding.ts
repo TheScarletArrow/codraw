@@ -17,6 +17,7 @@ import { newId } from './ids.ts'
 import {
   compareCells,
   deleteCell,
+  getCells,
   LAYER_CELL_ID,
   orderBetween,
   readCell,
@@ -322,4 +323,32 @@ function deepEqual(a: unknown, b: unknown): boolean {
 export function createUndoManager(cells: CellsMap, origin: unknown = LOCAL_ORIGIN): Y.UndoManager {
   // The binding writes one transaction per user action, so every transaction is its own undo step.
   return new Y.UndoManager(cells, { trackedOrigins: new Set([origin]), captureTimeout: 0 })
+}
+
+/**
+ * Undo managers of the pages of a board. Each page has its own history, and it survives switching between
+ * pages: the managers live as long as the board is open, not as long as the canvas of a page.
+ */
+export class PageHistories {
+  private readonly managers = new Map<string, Y.UndoManager>()
+  private readonly doc: Y.Doc
+
+  constructor(doc: Y.Doc) {
+    this.doc = doc
+  }
+
+  get(pageId: string): Y.UndoManager {
+    let manager = this.managers.get(pageId)
+    if (!manager) {
+      manager = createUndoManager(getCells(this.doc, pageId))
+      this.managers.set(pageId, manager)
+    }
+    return manager
+  }
+
+  /** Forgets all histories; later calls of {@link get} start new ones. */
+  destroy() {
+    this.managers.forEach((manager) => manager.destroy())
+    this.managers.clear()
+  }
 }

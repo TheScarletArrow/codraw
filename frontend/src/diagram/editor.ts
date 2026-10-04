@@ -22,7 +22,7 @@ import {
 import * as Y from 'yjs'
 import { createUndoManager, DiagramBinding } from './binding.ts'
 import { registerDiagramExtensions } from './extensions.ts'
-import { getCells } from './model.ts'
+import { DEFAULT_PAGE_ID, getCells } from './model.ts'
 import {
   findShape,
   isTableStyle,
@@ -79,6 +79,8 @@ export interface EditorState {
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
 export interface DiagramEditor {
   readonly graph: Graph
+  /** The page whose cells the canvas shows. */
+  readonly pageId: string
   /** Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area. */
   addShape(shape: ShapeId, center?: Point): Cell | null
   /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
@@ -93,6 +95,10 @@ export interface DiagramEditor {
   toCanvasPoint(point: Point): Point
   /** Bounds of a cell relative to the visible top-left corner of the canvas, or `null` if it is not shown. */
   cellBounds(id: string): Box | null
+  /** Size of the visible area of the canvas, without scrollbars. */
+  viewportSize(): { width: number; height: number }
+  /** Scrolls (or, beyond the scrollable area, pans) the canvas so that a diagram point is in its middle. */
+  centerOn(point: Point): void
   /** Reports the pointer position over the canvas in diagram coordinates, and `null` when it leaves. */
   onPointerMove(listener: (point: Point | null) => void): () => void
   /** Reports the ids of the selected cells whenever the selection changes. */
@@ -130,10 +136,24 @@ const KEY_DELETE = 46
 const KEY_Y = 89
 const KEY_Z = 90
 
-export function createDiagramEditor(container: HTMLElement, document: Y.Doc): DiagramEditor {
+export interface DiagramEditorOptions {
+  /** The page to show; the default page of a new board by default. */
+  pageId?: string
+  /**
+   * History of the page that outlives the editor, e.g. to keep it while the user visits other pages.
+   * Without it the editor keeps its own history and destroys it with itself.
+   */
+  undoManager?: Y.UndoManager
+}
+
+export function createDiagramEditor(
+  container: HTMLElement,
+  document: Y.Doc,
+  { pageId = DEFAULT_PAGE_ID, undoManager: sharedUndoManager }: DiagramEditorOptions = {},
+): DiagramEditor {
   const model = new GraphDataModel()
-  const cells = getCells(document)
-  const undoManager = createUndoManager(cells)
+  const cells = getCells(document, pageId)
+  const undoManager = sharedUndoManager ?? createUndoManager(cells)
 
   const graph = new Graph(container, model, [...getDefaultPlugins(), RubberBandHandler])
   // After the graph: the first graph registers the default shapes of maxGraph, including its own `rectangle`.
@@ -266,7 +286,8 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
     pointerListeners.forEach((listener) => listener(point))
   }
   const handlePointerLeave = () => pointerListeners.forEach((listener) => listener(null))
-  container.addEventListener('pointermove', handlePointerMove)
+  // Captured: maxGraph stops pointer events on connection points and selection handles from bubbling up.
+  container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
 
   const selectionListeners = new Set<(ids: string[]) => void>()
@@ -297,6 +318,7 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
 
   const editor: DiagramEditor = {
     graph,
+    pageId,
     addShape(shapeId, center = visibleCenter()) {
       const shape = findShape(shapeId)
       if (!shape) return null
@@ -394,6 +416,23 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       if (!state) return null
       return { x: state.x - container.scrollLeft, y: state.y - container.scrollTop, width: state.width, height: state.height }
     },
+    viewportSize: () => ({ width: container.clientWidth, height: container.clientHeight }),
+    centerOn({ x, y }) {
+      const view = graph.getView()
+      const { scale, translate } = view
+      const left = (x + translate.x) * scale - container.clientWidth / 2
+      const top = (y + translate.y) * scale - container.clientHeight / 2
+      const clamp = (value: number, max: number) => Math.max(0, Math.min(value, Math.max(0, max)))
+      const scrollLeft = clamp(left, container.scrollWidth - container.clientWidth)
+      const scrollTop = clamp(top, container.scrollHeight - container.clientHeight)
+      container.scrollLeft = scrollLeft
+      container.scrollTop = scrollTop
+      // What scrolling cannot reach, panning does.
+      const dx = left - container.scrollLeft
+      const dy = top - container.scrollTop
+      if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) view.setTranslate(translate.x - dx / scale, translate.y - dy / scale)
+      notifyView()
+    },
     onPointerMove: (listener) => listen(pointerListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
@@ -414,7 +453,7 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
     destroy() {
       Reflect.deleteProperty(container, EDITOR_PROPERTY)
       container.removeEventListener('pointerdown', focusCanvas, true)
-      container.removeEventListener('pointermove', handlePointerMove)
+      container.removeEventListener('pointermove', handlePointerMove, true)
       container.removeEventListener('pointerleave', handlePointerLeave)
       container.removeEventListener('scroll', notifyView)
       graph.getSelectionModel().removeListener(handleSelectionChange)
@@ -428,7 +467,10 @@ export function createDiagramEditor(container: HTMLElement, document: Y.Doc): Di
       viewListeners.clear()
       InternalEvent.removeAllListeners(container)
       keyHandler.onDestroy()
-      undoManager.destroy()
+      undoManager.off('stack-item-added', notify)
+      undoManager.off('stack-item-popped', notify)
+      undoManager.off('stack-cleared', notify)
+      if (!sharedUndoManager) undoManager.destroy()
       binding.destroy()
       graph.destroy()
     },

@@ -1,7 +1,9 @@
-import { Geometry } from '@maxgraph/core'
+import { Geometry, GraphDataModel } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
-import { createUndoManager } from './binding.ts'
-import { getCells } from './model.ts'
+import * as Y from 'yjs'
+import { createUndoManager, DiagramBinding, PageHistories } from './binding.ts'
+import { DEFAULT_PAGE_ID, getCells, initializeDocument } from './model.ts'
+import { addPage } from './pages.ts'
 import { addVertex, childIds, connect, createClient } from './testing.ts'
 
 describe('undo and redo', () => {
@@ -75,5 +77,30 @@ describe('undo and redo', () => {
     expect(restored.getValue()).toBe('Удалённая')
     expect(restored.getGeometry()).toMatchObject({ x: 50, y: 60, width: 70, height: 80 })
     expect(restored.getStyle()).toEqual({ fillColor: '#f8cecc' })
+  })
+
+  it('keeps the history of a page while the participant visits another page', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+    const histories = new PageHistories(doc)
+    // Every visit of a page creates a new canvas bound to its cells and takes the history of the page, as the editor does.
+    const visit = (pageId: string) => {
+      const model = new GraphDataModel()
+      return { model, binding: new DiagramBinding(model, getCells(doc, pageId)), history: histories.get(pageId) }
+    }
+
+    const first = visit(DEFAULT_PAGE_ID)
+    const own = addVertex(first.model, 'На первой странице')
+    first.binding.destroy()
+    const other = visit(second)
+    addVertex(other.model, 'На второй странице')
+    other.binding.destroy()
+    const back = visit(DEFAULT_PAGE_ID)
+    back.history.undo()
+
+    expect(back.model.getCell(own.getId()!)).toBeFalsy()
+    expect(getCells(doc, second).size).toBe(3)
+    expect(histories.get(second).canUndo()).toBe(true)
   })
 })

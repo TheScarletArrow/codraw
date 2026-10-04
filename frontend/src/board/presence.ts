@@ -1,13 +1,16 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider'
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { DiagramEditor, Point } from '../diagram/editor.ts'
+import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 import type { ParticipantIdentity } from './identity.ts'
 
 export type Awareness = NonNullable<HocuspocusProvider['awareness']>
 
-/** Another participant's pointer and selection on the canvas. */
+/** Another participant's page, pointer and selection on the canvas. */
 export interface RemotePresence extends ParticipantIdentity {
   clientId: number
+  /** The page the participant works on. */
+  page: string
   /** Pointer position in diagram coordinates, or `null` when it is outside the canvas. */
   cursor: Point | null
   selection: string[]
@@ -16,10 +19,11 @@ export interface RemotePresence extends ParticipantIdentity {
 /** Cursor updates are sent at most this often (20 per second). */
 export const CURSOR_INTERVAL_MS = 50
 
-/** Publishes the local pointer and selection of the editor to the other participants. */
+/** Publishes the page, the local pointer and the selection of the editor to the other participants. */
 export function usePresencePublisher(editor: DiagramEditor | null, awareness: Awareness | null) {
   useEffect(() => {
     if (!editor || !awareness) return
+    awareness.setLocalStateField('page', editor.pageId)
     const publishCursor = (point: Point | null) =>
       awareness.setLocalStateField('cursor', point && { x: Math.round(point.x), y: Math.round(point.y) })
     let lastSent = -Infinity
@@ -80,6 +84,14 @@ export function useRemotePresence(awareness: Awareness | null): RemotePresence[]
 
 const NO_PRESENCE: RemotePresence[] = []
 
+/**
+ * The page a participant works on. Clients that did not know about pages do not publish one: they always
+ * edit the default page.
+ */
+export function participantPage(state: Record<string, unknown>): string {
+  return typeof state.page === 'string' ? state.page : DEFAULT_PAGE_ID
+}
+
 export function readRemotePresence(awareness: Awareness): RemotePresence[] {
   const result: RemotePresence[] = []
   awareness.getStates().forEach((state, clientId) => {
@@ -92,6 +104,7 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
       name: user.name,
       color: user.color,
       avatarUrl: user.avatarUrl,
+      page: participantPage(state),
       cursor: cursor && Number.isFinite(cursor.x) && Number.isFinite(cursor.y) ? cursor : null,
       selection: Array.isArray(selection) ? selection.filter((id): id is string => typeof id === 'string') : [],
     })
