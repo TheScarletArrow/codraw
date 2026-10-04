@@ -18,8 +18,12 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Lets environments with a preinstalled browser of another revision use it.
-        launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined },
+        launchOptions: {
+          // Lets environments with a preinstalled browser of another revision use it.
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
+          // Without a UTF-8 locale Chromium replaces non-ASCII names of downloads, e.g. «Новая доска.drawio», with «download».
+          env: { ...(process.env as Record<string, string>), LANG: process.env.LANG || 'C.UTF-8' },
+        },
       },
     },
   ],
