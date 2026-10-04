@@ -1,7 +1,10 @@
 import { request } from './http.ts'
 
 /** What the user may do on a board: its owner manages it, anybody else opened it through its link. */
-export type BoardRole = 'owner' | 'editor'
+export type BoardRole = 'owner' | 'editor' | 'viewer'
+
+/** Who opens the board through its link besides its owner: nobody, viewers or editors. */
+export type LinkAccess = 'none' | 'view' | 'edit'
 
 export interface BoardOwner {
   id: string
@@ -17,6 +20,7 @@ export interface Board {
   owner: BoardOwner
   /** The role of the current user. */
   role: BoardRole
+  linkAccess: LinkAccess
 }
 
 /** A board of another user that the current user opened through its link. */
@@ -29,6 +33,8 @@ export interface SharedBoard extends Board {
 export interface CollabToken {
   token: string
   expiresAt: string
+  /** The role on the board that the token gives. */
+  role: BoardRole
 }
 
 export function fetchBoards(): Promise<Board[]> {
@@ -58,6 +64,15 @@ export function renameBoard(id: string, title: string): Promise<Board> {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
+  })
+}
+
+/** Changes who opens a board of the current user through its link. */
+export function setLinkAccess(id: string, linkAccess: LinkAccess): Promise<Board> {
+  return request(`/api/boards/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ linkAccess }),
   })
 }
 

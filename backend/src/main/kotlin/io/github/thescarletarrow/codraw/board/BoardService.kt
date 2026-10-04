@@ -24,7 +24,7 @@ class BoardService(
     /** Boards of the user [ownerId], most recently changed first. */
     fun list(ownerId: UUID): List<Board> = boards.findAllByOwnerIdOrderByUpdatedAtDesc(ownerId)
 
-    /** Returns the board of any user: a link to a board gives access to it. */
+    /** Returns the board of any user; [roleOf] tells whether a user may open it. */
     fun find(id: UUID): Board? = boards.findByIdOrNull(id)
 
     /** Records that the user [userId] opened the [board] of another user through its link. */
@@ -32,11 +32,17 @@ class BoardService(
         if (board.ownerId != userId) visits.record(userId, checkNotNull(board.id), now())
     }
 
-    /** Boards of other users that the user [userId] opened through their links, most recently opened first. */
+    /** Boards of other users that the user [userId] opened through their links and may open now, most recently opened first. */
     fun visitedBy(userId: UUID): List<VisitedBoard> = visits.visitedBy(userId, VISITED_LIMIT)
 
-    /** Gives the [board] a new [title]; renaming is a change of the board. */
-    fun rename(board: Board, title: String): Board = boards.save(board.copy(title = title, updatedAt = now()))
+    /** Gives the [board] a new [title] and a new [linkAccess], each when given; only renaming is a change of the board. */
+    fun update(board: Board, title: String?, linkAccess: LinkAccess?): Board = boards.save(
+        board.copy(
+            title = title ?: board.title,
+            linkAccess = linkAccess ?: board.linkAccess,
+            updatedAt = if (title != null) now() else board.updatedAt,
+        ),
+    )
 
     /** Deletes the [board] for good, with its document and the visits of other users. */
     fun delete(board: Board) {

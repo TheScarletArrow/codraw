@@ -178,9 +178,14 @@ function SharedBoardItem({ board }: { board: SharedBoard }) {
   return (
     <li className="flex items-center justify-between gap-4 py-3">
       <div className="flex min-w-0 flex-col">
-        <Link to={`/boards/${board.id}`} className="truncate font-medium hover:underline">
-          {board.title}
-        </Link>
+        <span className="flex min-w-0 items-center gap-2">
+          <Link to={`/boards/${board.id}`} className="truncate font-medium hover:underline">
+            {board.title}
+          </Link>
+          {board.role === 'viewer' && (
+            <span className="shrink-0 rounded bg-muted px-1.5 text-xs text-muted-foreground">только просмотр</span>
+          )}
+        </span>
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
           {board.owner.avatarUrl && <img src={board.owner.avatarUrl} alt="" className="size-4 rounded-full" />}
           {board.owner.name}

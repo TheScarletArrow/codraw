@@ -12,10 +12,12 @@ interface DrawioActionsProps {
   title: string
   /** Receives the id of the first imported page. */
   onImported: (pageId: string) => void
+  /** The board is only viewed: it can be exported, not imported into. */
+  readOnly?: boolean
 }
 
 /** Import of `.drawio` files into the board and export of the board to `.drawio`. */
-export function DrawioActions({ document, title, onImported }: DrawioActionsProps) {
+export function DrawioActions({ document, title, onImported, readOnly = false }: DrawioActionsProps) {
   const input = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -36,29 +38,33 @@ export function DrawioActions({ document, title, onImported }: DrawioActionsProp
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <input
-        ref={input}
-        type="file"
-        accept={DRAWIO_FILE_TYPES}
-        aria-label="Файл draw.io"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          event.target.value = ''
-          if (file) void handleFile(file)
-        }}
-      />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Импорт из .drawio"
-        title="Импорт из .drawio: страницы файла добавятся к доске"
-        disabled={!document || busy}
-        onClick={() => input.current?.click()}
-      >
-        <FileUp />
-      </Button>
+      {!readOnly && (
+        <>
+          <input
+            ref={input}
+            type="file"
+            accept={DRAWIO_FILE_TYPES}
+            aria-label="Файл draw.io"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void handleFile(file)
+            }}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Импорт из .drawio"
+            title="Импорт из .drawio: страницы файла добавятся к доске"
+            disabled={!document || busy}
+            onClick={() => input.current?.click()}
+          >
+            <FileUp />
+          </Button>
+        </>
+      )}
       <Button
         type="button"
         variant="ghost"

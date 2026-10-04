@@ -250,6 +250,94 @@ class BoardApiTest(
     }
 
     @Test
+    fun `a new board opens for editing through its link`() {
+        mockMvc.post("/api/boards") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"title": "Схема"}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.linkAccess") { value("edit") }
+        }
+    }
+
+    @Test
+    fun `the owner changes the link access, which is not a change of the board`() {
+        val id = createBoard("Доска", alice)
+        val created = clock.instant().toString()
+        clock.advance(Duration.ofMinutes(1))
+
+        setLinkAccess(id, alice, "view").andExpect {
+            status { isOk() }
+            jsonPath("$.linkAccess") { value("view") }
+            jsonPath("$.title") { value("Доска") }
+            jsonPath("$.updatedAt") { value(created) }
+        }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.linkAccess") { value("view") } }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["admin", "VIEW", ""])
+    fun `rejects an unknown link access`(access: String) {
+        val id = createBoard("Доска", alice)
+
+        setLinkAccess(id, alice, access).andExpect { status { isBadRequest() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.linkAccess") { value("edit") } }
+    }
+
+    @Test
+    fun `only the owner changes the link access`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        setLinkAccess(id, bob, "none").andExpect { status { isForbidden() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.linkAccess") { value("edit") } }
+    }
+
+    @Test
+    fun `a board for viewing gives others the role of a viewer`() {
+        val id = createBoard("Доска Алисы", alice)
+        setLinkAccess(id, alice, "view")
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$.role") { value("viewer") }
+            jsonPath("$.linkAccess") { value("view") }
+        }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.role") { value("owner") } }
+    }
+
+    @Test
+    fun `a closed board answers 403 to others, keeps opening for its owner and does not remember the attempt`() {
+        val id = createBoard("Доска Алисы", alice)
+        setLinkAccess(id, alice, "none")
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect { status { isForbidden() } }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { status { isOk() } }
+
+        setLinkAccess(id, alice, "view")
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { content { json("[]") } }
+    }
+
+    @Test
+    fun `a closed board leaves the boards opened through links and comes back when its link opens again`() {
+        val id = createBoard("Доска Алисы", alice)
+        open(id, bob)
+
+        setLinkAccess(id, alice, "none")
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { content { json("[]") } }
+
+        setLinkAccess(id, alice, "view")
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(id)) }
+            jsonPath("$[0].role") { value("viewer") }
+            jsonPath("$[0].linkAccess") { value("view") }
+        }
+    }
+
+    @Test
     fun `the owner deletes a board with its document`() {
         val id = createBoard("Черновик", alice)
         mockMvc.put("/internal/boards/$id/document") {
@@ -371,6 +459,9 @@ class BoardApiTest(
         contentType = MediaType.APPLICATION_JSON
         content = body
     }
+
+    private fun setLinkAccess(id: String, user: User, access: String): ResultActionsDsl =
+        rename(id, user, """{"linkAccess": "$access"}""")
 
     private fun delete(id: String, user: User): ResultActionsDsl = mockMvc.delete("/api/boards/$id") {
         with(user.session())

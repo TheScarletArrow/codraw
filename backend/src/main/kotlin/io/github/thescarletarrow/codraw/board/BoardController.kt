@@ -1,6 +1,5 @@
 package io.github.thescarletarrow.codraw.board
 
-import com.fasterxml.jackson.annotation.JsonValue
 import io.github.thescarletarrow.codraw.user.User
 import io.github.thescarletarrow.codraw.user.UserService
 import io.github.thescarletarrow.codraw.user.userId
@@ -55,29 +54,36 @@ class BoardController(private val boards: BoardService, private val users: UserS
                 createdAt = board.createdAt,
                 updatedAt = board.updatedAt,
                 owner = BoardOwner(board.ownerId, visited.ownerName, visited.ownerAvatarUrl),
-                role = BoardRole.EDITOR,
+                // Boards with a closed link are not listed.
+                role = checkNotNull(board.roleOf(principal.userId)),
+                linkAccess = board.linkAccess,
                 openedAt = visited.visitedAt,
             )
         }
 
-    /** Any board by its id: a link to a board gives access to it. Opening a board of another user is remembered. */
+    /** A board by its id: its link opens it unless the owner closed it. Opening a board of another user is remembered. */
     @GetMapping("/{id}")
     fun get(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse {
         val board = existingBoard(id)
+        val role = board.roleOf(principal.userId) ?: throw closedBoard()
         boards.recordVisit(board, principal.userId)
-        return board.toResponse(owner(board), board.roleOf(principal.userId))
+        return board.toResponse(owner(board), role)
     }
 
+    /** Renames the board or changes who opens it through its link. */
     @PatchMapping("/{id}")
     fun update(
         @PathVariable id: String,
-        @Valid @RequestBody request: UpdateBoardRequest,
+        @RequestBody request: UpdateBoardRequest,
         @AuthenticationPrincipal principal: OAuth2User,
     ): BoardResponse {
         val board = ownBoard(id, principal)
-        val title = request.title!!.trim()
-        if (title.length > TITLE_MAX_LENGTH) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Title is too long")
-        return boards.rename(board, title).toResponse(owner(board), BoardRole.OWNER)
+        val title = request.title?.trim()
+        if (title == null && request.linkAccess == null) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Nothing to change")
+        if (title != null && title.length !in 1..TITLE_MAX_LENGTH) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Title must have 1 to $TITLE_MAX_LENGTH characters")
+        }
+        return boards.update(board, title, request.linkAccess).toResponse(owner(board), BoardRole.OWNER)
     }
 
     @DeleteMapping("/{id}")
@@ -85,6 +91,8 @@ class BoardController(private val boards: BoardService, private val users: UserS
         boards.delete(ownBoard(id, principal))
         return ResponseEntity.noContent().build()
     }
+
+    private fun closedBoard() = ResponseStatusException(HttpStatus.FORBIDDEN, "The owner closed the link to the board")
 
     private fun existingBoard(id: String): Board =
         BoardIds.parse(id)?.let(boards::find) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
@@ -104,15 +112,6 @@ class BoardController(private val boards: BoardService, private val users: UserS
     private fun owner(board: Board): User = checkNotNull(users.find(board.ownerId)) { "Owner of board ${board.id} does not exist" }
 }
 
-/** What the user may do on a board. */
-enum class BoardRole(@get:JsonValue val value: String) {
-    OWNER("owner"),
-    EDITOR("editor"),
-}
-
-/** The owner has the board; anybody else opened it through its link. */
-fun Board.roleOf(userId: UUID): BoardRole = if (ownerId == userId) BoardRole.OWNER else BoardRole.EDITOR
-
 private const val TITLE_MAX_LENGTH = 200
 
 data class CreateBoardRequest(
@@ -121,10 +120,11 @@ data class CreateBoardRequest(
     val title: String,
 )
 
+/** The fields to change; at least one of them. */
 data class UpdateBoardRequest(
     /** Checked for length after trimming. */
-    @field:NotBlank
     val title: String? = null,
+    val linkAccess: LinkAccess? = null,
 )
 
 data class BoardOwner(
@@ -141,6 +141,7 @@ data class BoardResponse(
     val owner: BoardOwner,
     /** The role of the user who asks. */
     val role: BoardRole,
+    val linkAccess: LinkAccess,
 )
 
 data class SharedBoardResponse(
@@ -150,6 +151,7 @@ data class SharedBoardResponse(
     val updatedAt: Instant,
     val owner: BoardOwner,
     val role: BoardRole,
+    val linkAccess: LinkAccess,
     /** When the user last opened the board. */
     val openedAt: Instant,
 )
@@ -161,4 +163,5 @@ private fun Board.toResponse(owner: User, role: BoardRole) = BoardResponse(
     updatedAt = updatedAt,
     owner = BoardOwner(owner.id, owner.name, owner.avatarUrl),
     role = role,
+    linkAccess = linkAccess,
 )

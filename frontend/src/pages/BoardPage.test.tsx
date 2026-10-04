@@ -27,13 +27,21 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
   return {
-    DiagramCanvas: ({ pageId, onEditor }: { pageId: string; onEditor: (editor: FakeEditor | null) => void }) => {
+    DiagramCanvas: ({
+      pageId,
+      readOnly = false,
+      onEditor,
+    }: {
+      pageId: string
+      readOnly?: boolean
+      onEditor: (editor: FakeEditor | null) => void
+    }) => {
       useEffect(() => {
         if (canvas.editor?.pageId !== pageId) canvas.editor = createFakeEditor({ pageId })
         onEditor(canvas.editor)
         return () => onEditor(null)
       }, [pageId, onEditor])
-      return <div data-testid="diagram-canvas" data-page={pageId} />
+      return <div data-testid="diagram-canvas" data-page={pageId} data-read-only={String(readOnly)} />
     },
   }
 })
@@ -46,9 +54,12 @@ const board: Board = {
   updatedAt: '2026-10-01T10:00:00Z',
   owner: { id: ALICE.id, name: ALICE.name, avatarUrl: ALICE.avatarUrl },
   role: 'owner',
+  linkAccess: 'edit',
 }
 /** The board of Алиса as Боб sees it, having opened it through its link. */
 const boardOfAnother: Board = { ...board, role: 'editor' }
+/** The board of Алиса as Боб sees it when its link gives viewing only. */
+const boardToView: Board = { ...board, role: 'viewer', linkAccess: 'view' }
 const routes = [
   { path: '/', element: <p>Список досок</p> },
   { path: '/boards/:boardId', element: <BoardPage /> },
@@ -61,7 +72,9 @@ const toRgb = (hex: string) => {
 }
 
 const tokenUrl = `POST /api/boards/${boardId}/collab-token`
-const collabToken = (token: string): MockResponse => ({ body: { token, expiresAt: '2026-10-01T10:05:00Z' } })
+const collabToken = (token: string, role: Board['role'] = 'owner'): MockResponse => ({
+  body: { token, expiresAt: '2026-10-01T10:05:00Z', role },
+})
 
 async function openBoard(responses: Record<string, MockResponse | MockResponse[]> = {}, search = '') {
   const fetchMock = mockFetch({
@@ -311,6 +324,108 @@ describe('BoardPage', () => {
 
       expect(screen.getByRole('alert')).toHaveTextContent('Доска не найдена')
       expect(provider.disconnected).toBe(true)
+    })
+  })
+
+  describe('access through the link', () => {
+    it('lets the owner copy the link and change the access, telling the participants', async () => {
+      const writeText = vi.fn(async () => {})
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+      const provider = await openBoard({ [`PATCH ${boardUrl}`]: { body: { ...board, linkAccess: 'view' } } })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Поделиться' }))
+      expect(screen.getByRole('textbox', { name: 'Ссылка на доску' })).toHaveValue(`${location.origin}/boards/${boardId}`)
+      await userEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
+      expect(writeText).toHaveBeenCalledWith(`${location.origin}/boards/${boardId}`)
+      expect(screen.getByRole('radio', { name: 'Редактирование по ссылке' })).toBeChecked()
+      await userEvent.click(screen.getByRole('radio', { name: 'Просмотр по ссылке' }))
+
+      await waitFor(() => expect(provider.sentStateless).toEqual([BOARD_CHANGED]))
+      expect(screen.getByRole('radio', { name: 'Просмотр по ссылке' })).toBeChecked()
+      const [[, init]] = requests(provider.fetchMock, 'PATCH', boardUrl)
+      expect(JSON.parse(init!.body as string)).toEqual({ linkAccess: 'view' })
+    })
+
+    it('offers sharing to the owner only', async () => {
+      await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+
+      expect(screen.queryByRole('button', { name: 'Поделиться' })).not.toBeInTheDocument()
+    })
+
+    it('shows a viewer the board without the tools that change it', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView }, [tokenUrl]: collabToken('t', 'viewer') })
+      act(() => provider.emitSynced())
+
+      expect(screen.getByText('Только просмотр')).toBeInTheDocument()
+      expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Отменить' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Добавить страницу' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Импорт из .drawio' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Экспорт в .drawio' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Увеличить' })).toBeInTheDocument()
+    })
+
+    it('shows an editor the canvas for editing', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+      act(() => provider.emitSynced())
+
+      expect(screen.queryByText('Только просмотр')).not.toBeInTheDocument()
+      expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'false')
+      expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
+    })
+
+    it('switches to viewing with a new connection when the owner changes the access', async () => {
+      const first = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }] })
+      act(() => first.emitSynced())
+
+      act(() => first.emitStateless(BOARD_CHANGED))
+
+      expect(await screen.findByText('Только просмотр')).toBeInTheDocument()
+      expect(first.destroyed).toBe(true)
+      expect(FakeHocuspocusProvider.latest()).not.toBe(first)
+    })
+
+    it('fetches the board again when a token gives another role than the page shows', async () => {
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }],
+        [tokenUrl]: [collabToken('t1', 'editor'), collabToken('t2', 'viewer')],
+      })
+      await act(() => provider.requestToken())
+      expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(1)
+
+      await act(() => provider.requestToken())
+
+      expect(await screen.findByText('Только просмотр')).toBeInTheDocument()
+    })
+
+    it('shows "Нет доступа к доске" when the owner closed the link', async () => {
+      mockFetch({ 'GET /api/me': { body: ALICE }, [`GET ${boardUrl}`]: { status: 403 } })
+
+      renderRoutes(routes, `/boards/${boardId}`)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа к доске')
+      expect(FakeHocuspocusProvider.instances).toHaveLength(0)
+    })
+
+    it('shows "Нет доступа к доске" and stops connecting when no token is issued any more', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother }, [tokenUrl]: { status: 403 } })
+
+      await act(() => expect(provider.requestToken()).rejects.toThrow('403'))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Нет доступа к доске')
+      expect(provider.disconnected).toBe(true)
+    })
+
+    it('connects again when collab closes the connection because its access ended', async () => {
+      const first = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+      act(() => first.emitSynced())
+
+      act(() => first.emitClose('permission-denied'))
+
+      expect(first.destroyed).toBe(true)
+      expect(FakeHocuspocusProvider.latest()).not.toBe(first)
+      expect(screen.getByRole('status')).toHaveTextContent('Подключение')
     })
   })
 

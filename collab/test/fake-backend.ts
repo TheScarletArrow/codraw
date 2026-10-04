@@ -8,6 +8,8 @@ export interface TokenOptions {
   expiresAt?: number | string;
   /** Signs with this key instead of the published one, keeping the published key id. */
   signWith?: CryptoKey;
+  /** The role on the board; `null` leaves the claim out. */
+  role?: string | null;
 }
 
 /** In-memory stand-in for the backend: the internal API, the collab token keys and token issuing. */
@@ -37,9 +39,12 @@ export class FakeBackend {
   }
 
   /** Issues a collab token for the board like the backend does; options build invalid tokens. */
-  issueToken(board: string, { audience = "codraw-collab", expiresAt = "5m", signWith }: TokenOptions = {}): Promise<string> {
+  issueToken(
+    board: string,
+    { audience = "codraw-collab", expiresAt = "5m", signWith, role = "owner" }: TokenOptions = {},
+  ): Promise<string> {
     const key = this.keys[0]!;
-    return new SignJWT({ board, name: "Alice", avatar: "https://avatars.example.com/alice.png" })
+    return new SignJWT({ board, name: "Alice", avatar: "https://avatars.example.com/alice.png", ...(role !== null && { role }) })
       .setProtectedHeader({ alg: "RS256", kid: key.kid })
       .setSubject("0199a000-0000-7000-8000-0000000000a1")
       .setAudience(audience)

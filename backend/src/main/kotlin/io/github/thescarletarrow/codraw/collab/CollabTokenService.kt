@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.collab
 
 import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet
+import io.github.thescarletarrow.codraw.board.BoardRole
 import io.github.thescarletarrow.codraw.user.User
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm
 import org.springframework.security.oauth2.jwt.JwsHeader
@@ -21,8 +22,11 @@ class CollabTokenService(keys: CollabSigningKeys, private val clock: Clock) {
 
     private val encoder = NimbusJwtEncoder(ImmutableJWKSet(JWKSet(keys.current)))
 
-    /** Issues a token for [user] to the document of the board [boardId]. The caller checks access to the board. */
-    fun issue(user: User, boardId: UUID): CollabToken {
+    /**
+     * Issues a token for [user] to the document of the board [boardId] with their [role] on it, which collab enforces.
+     * The caller checks access to the board.
+     */
+    fun issue(user: User, boardId: UUID, role: BoardRole): CollabToken {
         // JWT times have a precision of seconds.
         val issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS)
         val claims = JwtClaimsSet.builder()
@@ -31,11 +35,12 @@ class CollabTokenService(keys: CollabSigningKeys, private val clock: Clock) {
             .issuedAt(issuedAt)
             .expiresAt(issuedAt + TTL)
             .claim("board", boardId.toString())
+            .claim("role", role.value)
             .claim("name", user.name)
             .apply { user.avatarUrl?.let { claim("avatar", it) } }
             .build()
         val jwt = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(SignatureAlgorithm.RS256).build(), claims))
-        return CollabToken(token = jwt.tokenValue, expiresAt = checkNotNull(jwt.expiresAt))
+        return CollabToken(token = jwt.tokenValue, expiresAt = checkNotNull(jwt.expiresAt), role = role)
     }
 
     companion object {
@@ -47,4 +52,6 @@ class CollabTokenService(keys: CollabSigningKeys, private val clock: Clock) {
 data class CollabToken(
     val token: String,
     val expiresAt: Instant,
+    /** The role on the board that the token gives. */
+    val role: BoardRole,
 )

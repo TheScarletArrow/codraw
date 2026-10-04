@@ -139,3 +139,15 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
   })
 })
+
+describe('EditorToolbar of a page that is only viewed', () => {
+  it('offers zoom but not undo and redo', async () => {
+    const editor = createFakeEditor()
+    render(<EditorToolbar editor={editor} readOnly />)
+
+    expect(screen.queryByRole('button', { name: 'Отменить' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Повторить' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Увеличить' }))
+    expect(editor.zoomIn).toHaveBeenCalled()
+  })
+})

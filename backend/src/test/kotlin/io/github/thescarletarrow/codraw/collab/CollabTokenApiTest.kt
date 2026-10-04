@@ -5,6 +5,7 @@ import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jwt.SignedJWT
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
+import io.github.thescarletarrow.codraw.board.BoardRole
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.session
 import io.github.thescarletarrow.codraw.user.User
@@ -19,6 +20,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
@@ -68,6 +70,7 @@ class CollabTokenApiTest(
         assertEquals(board, claims.getStringClaim("board"))
         assertEquals("Alice", claims.getStringClaim("name"))
         assertEquals("https://avatars.example.com/Alice.png", claims.getStringClaim("avatar"))
+        assertEquals("owner", claims.getStringClaim("role"))
         assertEquals(listOf("codraw-collab"), claims.audience)
     }
 
@@ -89,10 +92,40 @@ class CollabTokenApiTest(
     fun `issues a token for a board of another user opened by its link`() {
         val board = createBoard(alice)
 
-        val claims = SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet
+        val response = issueToken(bob, board)
 
+        val claims = SignedJWT.parse(response.token).jwtClaimsSet
         assertEquals(bob.id.toString(), claims.subject)
         assertEquals(board, claims.getStringClaim("board"))
+        assertEquals("editor", claims.getStringClaim("role"))
+        assertEquals(BoardRole.EDITOR, response.role)
+    }
+
+    @Test
+    fun `issues a token of a viewer for a board for viewing`() {
+        val board = createBoard(alice)
+        setLinkAccess(board, "view")
+
+        val response = issueToken(bob, board)
+
+        assertEquals("viewer", SignedJWT.parse(response.token).jwtClaimsSet.getStringClaim("role"))
+        assertEquals(BoardRole.VIEWER, response.role)
+        assertEquals(BoardRole.OWNER, issueToken(alice, board).role)
+    }
+
+    @Test
+    fun `answers 403 and issues no token when the owner closed the link`() {
+        val board = createBoard(alice)
+        setLinkAccess(board, "none")
+
+        mockMvc.post("/api/boards/$board/collab-token") {
+            with(bob.session())
+            with(csrf())
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.token") { doesNotExist() }
+        }
+        assertEquals(BoardRole.OWNER, issueToken(alice, board).role)
     }
 
     @ParameterizedTest
@@ -134,7 +167,17 @@ class CollabTokenApiTest(
             with(csrf())
         }.andExpect { status { isOk() } }.andReturn().response.contentAsString
         val node = json.readTree(body)
-        return CollabToken(node["token"].asString(), Instant.parse(node["expiresAt"].asString()))
+        val role = BoardRole.entries.single { it.value == node["role"].asString() }
+        return CollabToken(node["token"].asString(), Instant.parse(node["expiresAt"].asString()), role)
+    }
+
+    private fun setLinkAccess(board: String, access: String) {
+        mockMvc.patch("/api/boards/$board") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"linkAccess": "$access"}"""
+        }.andExpect { status { isOk() } }
     }
 
     private fun createBoard(owner: User): String {

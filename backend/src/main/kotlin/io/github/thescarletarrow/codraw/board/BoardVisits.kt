@@ -34,15 +34,15 @@ class BoardVisits(private val jdbc: JdbcClient) {
             .update()
     }
 
-    /** Boards of other users that the user [userId] opened, most recently opened first. */
+    /** Boards of other users that the user [userId] opened and may open now, most recently opened first. */
     fun visitedBy(userId: UUID, limit: Int): List<VisitedBoard> = jdbc.sql(
         """
-        SELECT b.id, b.title, b.owner_id, b.created_at, b.updated_at,
+        SELECT b.id, b.title, b.owner_id, b.created_at, b.updated_at, b.link_access,
                u.name AS owner_name, u.avatar_url AS owner_avatar_url, v.visited_at
         FROM board_visits v
         JOIN boards b ON b.id = v.board_id
         JOIN users u ON u.id = b.owner_id
-        WHERE v.user_id = :userId AND b.owner_id <> :userId
+        WHERE v.user_id = :userId AND b.owner_id <> :userId AND b.link_access <> 'NONE'
         ORDER BY v.visited_at DESC
         LIMIT :limit
         """,
@@ -74,6 +74,7 @@ class BoardVisits(private val jdbc: JdbcClient) {
             ownerId = getObject("owner_id", UUID::class.java),
             createdAt = instant("created_at"),
             updatedAt = instant("updated_at"),
+            linkAccess = LinkAccess.valueOf(getString("link_access")),
         ),
         ownerName = getString("owner_name"),
         ownerAvatarUrl = getString("owner_avatar_url"),

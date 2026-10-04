@@ -12,4 +12,5 @@ data class Board(
     val ownerId: UUID,
     val createdAt: Instant,
     val updatedAt: Instant,
+    val linkAccess: LinkAccess = LinkAccess.EDIT,
 )

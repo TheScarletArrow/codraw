@@ -10,6 +10,7 @@ import {
   InternalEvent,
   KeyHandler,
   LayoutManager,
+  PanningHandler,
   PopupMenuHandler,
   SelectionHandler,
   Point as GraphPoint,
@@ -251,12 +252,17 @@ export interface DiagramEditorOptions {
    * Without it the editor keeps its own history and destroys it with itself.
    */
   undoManager?: Y.UndoManager
+  /**
+   * The page is only viewed: nothing is selected, moved, edited or connected, the left button pans the canvas,
+   * and no change of the model reaches the document.
+   */
+  readOnly?: boolean
 }
 
 export function createDiagramEditor(
   container: HTMLElement,
   document: Y.Doc,
-  { pageId = DEFAULT_PAGE_ID, undoManager: sharedUndoManager }: DiagramEditorOptions = {},
+  { pageId = DEFAULT_PAGE_ID, undoManager: sharedUndoManager, readOnly = false }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
   const cells = getCells(document, pageId)
@@ -283,7 +289,8 @@ export function createDiagramEditor(
   const tableLayout = new TableLayout(graph)
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
-  const binding = new DiagramBinding(model, cells)
+  const binding = new DiagramBinding(model, cells, { readOnly })
+  if (readOnly) configureViewing(graph)
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
@@ -1018,6 +1025,17 @@ class TableLayout extends StackLayout {
       fitted.height = header
       this.graph.getDataModel().setGeometry(parent, fitted)
     }
+  }
+}
+
+/** A viewer looks at the page: the graph takes no edits, and dragging anywhere moves the canvas. */
+function configureViewing(graph: Graph) {
+  graph.setEnabled(false)
+  graph.setConnectable(false)
+  const panning = graph.getPlugin<PanningHandler>('PanningHandler')
+  if (panning) {
+    panning.useLeftButtonForPanning = true
+    panning.ignoreCell = true
   }
 }
 

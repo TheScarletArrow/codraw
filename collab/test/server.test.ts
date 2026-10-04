@@ -227,6 +227,137 @@ describe("collab server", () => {
     });
   });
 
+  describe("roles and renewal of access", () => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const boardChanged = JSON.stringify({ type: "board-changed" });
+    const closeReason = ({ provider }: Connection) =>
+      new Promise<string>((resolve) => provider.on("close", ({ event }: { event: CloseEvent }) => resolve(event.reason)));
+    const meta = ({ document }: Connection) => document.getMap("meta");
+
+    it("applies no changes of a viewer, who still gets the changes of others", async () => {
+      await startServer();
+      const editor = await connect(board, () => backend.issueToken(board, { role: "editor" }));
+      const viewer = await connect(board, () => backend.issueToken(board, { role: "viewer" }));
+      const received = new Promise<unknown>((resolve) =>
+        meta(viewer).observe((event) => event.keysChanged.has("title") && resolve(event.target.get("title"))),
+      );
+
+      meta(viewer).set("note", "From the viewer");
+      meta(editor).set("title", "From the editor");
+
+      await expect(received).resolves.toBe("From the editor");
+      await waitFor(() => backend.storesFor(board) > 0);
+      await sleep(100);
+      expect(meta(editor).get("note")).toBeUndefined();
+      const stored = new Y.Doc();
+      Y.applyUpdate(stored, backend.documents.get(board)!);
+      expect(stored.getMap("meta").toJSON()).toEqual({ title: "From the editor" });
+    });
+
+    it.each([
+      ["without a role", null],
+      ["with an unknown role", "admin"],
+    ])("rejects a token %s", async (_, role) => {
+      await startServer();
+
+      await expect(connect(board, await backend.issueToken(board, { role }))).rejects.toThrow("permission-denied");
+    });
+
+    it("renews the token of an open connection before it expires, without reconnecting", async () => {
+      await startServer({ accessRenewal: { renewBefore: 1_000, answerTimeout: 1_000 } });
+      let issued = 0;
+      const participant = await connect(board, () => {
+        issued++;
+        return backend.issueToken(board, { expiresAt: "2s" });
+      });
+      const other = await connect(board);
+      let closed = false;
+      participant.provider.on("close", () => (closed = true));
+
+      await waitFor(() => issued >= 2, 3_000);
+      await sleep(100);
+      meta(participant).set("title", "After renewal");
+
+      await waitFor(() => title(other) === "After renewal");
+      expect(closed).toBe(false);
+    }, 10_000);
+
+    /** A participant whose token gives the role it reads from `role` at the time; reports each request. */
+    async function participantWithRole(owner: Connection, role: { current: string }) {
+      let asked = 0;
+      const participant = await connect(board, () => {
+        asked++;
+        return backend.issueToken(board, { role: role.current });
+      });
+      /** Reports a change of the board as the owner and waits until the participant has sent its new token. */
+      const renewed = async () => {
+        const before = asked;
+        owner.provider.sendStateless(boardChanged);
+        await waitFor(() => asked > before);
+        await sleep(200);
+      };
+      return { participant, renewed };
+    }
+
+    it("makes a connection read-only when the board changes and its new token gives the role of a viewer", async () => {
+      await startServer();
+      const role = { current: "editor" };
+      const owner = await connect(board);
+      const { participant, renewed } = await participantWithRole(owner, role);
+
+      role.current = "viewer";
+      await renewed();
+      meta(participant).set("while viewing", true);
+
+      await sleep(200);
+      expect(meta(owner).get("while viewing")).toBeUndefined();
+    });
+
+    it("lets a viewer edit once the board changes and its new token gives the role of an editor", async () => {
+      await startServer();
+      const role = { current: "viewer" };
+      const owner = await connect(board);
+      const { participant, renewed } = await participantWithRole(owner, role);
+
+      role.current = "editor";
+      await renewed();
+      meta(participant).set("while editing", true);
+
+      await waitFor(() => meta(owner).get("while editing") === true);
+    });
+
+    it("closes a connection whose new token gives no access to the board", async () => {
+      await startServer();
+      let revoked = false;
+      const owner = await connect(board);
+      const participant = await connect(board, () => backend.issueToken(revoked ? otherBoard : board));
+      const closed = closeReason(participant);
+
+      revoked = true;
+      owner.provider.sendStateless(boardChanged);
+
+      await expect(closed).resolves.toBe("permission-denied");
+      meta(participant).set("after revoking", true);
+      await sleep(200);
+      expect(meta(owner).get("after revoking")).toBeUndefined();
+    });
+
+    it("closes a connection that does not answer the request for a token in time", async () => {
+      await startServer({ accessRenewal: { renewBefore: 30_000, answerTimeout: 300 } });
+      let silent = false;
+      const owner = await connect(board);
+      const participant = await connect(board, () => (silent ? new Promise<string>(() => {}) : backend.issueToken(board)));
+      const closed = closeReason(participant);
+      const startedAt = Date.now();
+
+      silent = true;
+      owner.provider.sendStateless(boardChanged);
+
+      await expect(closed).resolves.toBe("permission-denied");
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+    });
+  });
+
   describe("access to documents", () => {
     async function expectRejected(token: string, name = board) {
       await startServer();
@@ -308,12 +439,14 @@ describe("collab server", () => {
       });
       await new Promise((resolve) => setTimeout(resolve, expiresAt * 1000 - Date.now() + 50));
       const resynced = new Promise<void>((resolve) => participant.provider.on("synced", () => resolve()));
+      // Collab may have renewed the token on the open connection already.
+      const before = issued;
 
       // The connection drops; the provider reconnects on its own.
       participant.provider.configuration.websocketProvider.webSocket!.close();
 
       await resynced;
-      expect(issued).toBe(2);
+      expect(issued).toBe(before + 1);
     }, 10_000);
   });
 });

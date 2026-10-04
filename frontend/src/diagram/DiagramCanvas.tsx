@@ -10,6 +10,8 @@ interface DiagramCanvasProps {
   pageId: string
   /** Undo histories of the pages; they outlive the canvas of a page. */
   histories?: PageHistories | null
+  /** The page is only viewed; see `DiagramEditorOptions.readOnly`. */
+  readOnly?: boolean
   /**
    * Receives the editor once the canvas is created and `null` when it is destroyed.
    * Must be stable (e.g. a state setter): a new function recreates the canvas.
@@ -18,12 +20,16 @@ interface DiagramCanvasProps {
 }
 
 /** maxGraph canvas bound to one page of the board document. The graph is created once per page. */
-export function DiagramCanvas({ document, pageId, histories, onEditor }: DiagramCanvasProps) {
+export function DiagramCanvas({ document, pageId, histories, readOnly = false, onEditor }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<DiagramEditor | null>(null)
 
   useEffect(() => {
-    const editor = createDiagramEditor(containerRef.current!, document, { pageId, undoManager: histories?.get(pageId) })
+    const editor = createDiagramEditor(containerRef.current!, document, {
+      pageId,
+      undoManager: histories?.get(pageId),
+      readOnly,
+    })
     editorRef.current = editor
     onEditor(editor)
     return () => {
@@ -31,10 +37,10 @@ export function DiagramCanvas({ document, pageId, histories, onEditor }: Diagram
       editorRef.current = null
       editor.destroy()
     }
-  }, [document, pageId, histories, onEditor])
+  }, [document, pageId, histories, readOnly, onEditor])
 
   const handleDragOver = (event: DragEvent) => {
-    if (event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {
+    if (!readOnly && event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
     }
@@ -43,7 +49,7 @@ export function DiagramCanvas({ document, pageId, histories, onEditor }: Diagram
   const handleDrop = (event: DragEvent) => {
     const shape = event.dataTransfer.getData(SHAPE_DRAG_TYPE) as ShapeId
     const editor = editorRef.current
-    if (!shape || !editor) return
+    if (!shape || !editor || readOnly) return
     event.preventDefault()
     editor.addShape(shape, editor.toDiagramPoint(event.clientX, event.clientY))
   }

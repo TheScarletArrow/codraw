@@ -12,6 +12,9 @@ export const isNotFound = (error: unknown) => error instanceof HttpError && erro
 
 export const isUnauthorized = (error: unknown) => error instanceof HttpError && error.status === 401
 
+/** The owner closed the link to the board. */
+export const isForbidden = (error: unknown) => error instanceof HttpError && error.status === 403
+
 /** The backend puts the CSRF token into this cookie and expects it back in the header on every change. */
 const CSRF_COOKIE = 'XSRF-TOKEN'
 const CSRF_HEADER = 'X-XSRF-TOKEN'

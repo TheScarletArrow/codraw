@@ -14,6 +14,7 @@ const board = (id: string, title: string): Board => ({
   updatedAt: '2026-10-02T12:30:00Z',
   owner: { id: ALICE.id, name: ALICE.name, avatarUrl: ALICE.avatarUrl },
   role: 'owner',
+  linkAccess: 'edit',
 })
 
 const sharedBoard = (id: string, title: string, owner: string): SharedBoard => ({
@@ -125,6 +126,22 @@ describe('BoardsPage', () => {
     expect(within(section).getByRole('link', { name: 'Платежи' })).toHaveAttribute('href', '/boards/x')
     expect(within(section).getByText('Боб')).toBeInTheDocument()
     expect(within(section).queryByRole('button', { name: /Меню доски/ })).not.toBeInTheDocument()
+  })
+
+  it('marks the boards opened through links that the user may only view', async () => {
+    mockFetch({
+      'GET /api/boards': { body: [] },
+      'GET /api/boards/shared': {
+        body: [{ ...sharedBoard('x', 'Платежи', 'Боб'), role: 'viewer', linkAccess: 'view' }, sharedBoard('y', 'Склад', 'Вера')],
+      },
+    })
+
+    renderRoutes(routes)
+
+    const section = await screen.findByRole('region', { name: 'Открытые по ссылке' })
+    const [viewed, edited] = await within(section).findAllByRole('listitem')
+    expect(viewed).toHaveTextContent('только просмотр')
+    expect(edited).not.toHaveTextContent('только просмотр')
   })
 
   it('has no section of boards opened through links when there are none', async () => {

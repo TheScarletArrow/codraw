@@ -271,6 +271,20 @@ describe('maxGraph → Yjs (local changes)', () => {
     expect(readCell(id, getCells(alice.doc).get(id)!)).toEqual(readCell(id, getCells(bob.doc).get(id)!))
   })
 
+  it('never writes local changes of a read-only binding, which still follows the document', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const model = new GraphDataModel()
+    new DiagramBinding(model, getCells(doc), { readOnly: true })
+
+    addVertex(model, 'local')
+    remote(doc, (cells) => writeCell(cells, vertexData('box')))
+
+    expect(getCells(doc).has('local')).toBe(false)
+    expect(model.getCell('box')).toBeTruthy()
+    expect(getCells(doc).size).toBe(3)
+  })
+
   it('stops syncing after destroy', () => {
     const doc = new Y.Doc()
     initializeDocument(doc)
