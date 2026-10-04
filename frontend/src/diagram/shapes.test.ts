@@ -51,6 +51,11 @@ describe('shape presets', () => {
     }
   })
 
+  it('make a text whose width follows the text, as in draw.io', () => {
+    expect(findShape('text')!.style).toMatchObject({ autosize: true })
+    expect(findShape('rectangle')!.style.autosize).toBeUndefined()
+  })
+
   it('make a table with the field «id uuid PK» under its header', () => {
     const table = findShape('table')!
 

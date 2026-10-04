@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { EditorToolbar } from './EditorToolbar.tsx'
 
@@ -12,10 +12,13 @@ describe('EditorToolbar', () => {
     render(<EditorToolbar editor={editor} />)
   })
 
-  it('offers no table, edge or color tools without a selection', () => {
+  it('offers no table, edge, color, text or size tools without a selection', () => {
     expect(screen.queryByRole('button', { name: 'Добавить поле' })).toBeNull()
     expect(screen.queryByRole('combobox')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Цвет линии' })).toBeNull()
+    expect(screen.queryByRole('spinbutton', { name: 'Размер текста' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Автоширина' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Размер' })).toBeNull()
   })
 
   it('adds a field to the selected table', async () => {
@@ -67,5 +70,72 @@ describe('EditorToolbar', () => {
     expect(screen.queryByRole('button', { name: 'Цвет заливки' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Цвет линии' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Цвет текста' })).toBeInTheDocument()
+  })
+
+  it('shows the text size of the selection and changes it', async () => {
+    act(() => editor.setState({ text: { fontSize: 13, autoWidth: false } }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Размер текста' })).toHaveValue(13)
+    await userEvent.click(screen.getByRole('button', { name: 'Увеличить текст' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Уменьшить текст' }))
+    await userEvent.clear(screen.getByRole('spinbutton', { name: 'Размер текста' }))
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Размер текста' }), '200{Enter}')
+
+    expect(editor.stepFontSize).toHaveBeenNthCalledWith(1, 1)
+    expect(editor.stepFontSize).toHaveBeenNthCalledWith(2, -1)
+    expect(editor.setFontSize).toHaveBeenCalledWith(96)
+  })
+
+  it('shows an empty text size when the selected objects have different sizes', () => {
+    act(() => editor.setState({ text: { fontSize: null, autoWidth: null } }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Размер текста' })).toHaveValue(null)
+  })
+
+  it('turns the auto width on and off', async () => {
+    act(() => editor.setState({ text: { fontSize: 13, autoWidth: false } }))
+    const autoWidth = screen.getByRole('button', { name: 'Автоширина' })
+    expect(autoWidth).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(autoWidth)
+    expect(editor.setAutoWidth).toHaveBeenLastCalledWith(true)
+
+    act(() => editor.setState({ text: { fontSize: 13, autoWidth: true } }))
+    expect(autoWidth).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(autoWidth)
+    expect(editor.setAutoWidth).toHaveBeenLastCalledWith(false)
+  })
+
+  it('offers no auto width when no selected shape allows it', () => {
+    act(() => editor.setState({ text: { fontSize: 11, autoWidth: null } }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Размер текста' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Автоширина' })).toBeNull()
+  })
+
+  it('opens the size and the position of the selected shapes and changes them', async () => {
+    act(() => editor.setState({ geometry: { x: 40, y: 60, width: 120, height: null, canSetHeight: true } }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Размер' }))
+    const dialog = screen.getByRole('dialog', { name: 'Размер и положение' })
+    expect(within(dialog).getByRole('spinbutton', { name: 'Ширина' })).toHaveValue(120)
+    expect(within(dialog).getByRole('spinbutton', { name: 'Высота' })).toHaveValue(null)
+    expect(within(dialog).getByRole('spinbutton', { name: 'X' })).toHaveValue(40)
+
+    await userEvent.clear(within(dialog).getByRole('spinbutton', { name: 'Ширина' }))
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'Ширина' }), '200{Enter}')
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'Высота' }), '0{Enter}')
+    await userEvent.clear(within(dialog).getByRole('spinbutton', { name: 'Y' }))
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'Y' }), '-30{Enter}')
+
+    expect(vi.mocked(editor.setGeometry).mock.calls).toEqual([[{ width: 200 }], [{ height: 10 }], [{ y: -30 }]])
+  })
+
+  it('does not let the height of tables be changed', async () => {
+    act(() => editor.setState({ geometry: { x: 0, y: 0, width: 180, height: 56, canSetHeight: false } }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Размер' }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Высота' })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
   })
 })
