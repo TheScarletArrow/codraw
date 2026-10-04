@@ -120,7 +120,7 @@ class OAuth2LoginTest(
 
         val user = signIn("github", gitHubProfile(name = "Alice"))
 
-        assertEquals(user.userId, boards.find(board.id!!, user.userId)?.ownerId)
+        assertEquals(user.userId, boards.find(board.id!!)?.ownerId)
         assertEquals(emptyList(), boards.list(guest.id))
     }
 
@@ -135,7 +135,7 @@ class OAuth2LoginTest(
 
         val gitHub = signIn("github", gitHubProfile(name = "Alice"))
 
-        assertEquals(google.userId, boards.find(board.id!!, google.userId)?.ownerId)
+        assertEquals(google.userId, boards.find(board.id!!)?.ownerId)
         assertEquals(emptyList(), boards.list(gitHub.userId))
     }
 

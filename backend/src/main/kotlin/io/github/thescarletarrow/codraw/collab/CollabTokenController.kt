@@ -19,10 +19,10 @@ class CollabTokenController(
     private val tokens: CollabTokenService,
 ) {
 
-    /** Token to connect to the document of the board; a board of another user looks like a missing one. */
+    /** Token to connect to the document of any existing board: a link to a board gives access to it. */
     @PostMapping("/api/boards/{id}/collab-token")
     fun issue(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): CollabToken {
-        val board = BoardIds.parse(id)?.let { boards.find(it, principal.userId) }
+        val board = BoardIds.parse(id)?.let(boards::find)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
         val user = checkNotNull(users.find(principal.userId)) { "Signed-in user ${principal.userId} does not exist" }
         return tokens.issue(user, checkNotNull(board.id))

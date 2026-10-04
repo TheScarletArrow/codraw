@@ -10,8 +10,6 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
 
     fun findAllByOwnerIdOrderByUpdatedAtDesc(ownerId: UUID): List<Board>
 
-    fun findByIdAndOwnerId(id: UUID, ownerId: UUID): Board?
-
     @Modifying
     @Query("UPDATE boards SET owner_id = :newOwnerId WHERE owner_id = :ownerId")
     fun changeOwner(ownerId: UUID, newOwnerId: UUID): Int

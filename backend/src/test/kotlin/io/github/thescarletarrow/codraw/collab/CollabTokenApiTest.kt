@@ -86,16 +86,13 @@ class CollabTokenApiTest(
     }
 
     @Test
-    fun `answers 404 for a board of another user`() {
+    fun `issues a token for a board of another user opened by its link`() {
         val board = createBoard(alice)
 
-        mockMvc.post("/api/boards/$board/collab-token") {
-            with(bob.session())
-            with(csrf())
-        }.andExpect {
-            status { isNotFound() }
-            jsonPath("$.token") { doesNotExist() }
-        }
+        val claims = SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet
+
+        assertEquals(bob.id.toString(), claims.subject)
+        assertEquals(board, claims.getStringClaim("board"))
     }
 
     @ParameterizedTest
@@ -104,7 +101,10 @@ class CollabTokenApiTest(
         mockMvc.post("/api/boards/$board/collab-token") {
             with(alice.session())
             with(csrf())
-        }.andExpect { status { isNotFound() } }
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.token") { doesNotExist() }
+        }
     }
 
     @Test

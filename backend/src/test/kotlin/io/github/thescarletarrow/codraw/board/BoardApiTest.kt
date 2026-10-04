@@ -150,10 +150,14 @@ class BoardApiTest(
     }
 
     @Test
-    fun `returns 404 for a board of another user`() {
+    fun `returns a board of another user by its id, as a link gives access`() {
         val id = createBoard("Доска Алисы", alice)
 
-        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect { status { isNotFound() } }
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("Доска Алисы") }
+        }
+        mockMvc.get("/api/boards") { with(bob.session()) }.andExpect { content { json("[]") } }
     }
 
     @ParameterizedTest

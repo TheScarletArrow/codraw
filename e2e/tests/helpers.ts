@@ -69,13 +69,10 @@ export async function openBoard(page: Page, url: string) {
   await expect(page.getByRole('status')).toHaveText('Синхронизировано')
 }
 
-/**
- * Two participants on one fresh board, each in an own browser context. Boards are not shared between users yet,
- * so both are the same user signed in twice.
- */
+/** Two users on one fresh board of the first one, opened by the second through its link. */
 export async function twoParticipants(browser: Browser) {
   const alice = await userPage(browser, 'Алиса')
-  const bob = await userPage(browser, 'Алиса')
+  const bob = await userPage(browser, 'Боб')
   const url = await createBoard(alice)
   await openBoard(bob, url)
   return { alice, bob, close: () => Promise.all([alice.context().close(), bob.context().close()]) }

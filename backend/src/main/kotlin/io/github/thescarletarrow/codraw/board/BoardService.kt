@@ -1,5 +1,6 @@
 package io.github.thescarletarrow.codraw.board
 
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -21,8 +22,8 @@ class BoardService(
     /** Boards of the user [ownerId], most recently changed first. */
     fun list(ownerId: UUID): List<Board> = boards.findAllByOwnerIdOrderByUpdatedAtDesc(ownerId)
 
-    /** Returns the board, or `null` when it does not exist or belongs to another user. */
-    fun find(id: UUID, ownerId: UUID): Board? = boards.findByIdAndOwnerId(id, ownerId)
+    /** Returns the board of any user: a link to a board gives access to it. */
+    fun find(id: UUID): Board? = boards.findByIdOrNull(id)
 
     /** Passes all boards of the user [ownerId] to the user [newOwnerId]. */
     fun changeOwner(ownerId: UUID, newOwnerId: UUID) {

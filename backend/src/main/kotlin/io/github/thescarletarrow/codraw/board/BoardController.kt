@@ -36,8 +36,8 @@ class BoardController(private val boards: BoardService) {
     fun list(@AuthenticationPrincipal user: OAuth2User): List<BoardResponse> = boards.list(user.userId).map { it.toResponse() }
 
     @GetMapping("/{id}")
-    fun get(@PathVariable id: String, @AuthenticationPrincipal user: OAuth2User): BoardResponse =
-        BoardIds.parse(id)?.let { boards.find(it, user.userId) }?.toResponse()
+    fun get(@PathVariable id: String): BoardResponse =
+        BoardIds.parse(id)?.let(boards::find)?.toResponse()
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
 }
 

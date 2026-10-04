@@ -61,7 +61,7 @@ class UserAuthApiTest(
     }
 
     @Test
-    fun `a guest works with own boards only, like a signed-in user`() {
+    fun `a guest works with boards like a signed-in user`() {
         val guest = users.createGuest()
         mockMvc.get("/api/me") { with(guest.session()) }.andExpect {
             jsonPath("$.name") { value(matchesPattern("Гость \\d{1,3}")) }
@@ -76,7 +76,8 @@ class UserAuthApiTest(
         }.andExpect { status { isCreated() } }.andReturn().response.getHeader("Location")!!
 
         mockMvc.get("/api/boards") { with(guest.session()) }.andExpect { jsonPath("$[*].title") { value(contains("Гостевая")) } }
-        mockMvc.get(board) { with(alice.session()) }.andExpect { status { isNotFound() } }
+        mockMvc.get("/api/boards") { with(alice.session()) }.andExpect { content { json("[]") } }
+        mockMvc.get(board) { with(alice.session()) }.andExpect { status { isOk() } }
         mockMvc.post("$board/collab-token") {
             with(guest.session())
             with(csrf())

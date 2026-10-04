@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test'
 import { signIn, userPage } from './helpers.ts'
 
 test('participants of a board see each other and the list updates when one leaves', async ({ browser }) => {
-  // The same user on two devices: boards are not shared between users yet.
   const alicePage = await userPage(browser, 'Алиса')
 
   await alicePage.goto('/')
@@ -11,7 +10,8 @@ test('participants of a board see each other and the list updates when one leave
   await expect(alicePage.getByRole('heading', { name: 'Новая доска' })).toBeVisible()
   await expect(alicePage.getByRole('status')).toHaveText('Синхронизировано')
 
-  const bobPage = await userPage(browser, 'Алиса')
+  // Bob opens the board through its link.
+  const bobPage = await userPage(browser, 'Боб')
   await bobPage.goto(alicePage.url())
   await expect(bobPage.getByRole('status')).toHaveText('Синхронизировано')
 
@@ -20,7 +20,8 @@ test('participants of a board see each other and the list updates when one leave
   await expect(aliceParticipants).toHaveCount(2)
   await expect(bobParticipants).toHaveCount(2)
   await expect(aliceParticipants.first()).toHaveText('Алиса (вы)')
-  await expect(aliceParticipants.nth(1)).toHaveText('Алиса')
+  await expect(aliceParticipants.nth(1)).toHaveText('Боб')
+  await expect(bobParticipants.first()).toHaveText('Боб (вы)')
 
   await bobPage.context().close()
   await expect(aliceParticipants).toHaveCount(1, { timeout: 30_000 })

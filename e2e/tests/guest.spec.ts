@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { createBoard, userPage } from './helpers.ts'
+import { createBoard, openBoard, userPage } from './helpers.ts'
 
-test('a visitor works as a guest, keeps the boards after closing the browser and cannot open boards of others', async ({
+test('a visitor works as a guest, keeps the boards after closing the browser and opens boards by their links', async ({
   browser,
 }) => {
   const alice = await userPage(browser, 'Алиса')
@@ -26,8 +26,8 @@ test('a visitor works as a guest, keeps the boards after closing the browser and
   await reopened.goto('/')
   await expect(reopened.locator(`a[href="${boardPath}"]`)).toHaveText('Новая доска')
 
-  await reopened.goto(aliceBoard)
-  await expect(reopened.getByRole('alert')).toHaveText('Доска не найдена')
+  await openBoard(reopened, aliceBoard)
+  await expect(reopened.getByRole('heading', { name: 'Новая доска' })).toBeVisible()
 
   await Promise.all([alice.context().close(), reopened.context().close()])
 })
