@@ -1,3 +1,4 @@
+import { downloadBlob, fileName } from '../lib/download.ts'
 import type { DrawioPage } from './parse.ts'
 import { DRAWIO_MIME_TYPE } from './serialize.ts'
 
@@ -11,16 +12,7 @@ export function titleFromFileName(name: string): string {
 
 /** Saves the diagram as `<title>.drawio`. */
 export function downloadDrawio(title: string, xml: string) {
-  const name = `${title.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'Доска'}.drawio`
-  const url = URL.createObjectURL(new Blob([xml], { type: DRAWIO_MIME_TYPE }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = name
-  document.body.append(link)
-  link.click()
-  link.remove()
-  // The browser starts the download asynchronously.
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(new Blob([xml], { type: DRAWIO_MIME_TYPE }), fileName(title, 'drawio'))
 }
 
 /** Pages read from a file on the list of boards, waiting for the new board to be opened. */

@@ -42,6 +42,8 @@ export function createFakeEditor({
     arrange: 0,
     canGroup: false,
     canUngroup: false,
+    hasCells: false,
+    canCopy: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -84,6 +86,7 @@ export function createFakeEditor({
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),
+    exportSvg: vi.fn(() => null),
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
     setColor: vi.fn(),

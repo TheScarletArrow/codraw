@@ -16,6 +16,8 @@ const NO_EDITOR: EditorState = {
   arrange: 0,
   canGroup: false,
   canUngroup: false,
+  hasCells: false,
+  canCopy: false,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */
