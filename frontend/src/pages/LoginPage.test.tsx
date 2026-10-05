@@ -22,6 +22,14 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('says that signing in accepts the terms of use and the privacy policy, with links to them', () => {
+    renderRoutes(routes, '/login')
+
+    expect(screen.getByText(/Входя или продолжая без входа, вы принимаете/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'условия использования' })).toHaveAttribute('href', '/terms')
+    expect(screen.getByRole('link', { name: 'политику конфиденциальности' })).toHaveAttribute('href', '/privacy')
+  })
+
   it('continues without a sign-in as a guest and opens the boards', async () => {
     const fetchMock = mockFetch({ 'POST /api/guest': { status: 204 } })
     const { router } = renderRoutes(routes, '/login')

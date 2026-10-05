@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { continueAsGuest, loginUrl } from '../api/auth.ts'
 import { isTooManyRequests } from '../api/http.ts'
@@ -38,6 +38,17 @@ export function LoginPage() {
         <Button type="button" variant="ghost" onClick={() => guest.mutate()} disabled={guest.isPending}>
           Продолжить без входа
         </Button>
+        <p className="text-xs text-muted-foreground">
+          Входя или продолжая без входа, вы принимаете{' '}
+          <Link to="/terms" className="underline">
+            условия использования
+          </Link>{' '}
+          и{' '}
+          <Link to="/privacy" className="underline">
+            политику конфиденциальности
+          </Link>
+          .
+        </p>
         {guest.isError && (
           <p role="alert" className="text-destructive">
             {isTooManyRequests(guest.error)
