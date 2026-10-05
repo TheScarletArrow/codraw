@@ -34,8 +34,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # Not reachable through the app address: nginx proxies only /api/; Prometheus reads metrics in the stack network.
+        include: health,prometheus
+  metrics:
+    tags:
+      application: codraw-backend
   endpoint:
     health:
       probes:
         enabled: true
+
+codraw:
+  guests:
+    # A board of a guest whose session has expired is deleted once nobody worked on it for this long.
+    board-retention: 30d
+    # Every hour; "-" turns the cleanup off.
+    cleanup-cron: "0 23 * * * *"

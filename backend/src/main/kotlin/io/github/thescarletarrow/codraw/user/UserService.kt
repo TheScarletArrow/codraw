@@ -1,5 +1,6 @@
 package io.github.thescarletarrow.codraw.user
 
+import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.board.BoardService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -12,6 +13,7 @@ import kotlin.random.Random
 class UserService(
     private val users: UserRepository,
     private val boards: BoardService,
+    private val metrics: CodrawMetrics,
     private val clock: Clock,
 ) {
 
@@ -46,6 +48,7 @@ class UserService(
     @Transactional
     fun createGuest(): User =
         signIn(ProviderProfile(ProviderProfile.GUEST, UUID.randomUUID().toString(), "Гость ${Random.nextInt(1, 1000)}", null))
+            .also { metrics.guestCreated() }
 
     fun find(id: UUID): User? = users.findById(id)
 }

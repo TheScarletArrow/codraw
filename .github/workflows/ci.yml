@@ -121,12 +121,29 @@ jobs:
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}frontend:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
-      - name: Start the stack from the images
+      - name: Check the Prometheus configuration and alert rules
+        run: |
+          promtool() {
+            docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus:/etc/prometheus:ro" -w /etc/prometheus \
+              prom/prometheus:v3.15.0 "$@"
+          }
+          promtool check config prometheus.yml
+          promtool test rules alerts.test.yml
+      - name: Start the stack from the images, with monitoring
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$RUNNER_TEMP/signing-key.pem"
           { echo 'CODRAW_COLLAB_TOKEN_SIGNING_KEY<<KEY'; cat "$RUNNER_TEMP/signing-key.pem"; echo KEY; } >> "$GITHUB_ENV"
           export CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat "$RUNNER_TEMP/signing-key.pem")"
-          docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 300
+          docker compose -f docker-compose.prod.yml --profile monitoring up -d --no-build --wait --wait-timeout 300
+      - name: Check that Prometheus reads backend and collab
+        run: |
+          for attempt in $(seq 1 30); do
+            up=$(curl -s http://127.0.0.1:9090/api/v1/targets | jq '[.data.activeTargets[] | select(.health == "up")] | length')
+            if [ "$up" = 2 ]; then exit 0; fi
+            sleep 2
+          done
+          curl -s http://127.0.0.1:9090/api/v1/targets
+          exit 1
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -139,7 +156,7 @@ jobs:
         env:
           STACK_URL: http://localhost:8080
       - if: failure()
-        run: docker compose -f docker-compose.prod.yml logs --no-color
+        run: docker compose -f docker-compose.prod.yml --profile monitoring logs --no-color
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

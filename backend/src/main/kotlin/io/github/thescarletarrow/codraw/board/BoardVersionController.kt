@@ -1,5 +1,9 @@
 package io.github.thescarletarrow.codraw.board
 
+import io.github.thescarletarrow.codraw.CodrawMetrics
+import io.github.thescarletarrow.codraw.Limit
+import io.github.thescarletarrow.codraw.LimitProperties
+import io.github.thescarletarrow.codraw.readAtMost
 import io.github.thescarletarrow.codraw.user.userId
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -19,7 +23,12 @@ import java.net.URI
 /** Versions of a board: earlier states of its document, which only its owner sees and saves. */
 @RestController
 @RequestMapping("/api/boards/{id}/versions")
-class BoardVersionController(private val boards: BoardService, private val versions: BoardVersionService) {
+class BoardVersionController(
+    private val boards: BoardService,
+    private val versions: BoardVersionService,
+    private val limits: LimitProperties,
+    private val metrics: CodrawMetrics,
+) {
 
     @GetMapping
     fun list(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<BoardVersion> =
@@ -47,10 +56,10 @@ class BoardVersionController(private val boards: BoardService, private val versi
         val boardId = boardId(id, principal)
         val versionReason = SAVED_REASONS[reason]
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Reason must be one of ${SAVED_REASONS.keys}")
-        // Reads one byte more than allowed, so that a larger body is refused without reading all of it.
-        val state = body.readNBytes(BoardVersionService.MAX_STATE_SIZE + 1)
-        if (state.isEmpty() || state.size > BoardVersionService.MAX_STATE_SIZE) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "The state must have 1 byte to 16 MB")
+        val state = body.readAtMost(limits.documentSize)
+        if (state == null) metrics.limitReached(Limit.VERSION)
+        if (state == null || state.isEmpty()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "The state must have 1 byte to ${limits.documentSize}")
         }
         val version = versions.save(boardId, state, versionReason)
         return ResponseEntity.created(URI.create("/api/boards/$boardId/versions/${version.id}")).body(version)

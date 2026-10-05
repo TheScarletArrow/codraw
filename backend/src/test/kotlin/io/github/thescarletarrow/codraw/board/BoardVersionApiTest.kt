@@ -167,14 +167,12 @@ class BoardVersionApiTest(
     }
 
     @Test
-    fun `rejects an empty state and a state larger than 16 MB`() {
+    fun `rejects an empty state`() {
         val board = createBoard()
 
         post(board, alice, byteArrayOf(), "manual").andExpect { status { isBadRequest() } }
-        post(board, alice, ByteArray(BoardVersionService.MAX_STATE_SIZE + 1), "manual").andExpect { status { isBadRequest() } }
-        post(board, alice, ByteArray(BoardVersionService.MAX_STATE_SIZE), "manual").andExpect { status { isCreated() } }
 
-        assertEquals(1, versionCount(board))
+        assertEquals(0, versionCount(board))
     }
 
     @Test

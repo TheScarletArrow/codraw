@@ -233,6 +233,34 @@ describe('BoardPage', () => {
     expect(provider.destroyed).toBe(true)
   })
 
+  describe('size of the board', () => {
+    it.each([
+      ['collab refuses a change that would make the board too large', 'document-too-large', 1000],
+      ['the socket refuses a message larger than it takes', '', 1009],
+    ])('drops the local document and connects again when %s', async (_, reason, code) => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      provider.document.getMap('meta').set('title', 'Не дойдёт')
+
+      act(() => provider.emitClose(reason, code))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Доска достигла предельного размера, последнее изменение не сохранено. Удалите лишнее, чтобы продолжить',
+      )
+      const next = FakeHocuspocusProvider.latest()
+      expect(next).not.toBe(provider)
+      expect(provider.destroyed).toBe(true)
+      const fresh = (next.configuration as { document: Y.Doc }).document
+      expect(fresh.getMap('meta').get('title')).toBeUndefined()
+      expect(screen.getByRole('status')).toHaveTextContent('Подключение')
+
+      act(() => next.emitSynced())
+      expect(screen.getByTestId('diagram-canvas')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Понятно' }))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+
   describe('access through the link', () => {
     it('shows "Нет доступа" when the owner closed the link of the board', async () => {
       mockFetch({ 'GET /api/me': { body: ALICE }, [`GET /api/boards/${boardId}`]: { status: 403 } })

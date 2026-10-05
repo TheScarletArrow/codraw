@@ -1,0 +1,37 @@
+# Alert rules of CoDraw. Prometheus evaluates them; where alerts go (Alertmanager, mail, a messenger) is up to the
+# installation, see docs/deploy.md.
+groups:
+  - name: codraw
+    rules:
+      - alert: CodrawServiceDown
+        expr: up{job=~"backend|collab"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} не отвечает Prometheus 2 минуты"
+
+      - alert: CodrawBackendErrors
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="backend", status=~"5.."}[5m]))
+            / sum(rate(http_server_requests_seconds_count{job="backend"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Больше 5% ответов backend — ошибки 5xx"
+
+      - alert: CodrawDocumentStoreFailures
+        expr: increase(codraw_collab_stores_total{result="failed"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "collab не смог сохранить документы досок: изменения пока только в памяти"
+
+      - alert: CodrawDatabaseConnectionsPending
+        expr: max(hikaricp_connections_pending{job="backend"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Запросы backend 5 минут ждут соединений с базой"

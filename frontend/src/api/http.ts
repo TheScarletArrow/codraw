@@ -1,10 +1,20 @@
+/** The body of an error response: the API answers with problem details (RFC 9457). */
+export interface Problem {
+  title?: string
+  detail?: string
+  /** The limit that the request ran into, e.g. the most boards a user owns. */
+  limit?: number
+}
+
 export class HttpError extends Error {
   readonly status: number
+  readonly problem: Problem | undefined
 
-  constructor(status: number) {
+  constructor(status: number, problem?: Problem) {
     super(`Request failed with status ${status}`)
     this.name = 'HttpError'
     this.status = status
+    this.problem = problem
   }
 }
 
@@ -14,6 +24,9 @@ export const isUnauthorized = (error: unknown) => error instanceof HttpError && 
 
 /** The board is there, but its owner closed its link to others. */
 export const isForbidden = (error: unknown) => error instanceof HttpError && error.status === 403
+
+/** The request ran into a limit of the rate of such requests, e.g. of new guests from one address. */
+export const isTooManyRequests = (error: unknown) => error instanceof HttpError && error.status === 429
 
 /** The backend puts the CSRF token into this cookie and expects it back in the header on every change. */
 const CSRF_COOKIE = 'XSRF-TOKEN'
@@ -49,7 +62,16 @@ async function send(path: string, init: RequestInit, accept: string): Promise<Re
     headers: { Accept: accept, ...(token && { [CSRF_HEADER]: token }), ...init.headers },
   })
   if (!response.ok) {
-    throw new HttpError(response.status)
+    throw new HttpError(response.status, await problemOf(response))
   }
   return response
+}
+
+async function problemOf(response: Response): Promise<Problem | undefined> {
+  if (!response.headers.get('Content-Type')?.includes('json')) return undefined
+  try {
+    return (await response.json()) as Problem
+  } catch {
+    return undefined
+  }
 }

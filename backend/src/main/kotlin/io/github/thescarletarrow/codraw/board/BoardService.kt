@@ -1,5 +1,9 @@
 package io.github.thescarletarrow.codraw.board
 
+import io.github.thescarletarrow.codraw.CodrawMetrics
+import io.github.thescarletarrow.codraw.Limit
+import io.github.thescarletarrow.codraw.LimitProperties
+import io.github.thescarletarrow.codraw.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -12,13 +16,27 @@ import java.util.UUID
 class BoardService(
     private val boards: BoardRepository,
     private val visits: BoardVisits,
+    private val users: UserRepository,
+    private val limits: LimitProperties,
+    private val metrics: CodrawMetrics,
     private val clock: Clock,
 ) {
 
-    /** Creates a board owned by the user [ownerId]. */
+    /**
+     * Creates a board owned by the user [ownerId]; throws [BoardLimitReachedException] when they own as many boards as
+     * the limit allows.
+     */
+    @Transactional
     fun create(title: String, ownerId: UUID): Board {
+        // Boards created at the same time by one owner count each other.
+        checkNotNull(users.lock(ownerId)) { "Owner $ownerId does not exist" }
+        if (boards.countByOwnerId(ownerId) >= limits.boardsPerUser) {
+            metrics.limitReached(Limit.BOARDS)
+            throw BoardLimitReachedException(limits.boardsPerUser)
+        }
         val now = now()
         return boards.save(Board(title = title, ownerId = ownerId, createdAt = now, updatedAt = now))
+            .also { metrics.boardCreated() }
     }
 
     /** Boards of the user [ownerId], most recently changed first. */
@@ -68,3 +86,6 @@ class BoardService(
         const val VISITED_LIMIT = 50
     }
 }
+
+/** The user owns as many boards as the [limit] allows. */
+class BoardLimitReachedException(val limit: Int) : RuntimeException("The user owns $limit boards, the most allowed")

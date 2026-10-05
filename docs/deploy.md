@@ -45,6 +45,17 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_VERSION` | нет | тег образов, по умолчанию `latest` |
 | `CODRAW_IMAGE_PREFIX` | нет | реестр и префикс имён образов, по умолчанию `ghcr.io/thescarletarrow/codraw-` |
 
+Необязательные настройки, у которых есть значения по умолчанию:
+
+| Переменная | По умолчанию | Что |
+|---|---|---|
+| `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
+| `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
+| `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
+| `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски; у предела проходят только удаления |
+| `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
+| `CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD` | `64MB` | сколько занимают версии одной доски вместе; старые удаляются, новейшая остаётся всегда |
+
 Без обязательной переменной Docker Compose не запустит стек и назовёт её. Без OAuth-приложений работает только вход
 гостем: кнопки «Войти через GitHub» и «Войти через Google» ведут на ошибку провайдера.
 
@@ -102,6 +113,42 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 и выполните `up -d --wait`. Откат на версию до изменения схемы базы требует отката миграций — U-скриптов в
 `backend/src/main/resources/db/migration`.
 
+## Мониторинг и журналы
+
+**Метрики** в формате Prometheus открыты без входа только внутри сети стека: по адресу приложения их нет.
+
+| Где | Что |
+|---|---|
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`) |
+| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`), отказы по причинам (`codraw_collab_rejections_total{reason}`), метрики процесса Node.js |
+
+**Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
+каталог `deploy/prometheus` из репозитория:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod --profile monitoring up -d --wait
+```
+
+Prometheus слушает `127.0.0.1:9090` сервера (порт — `CODRAW_PROMETHEUS_PORT`): входа у него нет, поэтому
+открывайте его через SSH-туннель (`ssh -L 9090:127.0.0.1:9090 сервер`) или прокси со входом. В
+`deploy/prometheus/alerts.yml` — правила оповещений:
+
+| Правило | Когда |
+|---|---|
+| `CodrawServiceDown` | `backend` или `collab` не отвечает Prometheus 2 минуты |
+| `CodrawBackendErrors` | больше 5% ответов `backend` — ошибки 5xx, 10 минут |
+| `CodrawDocumentStoreFailures` | `collab` не смог сохранить документ доски хотя бы раз за 10 минут |
+| `CodrawDatabaseConnectionsPending` | запросы `backend` 5 минут ждут соединений с базой |
+
+Prometheus показывает сработавшие правила на странице Alerts. Чтобы получать оповещения, подключите Alertmanager
+(`alerting` в `deploy/prometheus/prometheus.yml`) или внешний мониторинг, который читает те же метрики. Проверить
+правила после правки: `promtool test rules deploy/prometheus/alerts.test.yml`.
+
+**Журналы** `backend` и `collab` в этом стеке — JSON по строке на событие в формате ECS (`@timestamp`, `log.level`,
+`message`, `error.*`): их разбирает любой сборщик журналов. Читать их глазами удобнее так:
+`docker compose -f docker-compose.prod.yml logs backend | jq -r '.message'`. Чтобы вернуть обычный текст, уберите
+`LOGGING_STRUCTURED_FORMAT_CONSOLE` у `backend` и задайте `LOG_FORMAT: text` у `collab`.
+
 ## Резервные копии
 
 Всё состояние — в PostgreSQL: доски, документы, пользователи, сеансы.
@@ -120,7 +167,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres 
 
 ## Что проверяет CI
 
-Задача `images` собирает три образа, поднимает из них этот же `docker-compose.prod.yml` и в браузере проверяет
-через nginx совместную работу двух гостей, заголовки безопасности, кеширование и закрытость внутреннего API
-(`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить против своего стека:
+Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает три образа, поднимает из них
+этот же `docker-compose.prod.yml` с профилем `monitoring`, ждёт, пока Prometheus увидит `backend` и `collab`, и в
+браузере проверяет через nginx совместную работу двух гостей, заголовки безопасности, кеширование и закрытость
+внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить против своего стека:
 `STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.

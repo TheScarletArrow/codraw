@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { continueAsGuest, loginUrl } from '../api/auth.ts'
+import { isTooManyRequests } from '../api/http.ts'
 import { ME_QUERY_KEY } from '../auth/session.ts'
 
 export function LoginPage() {
@@ -39,7 +40,9 @@ export function LoginPage() {
         </Button>
         {guest.isError && (
           <p role="alert" className="text-destructive">
-            Не удалось продолжить без входа. Попробуйте ещё раз.
+            {isTooManyRequests(guest.error)
+              ? 'Слишком много новых гостей с вашего адреса. Попробуйте позже или войдите через GitHub или Google.'
+              : 'Не удалось продолжить без входа. Попробуйте ещё раз.'}
           </p>
         )}
       </section>

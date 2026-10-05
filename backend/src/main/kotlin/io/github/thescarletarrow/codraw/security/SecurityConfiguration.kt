@@ -50,6 +50,7 @@ class SecurityConfiguration {
         http {
             authorizeHttpRequests {
                 authorize("/actuator/health/**", permitAll)
+                authorize("/actuator/prometheus", permitAll)
                 authorize(JwksController.PATH, permitAll)
                 authorize(HttpMethod.POST, GuestLoginController.PATH, permitAll)
                 authorize("/error", permitAll)

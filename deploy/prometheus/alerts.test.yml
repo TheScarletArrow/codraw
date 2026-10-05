@@ -1,0 +1,61 @@
+# Checks of the alert rules: promtool test rules deploy/prometheus/alerts.test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="collab", instance="collab:1234"}'
+        values: "1 0 0 0 0"
+      - series: 'up{job="backend", instance="backend:8080"}'
+        values: "1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CodrawServiceDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: CodrawServiceDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: collab, instance: "collab:1234" }
+            exp_annotations: { summary: "collab не отвечает Prometheus 2 минуты" }
+
+  - interval: 1m
+    input_series:
+      # 6 errors in every 66 answers: 9%.
+      - series: 'http_server_requests_seconds_count{job="backend", instance="backend:8080", status="500", uri="/api/boards"}'
+        values: "0+6x30"
+      - series: 'http_server_requests_seconds_count{job="backend", instance="backend:8080", status="200", uri="/api/boards"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CodrawBackendErrors
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: { summary: "Больше 5% ответов backend — ошибки 5xx" }
+
+  - interval: 1m
+    input_series:
+      - series: 'codraw_collab_stores_total{job="collab", instance="collab:1234", result="failed"}'
+        values: "0 0 0 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CodrawDocumentStoreFailures
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: CodrawDocumentStoreFailures
+        exp_alerts:
+          - exp_labels: { severity: critical, job: collab, instance: "collab:1234", result: failed }
+            exp_annotations: { summary: "collab не смог сохранить документы досок: изменения пока только в памяти" }
+
+  - interval: 1m
+    input_series:
+      - series: 'hikaricp_connections_pending{job="backend", instance="backend:8080", pool="HikariPool-1"}'
+        values: "0 2 2 2 2 2 2 2"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: CodrawDatabaseConnectionsPending
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: { summary: "Запросы backend 5 минут ждут соединений с базой" }

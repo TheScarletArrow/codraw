@@ -10,3 +10,8 @@ spring:
           google:
             client-id: test-google-client
             client-secret: test-google-secret
+
+codraw:
+  guests:
+    # Tests run the cleanup themselves.
+    cleanup-cron: "-"

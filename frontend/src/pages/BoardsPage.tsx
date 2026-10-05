@@ -2,7 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
-import { createBoard, deleteBoard, fetchBoards, fetchSharedBoards, renameBoard, type Board, type SharedBoard } from '../api/boards.ts'
+import {
+  boardLimitOf,
+  createBoard,
+  deleteBoard,
+  fetchBoards,
+  fetchSharedBoards,
+  renameBoard,
+  type Board,
+  type SharedBoard,
+} from '../api/boards.ts'
 import { BoardActions } from '../board/BoardActions.tsx'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { DRAWIO_FILE_TYPES, setPendingImport, titleFromFileName } from '../drawio/files.ts'
@@ -14,6 +23,14 @@ export const NEW_BOARD_TITLE = 'Новая доска'
 const SHARED_BOARDS_QUERY_KEY = ['shared-boards'] as const
 
 const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
+
+/** Tells the user that they own as many boards as allowed, when that is why a board was not created. */
+function boardLimitMessage(error: unknown): string | null {
+  const limit = boardLimitOf(error)
+  if (limit === null) return null
+  const boards = new Intl.PluralRules('ru').select(limit) === 'one' ? 'доски' : 'досок'
+  return `Можно держать не больше ${limit} ${boards}. Удалите ненужные, чтобы создать новую`
+}
 
 export function BoardsPage() {
   const navigate = useNavigate()
@@ -70,12 +87,14 @@ export function BoardsPage() {
       </div>
       {create.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          Не удалось создать доску
+          {boardLimitMessage(create.error) ?? 'Не удалось создать доску'}
         </p>
       )}
       {open.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          {open.error instanceof DrawioFormatError ? open.error.message : 'Не удалось создать доску из файла'}
+          {open.error instanceof DrawioFormatError
+            ? open.error.message
+            : (boardLimitMessage(open.error) ?? 'Не удалось создать доску из файла')}
         </p>
       )}
 

@@ -1,6 +1,8 @@
 # CoDraw on a server: the app with its API and sync on one port, behind a proxy that terminates TLS.
 # Variables: .env.prod.example; the whole guide: docs/deploy.md.
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+# With Prometheus, which reads the metrics of backend and collab (deploy/prometheus next to this file):
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod --profile monitoring up -d --wait
 # Its own project name: the containers and the volume do not mix with those of docker-compose.yml for development.
 name: codraw-prod
 
@@ -40,6 +42,14 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-not-configured}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-not-configured}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-not-configured}
+      CODRAW_GUESTS_BOARD_RETENTION: ${CODRAW_GUESTS_BOARD_RETENTION:-30d}
+      CODRAW_LIMITS_BOARDS_PER_USER: ${CODRAW_LIMITS_BOARDS_PER_USER:-100}
+      CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR: ${CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR:-20}
+      # Above the limit of collab, so that a document that collab accepted is always stored; nginx takes up to 32 MB.
+      CODRAW_LIMITS_DOCUMENT_SIZE: ${CODRAW_LIMITS_DOCUMENT_SIZE:-32MB}
+      CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD: ${CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD:-64MB}
+      # One line of JSON (ECS) per event; without it the log is plain text.
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,6 +64,9 @@ services:
       BACKEND_URL: http://backend:8080
       BACKEND_JWKS_URL: http://backend:8080/.well-known/jwks.json
       CODRAW_INTERNAL_TOKEN: ${CODRAW_INTERNAL_TOKEN}
+      DOCUMENT_SIZE_LIMIT_BYTES: ${DOCUMENT_SIZE_LIMIT_BYTES:-16777216}
+      # One line of JSON (ECS) per event, like the backend; "text" gives plain text.
+      LOG_FORMAT: json
     depends_on:
       # Collab verifies sync tokens with the keys of the backend.
       backend:
@@ -74,5 +87,21 @@ services:
       collab:
         condition: service_healthy
 
+  prometheus:
+    <<: *restart
+    image: prom/prometheus:v3.15.0
+    # Only with --profile monitoring.
+    profiles: [monitoring]
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      # On the server itself only: Prometheus has no sign-in. Reach it through an SSH tunnel or a proxy with a sign-in.
+      - "127.0.0.1:${CODRAW_PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - backend
+      - collab
+
 volumes:
   postgres-data:
+  prometheus-data:

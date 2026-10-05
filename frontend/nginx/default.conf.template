@@ -36,8 +36,9 @@ server {
     set $backend ${BACKEND_URL};
     set $collab ${COLLAB_URL};
 
-    # Imports of .drawio files are read in the browser; the largest bodies are versions of a board, up to 16 MB.
-    client_max_body_size 16m;
+    # Imports of .drawio files are read in the browser; the largest bodies are versions of a board, up to the limit of
+    # the backend for a document state (CODRAW_LIMITS_DOCUMENT_SIZE, 32 MB).
+    client_max_body_size 32m;
 
     gzip on;
     gzip_min_length 1024;

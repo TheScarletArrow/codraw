@@ -1,4 +1,4 @@
-import { request } from './http.ts'
+import { HttpError, request } from './http.ts'
 
 /**
  * What the user may do on a board: its owner manages it, anybody else opened it through its link, which lets them edit
@@ -49,6 +49,14 @@ export function fetchSharedBoards(): Promise<SharedBoard[]> {
 
 export function fetchBoard(id: string): Promise<Board> {
   return request(`/api/boards/${encodeURIComponent(id)}`)
+}
+
+/**
+ * The most boards a user owns, when creating a board failed because the user owns as many already; `null` for any
+ * other failure.
+ */
+export function boardLimitOf(error: unknown): number | null {
+  return error instanceof HttpError && error.status === 409 ? (error.problem?.limit ?? null) : null
 }
 
 export function createBoard(title: string): Promise<Board> {

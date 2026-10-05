@@ -1,6 +1,8 @@
 import type { Document } from "@hocuspocus/server";
 import type { CollabUser } from "./auth.js";
 import { BOARD_NOT_FOUND, BoardNotFoundError, type BackendClient, type BoardAccess } from "./backend-client.js";
+import { log } from "./log.js";
+import type { Metrics } from "./metrics.js";
 
 /** What a user may do with the document of a board: a connection with `view` is read-only. */
 export type DocumentAccess = "edit" | "view";
@@ -58,7 +60,7 @@ export async function accessOnConnect(
  * Any participant may ask for a check, so a document has at most one running check; requests that come while it runs
  * make exactly one more.
  */
-export function createAccessChecks(backend: Pick<BackendClient, "loadAccess">) {
+export function createAccessChecks(backend: Pick<BackendClient, "loadAccess">, metrics?: Pick<Metrics, "rejected">) {
   const running = new Map<string, { again: boolean }>();
 
   const check = async (document: Document) => {
@@ -69,7 +71,7 @@ export function createAccessChecks(backend: Pick<BackendClient, "loadAccess">) {
       if (error instanceof BoardNotFoundError) {
         document.getConnections().forEach((connection) => connection.close(BOARD_DELETED));
       } else {
-        console.error(`Failed to check access to board ${document.name}`, error);
+        log.error(`Failed to check access to board ${document.name}`, error, { "codraw.board": document.name });
       }
       return;
     }
@@ -78,6 +80,7 @@ export function createAccessChecks(backend: Pick<BackendClient, "loadAccess">) {
       if (accessOf(access, context.user.id) !== context.access) {
         // The whole socket: the provider reconnects only after the socket closes, and connects with the new access then.
         connection.webSocket.close(ACCESS_CHANGED.code, ACCESS_CHANGED.reason);
+        metrics?.rejected("access-changed");
       }
     });
   };
