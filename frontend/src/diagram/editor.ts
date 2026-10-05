@@ -32,6 +32,7 @@ import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardText, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import { registerDiagramExtensions } from './extensions.ts'
+import { layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { touchedByRegion } from './regionSelection.ts'
@@ -172,6 +173,8 @@ export interface EditorState {
   hasCells: boolean
   /** The selection has a shape, so copying takes something. */
   canCopy: boolean
+  /** {@link DiagramEditor.autoLayout} lays out the selection: it has two shapes, tables or groups at least. */
+  layoutSelection: boolean
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -232,6 +235,12 @@ export interface DiagramEditor {
   alignShapes(align: ShapeAlign): void
   /** Spaces at least three selected shapes evenly between the outermost ones, as one undo step. */
   distributeShapes(direction: Direction): void
+  /**
+   * Lays out the selection, or the whole page without two selected shapes, in layers along the edges in `direction`,
+   * as one undo step: tables and groups as a whole, frames around the shapes inside them, edges between the laid out
+   * shapes without their bends. Resolves once the shapes have moved; the layout library loads on first use.
+   */
+  autoLayout(direction: LayoutDirection): Promise<void>
   /** Puts the selected shapes of one parent and the edges between them into a new group and selects it. */
   group(): Cell | null
   /** Moves the shapes of the selected groups back to the page in their places and selects them. */
@@ -383,6 +392,7 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Mod+U', editing: true, run: (editor) => editor.toggleFontStyle('underline') },
   { keys: 'Mod+G', editing: true, run: (editor) => editor.group() },
   { keys: 'Mod+Shift+G', editing: true, run: (editor) => editor.ungroup() },
+  { keys: 'Mod+Shift+L', editing: true, run: (editor) => void editor.autoLayout('right') },
   { keys: 'ArrowLeft', editing: true, run: nudge(-1, 0, false) },
   { keys: 'ArrowUp', editing: true, run: nudge(0, -1, false) },
   { keys: 'ArrowRight', editing: true, run: nudge(1, 0, false) },
@@ -570,6 +580,20 @@ export function createDiagramEditor(
   const allowsAutoWidthCell = (cell: Cell) => isFreeShape(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
+  /** The cell of the page that a cell belongs to: a field to its table, a shape of a group to the group. */
+  const pageCell = (cell: Cell): Cell | null => {
+    let current: Cell | null = cell
+    while (current && current.getParent() !== graph.getDefaultParent()) current = current.getParent()
+    return current
+  }
+  /** Shapes, tables and groups of the page that the selection has. */
+  const selectedLayoutCells = (): Cell[] => [
+    ...new Set(graph.getSelectionCells().flatMap((cell) => (cell.isVertex() ? (pageCell(cell) ?? []) : []))),
+  ]
+  /** All edges of the page, those inside groups too. */
+  const pageEdges = (parent: Cell = graph.getDefaultParent()): Cell[] =>
+    parent.getChildren().flatMap((child) => (child.isEdge() ? [child] : pageEdges(child)))
+  let layingOut = false
   /** Selected cells that can become a group: those of the parent of the first one, fields of tables aside. */
   const groupableCells = (): Cell[] => {
     const cells = graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()))
@@ -724,6 +748,7 @@ export function createDiagramEditor(
       canUngroup: !readOnly && graph.getSelectionCells().some(isGroup),
       hasCells: graph.getDefaultParent().getChildCount() > 0,
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex()),
+      layoutSelection: selectedLayoutCells().length >= 2,
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1151,6 +1176,59 @@ export function createDiagramEditor(
       if (cells.length < 2) return
       graph.stopEditing(false)
       graph.alignCells(align, cells)
+    },
+    async autoLayout(direction) {
+      if (readOnly || layingOut) return
+      const parent = graph.getDefaultParent()
+      const selected = selectedLayoutCells()
+      const cells = selected.length >= 2 ? selected : parent.getChildren().filter((cell) => cell.isVertex())
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      const ids = new Set(cells.map((cell) => cell.getId()))
+      const shapes: LayoutShape[] = cells.map((cell) => {
+        const { x, y, width, height } = cell.getGeometry()!
+        const frame = !isGroup(cell) && (cell.getStyle() as ShapeStyle).pointerEvents === false
+        return { id: cell.getId()!, x, y, width, height, frame }
+      })
+      // An edge of a field connects its table; the bends of edges between laid out shapes would not fit any more.
+      const edges: LayoutEdge[] = []
+      const rerouted: Cell[] = []
+      for (const edge of pageEdges()) {
+        const [source, target] = [edge.getTerminal(true), edge.getTerminal(false)].map((end) => end && pageCell(end))
+        if (!source || !target || !ids.has(source.getId()) || !ids.has(target.getId())) continue
+        edges.push({ id: edge.getId()!, source: source.getId()!, target: target.getId()! })
+        rerouted.push(edge)
+      }
+      layingOut = true
+      try {
+        const boxes = await layoutShapes(shapes, edges, direction)
+        if (destroyed) return
+        model.batchUpdate(() => {
+          for (const [id, box] of boxes) {
+            // Another participant may have deleted the shape meanwhile.
+            const cell = model.getCell(id)
+            if (!cell || cell.getParent() !== parent) continue
+            const geometry = cell.getGeometry()!.clone()
+            geometry.x = box.x
+            geometry.y = box.y
+            // Only a frame changes its size, around its shapes.
+            if (shapes.find((shape) => shape.id === id)?.frame) {
+              geometry.width = box.width
+              geometry.height = box.height
+            }
+            model.setGeometry(cell, geometry)
+          }
+          for (const edge of rerouted) {
+            const geometry = edge.getGeometry()
+            if (!model.getCell(edge.getId()!) || !geometry?.points?.length) continue
+            const straight = geometry.clone()
+            straight.points = []
+            model.setGeometry(edge, straight)
+          }
+        })
+      } finally {
+        layingOut = false
+      }
     },
     distributeShapes(direction) {
       const cells = geometryCells()

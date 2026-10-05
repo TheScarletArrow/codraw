@@ -44,6 +44,7 @@ export function createFakeEditor({
     canUngroup: false,
     hasCells: false,
     canCopy: false,
+    layoutSelection: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -83,6 +84,7 @@ export function createFakeEditor({
     reverseEdge: vi.fn(),
     alignShapes: vi.fn(),
     distributeShapes: vi.fn(),
+    autoLayout: vi.fn(async () => {}),
     group: vi.fn(() => null),
     ungroup: vi.fn(),
     editLabel: vi.fn(),
