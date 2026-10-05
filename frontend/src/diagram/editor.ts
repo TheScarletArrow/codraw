@@ -333,30 +333,73 @@ const FONT_STYLE_BITS: Record<FontStyleFlag, number> = { bold: 1, italic: 2, und
 /** Property of the canvas element that exposes the editor to end-to-end tests. */
 export const EDITOR_PROPERTY = '__codrawEditor'
 
-const KEY_BACKSPACE = 8
-const KEY_DELETE = 46
-const KEY_A = 65
-const KEY_B = 66
-const KEY_D = 68
-const KEY_G = 71
-const KEY_H = 72
-const KEY_I = 73
-const KEY_U = 85
-const KEY_Y = 89
-const KEY_Z = 90
-const KEY_F2 = 113
-const KEY_LEFT = 37
-const KEY_UP = 38
-const KEY_RIGHT = 39
-const KEY_DOWN = 40
+/**
+ * A key the canvas responds to, in the notation of shortcuts: `Mod` is Ctrl, or Cmd on macOS; then `Shift`; then a
+ * letter, `Delete`, `Backspace`, `F2` or an arrow.
+ */
+export type KeyBinding = { keys: string; editing: boolean; run: (editor: DiagramEditor) => void }
 
-/** Arrow keys and the directions they move the selection in. */
-const ARROWS = [
-  [KEY_LEFT, -1, 0],
-  [KEY_UP, 0, -1],
-  [KEY_RIGHT, 1, 0],
-  [KEY_DOWN, 0, 1],
-] as const
+/** Codes of the keys of {@link KEY_BINDINGS} that are not letters, as maxGraph reads them. */
+const KEY_CODES: Record<string, number> = {
+  Backspace: 8,
+  Delete: 46,
+  F2: 113,
+  ArrowLeft: 37,
+  ArrowUp: 38,
+  ArrowRight: 39,
+  ArrowDown: 40,
+}
+
+/** Moves the selection by a pixel, or by a step of the grid, as in draw.io; not snapped to the grid. */
+const nudge = (dx: number, dy: number, grid: boolean) => (editor: DiagramEditor) => {
+  const step = grid ? editor.graph.getGridSize() : 1
+  editor.moveSelection(dx * step, dy * step)
+}
+
+/**
+ * Keys of the canvas and what they do; `editing` ones change the page and are not bound for a participant who may only
+ * view. Ctrl+C, Ctrl+X and Ctrl+V are clipboard events, not keys: binding them would cancel the keys, and the events
+ * with them.
+ */
+export const KEY_BINDINGS: readonly KeyBinding[] = [
+  { keys: 'Mod+A', editing: false, run: (editor) => editor.selectAll() },
+  // The scale is the participant's own, so a participant who may only view fits the page too.
+  { keys: 'Mod+Shift+H', editing: false, run: (editor) => editor.zoomToFit() },
+  { keys: 'Delete', editing: true, run: (editor) => editor.deleteSelection() },
+  { keys: 'Backspace', editing: true, run: (editor) => editor.deleteSelection() },
+  { keys: 'Mod+Z', editing: true, run: (editor) => editor.undo() },
+  { keys: 'Mod+Shift+Z', editing: true, run: (editor) => editor.redo() },
+  { keys: 'Mod+Y', editing: true, run: (editor) => editor.redo() },
+  { keys: 'Mod+D', editing: true, run: (editor) => editor.duplicate() },
+  { keys: 'F2', editing: true, run: (editor) => editor.editLabel() },
+  { keys: 'Mod+B', editing: true, run: (editor) => editor.toggleFontStyle('bold') },
+  { keys: 'Mod+I', editing: true, run: (editor) => editor.toggleFontStyle('italic') },
+  { keys: 'Mod+U', editing: true, run: (editor) => editor.toggleFontStyle('underline') },
+  { keys: 'Mod+G', editing: true, run: (editor) => editor.group() },
+  { keys: 'Mod+Shift+G', editing: true, run: (editor) => editor.ungroup() },
+  { keys: 'ArrowLeft', editing: true, run: nudge(-1, 0, false) },
+  { keys: 'ArrowUp', editing: true, run: nudge(0, -1, false) },
+  { keys: 'ArrowRight', editing: true, run: nudge(1, 0, false) },
+  { keys: 'ArrowDown', editing: true, run: nudge(0, 1, false) },
+  { keys: 'Shift+ArrowLeft', editing: true, run: nudge(-1, 0, true) },
+  { keys: 'Shift+ArrowUp', editing: true, run: nudge(0, -1, true) },
+  { keys: 'Shift+ArrowRight', editing: true, run: nudge(1, 0, true) },
+  { keys: 'Shift+ArrowDown', editing: true, run: nudge(0, 1, true) },
+]
+
+/** Binds a key of {@link KEY_BINDINGS} in the key handler of maxGraph to the editor that `editor` returns. */
+function bindKey(keyHandler: KeyHandler, { keys, run }: KeyBinding, editor: () => DiagramEditor) {
+  const parts = keys.split('+')
+  const key = parts.at(-1)!
+  const code = KEY_CODES[key] ?? key.charCodeAt(0)
+  const action = () => run(editor())
+  const mod = parts.includes('Mod')
+  const shift = parts.includes('Shift')
+  if (mod && shift) keyHandler.bindControlShiftKey(code, action)
+  else if (mod) keyHandler.bindControlKey(code, action)
+  else if (shift) keyHandler.bindShiftKey(code, action)
+  else keyHandler.bindKey(code, action)
+}
 
 /** Color of the guides that show where a dragged shape lines up with others: the color of the selection. */
 const GUIDE_COLOR = '#2563eb'
@@ -705,30 +748,10 @@ export function createDiagramEditor(
   const keyHandler = new KeyHandler(graph)
   // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
   keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
-  // Ctrl+C, Ctrl+X and Ctrl+V are clipboard events (see below): binding them would cancel the keys, and the events with
-  // them.
-  keyHandler.bindControlKey(KEY_A, () => editor.selectAll())
-  if (!readOnly) {
-    keyHandler.bindKey(KEY_DELETE, removeSelection)
-    keyHandler.bindKey(KEY_BACKSPACE, removeSelection)
-    keyHandler.bindControlKey(KEY_Z, () => editor.undo())
-    keyHandler.bindControlShiftKey(KEY_Z, () => editor.redo())
-    keyHandler.bindControlKey(KEY_Y, () => editor.redo())
-    keyHandler.bindControlKey(KEY_D, () => editor.duplicate())
-    keyHandler.bindKey(KEY_F2, () => editor.editLabel())
-    keyHandler.bindControlKey(KEY_B, () => editor.toggleFontStyle('bold'))
-    keyHandler.bindControlKey(KEY_I, () => editor.toggleFontStyle('italic'))
-    keyHandler.bindControlKey(KEY_U, () => editor.toggleFontStyle('underline'))
-    keyHandler.bindControlKey(KEY_G, () => editor.group())
-    keyHandler.bindControlShiftKey(KEY_G, () => editor.ungroup())
-    // A pixel, or with Shift a step of the grid, as in draw.io; not snapped to the grid.
-    for (const [key, dx, dy] of ARROWS) {
-      keyHandler.bindKey(key, () => editor.moveSelection(dx, dy))
-      keyHandler.bindShiftKey(key, () => editor.moveSelection(dx * graph.getGridSize(), dy * graph.getGridSize()))
-    }
+  for (const binding of KEY_BINDINGS) {
+    // The editor is made below; the keys reach it once it is.
+    if (!readOnly || !binding.editing) bindKey(keyHandler, binding, () => editor)
   }
-  // The scale is the participant's own, so a participant who may only view fits the page too.
-  keyHandler.bindControlShiftKey(KEY_H, () => editor.zoomToFit())
 
   // The browser fires clipboard events at the focused element, or at the body when nothing has the focus; maxGraph
   // takes keys from both. While a label is edited, the browser copies and pastes its text.

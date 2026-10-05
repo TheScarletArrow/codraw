@@ -30,6 +30,6 @@ F2, Ctrl+Shift+H или Shift+стрелках узнают только из д
 ## Impact
 
 - `frontend`: новый модуль `diagram/shapeSearch.ts` (слова для поиска и поиск), `diagram/ShapePalette.tsx` (поле
-  поиска и список найденного), новый модуль `diagram/shortcuts.ts` (клавиши редактора одним списком) и компонент
-  `diagram/ShortcutsHelp.tsx`, шапка `BoardPage.tsx`.
+  поиска и список найденного), `diagram/editor.ts` (привязки клавиш — таблица `KEY_BINDINGS`), новый модуль
+  `diagram/shortcuts.ts` (справка по клавишам) и компонент `diagram/ShortcutsHelp.tsx`, шапка `BoardPage.tsx`.
 - `backend` и `collab` не меняются, новых зависимостей нет.

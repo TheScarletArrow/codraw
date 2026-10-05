@@ -51,4 +51,40 @@ describe('ShapePalette', () => {
 
     expect(setData).toHaveBeenCalledWith(SHAPE_DRAG_TYPE, 'c4-container')
   })
+
+  it('shows the shapes a search finds instead of the sections, and adds the first one with Enter', async () => {
+    const editor = createFakeEditor()
+    render(<ShapePalette editor={editor} />)
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Поиск фигур' }), 'kafka')
+
+    expect(screen.queryByRole('group', { name: 'C4' })).toBeNull()
+    const found = screen.getByRole('group', { name: 'Найденные фигуры' })
+    expect(within(found).getAllByRole('button').map((button) => button.textContent)).toEqual(['Топик событий'])
+
+    await userEvent.keyboard('{Enter}')
+    expect(editor.addShape).toHaveBeenCalledWith('event-topic')
+  })
+
+  it('tells when nothing is found, and Escape brings the sections back', async () => {
+    render(<ShapePalette editor={createFakeEditor()} />)
+    const search = screen.getByRole('searchbox', { name: 'Поиск фигур' })
+
+    await userEvent.type(search, 'zzz')
+    expect(screen.getByText('Ничего не найдено')).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+    expect(search).toHaveValue('')
+    expect(screen.getByRole('group', { name: 'C4' })).toBeInTheDocument()
+  })
+
+  it('lets a found shape be dragged onto the canvas', () => {
+    render(<ShapePalette editor={createFakeEditor()} />)
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Поиск фигур' }), { target: { value: 'redis' } })
+    const setData = vi.fn()
+
+    fireEvent.dragStart(screen.getByRole('button', { name: 'Кэш' }), { dataTransfer: { setData, effectAllowed: '' } })
+
+    expect(setData).toHaveBeenCalledWith(SHAPE_DRAG_TYPE, 'cache')
+  })
 })
