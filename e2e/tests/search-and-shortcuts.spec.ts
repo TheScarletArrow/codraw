@@ -38,6 +38,8 @@ test('? on the canvas and the button of the header open the shortcuts, ? in a la
   await alice.keyboard.press('Escape')
 
   await alice.mouse.dblclick(...(Object.values(center(await cellBox(alice, shape))) as [number, number]))
+  // The keys go to the label once its editor has the keyboard.
+  await expect(alice.locator('[data-testid=diagram-canvas] [contenteditable="true"]')).toBeFocused()
   await alice.keyboard.type('Зачем?')
   await expect(help).toBeHidden()
   await alice.getByTestId('diagram-canvas').click({ position: { x: 40, y: 40 } })
