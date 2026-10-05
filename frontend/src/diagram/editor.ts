@@ -1721,6 +1721,8 @@ export function createDiagramEditor(
     getState: () => state,
     subscribe: (listener) => listen(listeners, listener),
     destroy() {
+      // The graph releases the label editor but keeps its cell, so a pending resize of it would stop editing later.
+      graph.stopEditing(true)
       Reflect.deleteProperty(container, EDITOR_PROPERTY)
       container.removeEventListener('pointerdown', focusCanvas, true)
       container.removeEventListener('contextmenu', preventBrowserMenu)
