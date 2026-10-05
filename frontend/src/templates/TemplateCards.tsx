@@ -12,13 +12,15 @@ const ICONS: Record<TemplateId, LucideIcon> = {
 interface TemplateCardsProps {
   onChoose: (template: BoardTemplate) => void
   disabled?: boolean
+  /** One row of titles, with the descriptions as tooltips: for the card over the canvas. */
+  compact?: boolean
   className?: string
 }
 
 /** A card for every template: its icon, title and what its diagram shows. */
-export function TemplateCards({ onChoose, disabled = false, className }: TemplateCardsProps) {
+export function TemplateCards({ onChoose, disabled = false, compact = false, className }: TemplateCardsProps) {
   return (
-    <ul className={cn('grid gap-2 sm:grid-cols-2', className)}>
+    <ul className={cn('grid gap-2', compact ? 'grid-cols-2 sm:grid-cols-4' : 'sm:grid-cols-2', className)}>
       {BOARD_TEMPLATES.map((template) => {
         const Icon = ICONS[template.id]
         return (
@@ -26,14 +28,22 @@ export function TemplateCards({ onChoose, disabled = false, className }: Templat
             <button
               type="button"
               disabled={disabled}
-              className="flex h-full w-full items-start gap-3 rounded-md border bg-background p-3 text-left hover:bg-muted disabled:opacity-50"
+              title={compact ? template.description : undefined}
+              className={cn(
+                'flex h-full w-full rounded-md border bg-background text-left hover:bg-muted disabled:opacity-50',
+                compact ? 'flex-col items-center gap-1 p-2 text-center text-sm' : 'items-start gap-3 p-3',
+              )}
               onClick={() => onChoose(template)}
             >
               <Icon aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-              <span className="flex flex-col">
+              {compact ? (
                 <span className="font-medium">{template.title}</span>
-                <span className="text-sm text-muted-foreground">{template.description}</span>
-              </span>
+              ) : (
+                <span className="flex flex-col">
+                  <span className="font-medium">{template.title}</span>
+                  <span className="text-sm text-muted-foreground">{template.description}</span>
+                </span>
+              )}
             </button>
           </li>
         )
