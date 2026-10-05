@@ -7,6 +7,7 @@ import {
   Geometry,
   Graph,
   GraphDataModel,
+  Guide,
   ImageBox,
   InternalEvent,
   KeyHandler,
@@ -219,6 +220,8 @@ export interface DiagramEditor {
   sendToBack(): void
   /** Selects all shapes and edges of the page. */
   selectAll(): void
+  /** Moves the selected shapes and edges by (dx, dy), a selected field with its table, as one undo step. */
+  moveSelection(dx: number, dy: number): void
   /** Swaps the ends of the selected edge with its bend points, as one undo step. */
   reverseEdge(): void
   /** Lines the selected shapes up on a side or a centre line of the area they cover, as one undo step. */
@@ -342,6 +345,21 @@ const KEY_U = 85
 const KEY_Y = 89
 const KEY_Z = 90
 const KEY_F2 = 113
+const KEY_LEFT = 37
+const KEY_UP = 38
+const KEY_RIGHT = 39
+const KEY_DOWN = 40
+
+/** Arrow keys and the directions they move the selection in. */
+const ARROWS = [
+  [KEY_LEFT, -1, 0],
+  [KEY_UP, 0, -1],
+  [KEY_RIGHT, 1, 0],
+  [KEY_DOWN, 0, 1],
+] as const
+
+/** Color of the guides that show where a dragged shape lines up with others: the color of the selection. */
+const GUIDE_COLOR = '#2563eb'
 
 /** Shift of a duplicate, and of every next paste of the same clipboard with the keyboard. */
 const PASTE_OFFSET = 20
@@ -375,6 +393,7 @@ const CHANGING_COMMANDS = [
   'cut',
   'paste',
   'duplicate',
+  'moveSelection',
   'bringToFront',
   'sendToBack',
   'reverseEdge',
@@ -702,6 +721,11 @@ export function createDiagramEditor(
     keyHandler.bindControlKey(KEY_U, () => editor.toggleFontStyle('underline'))
     keyHandler.bindControlKey(KEY_G, () => editor.group())
     keyHandler.bindControlShiftKey(KEY_G, () => editor.ungroup())
+    // A pixel, or with Shift a step of the grid, as in draw.io; not snapped to the grid.
+    for (const [key, dx, dy] of ARROWS) {
+      keyHandler.bindKey(key, () => editor.moveSelection(dx, dy))
+      keyHandler.bindShiftKey(key, () => editor.moveSelection(dx * graph.getGridSize(), dy * graph.getGridSize()))
+    }
   }
   // The scale is the participant's own, so a participant who may only view fits the page too.
   keyHandler.bindControlShiftKey(KEY_H, () => editor.zoomToFit())
@@ -1073,6 +1097,14 @@ export function createDiagramEditor(
     selectAll() {
       graph.stopEditing(false)
       graph.selectAll()
+    },
+    moveSelection(dx, dy) {
+      // A field moves with its table: the table layout places fields.
+      const cells = new Set(graph.getSelectionCells().map((cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)))
+      const movable = graph.getMovableCells([...cells])
+      if (movable.length === 0 || (dx === 0 && dy === 0)) return
+      graph.stopEditing(false)
+      graph.moveCells(movable, dx, dy)
     },
     alignShapes(align) {
       const cells = geometryCells()
@@ -1464,6 +1496,14 @@ class TableLayout extends StackLayout {
 function configureSelection(graph: Graph) {
   const handler = graph.getPlugin<SelectionHandler>('SelectionHandler')
   if (!handler) return
+  // Dragged shapes line up with the edges and centres of their neighbours; Alt turns the guides off, as it does the grid.
+  handler.guidesEnabled = true
+  handler.createGuide = () => {
+    const guide = new Guide(graph, handler.getGuideStates())
+    guide.isEnabledForEvent = (event: MouseEvent) => !event.altKey
+    guide.getGuideColor = () => GUIDE_COLOR
+    return guide
+  }
   const propagate = handler.isPropagateSelectionCell.bind(handler)
   // A second click on a selected field would select its table, and Delete would then remove the whole table.
   // The table is selected by its header instead.
