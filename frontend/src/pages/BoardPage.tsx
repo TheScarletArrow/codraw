@@ -36,6 +36,7 @@ import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
 import { importPages } from '../drawio/importPages.ts'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
+import { SqlMenu } from '../sql/SqlMenu.tsx'
 import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
@@ -222,6 +223,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           boardTitle={board.title}
           pageName={currentPage?.name ?? ''}
           pageCount={pages.length}
+        />
+        <SqlMenu
+          editor={editor}
+          document={document}
+          pageId={currentPage?.id ?? null}
+          boardTitle={board.title}
+          pageName={currentPage?.name ?? ''}
+          pageCount={pages.length}
+          readOnly={readOnly}
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <EditorToolbar editor={editor} readOnly={readOnly} />
