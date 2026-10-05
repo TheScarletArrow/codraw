@@ -125,6 +125,8 @@ test('Ctrl+V while a label is edited pastes into the label, not a new shape', as
 
   // The label editor starts with the whole label selected: the pasted text replaces it.
   await alice.mouse.dblclick(...(Object.values(center(await cellBox(alice, shape))) as [number, number]))
+  // The keys go to the label once its editor has the keyboard.
+  await expect(alice.locator('[data-testid=diagram-canvas] [contenteditable="true"]')).toBeFocused()
   await alice.keyboard.press('Control+v')
   await focusCanvas(alice)
 
