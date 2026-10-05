@@ -51,6 +51,9 @@ export default defineConfig({
         BACKEND_JWKS_URL: env.jwksUrl,
         CODRAW_INTERNAL_TOKEN: env.internalToken,
         PORT: String(env.collabPort),
+        // Tests see a change of access or a deleted board through what participants do, not at a random moment of
+        // the periodic check, which collab tests cover.
+        ACCESS_CHECK_INTERVAL_MS: String(60 * 60 * 1000),
       },
     },
     {

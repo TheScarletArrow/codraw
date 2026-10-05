@@ -10,4 +10,9 @@ const backend = createBackendClient({ baseUrl: config.backendUrl, internalToken:
 // The key set is cached; a token signed with an unknown key makes it fetch the keys again.
 const verifyToken = createTokenVerifier(createRemoteJWKSet(new URL(config.jwksUrl)));
 
-await createCollabServer({ port: config.port, backend, verifyToken }).listen();
+await createCollabServer({
+  port: config.port,
+  backend,
+  verifyToken,
+  accessCheckInterval: config.accessCheckInterval,
+}).listen();

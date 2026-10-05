@@ -64,16 +64,21 @@ describe("config", () => {
   };
 
   it("reads settings from the environment", () => {
-    expect(loadConfig({ ...env, PORT: "4321" })).toEqual({
+    expect(loadConfig({ ...env, PORT: "4321", ACCESS_CHECK_INTERVAL_MS: "5000" })).toEqual({
       port: 4321,
       backendUrl: "http://backend:8080",
       internalToken: "secret",
       jwksUrl: "http://backend:8080/.well-known/jwks.json",
+      accessCheckInterval: 5000,
     });
   });
 
-  it("defaults the port to 1234", () => {
-    expect(loadConfig(env).port).toBe(1234);
+  it("defaults the port to 1234 and the access check to once a minute", () => {
+    expect(loadConfig(env)).toMatchObject({ port: 1234, accessCheckInterval: 60_000 });
+  });
+
+  it.each(["0", "-1", "1.5", "minute"])("rejects an access check interval of %s", (value) => {
+    expect(() => loadConfig({ ...env, ACCESS_CHECK_INTERVAL_MS: value })).toThrow("ACCESS_CHECK_INTERVAL_MS");
   });
 
   it.each(["BACKEND_URL", "CODRAW_INTERNAL_TOKEN", "BACKEND_JWKS_URL"])("requires %s", (name) => {

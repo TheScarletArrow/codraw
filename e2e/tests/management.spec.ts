@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { addShape, createBoard, openBoard, twoParticipants, userPage } from './helpers.ts'
+import { addShape, createBoard, openBoard, openBoardList, twoParticipants, userPage } from './helpers.ts'
 
 /** The row of a board in the list of own boards; test users keep boards of earlier tests with the same titles. */
 const boardRow = (page: Page, boardPath: string) =>
@@ -66,7 +66,7 @@ test('the owner deletes a board on its page, and a participant on the board sees
   await expect(alice).toHaveURL(/\/$/)
   await expect(alice.locator(`a[href="${boardPath}"]`)).toHaveCount(0)
   await expect(bob.getByRole('alert')).toHaveText('Доска не найдена')
-  await bob.goto('/')
+  expect(await openBoardList(bob)).not.toContain(boardPath.split('/').pop())
   await expect(bob.locator(`a[href="${boardPath}"]`)).toHaveCount(0)
   await bob.goto(boardPath)
   await expect(bob.getByRole('alert')).toHaveText('Доска не найдена')

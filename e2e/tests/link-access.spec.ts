@@ -1,6 +1,15 @@
 import { expect, test, type Page } from '@playwright/test'
 import { env } from './env.ts'
-import { addShape, collabToken, connectToCollab, createBoard, openBoard, userPage, vertices } from './helpers.ts'
+import {
+  addShape,
+  collabToken,
+  connectToCollab,
+  createBoard,
+  openBoard,
+  openBoardList,
+  userPage,
+  vertices,
+} from './helpers.ts'
 
 /** Chooses what the link to the board gives in the «Поделиться» window of its owner. */
 async function setLinkAccess(owner: Page, access: 'Только я' | 'Просмотр' | 'Редактирование') {
@@ -59,15 +68,15 @@ test('a link for viewing takes editing from the participant at once, and sync re
 })
 
 test('closing the link shows the participant «Нет доступа», and an editable link lets them back', async ({ browser }) => {
-  const { alice, bob, close } = await sharedBoard(browser)
+  const { alice, bob, boardId, close } = await sharedBoard(browser)
 
   await setLinkAccess(alice, 'Только я')
 
   await expect(bob.getByRole('alert')).toHaveText('Нет доступа: владелец закрыл доступ к доске по ссылке')
   await bob.reload()
   await expect(bob.getByRole('alert')).toHaveText('Нет доступа: владелец закрыл доступ к доске по ссылке')
-  await bob.goto('/')
-  await expect(bob.getByRole('region', { name: 'Открытые по ссылке' })).toBeHidden()
+  expect(await openBoardList(bob)).not.toContain(boardId)
+  await expect(bob.locator(`a[href="/boards/${boardId}"]`)).toHaveCount(0)
 
   await setLinkAccess(alice, 'Редактирование')
   await bob.goBack()

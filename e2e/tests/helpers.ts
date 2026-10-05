@@ -8,6 +8,17 @@ export async function signIn(request: APIRequestContext, name: string) {
   expect(response.status()).toBe(204)
 }
 
+/**
+ * Opens the list of boards and returns the ids of the boards opened through links that it shows. Test users keep the
+ * boards of earlier tests, so a check that a board is not in the list needs the list loaded, not just the page.
+ */
+export async function openBoardList(page: Page): Promise<string[]> {
+  const shared = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/boards/shared')
+  await page.goto('/')
+  const boards = (await (await shared).json()) as { id: string }[]
+  return boards.map((board) => board.id)
+}
+
 /** A page in a fresh browser context signed in as the test user with this name. */
 export async function userPage(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext()
