@@ -54,3 +54,55 @@ test('migrations of Flyway become tables with their reference for everybody, are
 
   await close()
 })
+
+test('a field shows its type, nullability and reference in columns, and the toolbar sets them for everybody', async ({
+  browser,
+}) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+
+  await alice.getByRole('button', { name: 'SQL и Mermaid' }).click()
+  const menu = alice.getByRole('dialog', { name: 'SQL и Mermaid' })
+  await menu.getByRole('button', { name: 'Импорт SQL…' }).click()
+  await menu.getByLabel('Файлы SQL').setInputFiles([
+    { name: 'V1__users.sql', mimeType: 'text/plain', buffer: Buffer.from(USERS) },
+    { name: 'V2__boards.sql', mimeType: 'text/plain', buffer: Buffer.from(BOARDS) },
+  ])
+  await menu.getByRole('button', { name: 'Добавить на страницу' }).click()
+  await expect(menu).toBeHidden()
+
+  // The columns, the reference and the badge of the database are drawn on the canvas of the other participant.
+  const bobCanvas = bob.getByTestId('diagram-canvas')
+  await expect(bobCanvas.locator('text', { hasText: '→ users.id' })).toHaveCount(1)
+  await expect(bobCanvas.locator('text', { hasText: /^PG$/ })).toHaveCount(2)
+
+  const select = (page: typeof alice, table: string, field: number | null) =>
+    page.evaluate(
+      ([table, field]) => {
+        const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+        const { graph } = container.__codrawEditor
+        const cell = graph.getDefaultParent().getChildren().find((cell: any) => cell.getValue() === table)
+        graph.setSelectionCell(field === null ? cell : cell.getChildAt(field))
+      },
+      [table, field] as const,
+    )
+  const fieldsOf = (page: typeof alice, table: string) =>
+    page.evaluate((table) => {
+      const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+      const { graph } = container.__codrawEditor
+      const cell = graph.getDefaultParent().getChildren().find((cell: any) => cell.getValue() === table)
+      return cell.getChildren().map((field: any) => field.getValue())
+    }, table)
+
+  await select(alice, 'boards', 1)
+  await alice.getByRole('combobox', { name: 'Тип поля' }).fill('bigint')
+  await alice.getByRole('combobox', { name: 'Тип поля' }).press('Enter')
+  await alice.getByRole('button', { name: 'NULL', exact: true }).click()
+  await expect.poll(() => fieldsOf(bob, 'boards')).toEqual(['id uuid PK', 'owner_id bigint FK'])
+  await expect(bobCanvas.locator('text', { hasText: /^bigint$/ })).toHaveCount(1)
+
+  await select(alice, 'users', null)
+  await alice.getByRole('combobox', { name: 'СУБД таблицы' }).selectOption('Oracle')
+  await expect(bobCanvas.locator('text', { hasText: /^ORA$/ })).toHaveCount(1)
+
+  await close()
+})

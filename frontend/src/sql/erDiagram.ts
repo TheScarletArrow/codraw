@@ -1,8 +1,11 @@
 import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
-import { isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
+import { findShape, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
+import { badgeRoom, tableRows } from '../diagram/tableRows.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { tokenize, typeText, type SqlColumn, type SqlForeignKey, type SqlSchema, type SqlTable } from './parseSql.ts'
+import { vendorOf } from './dbVendors.ts'
+import { FIELD_WORDS, plainText, sourceRefers } from './tableField.ts'
 
 /** A plain identifier needs no quotes: lower case letters, digits and `_`, not starting with a digit. */
 const PLAIN = /^[a-z_][a-z0-9_$]*$/
@@ -38,9 +41,6 @@ export function fieldLabel(column: SqlColumn, foreignKey: boolean): string {
     .join(' ')
 }
 
-/** Words of a field that end its type. */
-const FIELD_WORDS = new Set(['PK', 'FK', 'NOT', 'NULL', 'UNIQUE', 'PRIMARY', 'REFERENCES', 'DEFAULT', 'CHECK', 'COLLATE', 'GENERATED'])
-
 /** A column from the text of a field, as {@link fieldLabel} writes it or as people type it: `email text NOT NULL`. */
 export function parseFieldLabel(label: string): (SqlColumn & { foreignKey: boolean }) | null {
   const tokens = tokenize(plainText(label))
@@ -72,23 +72,21 @@ export function parseFieldLabel(label: string): (SqlColumn & { foreignKey: boole
   return field
 }
 
-/** The text of a label without markup. */
-function plainText(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+/** Width of text estimated from its length, where the canvas cannot measure it. */
+const estimate = (text: string) => text.length * 7.5
 
-/** Width of a table that fits its name and fields, from the length of the longest of them. */
-function tableWidth(table: SqlTable, labels: string[]): number {
-  const longest = Math.max(table.name.length, ...labels.map((label) => label.length))
-  return Math.min(420, Math.max(160, Math.ceil(longest * 7.5) + 24))
+/**
+ * Width of a table that fits its name beside the badge of its database and the rows of its fields with their
+ * references, estimated from the lengths of their texts.
+ */
+function tableWidth(table: SqlTable, labels: string[], references: (string | null)[]): number {
+  const rows = tableRows(
+    labels.map((text, index) => ({ text, font: {}, reference: references[index] ?? null })),
+    estimate,
+  )
+  // Tables get the database of the table of the palette.
+  const header = estimate(table.name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
+  return Math.min(560, Math.max(160, Math.ceil(Math.max(header, ...rows.map((row) => row.width)))))
 }
 
 /** The column alone identifies a row: it is unique, or the only column of the primary key. */
@@ -133,10 +131,20 @@ export async function schemaCells(
 ): Promise<CellData[]> {
   const builder = new DiagramBuilder()
   const referencing = (table: SqlTable, column: string) => table.foreignKeys.some((key) => key.columns.includes(column))
+  /** The field a column refers to as `table.field`, when the schema has it, so that an edge leads there. */
+  const referenceOf = (table: SqlTable, column: string): string | null => {
+    for (const key of table.foreignKeys) {
+      const target = schema.tables.find((candidate) => candidate.name === key.table)
+      const referenced = target && referencedColumns(key, target)[key.columns.indexOf(column)]
+      if (referenced && target.columns.some((candidate) => candidate.name === referenced)) return `${target.name}.${referenced}`
+    }
+    return null
+  }
   const built = new Map(
     schema.tables.map((table) => {
       const labels = table.columns.map((column) => fieldLabel(column, referencing(table, column.name)))
-      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table, labels))
+      const references = table.columns.map((column) => referenceOf(table, column.name))
+      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table, labels, references))
       return [table.name, { id, fields: new Map(table.columns.map((column, index) => [column.name, fields[index]!])) }]
     }),
   )
@@ -195,8 +203,6 @@ interface DiagramReference {
   referencedColumn: string
 }
 
-const ONE_MARKERS = new Set(['ERmandOne', 'ERzeroToOne', 'ERone'])
-
 /** The schema of the tables of a page: fields parsed from their text, references from the edges between fields. */
 export function diagramSchema(cells: CellData[]): SqlSchema {
   const tableCells = cells.filter((cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle))
@@ -225,19 +231,9 @@ export function diagramSchema(cells: CellData[]): SqlSchema {
 
 type Field = { table: SqlTable; column: SqlColumn & { foreignKey: boolean } }
 
-/**
- * Which end of an edge between fields refers to the other: the field marked FK; else the one that is not the primary key
- * when the other is; else the end without the «one» marker; else the source.
- */
+/** The reference of an edge between fields, from the field that refers, see {@link sourceRefers}. */
 function referenceOf(source: Field, target: Field, edge: CellData): { table: SqlTable } & Omit<DiagramReference, 'table'> {
-  let [from, to] = [source, target]
-  if (source.column.foreignKey !== target.column.foreignKey) {
-    if (target.column.foreignKey) [from, to] = [target, source]
-  } else if (source.column.primaryKey !== target.column.primaryKey) {
-    if (source.column.primaryKey) [from, to] = [target, source]
-  } else if (ONE_MARKERS.has(String(edge.style.startArrow ?? '')) && !ONE_MARKERS.has(String(edge.style.endArrow ?? ''))) {
-    ;[from, to] = [target, source]
-  }
+  const [from, to] = sourceRefers(source.column, target.column, edge.style) ? [source, target] : [target, source]
   return { table: from.table, column: from.column.name, referencedTable: to.table.name, referencedColumn: to.column.name }
 }
 

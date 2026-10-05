@@ -39,6 +39,8 @@ export interface Token {
   value: string
   /** A word as written. */
   text: string
+  /** Where the token starts in the source. */
+  start: number
 }
 
 const WORD = /[A-Za-z_\u0080-￿][\w$\u0080-￿]*/y
@@ -67,33 +69,33 @@ export function tokenize(sql: string): Token[] {
       let end = at + 1
       // '' inside a string is a quote.
       while (end < sql.length && !(sql[end] === "'" && sql[end + 1] !== "'")) end += sql[end] === "'" ? 2 : 1
-      tokens.push({ kind: 'string', value: sql.slice(at + 1, end).replaceAll("''", "'"), text: sql.slice(at, end + 1) })
+      tokens.push({ kind: 'string', value: sql.slice(at + 1, end).replaceAll("''", "'"), text: sql.slice(at, end + 1), start: at })
       at = end + 1
     } else if (char === '"' || char === '`') {
       const close = char
       let end = at + 1
       while (end < sql.length && !(sql[end] === close && sql[end + 1] !== close)) end += sql[end] === close ? 2 : 1
       const value = sql.slice(at + 1, end).replaceAll(close + close, close)
-      tokens.push({ kind: 'identifier', value, text: value })
+      tokens.push({ kind: 'identifier', value, text: value, start: at })
       at = end + 1
     } else if (char === '$' && match(DOLLAR_TAG)) {
       // A dollar-quoted body of a function: a string that may hold anything, semicolons too.
       const tag = match(DOLLAR_TAG)![0]
       const end = sql.indexOf(tag, at + tag.length)
       const stop = end === -1 ? sql.length : end + tag.length
-      tokens.push({ kind: 'string', value: sql.slice(at + tag.length, end === -1 ? sql.length : end), text: sql.slice(at, stop) })
+      tokens.push({ kind: 'string', value: sql.slice(at + tag.length, end === -1 ? sql.length : end), text: sql.slice(at, stop), start: at })
       at = stop
     } else if (match(WORD)) {
       const text = match(WORD)![0]
-      tokens.push({ kind: 'word', value: text.toUpperCase(), text })
+      tokens.push({ kind: 'word', value: text.toUpperCase(), text, start: at })
       at += text.length
     } else if (match(NUMBER)) {
       const text = match(NUMBER)![0]
-      tokens.push({ kind: 'number', value: text, text })
+      tokens.push({ kind: 'number', value: text, text, start: at })
       at += text.length
     } else {
       const symbol = sql.startsWith('::', at) ? '::' : char
-      tokens.push({ kind: 'symbol', value: symbol, text: symbol })
+      tokens.push({ kind: 'symbol', value: symbol, text: symbol, start: at })
       at += symbol.length
     }
   }

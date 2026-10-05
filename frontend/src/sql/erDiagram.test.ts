@@ -71,6 +71,18 @@ describe('tables of a schema as cells', () => {
     expect(reviewer.style).toMatchObject({ endArrow: 'ERzeroToOne' })
   })
 
+  it('makes tables of PostgreSQL with auto width, wide enough for the references of their fields', async () => {
+    const cells = await schemaCells(parseSql(DDL), { x: 500, y: 100 })
+    const boards = byValue(cells, 'boards')
+    const plain = await schemaCells(parseSql('CREATE TABLE boards (id uuid PRIMARY KEY, owner_id uuid NOT NULL, reviewer_id uuid);'), {
+      x: 0,
+      y: 0,
+    })
+
+    expect(boards.style).toMatchObject({ dbVendor: 'postgresql', autosize: true })
+    expect(boards.geometry!.width).toBeGreaterThan(byValue(plain, 'boards').geometry!.width)
+  })
+
   it('lays the tables out from the referencing to the referenced, from the given corner, without overlaps', async () => {
     const cells = await schemaCells(parseSql(DDL), { x: 500, y: 100 })
     const [users, boards, members] = ['users', 'boards', 'board_members'].map((name) => byValue(cells, name).geometry!)

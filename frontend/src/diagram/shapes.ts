@@ -57,6 +57,8 @@ export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & {
   codrawShape?: string
   /** The width follows the label; see `autoWidth.ts`. The key of draw.io, which writes it as 0 or 1. */
   autosize?: boolean | number | string
+  /** The database of a table; see `sql/dbVendors.ts`. */
+  dbVendor?: string
 }
 
 /** A cell created inside the shape, e.g. a field of a table. It spans the width of the shape. */
@@ -184,7 +186,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         width: 180,
         height: TABLE_HEADER_HEIGHT + TABLE_FIELD_HEIGHT,
         value: 'Таблица',
-        style: TABLE_STYLE,
+        style: { ...TABLE_STYLE, dbVendor: 'postgresql', autosize: true },
         children: [{ value: 'id uuid PK', height: TABLE_FIELD_HEIGHT, style: TABLE_FIELD_STYLE }],
       },
     ],

@@ -7,7 +7,6 @@ import {
   Bold,
   Italic,
   Maximize,
-  Plus,
   Redo2,
   Underline,
   Undo2,
@@ -26,6 +25,7 @@ import { EDGE_MARKERS } from './extensions.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
 import { NumberField } from './NumberField.tsx'
+import { TableTools } from './TableTools.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
 
@@ -120,19 +120,11 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
 
 /** Tools that change the selected objects. */
 function EditingTools({ editor }: { editor: DiagramEditor | null }) {
-  const { tableSelected, edgeMarkers, colors, line, text, geometry, arrange } = useEditorState(editor)
+  const { tableSelected, tableVendor, field, edgeMarkers, colors, line, text, geometry, arrange } = useEditorState(editor)
 
   return (
     <>
-      {tableSelected && (
-        <>
-          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-          <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableField()}>
-            <Plus />
-            Добавить поле
-          </Button>
-        </>
-      )}
+      {tableSelected && <TableTools editor={editor} vendor={tableVendor} field={field} />}
       {colors && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />

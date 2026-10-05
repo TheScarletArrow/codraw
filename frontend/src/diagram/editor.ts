@@ -5,6 +5,7 @@ import {
   ConnectionHandler,
   FitPlugin,
   Geometry,
+  GeometryChange,
   Graph,
   GraphDataModel,
   Guide,
@@ -26,6 +27,8 @@ import {
   type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
+import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
+import { fieldText, renameField, splitField } from '../sql/tableField.ts'
 import { allowsAutoWidth, anchoredX, AUTO_WIDTH_KEY, fittedWidth, hasAutoWidth, measureLabel, type Align } from './autoWidth.ts'
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
@@ -52,6 +55,15 @@ import {
   type ShapePreset,
   type ShapeStyle,
 } from './shapes.ts'
+import { badgeRoom, NAME_X, ROW_PADDING } from './tableRows.ts'
+import {
+  isColumnField,
+  registerTableShapes,
+  TABLE_FIELD_SHAPE,
+  tableRowsOf,
+  tablesShowing,
+  watchTableRows,
+} from './tableShapes.ts'
 import { clampFontSize, nextFontSize, tableFieldHeight, tableHeaderHeight } from './textSize.ts'
 
 export interface Point {
@@ -137,6 +149,14 @@ export interface SelectionGeometry {
   canSetHeight: boolean
 }
 
+/** The type and keys of the selected field of a table, as its text has them. */
+export interface SelectedField {
+  type: string
+  notNull: boolean
+  primaryKey: boolean
+  unique: boolean
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -149,6 +169,10 @@ export interface EditorState {
   scale: number
   /** A table or a field of a table is selected, so a field can be added. */
   tableSelected: boolean
+  /** The database of the selected table or of the table of the selected field; `null` without one. */
+  tableVendor: DbVendorId | null
+  /** The single selected field of a table, or `null`. */
+  field: SelectedField | null
   /** Markers of the selected edges, or `null` when no edge is selected. */
   edgeMarkers: EdgeMarkers | null
   /** Colors of the selection, or `null` when nothing is selected. */
@@ -200,6 +224,13 @@ export interface DiagramEditor {
   addShape(shape: ShapeId, center?: Point): Cell | null
   /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
   addTableField(): Cell | null
+  /**
+   * Sets the type or keys of the selected field, keeping its name and the rest of its text, as one undo step; a primary
+   * key is NOT NULL.
+   */
+  setFieldProps(props: Partial<SelectedField>): void
+  /** Sets the database of the selected table, or of the table of the selected field, as one undo step. */
+  setTableVendor(vendor: DbVendorId): void
   /**
    * Adds a shape of the group of the selected shape on its `side` and connects the selected shape to it, as one undo
    * step, and selects the new shape.
@@ -457,6 +488,8 @@ export interface DiagramEditorOptions {
 const CHANGING_COMMANDS = [
   'addShape',
   'addTableField',
+  'setFieldProps',
+  'setTableVendor',
   'addConnectedShape',
   'cut',
   'paste',
@@ -497,6 +530,7 @@ export function createDiagramEditor(
   const graph = new Graph(container, model, [...getDefaultPlugins(), RubberBandHandler])
   // After the graph: the first graph registers the default shapes of maxGraph, including its own `rectangle`.
   registerDiagramExtensions()
+  registerTableShapes()
   graph.setPanning(true)
   graph.setConnectable(true)
   graph.setAllowDanglingEdges(false)
@@ -508,6 +542,8 @@ export function createDiagramEditor(
   // Labels are plain text: rendering HTML from other participants would allow script injection.
   graph.setHtmlLabels(false)
   configureStyles(graph)
+  configureTableFields(graph)
+  const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
   configureSelection(graph)
   configureRegionSelection(graph)
@@ -539,6 +575,15 @@ export function createDiagramEditor(
     if (!cell || isTable(cell)) return cell
     const parent = cell.getParent()
     return isTable(parent) ? parent : null
+  }
+  const selectedField = (): Cell | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    return isColumnField(cell) ? cell : null
+  }
+  const selectedFieldProps = (): SelectedField | null => {
+    const field = selectedField()
+    const parts = field && splitField(String(field.getValue() ?? ''))
+    return parts ? { type: parts.type, notNull: parts.notNull, primaryKey: parts.primaryKey, unique: parts.unique } : null
   }
   /** The single selected shape with a group; a table field is part of its table, not a shape of its own. */
   const quickConnectSource = (): { cell: Cell; group: ShapeGroup } | null => {
@@ -670,14 +715,21 @@ export function createDiagramEditor(
     resized.height = height
     model.setGeometry(cell, resized)
   }
-  /** Width that fits the longest line of the label of a shape, or of a table and its fields; `null` without text. */
+  /**
+   * Width that fits the longest line of the label of a shape, or of a table: its name beside the badge of its database
+   * and the rows of its fields; `null` without text.
+   */
   const fittedWidthOf = (shape: Cell): number | null => {
     const gridSize = graph.isGridEnabled() ? graph.getGridSize() : 0
+    const rows = isTable(shape) ? tableRowsOf(graph, shape) : null
     const widths = (isTable(shape) ? [shape, ...shape.getChildren()] : [shape]).flatMap((part) => {
+      const row = rows?.get(part)
+      if (row) return row.width > 0 ? [gridSize > 0 ? Math.ceil(row.width / gridSize) * gridSize : Math.ceil(row.width)] : []
       const label = graph.getLabel(part)
       if (!label) return []
       const style = { fontSize: fontSizeOf(part), ...graph.getCellStyle(part) }
-      return [fittedWidth(measureLabel(label, style), style, gridSize)]
+      const vendor = isTable(part) && style.shape === 'swimlane' ? vendorOf(part.getStyle()) : null
+      return [fittedWidth(measureLabel(label, style) + (vendor ? 2 * badgeRoom(vendor.badge) : 0), style, gridSize)]
     })
     return widths.length > 0 ? Math.max(...widths) : null
   }
@@ -723,9 +775,17 @@ export function createDiagramEditor(
     })
   }
 
-  // The label of a shape with auto width changes inside this event, so the new width is a part of the same change.
-  const handleLabelChanged = (_sender: unknown, event: EventObject) => fitAutoWidth([event.getProperty('cell') as Cell])
+  // The label of a shape with auto width changes inside this event, so the new width is a part of the same change; a
+  // field or a table also changes the references that the fields of other tables show.
+  const handleLabelChanged = (_sender: unknown, event: EventObject) => {
+    const cell = event.getProperty('cell') as Cell
+    fitAutoWidth([cell, ...tablesShowing(cell)])
+  }
   graph.addListener(InternalEvent.LABEL_CHANGED, handleLabelChanged)
+  // A new edge between fields shows its reference in the field that refers, in the change that adds it.
+  const handleCellsAdded = (_sender: unknown, event: EventObject) =>
+    fitAutoWidth((event.getProperty('cells') as Cell[]).filter((cell) => cell.isEdge()).flatMap(tablesShowing))
+  graph.addListener(InternalEvent.CELLS_ADDED, handleCellsAdded)
   // Only the participant resizes cells this way (layouts set geometries directly): a width set by hand replaces the
   // auto width, in the same change.
   const handleResize = (_sender: unknown, event: EventObject) => {
@@ -745,6 +805,8 @@ export function createDiagramEditor(
       canRedo: !readOnly && undoManager.canRedo(),
       scale: graph.getView().scale,
       tableSelected: selectedTable() !== null,
+      tableVendor: vendorOf(selectedTable()?.getStyle() ?? {})?.id ?? null,
+      field: selectedFieldProps(),
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
       line: selectionLine(),
@@ -775,11 +837,32 @@ export function createDiagramEditor(
   // The selection and the markers of the selected edges, also when another participant changes them.
   graph.getSelectionModel().addListener(InternalEvent.CHANGE, notify)
   model.addListener(InternalEvent.CHANGE, notify)
+  // A field shows the other fields of its table and the fields its edges lead to, which maxGraph does not redraw when
+  // they change, and its name ends where its width and its neighbours say; moving a shape changes no field.
+  const redrawTables = (_sender: unknown, event: EventObject) => {
+    const tables = new Set<Cell>()
+    for (const change of (event.getProperty('edit') as { changes: object[] }).changes) {
+      const { cell, child, parent, previous, terminal } = change as Record<string, unknown>
+      if (change instanceof GeometryChange && !isColumnField(cell as Cell)) continue
+      for (const value of [cell, child, parent, previous, terminal]) {
+        if (value instanceof Cell) tablesShowing(value).forEach((table) => tables.add(table))
+      }
+    }
+    const view = graph.getView()
+    for (const field of [...tables].flatMap((table) => table.getChildren())) {
+      const state = view.getState(field)
+      if (!state) continue
+      state.style = graph.getCellStyle(field)
+      graph.cellRenderer.redraw(state, true, true)
+    }
+  }
+  model.addListener(InternalEvent.CHANGE, redrawTables)
 
   const removeSelection = () => {
     if (graph.isEditing() || graph.isSelectionEmpty()) return
     const cells = graph.getSelectionCells()
-    const tables = cells.flatMap((cell) => (isTable(cell.getParent()) ? [cell.getParent()!] : []))
+    // Tables of removed fields and those whose fields show references to what is removed.
+    const tables = cells.flatMap(tablesShowing)
     model.batchUpdate(() => {
       graph.removeCells(cells, true)
       // A table with auto width fits the fields that are left; a removed table has no parent any more.
@@ -1091,6 +1174,29 @@ export function createDiagramEditor(
       graph.setSelectionCell(field)
       graph.startEditingAtCell(field)
       return field
+    },
+    setFieldProps(props) {
+      const field = selectedField()
+      const parts = field && splitField(String(field.getValue() ?? ''))
+      if (!field || !parts) return
+      const next = { ...parts, ...props }
+      // What is typed after the type, e.g. `NOT NULL`, is not a part of it.
+      if (props.type !== undefined) next.type = splitField(`field ${props.type}`)?.type ?? ''
+      if (next.primaryKey) next.notNull = true
+      const text = fieldText(next)
+      if (text === field.getValue()) return
+      model.batchUpdate(() => {
+        model.setValue(field, text)
+        fitAutoWidth([field, ...tablesShowing(field)])
+      })
+    },
+    setTableVendor(vendor) {
+      const table = selectedTable()
+      if (!table || vendorOf(table.getStyle())?.id === vendor) return
+      model.batchUpdate(() => {
+        setStyleValue([table], VENDOR_KEY, vendor)
+        fitAutoWidth([table])
+      })
     },
     addConnectedShape(side, shapeId) {
       const shape = findShape(shapeId)
@@ -1536,6 +1642,9 @@ export function createDiagramEditor(
       graph.getSelectionModel().removeListener(handleSelectionChange)
       graph.getSelectionModel().removeListener(notify)
       graph.removeListener(handleLabelChanged)
+      graph.removeListener(handleCellsAdded)
+      model.removeListener(redrawTables)
+      unwatchTableRows()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
       model.removeListener(notify)
@@ -1704,6 +1813,35 @@ function configureConnections(graph: Graph) {
     const bounds = icon.bounds!
     return new GraphPoint(state.x + state.width, state.getCenterY() - bounds.height / 2)
   }
+}
+
+/**
+ * Fields of tables are drawn in columns: their shape draws the icon and the columns after the name, which their label
+ * shows; editing the label of a field edits its name.
+ */
+function configureTableFields(graph: Graph) {
+  const getCellStyle = graph.getCellStyle.bind(graph)
+  graph.getCellStyle = (cell) => {
+    const style = getCellStyle(cell)
+    if (isColumnField(cell)) {
+      // The label is the name in its column, aligned there; the shape draws the columns after it.
+      const width = cell.getGeometry()?.width ?? 0
+      const nameEnd = tableRowsOf(graph, cell.getParent()!).get(cell)?.nameEnd ?? width - ROW_PADDING
+      return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: NAME_X, spacingRight: Math.max(ROW_PADDING, width - nameEnd) }
+    }
+    return style
+  }
+  const getLabel = graph.getLabel.bind(graph)
+  graph.getLabel = (cell) => {
+    const label = getLabel(cell)
+    return label && isColumnField(cell) ? (splitField(label)?.name ?? label) : label
+  }
+  const getEditingValue = graph.getEditingValue.bind(graph)
+  graph.getEditingValue = (cell, event) =>
+    (isColumnField(cell) && splitField(String(cell.getValue() ?? ''))?.nameText) || getEditingValue(cell, event)
+  const cellLabelChanged = graph.cellLabelChanged.bind(graph)
+  graph.cellLabelChanged = (cell, value, autoSize) =>
+    cellLabelChanged(cell, isColumnField(cell) ? renameField(String(cell.getValue() ?? ''), String(value ?? '')) : value, autoSize)
 }
 
 function configureStyles(graph: Graph) {

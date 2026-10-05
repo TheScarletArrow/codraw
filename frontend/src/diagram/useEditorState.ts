@@ -6,6 +6,8 @@ const NO_EDITOR: EditorState = {
   canRedo: false,
   scale: 1,
   tableSelected: false,
+  tableVendor: null,
+  field: null,
   edgeMarkers: null,
   colors: null,
   line: null,

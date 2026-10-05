@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
@@ -30,6 +30,71 @@ describe('EditorToolbar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Добавить поле' }))
 
     expect(editor.addTableField).toHaveBeenCalled()
+  })
+
+  it('chooses the database of the selected table', async () => {
+    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql' }))
+
+    expect(screen.getByRole('combobox', { name: 'СУБД таблицы' })).toHaveValue('postgresql')
+    expect(screen.queryByRole('combobox', { name: 'Тип поля' })).toBeNull()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'СУБД таблицы' }), 'Oracle')
+
+    expect(editor.setTableVendor).toHaveBeenCalledWith('oracle')
+  })
+
+  it('offers the types of the database of the table and applies a typed type on Enter', async () => {
+    act(() =>
+      editor.setState({
+        tableSelected: true,
+        tableVendor: 'mysql',
+        field: { type: 'int', notNull: false, primaryKey: false, unique: false },
+      }),
+    )
+    const type = screen.getByRole('combobox', { name: 'Тип поля' })
+    expect(type).toHaveValue('int')
+    const list = document.getElementById(type.getAttribute('list')!)!
+    expect([...list.querySelectorAll('option')].map((option) => option.value)).toContain('datetime')
+
+    await userEvent.clear(type)
+    await userEvent.type(type, 'numeric(12,4)')
+    expect(editor.setFieldProps).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Enter}')
+
+    expect(editor.setFieldProps).toHaveBeenCalledWith({ type: 'numeric(12,4)' })
+  })
+
+  it('applies a type chosen from the list at once and brings the current type back on Escape', async () => {
+    act(() => editor.setState({ tableSelected: true, tableVendor: null, field: { type: 'uuid', notNull: false, primaryKey: false, unique: false } }))
+    const type = screen.getByRole('combobox', { name: 'Тип поля' })
+
+    fireEvent.change(type, { target: { value: 'timestamptz' } })
+    expect(editor.setFieldProps).toHaveBeenCalledWith({ type: 'timestamptz' })
+
+    await userEvent.type(type, 'x')
+    await userEvent.keyboard('{Escape}')
+    expect(type).toHaveValue('uuid')
+  })
+
+  it('sets the nullability and the keys of the selected field', async () => {
+    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql', field: { type: 'text', notNull: false, primaryKey: false, unique: true } }))
+
+    expect(screen.getByRole('button', { name: 'NULL' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'UNIQUE' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'NOT NULL' }))
+    await userEvent.click(screen.getByRole('button', { name: 'PK' }))
+    await userEvent.click(screen.getByRole('button', { name: 'UNIQUE' }))
+
+    expect(editor.setFieldProps).toHaveBeenCalledWith({ notNull: true })
+    expect(editor.setFieldProps).toHaveBeenCalledWith({ primaryKey: true })
+    expect(editor.setFieldProps).toHaveBeenCalledWith({ unique: false })
+  })
+
+  it('keeps a primary key NOT NULL', () => {
+    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql', field: { type: 'uuid', notNull: true, primaryKey: true, unique: false } }))
+
+    expect(screen.getByRole('button', { name: 'NOT NULL' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'NOT NULL' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'NULL' })).toBeDisabled()
   })
 
   it('shows the markers of the selected edges and changes them', async () => {
