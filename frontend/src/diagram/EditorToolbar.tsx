@@ -22,6 +22,7 @@ import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
+import { FONT_FAMILIES } from './fonts.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
 import { NumberField } from './NumberField.tsx'
@@ -193,6 +194,7 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <FontSelect value={text.fontFamily} editor={editor} />
       <Button
         type="button"
         variant="ghost"
@@ -266,6 +268,31 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
         </Button>
       )}
     </>
+  )
+}
+
+/**
+ * The font of the selected text, each font shown in itself; empty when the objects have different fonts. A font of
+ * a draw.io file that the list does not have is shown as well.
+ */
+function FontSelect({ value, editor }: { value: string | null; editor: DiagramEditor | null }) {
+  return (
+    <select
+      aria-label="Шрифт"
+      title="Шрифт"
+      className="h-8 w-36 shrink-0 rounded-md border bg-background px-2 text-sm text-foreground"
+      style={{ fontFamily: value ?? undefined }}
+      value={value ?? ''}
+      onChange={(event) => editor?.setFontFamily(event.target.value)}
+    >
+      {value === null && <option value="">—</option>}
+      {value !== null && !FONT_FAMILIES.includes(value) && <option value={value}>{value}</option>}
+      {FONT_FAMILIES.map((family) => (
+        <option key={family} value={family} style={{ fontFamily: family }}>
+          {family}
+        </option>
+      ))}
+    </select>
   )
 }
 

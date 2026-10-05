@@ -142,6 +142,37 @@ describe('line and text styles', () => {
     expect(undoSteps(editor)).toBe(3 + 3)
   })
 
+  it('sets the font of the selected shapes and edges, with Arial as the default, as one undo step', () => {
+    const { doc, editor, a, b, edge } = open()
+    editor.graph.setSelectionCells([a, edge])
+    expect(editor.getState().text?.fontFamily).toBe('Arial')
+
+    editor.setFontFamily('Georgia')
+
+    expect(styleOf(doc, a.getId()!).fontFamily).toBe('Georgia')
+    expect(styleOf(doc, edge.getId()!).fontFamily).toBe('Georgia')
+    expect(editor.getState().text?.fontFamily).toBe('Georgia')
+    editor.graph.setSelectionCells([a, b])
+    expect(editor.getState().text?.fontFamily).toBeNull()
+
+    editor.setFontFamily('Arial')
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('fontFamily')
+    expect(undoSteps(editor)).toBe(3 + 2)
+  })
+
+  it('sets the font of the name and the fields of a selected table, and a new field takes the font of its neighbour', () => {
+    const { doc, editor } = open()
+    const table = editor.addShape('table', { x: 700, y: 100 })!
+    editor.graph.setSelectionCell(table)
+
+    editor.setFontFamily('Courier New')
+
+    expect(styleOf(doc, table.getId()!).fontFamily).toBe('Courier New')
+    expect(styleOf(doc, table.getChildAt(0).getId()!).fontFamily).toBe('Courier New')
+    const field = editor.addTableField()!
+    expect(styleOf(doc, field.getId()!).fontFamily).toBe('Courier New')
+  })
+
   it('fits a shape with auto width to its bold label', () => {
     const { editor } = open()
     const text = editor.addShape('text', { x: 100, y: 500 })!

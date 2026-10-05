@@ -5,7 +5,7 @@ import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { EditorToolbar } from './EditorToolbar.tsx'
 
 /** Text without font styles and with the default alignment. */
-const plainText = { bold: false, italic: false, underline: false, align: 'center' } as const
+const plainText = { fontFamily: 'Arial', bold: false, italic: false, underline: false, align: 'center' } as const
 
 describe('EditorToolbar', () => {
   let editor: FakeEditor
@@ -169,6 +169,25 @@ describe('EditorToolbar', () => {
     expect(within(panel).queryByRole('group', { name: 'Форма связи' })).toBeNull()
     expect(within(panel).getByRole('spinbutton', { name: 'Толщина линии' })).toHaveValue(null)
     expect(within(panel).queryAllByRole('button', { pressed: true })).toEqual([])
+  })
+
+  it('shows the font of the selected text, each font in itself, and changes it', async () => {
+    act(() => editor.setState({ text: { ...plainText, fontFamily: 'Georgia', fontSize: 13, autoWidth: null } }))
+    const font = screen.getByRole('combobox', { name: 'Шрифт' })
+
+    expect(font).toHaveValue('Georgia')
+    expect(screen.getByRole('option', { name: 'Courier New' })).toHaveStyle({ fontFamily: 'Courier New' })
+    await userEvent.selectOptions(font, 'Times New Roman')
+
+    expect(editor.setFontFamily).toHaveBeenCalledWith('Times New Roman')
+  })
+
+  it('shows no font when the selected objects have different ones, and a font of draw.io that is not in the list', () => {
+    act(() => editor.setState({ text: { ...plainText, fontFamily: null, fontSize: 13, autoWidth: null } }))
+    expect(screen.getByRole('combobox', { name: 'Шрифт' })).toHaveValue('')
+
+    act(() => editor.setState({ text: { ...plainText, fontFamily: 'Helvetica', fontSize: 13, autoWidth: null } }))
+    expect(screen.getByRole('combobox', { name: 'Шрифт' })).toHaveValue('Helvetica')
   })
 
   it('shows the font styles and the alignment of the selected text and changes them', async () => {

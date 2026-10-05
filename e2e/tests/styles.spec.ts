@@ -80,3 +80,16 @@ test('a bold label widens a shape with auto width', async ({ browser }) => {
   await expect.poll(async () => (await cells(alice)).find((cell) => cell.id === text)!.width).toBeGreaterThan(width)
   await close()
 })
+
+test('the font of a shape reaches the other participant', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const shape = await addShape(alice, 'Прямоугольник')
+  await select(alice, shape)
+
+  await alice.getByRole('combobox', { name: 'Шрифт' }).selectOption('Georgia')
+
+  await expect.poll(async () => (await styleOf(bob, shape))?.fontFamily).toBe('Georgia')
+  await alice.getByRole('combobox', { name: 'Шрифт' }).selectOption('Arial')
+  await expect.poll(async () => (await styleOf(bob, shape))?.fontFamily).toBeUndefined()
+  await close()
+})

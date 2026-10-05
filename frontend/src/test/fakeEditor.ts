@@ -101,6 +101,7 @@ export function createFakeEditor({
     setFontSize: vi.fn(),
     stepFontSize: vi.fn(),
     toggleFontStyle: vi.fn(),
+    setFontFamily: vi.fn(),
     setTextAlign: vi.fn(),
     setLineStyle: vi.fn(),
     setAutoWidth: vi.fn(),

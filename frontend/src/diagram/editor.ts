@@ -38,6 +38,7 @@ import { registerDiagramExtensions } from './extensions.ts'
 import { layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
+import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
@@ -128,6 +129,8 @@ export interface SelectionLine {
 export interface SelectionText {
   /** Size of the text; `null` when it differs between the selected objects. */
   fontSize: number | null
+  /** Font of the text; `null` when it differs between the selected objects. */
+  fontFamily: string | null
   /** Every selected object has the text bold, italic or underlined. */
   bold: boolean
   italic: boolean
@@ -307,6 +310,8 @@ export interface DiagramEditor {
    * step.
    */
   toggleFontStyle(flag: FontStyleFlag): void
+  /** Sets the font of the objects {@link setFontSize} would change, as one undo step; Arial is the default. */
+  setFontFamily(family: string): void
   /** Aligns the text of the objects {@link setFontSize} would change, as one undo step. */
   setTextAlign(align: TextAlign): void
   /** Sets the width or the dash of the lines of the selected objects, or the shape of the selected edges, as one undo step. */
@@ -516,6 +521,7 @@ const CHANGING_COMMANDS = [
   'setEdgeMarker',
   'setColor',
   'setFontSize',
+  'setFontFamily',
   'stepFontSize',
   'toggleFontStyle',
   'setTextAlign',
@@ -706,6 +712,7 @@ export function createDiagramEditor(
     const shapes = autoWidthCells()
     return {
       fontSize: same(cells.map(fontSizeOf)),
+      fontFamily: same(cells.map((cell) => fontFamilyOf(graph.getCellStyle(cell)))),
       bold: hasFontStyle(cells, 'bold'),
       italic: hasFontStyle(cells, 'italic'),
       underline: hasFontStyle(cells, 'underline'),
@@ -1202,13 +1209,14 @@ export function createDiagramEditor(
       const selected = graph.getSelectionCell()
       const fields = Array.from({ length: table.getChildCount() }, (_, index) => table.getChildAt(index))
       const after = selected !== table ? selected : (fields.at(-1) ?? null)
-      // The new field has the text size and the height of the field it follows.
-      const fontSize = (after?.getStyle() as ShapeStyle | undefined)?.fontSize
+      // The new field has the text size, the font and the height of the field it follows.
+      const { fontSize, fontFamily } = (after?.getStyle() ?? {}) as ShapeStyle
       const height = after?.getGeometry()?.height ?? TABLE_FIELD_HEIGHT
       // The table layout stacks fields in the order of the cells and fixes the position.
       const field = new Cell('', new Geometry(0, TABLE_HEADER_HEIGHT, table.getGeometry()!.width, height), {
         ...TABLE_FIELD_STYLE,
         ...(fontSize !== undefined && { fontSize }),
+        ...(fontFamily !== undefined && { fontFamily }),
       } as CellStyle)
       field.setVertex(true)
       graph.addCell(field, table, after ? table.getIndex(after) + 1 : fields.length)
@@ -1532,6 +1540,16 @@ export function createDiagramEditor(
           setStyleValue([cell], 'fontStyle', next === 0 ? undefined : next)
         }
         // Bold and italic text is wider.
+        fitAutoWidth(cells)
+      })
+    },
+    setFontFamily(family) {
+      const cells = textCells()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        // The default is kept by removing the key, as draw.io does.
+        setStyleValue(cells, 'fontFamily', family === DEFAULT_FONT ? undefined : family)
         fitAutoWidth(cells)
       })
     },

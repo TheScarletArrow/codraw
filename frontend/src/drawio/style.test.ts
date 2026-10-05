@@ -88,3 +88,10 @@ describe('formatStyle', () => {
     expect(parseStyle(formatStyle(edge, 'edge'), 'edge')).toEqual({ ...edge, edgeStyle: 'orthogonalEdgeStyle', labelBackgroundColor: 'none' })
   })
 })
+
+describe('fonts in files of draw.io', () => {
+  it('keeps the font of a label both ways', () => {
+    expect(parseStyle('text;fontFamily=Times New Roman;', 'vertex').fontFamily).toBe('Times New Roman')
+    expect(parseStyle(formatStyle({ fontFamily: 'Courier New' }, 'vertex'), 'vertex').fontFamily).toBe('Courier New')
+  })
+})
