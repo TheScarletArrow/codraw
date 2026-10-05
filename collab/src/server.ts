@@ -1,7 +1,11 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
 import type { TokenVerifier } from "./auth.js";
-import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import { BOARD_NOT_FOUND, BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import { BOARD_CHANGED, isBoardChanged } from "./messages.js";
+
+/** Closes the connections of a deleted board; the client shows that the board does not exist. */
+const BOARD_DELETED = { code: 4404, reason: BOARD_NOT_FOUND };
 
 const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,10 +49,15 @@ export function createCollabServer({
           }
           return backend.loadDocument(documentName);
         },
-        async store({ documentName, state }) {
+        async store({ documentName, state, document }) {
           try {
             await backend.storeDocument(documentName, state);
           } catch (error) {
+            if (error instanceof BoardNotFoundError) {
+              // The board was deleted: its participants are told so, and its changes are dropped.
+              document.getConnections().forEach((connection) => connection.close(BOARD_DELETED));
+              return;
+            }
             console.error(`Failed to store board ${documentName}`, error);
             throw error;
           }
@@ -58,6 +67,11 @@ export function createCollabServer({
     // Runs before the document is loaded: a rejected client gets neither the document nor the awareness of others.
     async onAuthenticate({ token, documentName }) {
       return { user: await verifyToken(token, documentName) };
+    },
+    // A participant changed the board; the others fetch it again. Only this message passes, written by collab itself.
+    async onStateless({ payload, document, connection }) {
+      if (!isBoardChanged(payload)) return;
+      document.broadcastStateless(BOARD_CHANGED, (other) => other !== connection);
     },
     async onRequest({ request, response }) {
       if (request.method === "GET" && request.url === "/health") {

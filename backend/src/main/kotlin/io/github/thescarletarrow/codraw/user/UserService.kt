@@ -30,14 +30,14 @@ class UserService(
 
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
-     * the boards of the guest pass to the user signing in.
+     * the boards of the guest and the boards the guest opened through links pass to the user signing in.
      */
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {
         val user = signIn(profile)
         val guest = previousUserId?.let(users::findById)?.takeIf { it.guest }
         if (guest != null && guest.id != user.id) {
-            boards.changeOwner(guest.id, user.id)
+            boards.transfer(guest.id, user.id)
         }
         return user
     }

@@ -174,6 +174,59 @@ describe("collab server", () => {
     expect(backend.requests).toEqual([]);
   });
 
+  describe("changes of the board", () => {
+    /** Collects the stateless messages that reach a participant. */
+    function statelessOf({ provider }: Connection): string[] {
+      const payloads: string[] = [];
+      provider.on("stateless", ({ payload }: { payload: string }) => payloads.push(payload));
+      return payloads;
+    }
+
+    it("relays board-changed to the other participants of the board only, as its own message", async () => {
+      await startServer();
+      const sender = await connect(board);
+      const receiver = await connect(board);
+      const other = await connect(otherBoard);
+      const [toSender, toReceiver, toOther] = [sender, receiver, other].map(statelessOf);
+
+      sender.provider.sendStateless(JSON.stringify({ type: "board-changed", note: "<script>" }));
+
+      await waitFor(() => toReceiver!.length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(toReceiver).toEqual(['{"type":"board-changed"}']);
+      expect(toSender).toEqual([]);
+      expect(toOther).toEqual([]);
+    });
+
+    it("does not relay other stateless messages", async () => {
+      await startServer();
+      const sender = await connect(board);
+      const toReceiver = statelessOf(await connect(board));
+
+      sender.provider.sendStateless("hello");
+      sender.provider.sendStateless(JSON.stringify({ type: "something-else" }));
+      sender.provider.sendStateless(JSON.stringify(["board-changed"]));
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(toReceiver).toEqual([]);
+    });
+
+    it("closes the connections of a board deleted while participants work on it and drops its changes", async () => {
+      await startServer();
+      const editing = await connect(board);
+      const watching = await connect(board);
+      const closed = [editing, watching].map(
+        ({ provider }) => new Promise<string>((resolve) => provider.on("close", ({ event }: { event: CloseEvent }) => resolve(event.reason))),
+      );
+      backend.boards.delete(board);
+
+      editing.document.getMap("meta").set("title", "After deletion");
+
+      await expect(Promise.all(closed)).resolves.toEqual(["board-not-found", "board-not-found"]);
+      expect(backend.documents.has(board)).toBe(false);
+    });
+  });
+
   describe("access to documents", () => {
     async function expectRejected(token: string, name = board) {
       await startServer();

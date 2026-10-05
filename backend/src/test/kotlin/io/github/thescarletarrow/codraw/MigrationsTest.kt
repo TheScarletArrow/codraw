@@ -22,6 +22,7 @@ class MigrationsTest {
 
         private val boardSyncTables = setOf("boards", "board_documents")
         private val userAuthTables = boardSyncTables + setOf("users", "spring_session", "spring_session_attributes")
+        private val boardManagementTables = userAuthTables + "board_visits"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -33,8 +34,11 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 and V2 create tables on an empty database and U2, U1 revert them`() {
-        assertEquals(2, flyway().migrate().migrationsExecuted)
+    fun `V1 to V3 create tables on an empty database and U3, U2, U1 revert them`() {
+        assertEquals(3, flyway().migrate().migrationsExecuted)
+        assertEquals(boardManagementTables, appTables())
+
+        revert("U3__claude_focused_cori_b96u4j.sql")
         assertEquals(userAuthTables, appTables())
 
         revert("U2__claude_relaxed_euler_o3h2ky.sql")
@@ -44,8 +48,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(2, flyway().migrate().migrationsExecuted)
-        assertEquals(userAuthTables, appTables())
+        assertEquals(3, flyway().migrate().migrationsExecuted)
+        assertEquals(boardManagementTables, appTables())
     }
 
     @Test
@@ -61,7 +65,7 @@ class MigrationsTest {
             "INSERT INTO board_documents (board_id, state, updated_at) VALUES ('0199a000-0000-7000-8000-000000000001', '\\x01', now())",
         ).update()
 
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("2").migrate().migrationsExecuted)
 
         assertEquals(0, count("boards"))
         assertEquals(0, count("board_documents"))
@@ -69,6 +73,35 @@ class MigrationsTest {
             "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'boards' AND column_name = 'owner_id'",
         ).query(String::class.java).single()
         assertEquals("NO", ownerNullable)
+    }
+
+    @Test
+    fun `V3 adds the visits to a database with boards, and they go with their board`() {
+        flyway("2").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now())
+            """,
+        ).update()
+        jdbcClient.sql(
+            """
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway().migrate().migrationsExecuted)
+        jdbcClient.sql(
+            """
+            INSERT INTO board_visits (user_id, board_id, visited_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000001', now())
+            """,
+        ).update()
+        jdbcClient.sql("DELETE FROM boards").update()
+
+        assertEquals(0, count("board_visits"))
     }
 
     private fun flyway(target: String = "latest") =

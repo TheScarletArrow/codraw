@@ -1,6 +1,9 @@
+/** Reason that the client gets when the board does not exist. */
+export const BOARD_NOT_FOUND = "board-not-found";
+
 export class BoardNotFoundError extends Error {
   /** Sent to the client when Hocuspocus rejects the connection because of this error. */
-  readonly reason = "board-not-found";
+  readonly reason = BOARD_NOT_FOUND;
 
   constructor(boardId: string) {
     super(`Board ${boardId} does not exist`);

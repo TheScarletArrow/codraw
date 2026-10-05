@@ -44,6 +44,8 @@ export class FakeHocuspocusProvider {
   readonly awareness = new FakeAwareness(1)
   disconnected = false
   destroyed = false
+  /** Stateless messages the page sent through the provider. */
+  readonly sentStateless: string[] = []
 
   constructor(configuration: HocuspocusProviderConfiguration) {
     this.configuration = configuration
@@ -62,6 +64,20 @@ export class FakeHocuspocusProvider {
 
   disconnect() {
     this.disconnected = true
+  }
+
+  sendStateless(payload: string) {
+    this.sentStateless.push(payload)
+  }
+
+  /** Simulates a stateless message that collab relays from another participant. */
+  emitStateless(payload: string) {
+    this.configuration.onStateless?.({ payload })
+  }
+
+  /** Simulates collab closing the connection to the document with a reason. */
+  emitClose(reason: string) {
+    this.configuration.onClose?.({ event: { code: 1000, reason } } as never)
   }
 
   destroy() {

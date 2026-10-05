@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.user
 
 import io.github.thescarletarrow.codraw.IntegrationTest
+import io.github.thescarletarrow.codraw.MutableClock
 import org.hamcrest.Matchers.contains
 import io.github.thescarletarrow.codraw.board.BoardService
 import org.junit.jupiter.api.AfterEach
@@ -22,7 +23,9 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
@@ -34,6 +37,7 @@ class OAuth2LoginTest(
     @Autowired private val users: UserService,
     @Autowired private val registrations: ClientRegistrationRepository,
     @Autowired private val boards: BoardService,
+    @Autowired private val clock: MutableClock,
 ) {
 
     private var providerAttributes: Map<String, Any> = emptyMap()
@@ -122,6 +126,38 @@ class OAuth2LoginTest(
 
         assertEquals(user.userId, boards.find(board.id!!)?.ownerId)
         assertEquals(emptyList(), boards.list(guest.id))
+    }
+
+    @Test
+    fun `boards a guest opened through links pass to the user who signs in from the guest session`() {
+        val owner = users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Owner", "Owner", null))
+        val shared = boards.create("Чужая доска", owner.id)
+        val guest = users.createGuest()
+        boards.recordVisit(shared, guest.id)
+        signedInAs(guest.toPrincipal())
+
+        val user = signIn("github", gitHubProfile(name = "Alice"))
+
+        assertEquals(listOf(shared.id), boards.visitedBy(user.userId).map { it.board.id })
+        assertEquals(emptyList(), boards.visitedBy(guest.id))
+    }
+
+    @Test
+    fun `a board the guest opened and the user opened as well keeps the later visit`() {
+        val owner = users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Owner", "Owner", null))
+        val shared = boards.create("Чужая доска", owner.id)
+        val alice = signIn("github", gitHubProfile(name = "Alice"))
+        boards.recordVisit(shared, alice.userId)
+        clock.advance(Duration.ofMinutes(1))
+        val guest = users.createGuest()
+        boards.recordVisit(shared, guest.id)
+        signedInAs(guest.toPrincipal())
+
+        signIn("github", gitHubProfile(name = "Alice"))
+
+        val visits = boards.visitedBy(alice.userId)
+        assertEquals(1, visits.size)
+        assertEquals(clock.instant().truncatedTo(ChronoUnit.MICROS), visits.single().visitedAt)
     }
 
     @Test
