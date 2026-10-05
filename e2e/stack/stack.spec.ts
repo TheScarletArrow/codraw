@@ -74,3 +74,11 @@ test('the API answers through the app address, and the internal API of the backe
   expect((await request.get('/internal/boards/0199a000-0000-7000-8000-000000000001/document')).status()).toBe(404)
   expect((await request.get('/actuator/health')).status()).toBe(404)
 })
+
+test('the OAuth callback URL is the app address, with its port', async ({ request, baseURL }) => {
+  const response = await request.get('/api/oauth2/authorization/github', { maxRedirects: 0 })
+
+  expect(response.status()).toBe(302)
+  const location = new URL(response.headers()['location']!)
+  expect(location.searchParams.get('redirect_uri')).toBe(`${baseURL}/api/login/oauth2/code/github`)
+})

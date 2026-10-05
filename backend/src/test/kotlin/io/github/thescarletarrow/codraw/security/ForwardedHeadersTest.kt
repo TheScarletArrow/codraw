@@ -52,6 +52,16 @@ class ForwardedHeadersTest(@LocalServerPort private val port: Int) {
     }
 
     @Test
+    fun `keeps the port of the app address that nginx tells without a TLS proxy`() {
+        val nginx = mapOf("X-Forwarded-Proto" to "http", "X-Forwarded-Port" to "8080")
+
+        val response = send("GET", "/api/oauth2/authorization/github", nginx)
+
+        val location = URLDecoder.decode(response.headers().firstValue("Location").orElseThrow(), Charsets.UTF_8)
+        assertTrue("redirect_uri=http://localhost:8080/api/login/oauth2/code/github" in location, location)
+    }
+
+    @Test
     fun `gives a secure session cookie behind a TLS proxy only`() {
         assertTrue("Secure" in guestSessionCookie(behindTls))
         assertFalse("Secure" in guestSessionCookie(emptyMap()))

@@ -146,15 +146,13 @@ jobs:
           name: playwright-report-stack
           path: e2e/playwright-report-stack
           retention-days: 7
+      # Under the tag of the commit only: `latest` moves to them once the other checks of the commit pass too.
       - name: Publish the images
         if: github.ref == 'refs/heads/main'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           for service in backend collab frontend; do
-            image="${CODRAW_IMAGE_PREFIX}${service}"
-            docker tag "$image:$CODRAW_VERSION" "$image:latest"
-            docker push "$image:$CODRAW_VERSION"
-            docker push "$image:latest"
+            docker push "${CODRAW_IMAGE_PREFIX}${service}:$CODRAW_VERSION"
           done
 
   specs:
@@ -169,3 +167,20 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
       - run: npx -y @fission-ai/openspec@1.14.0 validate --all --strict --no-interactive
+
+  release:
+    name: release
+    if: github.ref == 'refs/heads/main'
+    needs: [backend, web, e2e, images, specs]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Tag the images of the commit as latest
+        # The same images that the stack check ran, without building them again.
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          prefix="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-"
+          for service in backend collab frontend; do
+            docker buildx imagetools create --tag "${prefix}${service}:latest" "${prefix}${service}:${GITHUB_SHA}"
+          done
