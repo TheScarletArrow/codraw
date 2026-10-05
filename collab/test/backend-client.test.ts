@@ -70,11 +70,19 @@ describe("config", () => {
       internalToken: "secret",
       jwksUrl: "http://backend:8080/.well-known/jwks.json",
       accessCheckInterval: 5000,
+      documentSizeLimit: 16 * 1024 * 1024,
+      logFormat: "text",
     });
   });
 
-  it("defaults the port to 1234 and the access check to once a minute", () => {
-    expect(loadConfig(env)).toMatchObject({ port: 1234, accessCheckInterval: 60_000 });
+  it("defaults the port to 1234, the access check to once a minute and the document size to 16 MiB", () => {
+    expect(loadConfig(env)).toMatchObject({ port: 1234, accessCheckInterval: 60_000, documentSizeLimit: 16_777_216 });
+    expect(loadConfig({ ...env, DOCUMENT_SIZE_LIMIT_BYTES: "1048576" }).documentSizeLimit).toBe(1_048_576);
+  });
+
+  it("reads the format of the log", () => {
+    expect(loadConfig({ ...env, LOG_FORMAT: "json" }).logFormat).toBe("json");
+    expect(() => loadConfig({ ...env, LOG_FORMAT: "xml" })).toThrow("LOG_FORMAT");
   });
 
   it.each(["0", "-1", "1.5", "minute"])("rejects an access check interval of %s", (value) => {

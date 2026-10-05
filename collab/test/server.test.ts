@@ -413,6 +413,134 @@ describe("collab server", () => {
     });
   });
 
+  describe("size of documents", () => {
+    function closeReasonOf({ provider }: Connection): Promise<{ code: number; reason: string }> {
+      return new Promise((resolve) =>
+        provider.on("close", ({ event }: { event: CloseEvent }) => resolve({ code: event.code, reason: event.reason })),
+      );
+    }
+
+    const storedTitle = () => {
+      const stored = new Y.Doc();
+      Y.applyUpdate(stored, backend.documents.get(board)!);
+      return stored.getMap("meta").get("title");
+    };
+
+    it("rejects a change that would make the document larger than the limit, which nobody else gets", async () => {
+      await startServer({ documentSizeLimit: 2_000 });
+      const writer = await connect(board);
+      const other = await connect(board);
+      writer.document.getMap("meta").set("title", "Small");
+      await waitFor(() => title(other) === "Small");
+      const closed = closeReasonOf(writer);
+
+      writer.document.getMap("meta").set("title", "x".repeat(3_000));
+
+      await expect(closed).resolves.toMatchObject({ reason: "document-too-large" });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(title(other)).toBe("Small");
+      expect(storedTitle()).toBe("Small");
+    });
+
+    it("lets a participant delete from a document that is larger than the limit", async () => {
+      const large = new Y.Doc();
+      large.getMap("meta").set("title", "x".repeat(3_000));
+      backend.documents.set(board, Y.encodeStateAsUpdate(large));
+      await startServer({ documentSizeLimit: 2_000 });
+      const writer = await connect(board);
+      const other = await connect(board);
+
+      writer.document.getMap("meta").delete("title");
+
+      await waitFor(() => title(other) === undefined);
+      await waitFor(() => storedTitle() === undefined);
+    });
+
+    it("counts the document exactly again once it is stored", async () => {
+      await startServer({ documentSizeLimit: 2_000 });
+      const writer = await connect(board);
+      const other = await connect(board);
+      writer.document.getMap("meta").set("title", "a".repeat(1_500));
+      await waitFor(() => backend.storesFor(board) > 0);
+      writer.document.getMap("meta").delete("title");
+      await waitFor(() => backend.storesFor(board) > 1);
+
+      // Counted change by change, the document would have 1 500 bytes of the deleted title and these.
+      writer.document.getMap("meta").set("title", "b".repeat(1_500));
+
+      await waitFor(() => title(other) === "b".repeat(1_500));
+    });
+
+    it("closes the socket of a message that cannot fit into a document", async () => {
+      await startServer({ documentSizeLimit: 1_000 });
+      const writer = await connect(board);
+      const closed = closeReasonOf(writer);
+
+      writer.document.getMap("meta").set("title", "x".repeat(100_000));
+
+      await expect(closed).resolves.toMatchObject({ code: 1009 });
+    });
+  });
+
+  describe("metrics", () => {
+    const scrape = async () => {
+      const response = await fetch(`http://127.0.0.1:${server!.address.port}/metrics`);
+      expect(response.headers.get("content-type")).toContain("text/plain");
+      return response.text();
+    };
+
+    /** The value of a sample of the metrics, e.g. `codraw_collab_stores_total{result="stored"}`. */
+    const sample = (text: string, name: string) => {
+      const line = text.split("\n").find((line) => line.startsWith(`${name} `));
+      return line === undefined ? undefined : Number(line.slice(name.length + 1));
+    };
+
+    it("counts the connections and the open documents, next to the metrics of the process", async () => {
+      await startServer();
+      await connect(board);
+      await connect(board);
+
+      const text = await scrape();
+
+      expect(sample(text, "codraw_collab_connections")).toBe(2);
+      expect(sample(text, "codraw_collab_documents")).toBe(1);
+      expect(text).toContain("process_cpu_user_seconds_total");
+    });
+
+    it("counts the stores of documents by result, with their time", async () => {
+      await startServer();
+      const writer = await connect(board);
+
+      writer.document.getMap("meta").set("title", "Stored");
+
+      await vi.waitFor(async () => {
+        const text = await scrape();
+        expect(sample(text, 'codraw_collab_stores_total{result="stored"}')).toBeGreaterThan(0);
+        expect(sample(text, "codraw_collab_store_duration_seconds_count")).toBeGreaterThan(0);
+        expect(sample(text, 'codraw_collab_stores_total{result="failed"}')).toBe(0);
+      });
+    });
+
+    it("counts the refusals by reason", async () => {
+      const BOB = "0199a000-0000-7000-8000-0000000000b1";
+      await startServer({ documentSizeLimit: 2_000 });
+      await expect(connect(board, "")).rejects.toThrow("permission-denied");
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      await expect(connect(board, () => backend.issueToken(board, { subject: BOB }))).rejects.toThrow("no-access");
+      const writer = await connect(board);
+
+      writer.document.getMap("meta").set("title", "x".repeat(3_000));
+
+      await vi.waitFor(async () => {
+        const text = await scrape();
+        expect(sample(text, 'codraw_collab_rejections_total{reason="permission-denied"}')).toBe(1);
+        expect(sample(text, 'codraw_collab_rejections_total{reason="no-access"}')).toBe(1);
+        expect(sample(text, 'codraw_collab_rejections_total{reason="document-too-large"}')).toBe(1);
+        expect(sample(text, 'codraw_collab_rejections_total{reason="board-not-found"}')).toBe(0);
+      });
+    });
+  });
+
   describe("access to documents", () => {
     async function expectRejected(token: string, name = board) {
       await startServer();

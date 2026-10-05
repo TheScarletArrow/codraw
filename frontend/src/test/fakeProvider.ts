@@ -75,9 +75,9 @@ export class FakeHocuspocusProvider {
     this.configuration.onStateless?.({ payload })
   }
 
-  /** Simulates collab closing the connection to the document with a reason. */
-  emitClose(reason: string) {
-    this.configuration.onClose?.({ event: { code: 1000, reason } } as never)
+  /** Simulates collab closing the connection to the document with a reason, or the socket with a code. */
+  emitClose(reason: string, code = 1000) {
+    this.configuration.onClose?.({ event: { code, reason } } as never)
   }
 
   destroy() {

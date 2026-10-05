@@ -75,6 +75,15 @@ test('the API answers through the app address, and the internal API of the backe
   expect((await request.get('/actuator/health')).status()).toBe(404)
 })
 
+test('the metrics of backend and collab are not given through the app address', async ({ request }) => {
+  expect((await request.get('/actuator/prometheus')).status()).toBe(404)
+  expect((await request.get('/api/actuator/prometheus')).status()).not.toBe(200)
+  // Any other path is a page of the app.
+  const collab = await request.get('/metrics')
+  expect(collab.headers()['content-type']).toContain('text/html')
+  expect(await collab.text()).not.toContain('codraw_collab')
+})
+
 test('the OAuth callback URL is the app address, with its port', async ({ request, baseURL }) => {
   const response = await request.get('/api/oauth2/authorization/github', { maxRedirects: 0 })
 

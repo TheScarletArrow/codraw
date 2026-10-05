@@ -55,4 +55,14 @@ describe('request', () => {
 
     await expect(request('/api/me')).rejects.toEqual(new HttpError(401))
   })
+
+  it('keeps the problem details of an unsuccessful response', async () => {
+    const problem = { title: 'Board limit reached', limit: 100 }
+    mockFetch({ 'POST /api/boards': { status: 409, body: problem } })
+
+    const error = await request('/api/boards', { method: 'POST' }).catch((error: unknown) => error)
+
+    expect(error).toBeInstanceOf(HttpError)
+    expect((error as HttpError).problem).toEqual(problem)
+  })
 })

@@ -42,6 +42,17 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось продолжить без входа')
   })
 
+  it('says that the address created too many guests lately', async () => {
+    mockFetch({ 'POST /api/guest': { status: 429, body: { title: 'Too Many Requests' } } })
+    renderRoutes(routes, '/login')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Продолжить без входа' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Слишком много новых гостей с вашего адреса. Попробуйте позже или войдите через GitHub или Google.',
+    )
+  })
+
   it('says that the sign-in failed when the provider sends the user back with an error', () => {
     renderRoutes(routes, '/login?error')
 

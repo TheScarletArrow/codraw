@@ -81,17 +81,27 @@ class BoardVersions(private val jdbc: JdbcClient) {
         .param("at", at.atOffset(ZoneOffset.UTC))
         .update() > 0
 
-    /** Deletes the versions of the board [boardId] beyond the [keep] most recent ones. */
-    fun prune(boardId: UUID, keep: Int) {
+    /**
+     * Deletes the versions of the board [boardId] beyond the [keep] most recent ones, and the older ones that make the
+     * versions take more than [maxBytes] together. The most recent version stays whatever its size.
+     */
+    fun prune(boardId: UUID, keep: Int, maxBytes: Long) {
         jdbc.sql(
             """
             DELETE FROM board_versions WHERE id IN (
-                SELECT id FROM board_versions WHERE board_id = :boardId ORDER BY created_at DESC, id DESC OFFSET :keep
+                SELECT id FROM (
+                    -- octet_length of bytea reads the size from the header, without unpacking the state.
+                    SELECT id, row_number() OVER newest AS n, sum(octet_length(state)) OVER newest AS bytes
+                    FROM board_versions WHERE board_id = :boardId
+                    WINDOW newest AS (ORDER BY created_at DESC, id DESC)
+                ) versions
+                WHERE n > :keep OR (n > 1 AND bytes > :maxBytes)
             )
             """,
         )
             .param("boardId", boardId)
             .param("keep", keep)
+            .param("maxBytes", maxBytes)
             .update()
     }
 

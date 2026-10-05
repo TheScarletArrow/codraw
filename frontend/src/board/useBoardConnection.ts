@@ -31,6 +31,12 @@ const ACCESS_CHANGED = 'access-changed'
 /** Reason of collab rejecting a participant whom the board gives no access, e.g. the owner just closed the link. */
 const NO_ACCESS = 'no-access'
 
+/** Reason of collab closing the connection of a participant whose change would make the board larger than allowed. */
+const DOCUMENT_TOO_LARGE = 'document-too-large'
+
+/** WebSocket close code of a message larger than the server takes. */
+const MESSAGE_TOO_BIG = 1009
+
 export function collabUrl(location: Location = window.location) {
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/collab`
 }
@@ -56,6 +62,9 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
   const [readOnly, setReadOnly] = useState(false)
   /** The board document and the participants' awareness, available once the document has been synced. */
   const [session, setSession] = useState<{ document: Y.Doc; awareness: Awareness } | null>(null)
+  /** Collab refused a change because of the size of the board; the page connects again with a fresh document. */
+  const [tooLarge, setTooLarge] = useState(false)
+  const [generation, setGeneration] = useState(0)
   const providerRef = useRef<HocuspocusProvider | null>(null)
 
   useEffect(() => {
@@ -122,6 +131,12 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
           provider.disconnect()
         } else if (event.reason === ACCESS_CHANGED) {
           void refetchBoard()
+        } else if (event.reason === DOCUMENT_TOO_LARGE || event.code === MESSAGE_TOO_BIG) {
+          // The document has a change that collab never takes, and the provider would send it again on every
+          // reconnection: the page drops the document and gets the board as collab has it.
+          setTooLarge(true)
+          setStatus('connecting')
+          setGeneration((current) => current + 1)
         }
       },
       // Another participant renamed or deleted the board: its title, or its absence, comes from the API.
@@ -162,14 +177,18 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
       provider.destroy()
       document.destroy()
     }
-  }, [boardId, identity, queryClient])
+  }, [boardId, identity, queryClient, generation])
 
   /** Tells the other participants that the board changed, e.g. its title, so that they fetch it again. */
   const notifyBoardChanged = useCallback(() => providerRef.current?.sendStateless(BOARD_CHANGED), [])
 
+  const dismissTooLarge = useCallback(() => setTooLarge(false), [])
+
   return {
     status,
     readOnly,
+    tooLarge,
+    dismissTooLarge,
     participants,
     document: session?.document ?? null,
     awareness: session?.awareness ?? null,

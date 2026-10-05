@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
 import { canEdit, fetchBoard, type Board } from '../api/boards.ts'
@@ -167,6 +168,19 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         />
         <ShareButton board={board} pageId={currentPage?.id ?? null} onChanged={notifyBoardChanged} />
       </div>
+      {connection.tooLarge && (
+        <div
+          role="alert"
+          className="flex items-center gap-3 border-b bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
+        >
+          <span className="flex-1">
+            Доска достигла предельного размера, последнее изменение не сохранено. Удалите лишнее, чтобы продолжить
+          </span>
+          <Button type="button" variant="ghost" size="sm" onClick={connection.dismissTooLarge}>
+            Понятно
+          </Button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         {!readOnly && !preview && <ShapePalette editor={editor} />}
         {preview && document ? (

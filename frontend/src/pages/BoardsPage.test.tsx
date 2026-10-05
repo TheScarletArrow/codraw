@@ -101,6 +101,28 @@ describe('BoardsPage', () => {
     expect(takePendingImport('file-id')?.map((page) => page.name)).toEqual(['Контекст', 'Слои'])
   })
 
+  it('says that the user owns as many boards as allowed when creating one runs into the limit', async () => {
+    const limitReached = { status: 409, body: { title: 'Board limit reached', limit: 100 } }
+    mockFetch({ 'GET /api/boards': { body: [] }, 'POST /api/boards': limitReached })
+    renderRoutes(routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Создать доску' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Можно держать не больше 100 досок. Удалите ненужные, чтобы создать новую',
+    )
+  })
+
+  it('says the same when a draw.io file cannot become a board, with the limit in its form', async () => {
+    mockFetch({ 'GET /api/boards': { body: [] }, 'POST /api/boards': { status: 409, body: { limit: 21 } } })
+    renderRoutes(routes)
+    await screen.findByText('Досок пока нет')
+
+    await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Платёжный сервис.drawio'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Можно держать не больше 21 доски.')
+  })
+
   it('does not create a board from a file that is not a draw.io diagram', async () => {
     const fetchMock = mockFetch({ 'GET /api/boards': { body: [] } })
     renderRoutes(routes)

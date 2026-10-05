@@ -25,6 +25,10 @@ interface UserRepository : Repository<User, UUID> {
 
     fun findById(id: UUID): User?
 
+    /** Locks the user till the end of the transaction, so that changes counted per user do not race each other. */
+    @Query("SELECT * FROM users WHERE id = :id FOR UPDATE")
+    fun lock(id: UUID): User?
+
     @Query(
         """
         INSERT INTO users (provider, provider_user_id, name, avatar_url, created_at)

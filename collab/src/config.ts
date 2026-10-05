@@ -1,3 +1,6 @@
+import type { LogFormat } from "./log.js";
+import { DOCUMENT_SIZE_LIMIT } from "./size.js";
+
 export interface CollabConfig {
   port: number;
   backendUrl: string;
@@ -6,6 +9,9 @@ export interface CollabConfig {
   jwksUrl: string;
   /** Period of checking the connections of open documents against the access to their boards, in milliseconds. */
   accessCheckInterval: number;
+  /** The largest a board document may grow, in bytes. */
+  documentSizeLimit: number;
+  logFormat: LogFormat;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollabConfig {
@@ -15,7 +21,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollabConfig {
     internalToken: required(env, "CODRAW_INTERNAL_TOKEN"),
     jwksUrl: required(env, "BACKEND_JWKS_URL"),
     accessCheckInterval: positiveInteger(env, "ACCESS_CHECK_INTERVAL_MS", 60_000),
+    documentSizeLimit: positiveInteger(env, "DOCUMENT_SIZE_LIMIT_BYTES", DOCUMENT_SIZE_LIMIT),
+    logFormat: logFormat(env),
   };
+}
+
+function logFormat(env: NodeJS.ProcessEnv): LogFormat {
+  const value = env.LOG_FORMAT?.trim() || "text";
+  if (value !== "text" && value !== "json") {
+    throw new Error(`Environment variable LOG_FORMAT must be "text" or "json", got "${value}"`);
+  }
+  return value;
 }
 
 function positiveInteger(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {

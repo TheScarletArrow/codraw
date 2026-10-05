@@ -7,10 +7,12 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -99,6 +101,14 @@ class BoardController(private val boards: BoardService, private val users: UserS
         boards.delete(ownBoard(id, principal))
         return ResponseEntity.noContent().build()
     }
+
+    @ExceptionHandler
+    fun boardLimitReached(exception: BoardLimitReachedException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The user owns ${exception.limit} boards, the most allowed")
+            .apply {
+                title = "Board limit reached"
+                setProperty("limit", exception.limit)
+            }
 
     private fun existingBoard(id: String): Board = boards.existing(id)
 

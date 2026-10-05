@@ -10,3 +10,9 @@ spring:
           google:
             client-id: e2e
             client-secret: e2e
+
+codraw:
+  limits:
+    # Test users keep the boards of all runs, and every test signs in from the same address.
+    boards-per-user: 1000000
+    guests-per-address-per-hour: 1000000
