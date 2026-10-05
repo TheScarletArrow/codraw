@@ -52,6 +52,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
 | `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
 | `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
+| `CODRAW_LIMITS_CLIENT_ERRORS_PER_ADDRESS_PER_MINUTE` | `30` | отчётов об ошибках браузеров с одного адреса в минуту; сверх них — 429; счётчик — в памяти `backend` |
 | `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски; у предела проходят только удаления |
 | `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
 | `CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD` | `64MB` | сколько занимают версии одной доски вместе; старые удаляются, новейшая остаётся всегда |
@@ -119,7 +120,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 | Где | Что |
 |---|---|
-| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`) |
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`) |
 | `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`), отказы по причинам (`codraw_collab_rejections_total{reason}`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
@@ -139,6 +140,7 @@ Prometheus слушает `127.0.0.1:9090` сервера (порт — `CODRAW_
 | `CodrawBackendErrors` | больше 5% ответов `backend` — ошибки 5xx, 10 минут |
 | `CodrawDocumentStoreFailures` | `collab` не смог сохранить документ доски хотя бы раз за 10 минут |
 | `CodrawDatabaseConnectionsPending` | запросы `backend` 5 минут ждут соединений с базой |
+| `CodrawClientErrors` | больше 20 ошибок в браузерах участников за 10 минут |
 
 Prometheus показывает сработавшие правила на странице Alerts. Чтобы получать оповещения, подключите Alertmanager
 (`alerting` в `deploy/prometheus/prometheus.yml`) или внешний мониторинг, который читает те же метрики. Проверить
@@ -146,7 +148,13 @@ Prometheus показывает сработавшие правила на ст�
 
 **Журналы** `backend` и `collab` в этом стеке — JSON по строке на событие в формате ECS (`@timestamp`, `log.level`,
 `message`, `error.*`): их разбирает любой сборщик журналов. Читать их глазами удобнее так:
-`docker compose -f docker-compose.prod.yml logs backend | jq -r '.message'`. Чтобы вернуть обычный текст, уберите
+`docker compose -f docker-compose.prod.yml logs backend | jq -r '.message'`.
+
+**Ошибки браузеров.** Приложение отправляет необработанные ошибки страниц и ошибки отрисовки в `backend`
+(`POST /api/client-errors`), и они попадают в его журнал строками уровня `WARN` с полями `client.error.kind`,
+`error.message`, `error.stack_trace`, `url.path` (путь страницы без параметров), `user_agent.original` и `user.id`, если
+участник вошёл; содержимого досок в отчётах нет. Найти их: `docker compose -f docker-compose.prod.yml logs backend | jq
+'select(.client.error.kind)'`. Одна и та же ошибка отправляется один раз за загрузку страницы, всего — не больше 10. Чтобы вернуть обычный текст, уберите
 `LOGGING_STRUCTURED_FORMAT_CONSOLE` у `backend` и задайте `LOG_FORMAT: text` у `collab`.
 
 ## Резервные копии

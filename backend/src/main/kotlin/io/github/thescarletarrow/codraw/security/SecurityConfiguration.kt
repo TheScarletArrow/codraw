@@ -1,5 +1,6 @@
 package io.github.thescarletarrow.codraw.security
 
+import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
 import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -53,6 +54,8 @@ class SecurityConfiguration {
                 authorize("/actuator/prometheus", permitAll)
                 authorize(JwksController.PATH, permitAll)
                 authorize(HttpMethod.POST, GuestLoginController.PATH, permitAll)
+              // The login page breaks too: its errors are reported without a sign-in.
+              authorize(HttpMethod.POST, ClientErrorController.PATH, permitAll)
                 authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)
             }

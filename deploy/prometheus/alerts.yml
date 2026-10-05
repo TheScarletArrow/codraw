@@ -35,3 +35,10 @@ groups:
           severity: warning
         annotations:
           summary: "Запросы backend 5 минут ждут соединений с базой"
+
+      - alert: CodrawClientErrors
+        expr: sum(increase(codraw_client_errors_total[10m])) > 20
+        labels:
+          severity: warning
+        annotations:
+          summary: "Больше 20 ошибок в браузерах участников за 10 минут"

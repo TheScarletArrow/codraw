@@ -30,6 +30,10 @@ class MetricsTest(
             content { string(containsString("http_server_requests_seconds_count")) }
             content { string(containsString("codraw_board_creations_total{application=\"codraw-backend\"}")) }
             content { string(containsString("codraw_limits_reached_total{application=\"codraw-backend\",limit=\"boards\"}")) }
+            // Every kind of error in browsers shows before the first one.
+            for (kind in listOf("error", "unhandledrejection", "render")) {
+                content { string(containsString("codraw_client_errors_total{application=\"codraw-backend\",kind=\"$kind\"} 0.0")) }
+            }
         }
     }
 

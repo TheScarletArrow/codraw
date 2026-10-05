@@ -1,13 +1,15 @@
 import type { RouteObject } from 'react-router'
+import { AppError } from './errors/AppError.tsx'
 import { Layout } from './Layout.tsx'
 import { BoardsPage } from './pages/BoardsPage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 
 export const routes: RouteObject[] = [
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <AppError /> },
   {
     path: '/',
     element: <Layout />,
+    errorElement: <AppError />,
     children: [
       { index: true, element: <BoardsPage /> },
       {
