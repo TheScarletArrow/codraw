@@ -31,6 +31,7 @@ import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
 import { importPages } from '../drawio/importPages.ts'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
+import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 
@@ -217,6 +218,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <PresenceLayer editor={editor} awareness={awareness} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   <CanvasMenu editor={editor} />
+                  {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                 </>
               ) : (
                 <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>

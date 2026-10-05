@@ -16,6 +16,8 @@ import { BoardActions } from '../board/BoardActions.tsx'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { DRAWIO_FILE_TYPES, setPendingImport, titleFromFileName } from '../drawio/files.ts'
 import { DrawioFormatError, parseDrawio } from '../drawio/parse.ts'
+import { TemplateCards } from '../templates/TemplateCards.tsx'
+import { templatePage, type BoardTemplate } from '../templates/templates.ts'
 
 export const NEW_BOARD_TITLE = 'Новая доска'
 
@@ -58,7 +60,19 @@ export function BoardsPage() {
       await navigate(`/boards/${board.id}`)
     },
   })
-  const busy = create.isPending || open.isPending
+  // A board from a template gets its diagram as the pages of a file do.
+  const fromTemplate = useMutation({
+    mutationFn: async (template: BoardTemplate) => {
+      const board = await createBoard(template.title)
+      setPendingImport(board.id, [templatePage(template)])
+      return board
+    },
+    onSuccess: async (board) => {
+      await queryClient.invalidateQueries({ queryKey: ['boards'] })
+      await navigate(`/boards/${board.id}`)
+    },
+  })
+  const busy = create.isPending || open.isPending || fromTemplate.isPending
 
   return (
     <section className="mx-auto w-full max-w-3xl overflow-auto px-4 py-6">
@@ -90,6 +104,11 @@ export function BoardsPage() {
           {boardLimitMessage(create.error) ?? 'Не удалось создать доску'}
         </p>
       )}
+      {fromTemplate.isError && (
+        <p role="alert" className="mt-4 text-destructive">
+          {boardLimitMessage(fromTemplate.error) ?? 'Не удалось создать доску из шаблона'}
+        </p>
+      )}
       {open.isError && (
         <p role="alert" className="mt-4 text-destructive">
           {open.error instanceof DrawioFormatError
@@ -112,6 +131,13 @@ export function BoardsPage() {
           ))}
         </ul>
       )}
+
+      <section aria-labelledby="templates" className="mt-8">
+        <h3 id="templates" className="text-lg font-semibold">
+          Начать с шаблона
+        </h3>
+        <TemplateCards className="mt-2" disabled={busy} onChoose={(template) => fromTemplate.mutate(template)} />
+      </section>
 
       {shared.data && shared.data.length > 0 && (
         <section aria-labelledby="shared-boards" className="mt-8">

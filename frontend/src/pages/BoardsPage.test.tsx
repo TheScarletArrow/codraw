@@ -101,6 +101,34 @@ describe('BoardsPage', () => {
     expect(takePendingImport('file-id')?.map((page) => page.name)).toEqual(['Контекст', 'Слои'])
   })
 
+  it('creates a board from a template, named after it, with the diagram of the template as its page', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/boards': { body: [] },
+      'POST /api/boards': { status: 201, body: board('template-id', 'ER-диаграмма') },
+    })
+    const { router } = renderRoutes(routes)
+    const templates = await screen.findByRole('region', { name: 'Начать с шаблона' })
+
+    await userEvent.click(within(templates).getByRole('button', { name: /ER-диаграмма/ }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/boards/template-id'))
+    const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(JSON.parse(init!.body as string)).toEqual({ title: 'ER-диаграмма' })
+    const pages = takePendingImport('template-id')!
+    expect(pages.map((page) => page.name)).toEqual(['ER-диаграмма'])
+    expect(pages[0]!.cells.filter((cell) => cell.style.codrawShape === 'table')).toHaveLength(3)
+  })
+
+  it('says that the user owns as many boards as allowed when a template runs into the limit', async () => {
+    const limitReached = { status: 409, body: { title: 'Board limit reached', limit: 100 } }
+    mockFetch({ 'GET /api/boards': { body: [] }, 'POST /api/boards': limitReached })
+    renderRoutes(routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: /Микросервисы/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Можно держать не больше 100 досок')
+  })
+
   it('says that the user owns as many boards as allowed when creating one runs into the limit', async () => {
     const limitReached = { status: 409, body: { title: 'Board limit reached', limit: 100 } }
     mockFetch({ 'GET /api/boards': { body: [] }, 'POST /api/boards': limitReached })
