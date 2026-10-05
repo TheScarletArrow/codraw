@@ -10,6 +10,7 @@ import java.util.UUID
 class BoardDocumentService(
     private val boards: BoardRepository,
     private val documents: BoardDocumentRepository,
+    private val versions: BoardVersionService,
     private val clock: Clock,
 ) {
 
@@ -21,13 +22,17 @@ class BoardDocumentService(
         return documents.findByBoardId(boardId)?.let { StoredDocument.State(it.state) } ?: StoredDocument.Empty
     }
 
-    /** Saves the document state and marks the board as changed. Returns `false` when the board does not exist. */
+    /**
+     * Saves the document state and marks the board as changed; the state it replaces may become a version of the board.
+     * Returns `false` when the board does not exist.
+     */
     @Transactional
     fun save(boardId: UUID, state: ByteArray): Boolean {
         val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
         if (!boards.touch(boardId, now)) {
             return false
         }
+        versions.beforeStore(boardId, now)
         documents.upsert(boardId, state, now)
         return true
     }

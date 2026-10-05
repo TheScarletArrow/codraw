@@ -25,6 +25,7 @@ class MigrationsTest {
         private val boardSyncTables = setOf("boards", "board_documents")
         private val userAuthTables = boardSyncTables + setOf("users", "spring_session", "spring_session_attributes")
         private val boardManagementTables = userAuthTables + "board_visits"
+        private val boardVersionsTables = boardManagementTables + "board_versions"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -36,10 +37,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V4 create tables on an empty database and U4, U3, U2, U1 revert them`() {
-        assertEquals(4, flyway().migrate().migrationsExecuted)
-        assertEquals(boardManagementTables, appTables())
+    fun `V1 to V5 create tables on an empty database and U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(5, flyway().migrate().migrationsExecuted)
+        assertEquals(boardVersionsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+
+        revert("U5__claude_bold_cannon_6zvbpn.sql")
+        assertEquals(boardManagementTables, appTables())
 
         revert("U4__claude_bold_cannon_6zvbpn.sql")
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at"), boardColumns())
@@ -54,8 +58,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(4, flyway().migrate().migrationsExecuted)
-        assertEquals(boardManagementTables, appTables())
+        assertEquals(5, flyway().migrate().migrationsExecuted)
+        assertEquals(boardVersionsTables, appTables())
     }
 
     @Test
@@ -126,7 +130,7 @@ class MigrationsTest {
             """,
         ).update()
 
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("4").migrate().migrationsExecuted)
 
         assertEquals("EDIT", jdbcClient.sql("SELECT link_access FROM boards").query(String::class.java).single())
         assertFailsWith<DataIntegrityViolationException> {

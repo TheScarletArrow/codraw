@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
 import { canEdit, fetchBoard, type Board } from '../api/boards.ts'
+import type { BoardVersion } from '../api/versions.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
@@ -13,6 +14,8 @@ import { Participants } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
 import { readRemotePresence, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
+import { VersionHistory } from '../board/VersionHistory.tsx'
+import { VersionPreview } from '../board/VersionPreview.tsx'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import { PageHistories } from '../diagram/binding.ts'
@@ -68,6 +71,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])
   const pages = usePages(document, !readOnly)
+  // Versions of the board, which only its owner sees; a selected version shows in place of the board.
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [previewed, setPreviewed] = useState<BoardVersion | null>(null)
+  const isOwner = board.role === 'owner'
+  const preview = isOwner && previewed && document ? previewed : null
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
@@ -134,7 +142,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
       <div className="flex items-center gap-x-4 border-b px-3 py-2">
-        <BoardHeading board={board} onChanged={notifyBoardChanged} />
+        <BoardHeading board={board} onChanged={notifyBoardChanged} onOpenHistory={() => setHistoryOpen(true)} />
         <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
           {STATUS_LABELS[status]}
@@ -157,44 +165,67 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         <ShareButton board={board} pageId={currentPage?.id ?? null} onChanged={notifyBoardChanged} />
       </div>
       <div className="flex min-h-0 flex-1">
-        {!readOnly && <ShapePalette editor={editor} />}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 flex-1">
-            {document && currentPage ? (
-              <>
-                <DiagramCanvas
-                  document={document}
-                  pageId={currentPage.id}
-                  histories={histories}
-                  readOnly={readOnly}
-                  onEditor={setEditor}
-                />
-                <PresenceLayer editor={editor} awareness={awareness} />
-                {!readOnly && <QuickConnect editor={editor} />}
-                <CanvasMenu editor={editor} />
-              </>
-            ) : (
-              <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>
+        {!readOnly && !preview && <ShapePalette editor={editor} />}
+        {preview && document ? (
+          <VersionPreview
+            key={preview.id}
+            boardId={board.id}
+            version={preview}
+            document={document}
+            onRestored={() => setPreviewed(null)}
+            onClose={() => setPreviewed(null)}
+          />
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="relative min-h-0 flex-1">
+              {document && currentPage ? (
+                <>
+                  <DiagramCanvas
+                    document={document}
+                    pageId={currentPage.id}
+                    histories={histories}
+                    readOnly={readOnly}
+                    onEditor={setEditor}
+                  />
+                  <PresenceLayer editor={editor} awareness={awareness} />
+                  {!readOnly && <QuickConnect editor={editor} />}
+                  <CanvasMenu editor={editor} />
+                </>
+              ) : (
+                <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>
+              )}
+            </div>
+            {document && (
+              <PageTabs
+                pages={pages}
+                currentPageId={currentPage?.id ?? null}
+                visitors={participants.filter((participant) => !participant.isSelf)}
+                onSelect={selectPage}
+                onAdd={() => selectPage(addPage(document, currentPage?.id))}
+                onRename={(id, name) => renamePage(document, id, name)}
+                onDuplicate={(id) => {
+                  const copy = duplicatePage(document, id)
+                  if (copy) selectPage(copy)
+                }}
+                onDelete={(id) => deletePage(document, id)}
+                onMove={(id, index) => movePage(document, id, index)}
+                readOnly={readOnly}
+              />
             )}
           </div>
-          {document && (
-            <PageTabs
-              pages={pages}
-              currentPageId={currentPage?.id ?? null}
-              visitors={participants.filter((participant) => !participant.isSelf)}
-              onSelect={selectPage}
-              onAdd={() => selectPage(addPage(document, currentPage?.id))}
-              onRename={(id, name) => renamePage(document, id, name)}
-              onDuplicate={(id) => {
-                const copy = duplicatePage(document, id)
-                if (copy) selectPage(copy)
-              }}
-              onDelete={(id) => deletePage(document, id)}
-              onMove={(id, index) => movePage(document, id, index)}
-              readOnly={readOnly}
-            />
-          )}
-        </div>
+        )}
+        {isOwner && historyOpen && (
+          <VersionHistory
+            boardId={board.id}
+            document={document}
+            selectedId={preview?.id ?? null}
+            onSelect={setPreviewed}
+            onClose={() => {
+              setHistoryOpen(false)
+              setPreviewed(null)
+            }}
+          />
+        )}
       </div>
     </div>
   )

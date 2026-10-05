@@ -100,17 +100,9 @@ class BoardController(private val boards: BoardService, private val users: UserS
         return ResponseEntity.noContent().build()
     }
 
-    private fun existingBoard(id: String): Board =
-        BoardIds.parse(id)?.let(boards::find) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
+    private fun existingBoard(id: String): Board = boards.existing(id)
 
-    /** The board, which only its owner may change or delete. */
-    private fun ownBoard(id: String, principal: OAuth2User): Board {
-        val board = existingBoard(id)
-        if (board.ownerId != principal.userId) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change the board")
-        }
-        return board
-    }
+    private fun ownBoard(id: String, principal: OAuth2User): Board = boards.ownedBy(id, principal.userId)
 
     private fun currentUser(principal: OAuth2User): User =
         checkNotNull(users.find(principal.userId)) { "Signed-in user ${principal.userId} does not exist" }

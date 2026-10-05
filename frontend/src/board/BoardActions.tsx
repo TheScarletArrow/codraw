@@ -9,13 +9,22 @@ interface BoardActionsProps {
   /** Label of the delete item: «Удалить» in the list of boards, «Удалить доску» on the board. */
   deleteLabel: string
   onRename: () => void
+  /** Opens the versions of the board; without it the menu has no such item. */
+  onHistory?: () => void
   /** Called once the user has confirmed the deletion. */
   onDelete: () => void
   disabled?: boolean
 }
 
 /** Menu of a board for its owner; deleting asks for confirmation, as a deleted board cannot be restored. */
-export function BoardActions({ title, deleteLabel, onRename, onDelete, disabled = false }: BoardActionsProps) {
+export function BoardActions({
+  title,
+  deleteLabel,
+  onRename,
+  onHistory,
+  onDelete,
+  disabled = false,
+}: BoardActionsProps) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const item = 'justify-start font-normal'
@@ -76,6 +85,21 @@ export function BoardActions({ title, deleteLabel, onRename, onDelete, disabled 
             >
               Переименовать
             </Button>
+            {onHistory && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                onClick={() => {
+                  setOpen(false)
+                  onHistory()
+                }}
+              >
+                История версий
+              </Button>
+            )}
             <Button
               type="button"
               role="menuitem"

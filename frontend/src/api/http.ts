@@ -32,13 +32,24 @@ async function ensureCsrfToken(): Promise<string | undefined> {
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await send(path, init, 'application/json')
+  return (response.status === 204 ? undefined : await response.json()) as T
+}
+
+/** Like {@link request}, for a binary response. */
+export async function requestBytes(path: string, init: RequestInit = {}): Promise<Uint8Array> {
+  const response = await send(path, init, 'application/octet-stream')
+  return new Uint8Array(await response.arrayBuffer())
+}
+
+async function send(path: string, init: RequestInit, accept: string): Promise<Response> {
   const token = SAFE_METHODS.has(init.method ?? 'GET') ? undefined : await ensureCsrfToken()
   const response = await fetch(path, {
     ...init,
-    headers: { Accept: 'application/json', ...(token && { [CSRF_HEADER]: token }), ...init.headers },
+    headers: { Accept: accept, ...(token && { [CSRF_HEADER]: token }), ...init.headers },
   })
   if (!response.ok) {
     throw new HttpError(response.status)
   }
-  return (response.status === 204 ? undefined : await response.json()) as T
+  return response
 }

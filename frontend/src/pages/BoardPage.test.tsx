@@ -357,6 +357,119 @@ describe('BoardPage', () => {
     })
   })
 
+  describe('versions', () => {
+    const versionsUrl = `/api/boards/${boardId}/versions`
+    const version = (id: string, reason: 'auto' | 'manual' | 'restore', createdAt = '2026-10-01T09:00:00Z') => ({
+      id,
+      reason,
+      createdAt,
+    })
+
+    /** The state of a board with one shape on its first page, as a version keeps it. */
+    function versionState() {
+      const doc = new Y.Doc()
+      initializeDocument(doc)
+      getCells(doc).set('kept', new Y.Map(Object.entries({ kind: 'vertex', parent: '1', order: 'a0', value: 'Сервис' })))
+      return Y.encodeStateAsUpdate(doc)
+    }
+
+    async function openHistory(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+      const provider = await openBoard({ [`GET ${versionsUrl}`]: { body: [version('v2', 'manual'), version('v1', 'auto')] }, ...responses })
+      act(() => provider.emitSynced())
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
+      return provider
+    }
+
+    it('lists the versions of the board for its owner', async () => {
+      await openHistory()
+
+      const history = screen.getByRole('complementary', { name: 'История версий' })
+      const items = await within(history).findAllByRole('button', { pressed: false })
+      expect(items.map((item) => item.textContent)).toEqual([
+        expect.stringContaining('Вручную'),
+        expect.stringContaining('Автоматически'),
+      ])
+    })
+
+    it('saves the current state of the board as a version', async () => {
+      const provider = await openHistory({
+        [`POST ${versionsUrl}?reason=manual`]: { status: 201, body: version('v3', 'manual') },
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }))
+
+      await waitFor(() => expect(requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=manual`)).toHaveLength(1))
+      const [[, init]] = requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=manual`)
+      const saved = new Y.Doc()
+      Y.applyUpdate(saved, init!.body as Uint8Array)
+      expect(getCells(saved).toJSON()).toEqual(getCells(provider.document).toJSON())
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', versionsUrl)).toHaveLength(2))
+    })
+
+    it('shows a selected version in place of the board, for viewing only', async () => {
+      await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: versionState() } })
+
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      expect(await within(preview).findByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(within(preview).getByRole('tab', { name: 'Страница 1' })).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Закрыть' }))
+      expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull()
+      expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
+    })
+
+    it('keeps the current state as a version, then restores the selected one for everybody', async () => {
+      const provider = await openHistory({
+        [`GET ${versionsUrl}/v1`]: { bytes: versionState() },
+        [`POST ${versionsUrl}?reason=restore`]: { status: 201, body: version('v3', 'restore') },
+      })
+      getCells(provider.document).set('later', new Y.Map(Object.entries({ kind: 'vertex', parent: '1', order: 'a1' })))
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      await within(preview).findByTestId('diagram-canvas')
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить эту версию' }))
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Восстановление версии' })).getByRole('button', { name: 'Восстановить' }))
+
+      await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
+      const [[, init]] = requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=restore`)
+      const kept = new Y.Doc()
+      Y.applyUpdate(kept, init!.body as Uint8Array)
+      expect(getCells(kept).has('later')).toBe(true)
+      expect(getCells(provider.document).has('later')).toBe(false)
+      expect(getCells(provider.document).get('kept')?.get('value')).toBe('Сервис')
+    })
+
+    it('leaves the board as it is when the current state cannot be kept', async () => {
+      const provider = await openHistory({
+        [`GET ${versionsUrl}/v1`]: { bytes: versionState() },
+        [`POST ${versionsUrl}?reason=restore`]: { status: 500 },
+      })
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      await within(preview).findByTestId('diagram-canvas')
+      const before = Y.encodeStateVector(provider.document)
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить эту версию' }))
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Восстановление версии' })).getByRole('button', { name: 'Восстановить' }))
+
+      expect(await within(preview).findByRole('alert')).toHaveTextContent('Не удалось восстановить версию')
+      expect(Y.encodeStateVector(provider.document)).toEqual(before)
+    })
+
+    it('offers no history to a participant who does not own the board', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+      act(() => provider.emitSynced())
+
+      expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).toBeNull()
+      expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull()
+    })
+  })
+
   describe('managing the board', () => {
     it('lets the owner rename the board with a click on its title and tells the other participants', async () => {
       const provider = await openBoard({
