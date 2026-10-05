@@ -198,6 +198,24 @@ describe("collab server", () => {
       expect(toOther).toEqual([]);
     });
 
+    it("relays comments-changed of a viewer to the others without checking the access", async () => {
+      const BOB = "0199a000-0000-7000-8000-0000000000b1";
+      await startServer();
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      const owner = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const [toOwner, toViewer] = [owner, viewer].map(statelessOf);
+      const before = backend.accessRequestsFor(board);
+
+      viewer.provider.sendStateless(JSON.stringify({ type: "comments-changed", thread: "<script>" }));
+
+      await waitFor(() => toOwner!.length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(toOwner).toEqual(['{"type":"comments-changed"}']);
+      expect(toViewer).toEqual([]);
+      expect(backend.accessRequestsFor(board)).toBe(before);
+    });
+
     it("does not relay other stateless messages", async () => {
       await startServer();
       const sender = await connect(board);

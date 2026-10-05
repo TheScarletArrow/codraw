@@ -1,0 +1,327 @@
+package io.github.thescarletarrow.codraw.comment
+
+import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.stereotype.Repository
+import java.sql.ResultSet
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.UUID
+
+/** A user as comments show them: the author, who resolved a thread, who is mentioned. */
+data class Person(
+    val id: UUID,
+    val name: String,
+    val avatarUrl: String?,
+)
+
+data class Comment(
+    val id: UUID,
+    /** `null` once the author is deleted, e.g. a guest who did not come back. */
+    val author: Person?,
+    val body: String,
+    /** The participants of the board that the comment mentions. */
+    val mentions: List<Person>,
+    val createdAt: Instant,
+    /** When the author last changed the text, `null` when they never did. */
+    val editedAt: Instant?,
+)
+
+/** Comments about one element of a page, or about the whole page when [cellId] is `null`. */
+data class CommentThread(
+    val id: UUID,
+    val pageId: String,
+    /** The id of the cell in the document of the board; the cell may be deleted since. */
+    val cellId: String?,
+    val createdAt: Instant,
+    /** When the thread was marked resolved, `null` while it is open. */
+    val resolvedAt: Instant?,
+    /** Who marked the thread resolved; `null` while it is open or once they are deleted. */
+    val resolvedBy: Person?,
+    /** The first comment starts the thread; the others answer it, oldest first. */
+    val comments: List<Comment>,
+)
+
+/** The author of a stored comment and whether it starts its thread. */
+data class StoredComment(
+    val id: UUID,
+    val threadId: UUID,
+    val authorId: UUID?,
+    val first: Boolean,
+)
+
+/** Threads of comments on boards, their comments and the users the comments mention. */
+@Repository
+class Comments(private val jdbc: JdbcClient) {
+
+    /** All threads of the board, oldest first, with their comments. */
+    fun threads(boardId: UUID): List<CommentThread> = load(boardId, threadId = null)
+
+    fun thread(boardId: UUID, threadId: UUID): CommentThread? = load(boardId, threadId).singleOrNull()
+
+    /** Whether the thread [threadId] is on the board [boardId]. */
+    fun threadExists(boardId: UUID, threadId: UUID): Boolean = jdbc.sql(
+        "SELECT EXISTS (SELECT 1 FROM comment_threads WHERE id = :threadId AND board_id = :boardId)",
+    )
+        .param("threadId", threadId)
+        .param("boardId", boardId)
+        .query(Boolean::class.java)
+        .single()
+
+    fun comment(boardId: UUID, threadId: UUID, commentId: UUID): StoredComment? = jdbc.sql(
+        """
+        SELECT c.id, c.thread_id, c.author_id,
+               c.id = (SELECT f.id FROM comments f WHERE f.thread_id = c.thread_id ORDER BY f.created_at, f.id LIMIT 1)
+                   AS first
+        FROM comments c
+        JOIN comment_threads t ON t.id = c.thread_id
+        WHERE c.id = :commentId AND c.thread_id = :threadId AND t.board_id = :boardId
+        """,
+    )
+        .param("commentId", commentId)
+        .param("threadId", threadId)
+        .param("boardId", boardId)
+        .query { rs, _ ->
+            StoredComment(
+                id = rs.getObject("id", UUID::class.java),
+                threadId = rs.getObject("thread_id", UUID::class.java),
+                authorId = rs.getObject("author_id", UUID::class.java),
+                first = rs.getBoolean("first"),
+            )
+        }
+        .optional()
+        .orElse(null)
+
+    /** Locks the board till the end of the transaction, so that comments counted per board do not race each other. */
+    fun lockBoard(boardId: UUID) {
+        // Unlike FOR UPDATE, this lock lets the board be referenced meanwhile, e.g. by a new version.
+        jdbc.sql("SELECT id FROM boards WHERE id = :boardId FOR NO KEY UPDATE").param("boardId", boardId).query().listOfRows()
+    }
+
+    fun countOnBoard(boardId: UUID): Int = jdbc.sql(
+        "SELECT count(*) FROM comments c JOIN comment_threads t ON t.id = c.thread_id WHERE t.board_id = :boardId",
+    )
+        .param("boardId", boardId)
+        .query(Int::class.java)
+        .single()
+
+    fun addThread(boardId: UUID, pageId: String, cellId: String?, at: Instant): UUID = jdbc.sql(
+        """
+        INSERT INTO comment_threads (board_id, page_id, cell_id, created_at) VALUES (:boardId, :pageId, :cellId, :at)
+        RETURNING id
+        """,
+    )
+        .param("boardId", boardId)
+        .param("pageId", pageId)
+        .param("cellId", cellId)
+        .param("at", at.atOffset(ZoneOffset.UTC))
+        .query(UUID::class.java)
+        .single()
+
+    fun addComment(threadId: UUID, authorId: UUID, body: String, at: Instant): UUID = jdbc.sql(
+        """
+        INSERT INTO comments (thread_id, author_id, body, created_at) VALUES (:threadId, :authorId, :body, :at)
+        RETURNING id
+        """,
+    )
+        .param("threadId", threadId)
+        .param("authorId", authorId)
+        .param("body", body)
+        .param("at", at.atOffset(ZoneOffset.UTC))
+        .query(UUID::class.java)
+        .single()
+
+    fun edit(commentId: UUID, body: String, at: Instant) {
+        jdbc.sql("UPDATE comments SET body = :body, edited_at = :at WHERE id = :commentId")
+            .param("commentId", commentId)
+            .param("body", body)
+            .param("at", at.atOffset(ZoneOffset.UTC))
+            .update()
+    }
+
+    /** Makes the comment mention exactly the users [userIds]. */
+    fun replaceMentions(commentId: UUID, userIds: Collection<UUID>) {
+        jdbc.sql("DELETE FROM comment_mentions WHERE comment_id = :commentId").param("commentId", commentId).update()
+        if (userIds.isEmpty()) return
+        jdbc.sql(
+            "INSERT INTO comment_mentions (comment_id, user_id) SELECT :commentId, unnest(:userIds::uuid[])",
+        )
+            .param("commentId", commentId)
+            .param("userIds", userIds.toTypedArray())
+            .update()
+    }
+
+    fun deleteComment(commentId: UUID) {
+        jdbc.sql("DELETE FROM comments WHERE id = :commentId").param("commentId", commentId).update()
+    }
+
+    /** Deletes the thread with all its comments. */
+    fun deleteThread(threadId: UUID) {
+        jdbc.sql("DELETE FROM comment_threads WHERE id = :threadId").param("threadId", threadId).update()
+    }
+
+    /** Marks the thread resolved by the user [by] at [at], or open again when [at] is `null`. */
+    fun resolve(threadId: UUID, by: UUID?, at: Instant?) {
+        jdbc.sql("UPDATE comment_threads SET resolved_at = :at, resolved_by = :by WHERE id = :threadId")
+            .param("threadId", threadId)
+            .param("at", at?.atOffset(ZoneOffset.UTC))
+            .param("by", by)
+            .update()
+    }
+
+    /**
+     * Who may be mentioned on the board [boardId]: its owner first, then, unless the link is closed, the users who
+     * opened it through its link, most recently first, at most [limit] of them.
+     */
+    fun people(boardId: UUID, ownerId: UUID, linkOpen: Boolean, limit: Int): List<Person> {
+        val owner = jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = :ownerId")
+            .param("ownerId", ownerId)
+            .query { rs, _ -> rs.toPerson() }
+            .list()
+            .filterNotNull()
+        if (!linkOpen) return owner
+        return owner + jdbc.sql(
+            """
+            SELECT u.id, u.name, u.avatar_url
+            FROM board_visits v
+            JOIN users u ON u.id = v.user_id
+            WHERE v.board_id = :boardId AND v.user_id <> :ownerId
+            ORDER BY v.visited_at DESC, u.id
+            LIMIT :limit
+            """,
+        )
+            .param("boardId", boardId)
+            .param("ownerId", ownerId)
+            .param("limit", limit)
+            .query { rs, _ -> rs.toPerson() }
+            .list()
+            .filterNotNull()
+    }
+
+    /** Those of the users [userIds] who are the owner [ownerId] or, unless the link is closed, opened the board. */
+    fun participants(boardId: UUID, ownerId: UUID, linkOpen: Boolean, userIds: Collection<UUID>): Set<UUID> {
+        if (userIds.isEmpty()) return emptySet()
+        return jdbc.sql(
+            """
+            SELECT u.id FROM users u
+            WHERE u.id = ANY (:userIds::uuid[])
+              AND (u.id = :ownerId
+                   OR (:linkOpen AND EXISTS (SELECT 1 FROM board_visits v WHERE v.board_id = :boardId AND v.user_id = u.id)))
+            """,
+        )
+            .param("userIds", userIds.toTypedArray())
+            .param("ownerId", ownerId)
+            .param("linkOpen", linkOpen)
+            .param("boardId", boardId)
+            .query(UUID::class.java)
+            .list()
+            .filterNotNullTo(mutableSetOf())
+    }
+
+    /** Passes the comments, the resolutions and the mentions of the user [fromUserId] to the user [toUserId]. */
+    fun transfer(fromUserId: UUID, toUserId: UUID) {
+        jdbc.sql("UPDATE comments SET author_id = :toUserId WHERE author_id = :fromUserId")
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+        jdbc.sql("UPDATE comment_threads SET resolved_by = :toUserId WHERE resolved_by = :fromUserId")
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+        jdbc.sql(
+            """
+            INSERT INTO comment_mentions (comment_id, user_id)
+            SELECT comment_id, :toUserId FROM comment_mentions WHERE user_id = :fromUserId
+            ON CONFLICT DO NOTHING
+            """,
+        )
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+        jdbc.sql("DELETE FROM comment_mentions WHERE user_id = :fromUserId").param("fromUserId", fromUserId).update()
+    }
+
+    /** Threads of the board, or only the thread [threadId] of it, with their comments and mentions: three queries. */
+    private fun load(boardId: UUID, threadId: UUID?): List<CommentThread> {
+        val threadFilter = if (threadId == null) "" else "AND t.id = :threadId"
+        val threads = jdbc.sql(
+            """
+            SELECT t.id, t.page_id, t.cell_id, t.created_at, t.resolved_at,
+                   r.id AS resolver_id, r.name AS resolver_name, r.avatar_url AS resolver_avatar_url
+            FROM comment_threads t
+            LEFT JOIN users r ON r.id = t.resolved_by
+            WHERE t.board_id = :boardId $threadFilter
+            ORDER BY t.created_at, t.id
+            """,
+        )
+            .param("boardId", boardId)
+            .apply { if (threadId != null) param("threadId", threadId) }
+            .query { rs, _ -> rs.toThread() }
+            .list()
+        if (threads.isEmpty()) return threads
+
+        val mentions = jdbc.sql(
+            """
+            SELECT m.comment_id, u.id, u.name, u.avatar_url
+            FROM comment_mentions m
+            JOIN comments c ON c.id = m.comment_id
+            JOIN comment_threads t ON t.id = c.thread_id
+            JOIN users u ON u.id = m.user_id
+            WHERE t.board_id = :boardId $threadFilter
+            ORDER BY u.name, u.id
+            """,
+        )
+            .param("boardId", boardId)
+            .apply { if (threadId != null) param("threadId", threadId) }
+            .query { rs, _ -> rs.getObject("comment_id", UUID::class.java) to checkNotNull(rs.toPerson()) }
+            .list()
+            .groupBy({ it.first }, { it.second })
+
+        val comments = jdbc.sql(
+            """
+            SELECT c.id, c.thread_id, c.body, c.created_at, c.edited_at,
+                   a.id AS author_id, a.name AS author_name, a.avatar_url AS author_avatar_url
+            FROM comments c
+            JOIN comment_threads t ON t.id = c.thread_id
+            LEFT JOIN users a ON a.id = c.author_id
+            WHERE t.board_id = :boardId $threadFilter
+            ORDER BY c.created_at, c.id
+            """,
+        )
+            .param("boardId", boardId)
+            .apply { if (threadId != null) param("threadId", threadId) }
+            .query { rs, _ ->
+                val id = rs.getObject("id", UUID::class.java)
+                rs.getObject("thread_id", UUID::class.java) to Comment(
+                    id = id,
+                    author = rs.toPerson("author_"),
+                    body = rs.getString("body"),
+                    mentions = mentions[id].orEmpty(),
+                    createdAt = rs.instant("created_at")!!,
+                    editedAt = rs.instant("edited_at"),
+                )
+            }
+            .list()
+            .groupBy({ it.first }, { it.second })
+
+        return threads.map { it.copy(comments = comments[it.id].orEmpty()) }
+    }
+
+    private fun ResultSet.toThread() = CommentThread(
+        id = getObject("id", UUID::class.java),
+        pageId = getString("page_id"),
+        cellId = getString("cell_id"),
+        createdAt = instant("created_at")!!,
+        resolvedAt = instant("resolved_at"),
+        resolvedBy = toPerson("resolver_"),
+        comments = emptyList(),
+    )
+
+    /** The user in the columns `id`, `name` and `avatar_url`, or `{prefix}id`… of a join; `null` when there is none. */
+    private fun ResultSet.toPerson(prefix: String = ""): Person? {
+        val id = getObject("${prefix}id", UUID::class.java) ?: return null
+        return Person(id, getString("${prefix}name"), getString("${prefix}avatar_url"))
+    }
+
+    private fun ResultSet.instant(column: String): Instant? = getObject(column, OffsetDateTime::class.java)?.toInstant()
+}

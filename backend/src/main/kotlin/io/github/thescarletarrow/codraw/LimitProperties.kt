@@ -18,6 +18,9 @@ data class LimitProperties(
     /** The most reports of errors in browsers taken from one network address in a minute. */
     @field:Positive
     val clientErrorsPerAddressPerMinute: Int = 30,
+    /** The most comments a board holds, in all its threads. */
+    @field:Positive
+    val commentsPerBoard: Int = 5000,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The most that the versions of a board take together; the newest version stays whatever its size. */

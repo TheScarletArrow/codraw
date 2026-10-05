@@ -26,6 +26,7 @@ class MigrationsTest {
         private val userAuthTables = boardSyncTables + setOf("users", "spring_session", "spring_session_attributes")
         private val boardManagementTables = userAuthTables + "board_visits"
         private val boardVersionsTables = boardManagementTables + "board_versions"
+        private val commentsTables = boardVersionsTables + setOf("comment_threads", "comments", "comment_mentions")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -37,10 +38,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V5 create tables on an empty database and U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(5, flyway().migrate().migrationsExecuted)
-        assertEquals(boardVersionsTables, appTables())
+    fun `V1 to V6 create tables on an empty database and U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(6, flyway().migrate().migrationsExecuted)
+        assertEquals(commentsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+
+        revert("U6__claude_affectionate_euler_ktyog4_comments.sql")
+        assertEquals(boardVersionsTables, appTables())
 
         revert("U5__claude_bold_cannon_6zvbpn.sql")
         assertEquals(boardManagementTables, appTables())
@@ -58,8 +62,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(5, flyway().migrate().migrationsExecuted)
-        assertEquals(boardVersionsTables, appTables())
+        assertEquals(6, flyway().migrate().migrationsExecuted)
+        assertEquals(commentsTables, appTables())
     }
 
     @Test
@@ -112,6 +116,42 @@ class MigrationsTest {
         jdbcClient.sql("DELETE FROM boards").update()
 
         assertEquals(0, count("board_visits"))
+    }
+
+    @Test
+    fun `V6 keeps the comments of a user who is gone and drops the comments of a deleted board`() {
+        flyway("6").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now())
+            """,
+        ).update()
+        jdbcClient.sql(
+            """
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now())
+            """,
+        ).update()
+        jdbcClient.sql(
+            """
+            INSERT INTO comment_threads (id, board_id, page_id, cell_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000c1', '0199a000-0000-7000-8000-000000000001', 'page-1', 'cell-1', now());
+            INSERT INTO comments (thread_id, author_id, body, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000c1', '0199a000-0000-7000-8000-0000000000b1', 'Почему без кэша?', now())
+            """,
+        ).update()
+
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(1, count("comments"))
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE comments SET body = ''").update()
+        }
+
+        jdbcClient.sql("DELETE FROM boards").update()
+        assertEquals(0, count("comment_threads"))
+        assertEquals(0, count("comments"))
     }
 
     @Test

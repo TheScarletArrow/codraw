@@ -4,7 +4,7 @@ import { accessOnConnect, BOARD_DELETED, createAccessChecks } from "./access.js"
 import type { TokenVerifier } from "./auth.js";
 import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
 import { log } from "./log.js";
-import { BOARD_CHANGED, isBoardChanged } from "./messages.js";
+import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from "./messages.js";
 import { createMetrics, rejectionReasonOf, type Metrics } from "./metrics.js";
 import { createDocumentSizes, DOCUMENT_SIZE_LIMIT, DocumentTooLargeError } from "./size.js";
 
@@ -127,12 +127,17 @@ export function createCollabServer({
     async afterUnloadDocument({ documentName }) {
       sizes.forget(documentName);
     },
-    // A participant changed the board; the others fetch it again. Only this message passes, written by collab itself.
-    // The change may be of the access to the board, so the connections are checked against it too.
+    // A participant changed the board or its comments; the others fetch them again. Only these messages pass, written by
+    // collab itself. A change of the board may be of the access to it, so the connections are checked against it too.
+    // Viewers comment as well, so comments-changed passes from read-only connections.
     async onStateless({ payload, document, connection }) {
-      if (!isBoardChanged(payload)) return;
-      document.broadcastStateless(BOARD_CHANGED, (other) => other !== connection);
-      void checkAccess(document);
+      const change = changeOf(payload);
+      if (change === "board-changed") {
+        document.broadcastStateless(BOARD_CHANGED, (other) => other !== connection);
+        void checkAccess(document);
+      } else if (change === "comments-changed") {
+        document.broadcastStateless(COMMENTS_CHANGED, (other) => other !== connection);
+      }
     },
     // Participants tell collab about changes of access, but the owner may change it without the board open, and such a
     // message may be lost: open documents are checked from time to time as well.

@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.user
 
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.comment.CommentService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -13,6 +14,7 @@ import kotlin.random.Random
 class UserService(
     private val users: UserRepository,
     private val boards: BoardService,
+    private val comments: CommentService,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
 ) {
@@ -32,7 +34,8 @@ class UserService(
 
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
-     * the boards of the guest and the boards the guest opened through links pass to the user signing in.
+     * the boards of the guest, the boards the guest opened through links and the comments of the guest pass to the user
+     * signing in.
      */
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {
@@ -40,6 +43,7 @@ class UserService(
         val guest = previousUserId?.let(users::findById)?.takeIf { it.guest }
         if (guest != null && guest.id != user.id) {
             boards.transfer(guest.id, user.id)
+            comments.transfer(guest.id, user.id)
         }
         return user
     }

@@ -127,4 +127,26 @@ describe('shortcutLabel', () => {
     expect(labels('edge', viewing)).toEqual([])
     expect(menuItems('shape', viewing).every((item) => !item.separatorBefore)).toBe(true)
   })
+
+  it('offers commenting on a single element, before deleting it, when the page takes comments', () => {
+    const commenting = { ...all, canComment: true }
+
+    for (const target of ['shape', 'table', 'field', 'edge', 'group'] as const) {
+      const items = menuItems(target, commenting)
+      const comment = items.findIndex((item) => item.command === 'comment')
+      expect(items[comment]).toMatchObject({ label: 'Комментировать', separatorBefore: true, disabled: false })
+      expect(items[comment + 1]?.command).toBe('delete')
+    }
+    expect(labels('canvas', commenting)).not.toContain('Комментировать')
+    expect(labels('selection', commenting)).not.toContain('Комментировать')
+    expect(labels('shape', all)).not.toContain('Комментировать')
+  })
+
+  it('lets a participant who may only view comment, also on a field or an edge', () => {
+    const viewing = { ...all, readOnly: true, canComment: true }
+
+    expect(labels('shape', viewing)).toEqual(['Копировать', 'Комментировать'])
+    expect(labels('field', viewing)).toEqual(['Комментировать'])
+    expect(labels('edge', viewing)).toEqual(['Комментировать'])
+  })
 })

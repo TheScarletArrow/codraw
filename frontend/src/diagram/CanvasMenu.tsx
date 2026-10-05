@@ -7,7 +7,7 @@ import { readSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor } from './editor.ts'
 import { useEditorState } from './useEditorState.ts'
 
-const COMMANDS: Record<MenuCommand, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
+const COMMANDS: Record<Exclude<MenuCommand, 'comment'>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
   paste: (editor, { point }) => void readSystemClipboard().then((text) => editor.paste(point, text ?? undefined)),
   selectAll: (editor) => editor.selectAll(),
@@ -26,11 +26,23 @@ const COMMANDS: Record<MenuCommand, (editor: DiagramEditor, request: ContextMenu
   delete: (editor) => editor.deleteSelection(),
 }
 
-/** The menu of a right click on the canvas, with the actions that fit what was clicked. */
-export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
+/**
+ * The menu of a right click on the canvas, with the actions that fit what was clicked. With `onComment`, a single
+ * element gets «Комментировать», for viewers too.
+ */
+export function CanvasMenu({
+  editor,
+  onComment,
+}: {
+  editor: DiagramEditor | null
+  onComment?: (cellId: string) => void
+}) {
+  const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
   // The open menu, read by a closed menu when it is about to give the keyboard back, which Radix does on a timeout.
   const openRequest = useRef<ContextMenuRequest | null>(null)
+  // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
+  const focusTaken = useRef(false)
   const { canPaste, canUndo, canRedo, canGroup } = useEditorState(editor)
 
   useEffect(
@@ -38,7 +50,7 @@ export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
       editor?.onContextMenu((next) => {
         // A participant who may only view has nothing to do with, e.g., an edge.
         if (
-          menuItems(next.target, { canPaste: false, canUndo: false, canRedo: false, readOnly: editor.readOnly })
+          menuItems(next.target, { canPaste: false, canUndo: false, canRedo: false, readOnly: editor.readOnly, canComment })
             .length === 0
         ) {
           return
@@ -46,7 +58,7 @@ export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
         openRequest.current = next
         setRequest(next)
       }),
-    [editor],
+    [editor, canComment],
   )
 
   if (!editor || !request) return null
@@ -56,7 +68,12 @@ export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
   }
   const run = (command: MenuCommand) => {
     close()
-    COMMANDS[command](editor, request)
+    if (command !== 'comment') {
+      COMMANDS[command](editor, request)
+    } else if (request.cellId) {
+      focusTaken.current = true
+      onComment?.(request.cellId)
+    }
   }
 
   return (
@@ -74,15 +91,16 @@ export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
         align="start"
         sideOffset={2}
         className="w-64 p-1"
-        // The keyboard goes back to the canvas, unless the chosen item started editing a label or another menu is open
-        // already: taking the focus from that menu would close it.
+        // The keyboard goes back to the canvas, unless the chosen item started editing a label or a comment, or another
+        // menu is open already: taking the focus from that menu would close it.
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          if (!openRequest.current) editor.focus()
+          if (!openRequest.current && !focusTaken.current) editor.focus()
+          focusTaken.current = false
         }}
       >
         <div role="menu" aria-label="Действия" className="flex flex-col">
-          {menuItems(request.target, { canPaste, canUndo, canRedo, canGroup, readOnly: editor.readOnly }).map(
+          {menuItems(request.target, { canPaste, canUndo, canRedo, canGroup, readOnly: editor.readOnly, canComment }).map(
             (item) => (
               <Fragment key={item.command}>
                 {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}

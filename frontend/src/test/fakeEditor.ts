@@ -111,6 +111,7 @@ export function createFakeEditor({
       offset = { x: x - viewport.width / 2, y: y - viewport.height / 2 }
       changeView()
     }),
+    revealCell: vi.fn((id: string) => cells.get(id) != null),
     onPointerMove: (listener) => listen(pointerListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),

@@ -182,6 +182,8 @@ export interface ContextMenuRequest {
   /** The same point in diagram coordinates. */
   point: Point
   target: MenuTarget
+  /** The id of the single selected element, `null` for the canvas or several elements. */
+  cellId: string | null
 }
 
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
@@ -277,6 +279,8 @@ export interface DiagramEditor {
   viewportSize(): { width: number; height: number }
   /** Scrolls (or, beyond the scrollable area, pans) the canvas so that a diagram point is in its middle. */
   centerOn(point: Point): void
+  /** Selects the cell and centres the canvas on it; `false` when the page has no such shape or edge. */
+  revealCell(id: string): boolean
   /** Reports the pointer position over the canvas in diagram coordinates, and `null` when it leaves. */
   onPointerMove(listener: (point: Point | null) => void): () => void
   /** Reports the ids of the selected cells whenever the selection changes. */
@@ -849,6 +853,7 @@ export function createDiagramEditor(
         y: event.clientY - rect.top,
         point: toDiagramPoint(event.clientX, event.clientY),
         target: menuTarget(),
+        cellId: graph.getSelectionCount() === 1 ? (graph.getSelectionCell().getId() ?? null) : null,
       }
       menuListeners.forEach((listener) => listener(request))
     }
@@ -1379,6 +1384,16 @@ export function createDiagramEditor(
       const dy = top - container.scrollTop
       if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) view.setTranslate(translate.x - dx / scale, translate.y - dy / scale)
       notifyView()
+    },
+    revealCell(id) {
+      const cell = model.getCell(id)
+      const state = cell && (cell.isVertex() || cell.isEdge()) ? graph.getView().getState(cell) : null
+      if (!cell || !state) return false
+      graph.stopEditing(false)
+      graph.setSelectionCell(cell)
+      const { scale, translate } = graph.getView()
+      editor.centerOn({ x: state.getCenterX() / scale - translate.x, y: state.getCenterY() / scale - translate.y })
+      return true
     },
     onPointerMove: (listener) => listen(pointerListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),

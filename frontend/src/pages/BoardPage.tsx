@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
 import { canEdit, fetchBoard, type Board } from '../api/boards.ts'
 import type { BoardVersion } from '../api/versions.ts'
+import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
@@ -19,6 +20,10 @@ import { VersionHistory } from '../board/VersionHistory.tsx'
 import { VersionPreview } from '../board/VersionPreview.tsx'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
+import { CommentBadges } from '../comments/CommentBadges.tsx'
+import { CommentsButton } from '../comments/CommentsButton.tsx'
+import { CommentsPanel, type ThreadDraft, type ThreadFocus } from '../comments/CommentsPanel.tsx'
+import { useThreads } from '../comments/useComments.ts'
 import { PageHistories } from '../diagram/binding.ts'
 import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
@@ -67,7 +72,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const identity = useMemo(() => participantIdentity(user), [user])
   const viewer = !canEdit(board)
   const connection = useBoardConnection(board.id, identity, viewer)
-  const { status, participants, document, awareness, notifyBoardChanged } = connection
+  const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
   // Until the page fetches the role again, the access of the connection may be narrower than the role.
@@ -83,6 +88,21 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [previewed, setPreviewed] = useState<BoardVersion | null>(null)
   const isOwner = board.role === 'owner'
   const preview = isOwner && previewed && document ? previewed : null
+  // Comments of the board, which every participant reads and writes, in a panel in place of the history of versions.
+  const threads = useThreads(board.id)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [commentDraft, setCommentDraft] = useState<ThreadDraft | null>(null)
+  const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
+  const openComments = () => {
+    setCommentsOpen(true)
+    setHistoryOpen(false)
+    setPreviewed(null)
+  }
+  const closeComments = () => {
+    setCommentsOpen(false)
+    setCommentDraft(null)
+    setCommentFocus(null)
+  }
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
@@ -142,6 +162,35 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (editor && following.current !== null && centreOn(editor, following.current)) following.current = null
   }, [editor, centreOn])
 
+  // Going to a thread: switch to its page, then show its element once that page is shown.
+  const revealing = useRef<{ pageId: string; cellId: string } | null>(null)
+  const showThread = (thread: CommentThread) => {
+    if (!pages.some((page) => page.id === thread.pageId)) return
+    if (editor && editor.pageId === thread.pageId) {
+      if (thread.cellId) editor.revealCell(thread.cellId)
+      return
+    }
+    revealing.current = thread.cellId ? { pageId: thread.pageId, cellId: thread.cellId } : null
+    selectPage(thread.pageId)
+  }
+  useEffect(() => {
+    const target = revealing.current
+    if (!editor || !target || editor.pageId !== target.pageId) return
+    editor.revealCell(target.cellId)
+    revealing.current = null
+  }, [editor])
+  const commentOn = (cellId: string) => {
+    if (!editor) return
+    openComments()
+    setCommentFocus(null)
+    setCommentDraft({ pageId: editor.pageId, cellId })
+  }
+  const showThreadsOf = (cellId: string) => {
+    if (!editor) return
+    openComments()
+    setCommentFocus({ pageId: editor.pageId, cellId })
+  }
+
   if (status === 'not-found') return <BoardNotFound />
   if (status === 'forbidden') return <NoAccess />
 
@@ -149,7 +198,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
       <div className="flex items-center gap-x-4 border-b px-3 py-2">
-        <BoardHeading board={board} onChanged={notifyBoardChanged} onOpenHistory={() => setHistoryOpen(true)} />
+        <BoardHeading
+          board={board}
+          onChanged={notifyBoardChanged}
+          onOpenHistory={() => {
+            setHistoryOpen(true)
+            closeComments()
+          }}
+        />
         <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
           {STATUS_LABELS[status]}
@@ -175,6 +231,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           currentPageId={currentPage?.id ?? null}
           onFollow={follow}
           className="ml-auto shrink-0"
+        />
+        <CommentsButton
+          threads={threads.data}
+          open={commentsOpen}
+          onToggle={() => (commentsOpen ? closeComments() : openComments())}
         />
         <ShortcutsHelp readOnly={readOnly} />
         <ShareButton board={board} pageId={currentPage?.id ?? null} onChanged={notifyBoardChanged} />
@@ -216,8 +277,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onEditor={setEditor}
                   />
                   <PresenceLayer editor={editor} awareness={awareness} />
+                  <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
                   {!readOnly && <QuickConnect editor={editor} />}
-                  <CanvasMenu editor={editor} />
+                  <CanvasMenu editor={editor} onComment={commentOn} />
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                 </>
               ) : (
@@ -242,6 +304,24 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
               />
             )}
           </div>
+        )}
+        {commentsOpen && (
+          <CommentsPanel
+            boardId={board.id}
+            userId={user.id}
+            isOwner={isOwner}
+            threads={threads.data}
+            failed={threads.isError}
+            pages={pages}
+            currentPageId={currentPage?.id ?? null}
+            document={document}
+            draft={commentDraft}
+            onDraftChange={setCommentDraft}
+            focus={commentFocus}
+            onShow={showThread}
+            onChanged={notifyCommentsChanged}
+            onClose={closeComments}
+          />
         )}
         {isOwner && historyOpen && (
           <VersionHistory
