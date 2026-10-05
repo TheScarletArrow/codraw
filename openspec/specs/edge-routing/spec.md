@@ -1,6 +1,9 @@
-# Spec Delta
+# edge-routing Specification
 
-## ADDED Requirements
+## Purpose
+Прокладывает связи доски в обход фигур, подводит их к полям таблиц сбоку и разводит, чтобы схема читалась.
+
+## Requirements
 
 ### Requirement: Связи обходят фигуры
 
