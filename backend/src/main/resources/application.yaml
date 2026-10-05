@@ -1,6 +1,11 @@
 spring:
   application:
     name: codraw-backend
+  # Requests run on virtual threads: one that waits on the database no longer holds a thread of a bounded pool, so the
+  # limit of concurrent requests is the pool of database connections.
+  threads:
+    virtual:
+      enabled: true
   mvc:
     problemdetails:
       enabled: true
