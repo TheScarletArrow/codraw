@@ -32,6 +32,7 @@ import { takePendingImport } from '../drawio/files.ts'
 import { importPages } from '../drawio/importPages.ts'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
+import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Подключение',
@@ -174,6 +175,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onFollow={follow}
           className="ml-auto shrink-0"
         />
+        <ShortcutsHelp readOnly={readOnly} />
         <ShareButton board={board} pageId={currentPage?.id ?? null} onChanged={notifyBoardChanged} />
       </div>
       {connection.tooLarge && (
