@@ -89,6 +89,25 @@ describe('arranging shapes', () => {
     expect(shapes.map((cell) => geometryOf(cell).y)).toEqual([0, 150, 400])
   })
 
+  it('spaces a shape in a group together with shapes on the page, by their places on the page', () => {
+    const { editor } = open()
+    const a = shape(editor, 100, 0)
+    const b = shape(editor, 400, 300)
+    editor.graph.setSelectionCells([a, b])
+    const group = editor.group()!
+    const left = shape(editor, -500, 0)
+    const right = shape(editor, 1000, 0)
+    // The group starts at 100, and b is at 300 in it.
+    expect([geometryOf(group).x, geometryOf(b).x]).toEqual([100, 300])
+    editor.graph.setSelectionCells([left, b, right])
+
+    editor.distributeShapes('horizontal')
+
+    // From -500 to 1100: three shapes of 100 and two gaps of 650.
+    expect(geometryOf(b).x + geometryOf(group).x).toBe(250)
+    expect([geometryOf(left).x, geometryOf(right).x]).toEqual([-500, 1000])
+  })
+
   it('groups the selected shapes with the edge between them as one undo step, and selects the group', () => {
     const { doc, editor } = open()
     const a = shape(editor, 100, 100)

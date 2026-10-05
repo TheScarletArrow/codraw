@@ -979,12 +979,21 @@ export function createDiagramEditor(
       const cells = geometryCells()
       if (cells.length < 3) return
       const horizontal = direction === 'horizontal'
-      const start = (geometry: Geometry) => (horizontal ? geometry.x : geometry.y)
-      const size = (geometry: Geometry) => (horizontal ? geometry.width : geometry.height)
-      const sorted = [...cells].sort((a, b) => start(a.getGeometry()!) - start(b.getGeometry()!))
-      const first = sorted[0]!.getGeometry()!
-      const last = sorted.at(-1)!.getGeometry()!
-      const sizes = sorted.reduce((sum, cell) => sum + size(cell.getGeometry()!), 0)
+      const size = (cell: Cell) => (horizontal ? cell.getGeometry()!.width : cell.getGeometry()!.height)
+      // On the page: a shape in a group has its geometry relative to the group, and may be selected with others.
+      const offset = (cell: Cell) => {
+        let sum = 0
+        for (let parent = cell.getParent(); parent && parent !== graph.getDefaultParent(); parent = parent.getParent()) {
+          const geometry = parent.getGeometry()
+          if (geometry) sum += horizontal ? geometry.x : geometry.y
+        }
+        return sum
+      }
+      const start = (cell: Cell) => offset(cell) + (horizontal ? cell.getGeometry()!.x : cell.getGeometry()!.y)
+      const sorted = [...cells].sort((a, b) => start(a) - start(b))
+      const first = sorted[0]!
+      const last = sorted.at(-1)!
+      const sizes = sorted.reduce((sum, cell) => sum + size(cell), 0)
       // Equal gaps rather than equal steps of centres: shapes of different sizes look even.
       const gap = (start(last) + size(last) - start(first) - sizes) / (sorted.length - 1)
       graph.stopEditing(false)
@@ -992,10 +1001,10 @@ export function createDiagramEditor(
         let position = start(first) + size(first) + gap
         for (const cell of sorted.slice(1, -1)) {
           const moved = cell.getGeometry()!.clone()
-          if (horizontal) moved.x = position
-          else moved.y = position
+          if (horizontal) moved.x = position - offset(cell)
+          else moved.y = position - offset(cell)
           model.setGeometry(cell, moved)
-          position += size(moved) + gap
+          position += size(cell) + gap
         }
       })
     },
