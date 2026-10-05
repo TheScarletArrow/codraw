@@ -39,6 +39,7 @@ import { layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape }
 import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { touchedByRegion } from './regionSelection.ts'
+import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
   findShape,
@@ -565,6 +566,7 @@ export function createDiagramEditor(
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const binding = new DiagramBinding(model, cells, LOCAL_ORIGIN, readOnly)
+  const stopEdgeRouting = startEdgeRouting(graph)
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
@@ -1660,6 +1662,7 @@ export function createDiagramEditor(
       undoManager.off('stack-item-popped', notify)
       undoManager.off('stack-cleared', notify)
       if (!sharedUndoManager) undoManager.destroy()
+      stopEdgeRouting()
       binding.destroy()
       graph.destroy()
     },

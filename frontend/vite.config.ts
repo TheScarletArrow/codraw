@@ -7,7 +7,14 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      // The exports of the package do not include its WebAssembly, which the router worker loads by URL.
+      {
+        find: /^libavoid-js\/libavoid\.wasm(?=\?|$)/,
+        replacement: fileURLToPath(new URL('./node_modules/libavoid-js/dist/libavoid.wasm', import.meta.url)),
+      },
+    ],
   },
   build: {
     // The lazily loaded board page carries maxGraph (~580 kB, ~155 kB gzipped).
