@@ -1,4 +1,4 @@
-import type { Cell } from '@maxgraph/core'
+import type { Cell, CellEditorHandler } from '@maxgraph/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -70,11 +70,32 @@ describe('fields of tables', () => {
     expect(textOf(doc, field)).toBe('email text NOT NULL')
   })
 
+  it('shows a placeholder in an empty field and in the editor of its name, which is wide enough to be seen', () => {
+    const { editor } = open()
+    const table = editor.addShape('table', { x: 100, y: 100 })!
+    editor.graph.setSelectionCell(table)
+    const field = editor.addTableField()!
+    const cellEditor = editor.graph.getPlugin<CellEditorHandler>('CellEditorHandler')!
+    const textarea = cellEditor.textarea!
+    const shown = () => editor.graph.getView().getState(field)!.shape!.node.textContent
+
+    expect(editor.graph.isEditing(field)).toBe(true)
+    expect(textarea.dataset.placeholder).toBe('имя поля')
+    expect(textarea.style.minWidth).toBe('120px')
+    expect(shown()).not.toContain('имя поля')
+
+    editor.graph.stopEditing(true)
+
+    expect(textarea.dataset.placeholder).toBeUndefined()
+    expect(textarea.style.minWidth).toBe('')
+    expect(shown()).toContain('имя поля')
+  })
+
   it('sets the type and the keys of the selected field, each as one undo step', () => {
     const { doc, editor } = open()
     const field = editor.addShape('table', { x: 100, y: 100 })!.getChildAt(0)
     editor.graph.setSelectionCell(field)
-    expect(editor.getState().field).toEqual({ type: 'uuid', notNull: true, primaryKey: true, unique: false })
+    expect(editor.getState().field).toMatchObject({ type: 'uuid', notNull: true, primaryKey: true, unique: false })
 
     editor.setFieldProps({ primaryKey: false })
     expect(textOf(doc, field)).toBe('id uuid NOT NULL')
@@ -82,7 +103,7 @@ describe('fields of tables', () => {
     expect(textOf(doc, field)).toBe('id bigint NOT NULL')
     editor.setFieldProps({ notNull: false, unique: true })
     expect(textOf(doc, field)).toBe('id bigint UNIQUE')
-    expect(editor.getState().field).toEqual({ type: 'bigint', notNull: false, primaryKey: false, unique: true })
+    expect(editor.getState().field).toMatchObject({ type: 'bigint', notNull: false, primaryKey: false, unique: true })
     expect(tableRowsOf(editor.graph, field.getParent()!).get(field)!.icons).toEqual(['unique'])
     editor.setFieldProps({ primaryKey: true })
     expect(textOf(doc, field)).toBe('id bigint PK UNIQUE')

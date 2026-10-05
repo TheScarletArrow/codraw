@@ -33,6 +33,7 @@ import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
+import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
@@ -341,6 +342,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <PresenceLayer editor={editor} awareness={awareness} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
                   {!readOnly && <QuickConnect editor={editor} />}
+                  {!readOnly && <FieldPopover editor={editor} />}
                   <CanvasMenu editor={editor} onComment={commentOn} />
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                 </>

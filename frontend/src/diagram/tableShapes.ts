@@ -34,6 +34,8 @@ const LINK_COLOR = '#2563eb'
 const UNIQUE_COLOR = '#7c3aed'
 /** Opacity of the texts after the name of a field, so that the name stands out. */
 const MUTED = 0.6
+/** What a field without text shows, so that it can be found and named. */
+export const FIELD_PLACEHOLDER = 'имя поля'
 
 function isTable(cell: Cell | null | undefined): boolean {
   return cell?.isVertex() === true && isTableStyle(cell.getStyle() as ShapeStyle)
@@ -160,14 +162,32 @@ function paintIcon(c: AbstractCanvas2D, icon: FieldIcon, x: number, y: number) {
   c.restore()
 }
 
+/** The placeholder of a field without text, from `x` and as wide as `w`, in the middle of the height `h` from `y`. */
+function paintPlaceholder(c: AbstractCanvas2D, style: { fontColor?: unknown; fontSize?: unknown }, x: number, y: number, w: number, h: number) {
+  c.save()
+  c.setAlpha(0.4)
+  c.setFontColor(String(style.fontColor ?? '#1f2328'))
+  c.setFontSize(Number(style.fontSize ?? 13))
+  c.setFontStyle(2)
+  c.text(x, y + h / 2, Math.max(0, w - ROW_PADDING), h, FIELD_PLACEHOLDER, 'left', 'middle', false, '', 'hidden', true, 0, '')
+  c.restore()
+}
+
 /** `codraw.tableField`: the icons of keys and the columns after the name, which the label of the field draws. */
 class TableFieldShape extends RectangleShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
     super.paintVertexShape(c, x, y, w, h)
     const cell = this.state?.cell
     const table = cell?.getParent()
-    const row = cell && table && tableRowsOf(this.state!.view.graph, table).get(cell)
+    const graph = this.state?.view.graph
+    const row = cell && table && graph && tableRowsOf(graph, table).get(cell)
     if (!row) return
+    if (!String(cell.getValue() ?? '').trim()) {
+      // On the canvas only, not in an exported image, and not while the field is being named.
+      const onCanvas = (c as unknown as { root?: Element }).root === this.node
+      if (onCanvas && !graph.isEditing(cell)) paintPlaceholder(c, this.style ?? {}, x + row.nameX, y, w - row.nameX, h)
+      return
+    }
     row.icons.forEach((icon, index) => paintIcon(c, icon, x + ICON_X + index * ICON_STEP, y + (h - ICON_SIZE) / 2))
     const style = this.style ?? {}
     c.save()

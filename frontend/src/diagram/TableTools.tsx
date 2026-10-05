@@ -44,10 +44,19 @@ export function TableTools({ editor, vendor, field }: TableToolsProps) {
 }
 
 function FieldTools({ editor, vendor, field }: { editor: DiagramEditor | null; vendor: DbVendorId | null; field: SelectedField }) {
-  const toggle = (pressed: boolean) => cn(pressed && 'bg-accent text-accent-foreground')
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <FieldProps editor={editor} vendor={vendor} field={field} />
+    </>
+  )
+}
+
+/** The type, nullability and keys of the selected field: on the toolbar and next to the field. */
+export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | null; vendor: DbVendorId | null; field: SelectedField }) {
+  const toggle = (pressed: boolean) => cn(pressed && 'bg-accent text-accent-foreground')
+  return (
+    <>
       <TypeField
         value={field.type}
         types={vendorTypes(DB_VENDORS.find((option) => option.id === vendor) ?? null)}

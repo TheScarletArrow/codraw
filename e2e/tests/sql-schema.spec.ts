@@ -106,3 +106,48 @@ test('a field shows its type, nullability and reference in columns, and the tool
 
   await close()
 })
+
+test('a new field is named by a double click and its properties are set next to its table', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+
+  await alice.getByRole('button', { name: 'SQL и Mermaid' }).click()
+  const menu = alice.getByRole('dialog', { name: 'SQL и Mermaid' })
+  await menu.getByRole('button', { name: 'Импорт SQL…' }).click()
+  await menu.getByLabel('Файлы SQL').setInputFiles([{ name: 'V1__users.sql', mimeType: 'text/plain', buffer: Buffer.from(USERS) }])
+  await menu.getByRole('button', { name: 'Добавить на страницу' }).click()
+  await expect(menu).toBeHidden()
+
+  // The new field is left empty, then named by a double click on its placeholder.
+  const fieldBox = await alice.evaluate(() => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const editor = container.__codrawEditor
+    const users = editor.graph.getDefaultParent().getChildren().find((cell: any) => cell.getValue() === 'users')
+    editor.graph.setSelectionCell(users)
+    const field = editor.addTableField()
+    editor.graph.stopEditing(true)
+    return editor.cellBounds(field.getId())
+  })
+  const canvas = alice.getByTestId('diagram-canvas')
+  await canvas.dblclick({ position: { x: fieldBox.x + 40, y: fieldBox.y + fieldBox.height / 2 } })
+  await alice.keyboard.type('nickname')
+  await canvas.click({ position: { x: 5, y: 5 } })
+
+  await canvas.click({ position: { x: fieldBox.x + 40, y: fieldBox.y + fieldBox.height / 2 } })
+  const panel = alice.getByRole('group', { name: 'Свойства поля' })
+  await panel.getByRole('combobox', { name: 'Тип поля' }).fill('varchar(64)')
+  await panel.getByRole('combobox', { name: 'Тип поля' }).press('Enter')
+  await panel.getByRole('button', { name: 'NOT NULL' }).click()
+
+  await expect
+    .poll(() =>
+      bob.evaluate(() => {
+        const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+        const { graph } = container.__codrawEditor
+        const users = graph.getDefaultParent().getChildren().find((cell: any) => cell.getValue() === 'users')
+        return users.getChildren().map((field: any) => field.getValue())
+      }),
+    )
+    .toContain('nickname varchar(64) NOT NULL')
+
+  await close()
+})

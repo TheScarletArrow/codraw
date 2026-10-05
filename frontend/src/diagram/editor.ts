@@ -58,6 +58,7 @@ import {
 } from './shapes.ts'
 import { badgeRoom, nameX, ROW_PADDING } from './tableRows.ts'
 import {
+  FIELD_PLACEHOLDER,
   isColumnField,
   registerTableShapes,
   TABLE_FIELD_SHAPE,
@@ -152,6 +153,9 @@ export interface SelectionGeometry {
 
 /** The type and keys of the selected field of a table, as its text has them. */
 export interface SelectedField {
+  /** Ids of the field and of its table. */
+  cellId: string
+  tableId: string
   type: string
   notNull: boolean
   primaryKey: boolean
@@ -347,6 +351,9 @@ export interface DiagramEditor {
   subscribe(listener: () => void): () => void
   destroy(): void
 }
+
+/** Narrowest editor of the name of a field, so that it is seen even in a table of short names. */
+const MIN_NAME_EDITOR_WIDTH = 120
 
 /** Connection point shown next to the right border of a hovered shape; dragging it creates an edge. */
 const CONNECT_ICON = new ImageBox(
@@ -570,6 +577,36 @@ export function createDiagramEditor(
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
+  // The editor of the name of a field is at least as wide as the column of names and, while empty, shows the
+  // placeholder, which the row hides meanwhile. Editing stops through the handler also when it loses focus, without
+  // the event of the graph.
+  let namedField: Cell | null = null
+  const redrawField = (field: Cell) => graph.getView().getState(field)?.shape?.redraw()
+  const handleEditingStarted = (_sender: unknown, event: EventObject) => {
+    const cell = event.getProperty('cell') as Cell
+    const textarea = cellEditor?.textarea
+    if (!isColumnField(cell) || !textarea) return
+    namedField = cell
+    const row = tableRowsOf(graph, cell.getParent()!).get(cell)
+    textarea.dataset.placeholder = FIELD_PLACEHOLDER
+    textarea.style.minWidth = `${Math.max(MIN_NAME_EDITOR_WIDTH, (row?.nameEnd ?? 0) - (row?.nameX ?? 0))}px`
+    redrawField(cell)
+  }
+  graph.addListener(InternalEvent.EDITING_STARTED, handleEditingStarted)
+  if (cellEditor) {
+    const stopEditing = cellEditor.stopEditing.bind(cellEditor)
+    cellEditor.stopEditing = (cancel?: boolean) => {
+      const field = namedField
+      const textarea = cellEditor.textarea
+      namedField = null
+      if (field && textarea) {
+        delete textarea.dataset.placeholder
+        textarea.style.minWidth = ''
+      }
+      stopEditing(cancel)
+      if (field) redrawField(field)
+    }
+  }
 
   const selectedEdges = () => graph.getSelectionCells().filter((cell) => cell.isEdge())
   const selectedTable = (): Cell | null => {
@@ -585,7 +622,9 @@ export function createDiagramEditor(
   const selectedFieldProps = (): SelectedField | null => {
     const field = selectedField()
     const parts = field && splitField(String(field.getValue() ?? ''))
-    return parts ? { type: parts.type, notNull: parts.notNull, primaryKey: parts.primaryKey, unique: parts.unique } : null
+    if (!field || !parts) return null
+    const { type, notNull, primaryKey, unique } = parts
+    return { cellId: field.getId()!, tableId: field.getParent()!.getId()!, type, notNull, primaryKey, unique }
   }
   /** The single selected shape with a group; a table field is part of its table, not a shape of its own. */
   const quickConnectSource = (): { cell: Cell; group: ShapeGroup } | null => {
@@ -1644,6 +1683,7 @@ export function createDiagramEditor(
       graph.getSelectionModel().removeListener(handleSelectionChange)
       graph.getSelectionModel().removeListener(notify)
       graph.removeListener(handleLabelChanged)
+      graph.removeListener(handleEditingStarted)
       graph.removeListener(handleCellsAdded)
       model.removeListener(redrawTables)
       unwatchTableRows()
