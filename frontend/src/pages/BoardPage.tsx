@@ -30,6 +30,7 @@ import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../dia
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
 import { importPages } from '../drawio/importPages.ts'
+import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
@@ -157,6 +158,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           </span>
         )}
         <DrawioActions document={document} title={board.title} onImported={selectPage} readOnly={readOnly} />
+        <ImageExportMenu
+          editor={editor}
+          document={document}
+          boardTitle={board.title}
+          pageName={currentPage?.name ?? ''}
+          pageCount={pages.length}
+        />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <EditorToolbar editor={editor} readOnly={readOnly} />
         <Participants

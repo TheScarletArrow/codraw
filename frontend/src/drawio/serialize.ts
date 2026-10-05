@@ -84,8 +84,11 @@ function cellXml(cell: CellData, attrs: Record<string, string>): string {
   return `<object${attributes({ label: cell.value, ...properties, id: cell.id })}>${inner(body)}</object>`
 }
 
-/** Cells of a page in the order of the tree: every cell is followed by its children, siblings in drawing order. */
-function pageCellsXml(doc: Y.Doc, pageId: string): string {
+/**
+ * Cells of a page in the order of the tree: every cell is followed by its children, siblings in drawing order. With
+ * `only`, just these cells of the layer with their descendants.
+ */
+function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>): string {
   const cells = getCells(doc, pageId)
   const entries = Array.from(cells.entries())
     .filter(([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID)
@@ -102,7 +105,7 @@ function pageCellsXml(doc: Y.Doc, pageId: string): string {
   const visited = new Set<string>()
   const visit = (parent: string) => {
     for (const entry of (children.get(parent) ?? []).sort((a, b) => compareCells(a.data, b.data))) {
-      if (visited.has(entry.data.id)) continue
+      if (visited.has(entry.data.id) || (only && parent === LAYER_CELL_ID && !only.has(entry.data.id))) continue
       visited.add(entry.data.id)
       xml.push(cellXml(entry.data, entry.attrs))
       visit(entry.data.id)
@@ -112,31 +115,45 @@ function pageCellsXml(doc: Y.Doc, pageId: string): string {
   return xml.join('')
 }
 
+/** Attributes of the model of every diagram that CoDraw writes. */
+const MODEL_ATTRIBUTES = attributes({
+  grid: 1,
+  gridSize: 10,
+  guides: 1,
+  tooltips: 1,
+  connect: 1,
+  arrows: 1,
+  fold: 1,
+  // CoDraw has no pages to print on: the canvas is endless.
+  page: 0,
+  pageScale: 1,
+  pageWidth: 850,
+  pageHeight: 1100,
+  math: 0,
+  shadow: 0,
+})
+
+function diagramXml(doc: Y.Doc, page: { id: string; name: string }, only?: ReadonlySet<string>): string {
+  return (
+    `<diagram${attributes({ id: page.id, name: page.name })}>` +
+    `<mxGraphModel${MODEL_ATTRIBUTES}><root><mxCell id="${ROOT_CELL_ID}"/><mxCell id="${LAYER_CELL_ID}" parent="${ROOT_CELL_ID}"/>` +
+    pageCellsXml(doc, page.id, only) +
+    `</root></mxGraphModel></diagram>`
+  )
+}
+
+const mxfile = (diagrams: string[]) => `<mxfile host="CoDraw" type="device">${diagrams.join('')}</mxfile>\n`
+
 /** Writes all pages of the board as an uncompressed `.drawio` file. */
 export function exportDrawio(doc: Y.Doc): string {
-  const diagrams = listPages(doc).map((page) => {
-    const model = attributes({
-      grid: 1,
-      gridSize: 10,
-      guides: 1,
-      tooltips: 1,
-      connect: 1,
-      arrows: 1,
-      fold: 1,
-      // CoDraw has no pages to print on: the canvas is endless.
-      page: 0,
-      pageScale: 1,
-      pageWidth: 850,
-      pageHeight: 1100,
-      math: 0,
-      shadow: 0,
-    })
-    return (
-      `<diagram${attributes({ id: page.id, name: page.name })}>` +
-      `<mxGraphModel${model}><root><mxCell id="${ROOT_CELL_ID}"/><mxCell id="${LAYER_CELL_ID}" parent="${ROOT_CELL_ID}"/>` +
-      pageCellsXml(doc, page.id) +
-      `</root></mxGraphModel></diagram>`
-    )
-  })
-  return `<mxfile host="CoDraw" type="device">${diagrams.join('')}</mxfile>\n`
+  return mxfile(listPages(doc).map((page) => diagramXml(doc, page)))
+}
+
+/**
+ * Writes one page of the board as an uncompressed `.drawio` file, or with `cellIds` only these cells of the page with
+ * their descendants; `null` for an unknown page.
+ */
+export function exportDrawioPage(doc: Y.Doc, pageId: string, cellIds?: readonly string[]): string | null {
+  const page = listPages(doc).find((candidate) => candidate.id === pageId)
+  return page ? mxfile([diagramXml(doc, page, cellIds && new Set(cellIds))]) : null
 }

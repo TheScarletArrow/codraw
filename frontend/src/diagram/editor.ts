@@ -33,6 +33,7 @@ import { registerDiagramExtensions } from './extensions.ts'
 import { DEFAULT_PAGE_ID, getCells, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { touchedByRegion } from './regionSelection.ts'
+import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
   findShape,
   groupShapes,
@@ -165,6 +166,10 @@ export interface EditorState {
   canGroup: boolean
   /** A group is selected. */
   canUngroup: boolean
+  /** The page has shapes or edges, so it has an image. */
+  hasCells: boolean
+  /** The selection has a shape, so copying takes something. */
+  canCopy: boolean
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -220,6 +225,11 @@ export interface DiagramEditor {
   deleteSelection(): void
   /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
   focus(): void
+  /**
+   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%; `null` when there
+   * is nothing to draw.
+   */
+  exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
@@ -631,6 +641,8 @@ export function createDiagramEditor(
       arrange: geometryCells().length,
       canGroup: !readOnly && canGroup(),
       canUngroup: !readOnly && graph.getSelectionCells().some(isGroup),
+      hasCells: graph.getDefaultParent().getChildCount() > 0,
+      canCopy: graph.getSelectionCells().some((cell) => cell.isVertex()),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1065,6 +1077,17 @@ export function createDiagramEditor(
       if (cell) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
+    exportSvg({ selectionOnly = false, ...options } = {}) {
+      const copied = selectionOnly ? new Set(cellsToCopy()) : null
+      // In the order of the page, so that what lies on top on the canvas lies on top in the image.
+      const cells = graph
+        .getDefaultParent()
+        .getChildren()
+        .filter((cell) => !copied || copied.has(cell))
+      if (copied && cells.length === 0) return null
+      const image = renderSvg(graph, cells, options)
+      return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+    },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
     },
