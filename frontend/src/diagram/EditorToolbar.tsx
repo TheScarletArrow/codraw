@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ArrangePicker } from './ArrangePicker.tsx'
+import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
@@ -111,6 +112,7 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
       >
         <Maximize />
       </Button>
+      {!readOnly && <AutoLayoutPicker editor={editor} />}
       {!readOnly && <EditingTools editor={editor} />}
     </div>
   )
