@@ -78,6 +78,7 @@ export function createFakeEditor({
     bringToFront: vi.fn(),
     sendToBack: vi.fn(),
     selectAll: vi.fn(),
+    moveSelection: vi.fn(),
     reverseEdge: vi.fn(),
     alignShapes: vi.fn(),
     distributeShapes: vi.fn(),
