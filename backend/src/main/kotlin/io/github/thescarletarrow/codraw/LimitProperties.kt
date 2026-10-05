@@ -23,6 +23,8 @@ data class LimitProperties(
     val commentsPerBoard: Int = 5000,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
+    /** The largest live image of a board, as the browsers of participants publish it. */
+    val embedSize: DataSize = DataSize.ofMegabytes(2),
     /** The most that the versions of a board take together; the newest version stays whatever its size. */
     val versionsSizePerBoard: DataSize = DataSize.ofMegabytes(64),
 )

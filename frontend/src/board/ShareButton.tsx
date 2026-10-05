@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { changeLinkAccess, type Board, type LinkAccess } from '../api/boards.ts'
+import type { Embed } from '../api/embed.ts'
+import { EmbedSection } from '../embed/EmbedSection.tsx'
+import type * as Y from 'yjs'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
 const COPIED_DURATION = 2_000
@@ -33,12 +36,19 @@ interface ShareButtonProps {
   board: Board
   /** The page the participant is on: the link opens the board on it. */
   pageId: string | null
-  /** Tells the other participants that the access to the board changed. */
+  /** Tells the other participants that the access to the board or its live image changed. */
   onChanged: () => void
+  /** The live image of the board, `null` when it is off, `undefined` until it is known. */
+  embed?: Embed | null
+  pages?: { id: string; name: string }[]
+  document?: Y.Doc | null
 }
 
-/** «Поделиться»: the link to the board with a copy button and, for the owner, what the link gives to others. */
-export function ShareButton({ board, pageId, onChanged }: ShareButtonProps) {
+/**
+ * «Поделиться»: the link to the board with a copy button, for the owner what the link gives to others, and the live
+ * image of a page.
+ */
+export function ShareButton({ board, pageId, onChanged, embed, pages = [], document = null }: ShareButtonProps) {
   const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
   const [copied, setCopied] = useState(false)
@@ -79,7 +89,7 @@ export function ShareButton({ board, pageId, onChanged }: ShareButtonProps) {
           Поделиться
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex w-80 flex-col gap-3" aria-label="Поделиться доской">
+      <PopoverContent align="end" className="flex max-h-[80vh] w-80 flex-col gap-3 overflow-y-auto" aria-label="Поделиться доской">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="board-link" className="text-sm font-medium">
             Ссылка на доску
@@ -138,6 +148,7 @@ export function ShareButton({ board, pageId, onChanged }: ShareButtonProps) {
         ) : (
           <p className="text-sm text-muted-foreground">{ACCESS_OF_OTHERS[board.linkAccess]}</p>
         )}
+        <EmbedSection board={board} embed={embed} pages={pages} pageId={pageId} document={document} onChanged={onChanged} />
       </PopoverContent>
     </Popover>
   )

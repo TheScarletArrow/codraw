@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.security
 
 import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
+import io.github.thescarletarrow.codraw.embed.EmbedController
 import io.github.thescarletarrow.codraw.legal.LegalController
 import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -55,10 +56,12 @@ class SecurityConfiguration {
                 authorize("/actuator/prometheus", permitAll)
                 authorize(JwksController.PATH, permitAll)
                 authorize(HttpMethod.POST, GuestLoginController.PATH, permitAll)
-              // The login page breaks too: its errors are reported without a sign-in.
-              authorize(HttpMethod.POST, ClientErrorController.PATH, permitAll)
-              // The privacy policy and the terms of use are read before signing in.
-              authorize(HttpMethod.GET, LegalController.PATH, permitAll)
+                // The login page breaks too: its errors are reported without a sign-in.
+                authorize(HttpMethod.POST, ClientErrorController.PATH, permitAll)
+                // The privacy policy and the terms of use are read before signing in.
+                authorize(HttpMethod.GET, LegalController.PATH, permitAll)
+                // Live images of boards are embedded into documents that their readers open without a sign-in.
+                authorize(HttpMethod.GET, "${EmbedController.PATH}/**", permitAll)
                 authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)
             }

@@ -27,6 +27,7 @@ class MigrationsTest {
         private val boardManagementTables = userAuthTables + "board_visits"
         private val boardVersionsTables = boardManagementTables + "board_versions"
         private val commentsTables = boardVersionsTables + setOf("comment_threads", "comments", "comment_mentions")
+        private val embedTables = commentsTables + "board_embeds"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -38,10 +39,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V6 create tables on an empty database and U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(6, flyway().migrate().migrationsExecuted)
-        assertEquals(commentsTables, appTables())
+    fun `V1 to V7 create tables on an empty database and U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(7, flyway().migrate().migrationsExecuted)
+        assertEquals(embedTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+
+        revert("U7__claude_affectionate_euler_ktyog4_board_embed.sql")
+        assertEquals(commentsTables, appTables())
 
         revert("U6__claude_affectionate_euler_ktyog4_comments.sql")
         assertEquals(boardVersionsTables, appTables())
@@ -62,8 +66,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(6, flyway().migrate().migrationsExecuted)
-        assertEquals(commentsTables, appTables())
+        assertEquals(7, flyway().migrate().migrationsExecuted)
+        assertEquals(embedTables, appTables())
     }
 
     @Test
@@ -152,6 +156,37 @@ class MigrationsTest {
         jdbcClient.sql("DELETE FROM boards").update()
         assertEquals(0, count("comment_threads"))
         assertEquals(0, count("comments"))
+    }
+
+    @Test
+    fun `V7 keeps one live image per board with a unique token and drops it with its board`() {
+        flyway("7").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now()),
+                   ('0199a000-0000-7000-8000-000000000002', 'Другая', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO board_embeds (board_id, token, page_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'AAAAAAAAAAAAAAAAAAAAAA', 'page-1', now())
+            """,
+        ).update()
+
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql(
+                """
+                INSERT INTO board_embeds (board_id, token, page_id, created_at)
+                VALUES ('0199a000-0000-7000-8000-000000000002', 'AAAAAAAAAAAAAAAAAAAAAA', 'page-1', now())
+                """,
+            ).update()
+        }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE board_embeds SET token = 'short'").update()
+        }
+
+        jdbcClient.sql("DELETE FROM boards").update()
+        assertEquals(0, count("board_embeds"))
     }
 
     @Test

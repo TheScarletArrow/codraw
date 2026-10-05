@@ -84,6 +84,7 @@ async function openBoard(responses: Record<string, MockResponse | MockResponse[]
     [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
     [`GET ${boardUrl}/threads`]: { body: [] },
     [`GET ${boardUrl}/people`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null }] },
+    [`GET ${boardUrl}/embed`]: { status: 404 },
     ...responses,
   })
   const { unmount, router } = renderRoutes(routes, `/boards/${boardId}${search}`)
