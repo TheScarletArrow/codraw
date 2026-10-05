@@ -33,9 +33,14 @@ test('line and text styles reach the other participant and survive a .drawio fil
   await panel.getByRole('spinbutton', { name: 'Толщина линии' }).fill('3')
   await panel.getByRole('spinbutton', { name: 'Толщина линии' }).press('Enter')
   await alice.keyboard.press('Escape')
+  // The closed panel gives the keyboard back to its button a moment later: a click on the canvas before that would
+  // lose the keyboard to the button again.
+  await expect(panel).toBeHidden()
+  await expect(alice.getByRole('button', { name: 'Стиль линии' })).toBeFocused()
 
   // A bold label on the left, with the keyboard and the toolbar.
   await select(alice, client)
+  await expect(alice.getByTestId('diagram-canvas')).toBeFocused()
   await alice.keyboard.press('Control+B')
   await alice.getByRole('button', { name: 'Текст по левому краю' }).click()
 
