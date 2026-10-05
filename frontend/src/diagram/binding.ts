@@ -72,6 +72,11 @@ export class DiagramBinding {
     model.addListener(InternalEvent.CHANGE, this.handleLocalChanges)
   }
 
+  /** The model is being changed to match the document: changes of other participants, undo, the stored cells. */
+  isApplyingRemote(): boolean {
+    return this.applyingRemote
+  }
+
   destroy() {
     this.cells.unobserveDeep(this.handleRemoteChanges)
     this.model.removeListener(this.handleLocalChanges)

@@ -10,9 +10,11 @@ import {
 import { vendorOf } from '../sql/dbVendors.ts'
 import { plainText, sourceRefers, splitField } from '../sql/tableField.ts'
 import { measureLabel, type LabelStyle } from './autoWidth.ts'
+import { isBaseTable } from './baseTables.ts'
 import { isTableStyle, type ShapeStyle } from './shapes.ts'
 import {
   BADGE_HEIGHT,
+  BASE_BADGE,
   BADGE_X,
   badgeWidth,
   ICON_SIZE,
@@ -28,6 +30,7 @@ import {
 export const TABLE_FIELD_SHAPE = 'codraw.tableField'
 
 const BADGE_FONT_SIZE = 9
+const BASE_BADGE_COLOR = '#57606a'
 
 const KEY_COLOR = '#b7791f'
 const LINK_COLOR = '#2563eb'
@@ -206,27 +209,36 @@ class TableFieldShape extends RectangleShape {
   }
 }
 
-/** A swimlane that, as a table with a database, has the badge of the database at the left of its header. */
+/**
+ * A swimlane that, as a table with a database, has the badge of the database at the left of its header, and as a base
+ * table the badge of a base at the right.
+ */
 class TableShape extends SwimlaneShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
     // The swimlane moves the canvas to its top-left corner.
     super.paintVertexShape(c, x, y, w, h)
-    const vendor = this.state && isTable(this.state.cell) ? vendorOf(this.state.cell.getStyle()) : null
-    if (!vendor) return
-    const width = badgeWidth(vendor.badge)
+    const cell = this.state && isTable(this.state.cell) ? this.state.cell : null
+    const vendor = cell ? vendorOf(cell.getStyle()) : null
     const top = (Math.min(this.getTitleSize(), h) - BADGE_HEIGHT) / 2
-    c.save()
-    c.setAlpha(1)
-    c.setShadow(false)
-    c.setFillColor(vendor.color)
-    c.roundrect(BADGE_X, top, width, BADGE_HEIGHT, 4, 4)
-    c.fill()
-    c.setFontColor(vendor.textColor)
-    c.setFontSize(BADGE_FONT_SIZE)
-    c.setFontStyle(1)
-    c.text(BADGE_X + width / 2, top + BADGE_HEIGHT / 2, 0, 0, vendor.badge, 'center', 'middle', false, '', 'visible', false, 0, '')
-    c.restore()
+    if (vendor) paintBadge(c, BADGE_X, top, vendor.badge, vendor.color, vendor.textColor)
+    if (isBaseTable(cell)) paintBadge(c, w - BADGE_X - badgeWidth(BASE_BADGE), top, BASE_BADGE, BASE_BADGE_COLOR, '#ffffff')
   }
+}
+
+function paintBadge(c: AbstractCanvas2D, x: number, top: number, badge: string, color: string, textColor: string) {
+  const width = badgeWidth(badge)
+  c.save()
+  c.setAlpha(1)
+  c.setShadow(false)
+  c.setDashed(false)
+  c.setFillColor(color)
+  c.roundrect(x, top, width, BADGE_HEIGHT, 4, 4)
+  c.fill()
+  c.setFontColor(textColor)
+  c.setFontSize(BADGE_FONT_SIZE)
+  c.setFontStyle(1)
+  c.text(x + width / 2, top + BADGE_HEIGHT / 2, 0, 0, badge, 'center', 'middle', false, '', 'visible', false, 0, '')
+  c.restore()
 }
 
 /** Adds the shape of fields and the swimlane that draws the database of a table. Safe to call more than once. */

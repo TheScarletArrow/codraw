@@ -122,11 +122,11 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
 
 /** Tools that change the selected objects. */
 function EditingTools({ editor }: { editor: DiagramEditor | null }) {
-  const { tableSelected, tableVendor, field, edgeMarkers, colors, line, text, geometry, arrange } = useEditorState(editor)
+  const { tableSelected, tableVendor, field, tableBase, edgeMarkers, colors, line, text, geometry, arrange } = useEditorState(editor)
 
   return (
     <>
-      {tableSelected && <TableTools editor={editor} vendor={tableVendor} field={field} />}
+      {tableSelected && <TableTools editor={editor} vendor={tableVendor} field={field} base={tableBase} />}
       {colors && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />

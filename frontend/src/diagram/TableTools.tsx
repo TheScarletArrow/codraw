@@ -3,7 +3,7 @@ import { useId, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { DB_VENDORS, vendorTypes, type DbVendorId } from '../sql/dbVendors.ts'
-import type { DiagramEditor, SelectedField } from './editor.ts'
+import type { DiagramEditor, SelectedField, TableBase } from './editor.ts'
 
 interface TableToolsProps {
   editor: DiagramEditor | null
@@ -11,10 +11,12 @@ interface TableToolsProps {
   vendor: DbVendorId | null
   /** The selected field, or `null` when the table itself is selected. */
   field: SelectedField | null
+  /** The selected table as to base tables. */
+  base: TableBase | null
 }
 
-/** The database of the selected table, a new field, and the type and keys of the selected field. */
-export function TableTools({ editor, vendor, field }: TableToolsProps) {
+/** The database and the base of the selected table, a new field, and the type and keys of the selected field. */
+export function TableTools({ editor, vendor, field, base }: TableToolsProps) {
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -34,6 +36,7 @@ export function TableTools({ editor, vendor, field }: TableToolsProps) {
           ))}
         </select>
       </label>
+      {base && <BaseTools editor={editor} base={base} />}
       <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableField()}>
         <Plus />
         Добавить поле
@@ -43,11 +46,65 @@ export function TableTools({ editor, vendor, field }: TableToolsProps) {
   )
 }
 
+/** The base the selected table inherits, and whether it is a base table itself and the default one of the page. */
+function BaseTools({ editor, base }: { editor: DiagramEditor | null; base: TableBase }) {
+  const toggle = (pressed: boolean) => cn(pressed && 'bg-accent text-accent-foreground')
+  return (
+    <>
+      <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        База
+        <select
+          aria-label="База таблицы"
+          className="h-8 max-w-40 rounded-md border bg-background px-2 text-foreground"
+          value={base.baseId ?? ''}
+          onChange={(event) => editor?.setTableBase(event.target.value || null)}
+        >
+          <option value="">—</option>
+          {base.options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={base.base}
+        title="Базовая таблица: шаблон полей, которые наследуют другие таблицы; в SQL её нет"
+        className={toggle(base.base)}
+        onClick={() => editor?.setBaseTable(!base.base)}
+      >
+        Базовая
+      </Button>
+      {base.base && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={base.defaultBase}
+          title="Новые таблицы страницы получают эту базу"
+          className={toggle(base.defaultBase)}
+          onClick={() => editor?.setDefaultBase(!base.defaultBase)}
+        >
+          По умолчанию
+        </Button>
+      )}
+    </>
+  )
+}
+
 function FieldTools({ editor, vendor, field }: { editor: DiagramEditor | null; vendor: DbVendorId | null; field: SelectedField }) {
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-      <FieldProps editor={editor} vendor={vendor} field={field} />
+      {field.inheritedFrom !== null ? (
+        // An inherited field is edited in its base table.
+        <span className="text-sm whitespace-nowrap text-muted-foreground">{`Из ${field.inheritedFrom}`}</span>
+      ) : (
+        <FieldProps editor={editor} vendor={vendor} field={field} />
+      )}
     </>
   )
 }

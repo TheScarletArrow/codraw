@@ -12,6 +12,8 @@ const BOOLEAN_KEYS = new Set([
   'backgroundOutline',
   'bendable',
   'cloneable',
+  'codrawBase',
+  'codrawBaseDefault',
   'connectable',
   'curved',
   'dashed',

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FieldPopover } from './FieldPopover.tsx'
 
-const FIELD = { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: false }
+const FIELD = { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: false, inheritedFrom: null }
 
 describe('FieldPopover', () => {
   let editor: FakeEditor
@@ -31,6 +31,12 @@ describe('FieldPopover', () => {
     await userEvent.click(screen.getByRole('button', { name: 'NOT NULL' }))
 
     expect(editor.setFieldProps).toHaveBeenCalledWith({ notNull: true })
+  })
+
+  it('is not shown for an inherited field, which is edited in its base table', () => {
+    act(() => editor.setState({ field: { ...FIELD, inheritedFrom: 'BaseEntity' }, tableVendor: null }))
+
+    expect(screen.queryByRole('group', { name: 'Свойства поля' })).toBeNull()
   })
 
   it('stands to the left of a table at the right edge of the canvas', () => {

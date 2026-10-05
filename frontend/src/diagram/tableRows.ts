@@ -51,6 +51,8 @@ export const BADGE_X = 6
 export const BADGE_HEIGHT = 16
 /** Width of the badge of a database: its short name in bold 9px with room on both sides. */
 export const badgeWidth = (badge: string) => Math.ceil(badge.length * 6.5) + 8
+/** The badge of a base table, at the right of its header. */
+export const BASE_BADGE = 'БАЗА'
 /** Room the badge takes in the header of a table on each side of the centred name. */
 export const badgeRoom = (badge: string) => BADGE_X + badgeWidth(badge) + 4
 

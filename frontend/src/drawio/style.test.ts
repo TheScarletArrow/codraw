@@ -102,3 +102,11 @@ describe('text wrap in files of draw.io', () => {
     expect(parseStyle(formatStyle({ whiteSpace: 'wrap' }, 'vertex'), 'vertex').whiteSpace).toBe('wrap')
   })
 })
+
+describe('base tables in files of draw.io', () => {
+  it('keeps the keys of base tables and inherited fields both ways', () => {
+    const table = { codrawBase: true, codrawBaseDefault: true, codrawBaseTable: 'base' }
+    expect(parseStyle(formatStyle(table, 'vertex'), 'vertex')).toMatchObject(table)
+    expect(parseStyle(formatStyle({ codrawInherited: 'field' }, 'vertex'), 'vertex')).toMatchObject({ codrawInherited: 'field' })
+  })
+})

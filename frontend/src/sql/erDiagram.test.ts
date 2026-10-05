@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BASE_KEY, INHERITED_KEY } from '../diagram/baseTables.ts'
 import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import {
@@ -132,6 +133,25 @@ describe('the schema of a diagram', () => {
     expect(diagramSchema(builder.build()).tables[1]!.foreignKeys).toEqual([
       { name: null, columns: ['owner_id'], table: 'users', references: ['id'] },
     ])
+  })
+
+  it('leaves base tables and their edges out, and writes inherited fields as columns of their tables', () => {
+    const builder = new DiagramBuilder()
+    const base = builder.table('BaseEntity', 0, 0, ['id uuid PK'])
+    const users = builder.table('users', 0, 300, ['id uuid PK', 'email text'])
+    const audit = builder.table('audit', 400, 0, ['user_id uuid'])
+    builder.edge(audit.fields[0]!, base.fields[0]!)
+    builder.edge(audit.fields[0]!, users.fields[0]!)
+    const cells = builder.build()
+    cells.find((cell) => cell.id === base.id)!.style[BASE_KEY] = true
+    cells.find((cell) => cell.id === users.fields[0])!.style[INHERITED_KEY] = base.fields[0]!
+
+    const schema = diagramSchema(cells)
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['users', 'audit'])
+    expect(schema.tables[0]!.columns.map((column) => column.name)).toEqual(['id', 'email'])
+    expect(schema.tables[1]!.foreignKeys).toEqual([{ name: null, columns: ['user_id'], table: 'users', references: ['id'] }])
+    expect(schemaSql(schema)).not.toContain('BaseEntity')
   })
 
   it('writes an erDiagram of Mermaid with keys and relations', async () => {

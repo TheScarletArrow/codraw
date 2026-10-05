@@ -19,7 +19,8 @@ export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
 
   const fieldBounds = editor && field ? editor.cellBounds(field.cellId) : null
   const tableBounds = editor && field ? editor.cellBounds(field.tableId) : null
-  if (!editor || !field || !fieldBounds || !tableBounds) return null
+  // An inherited field is edited in its base table.
+  if (!editor || !field || field.inheritedFrom !== null || !fieldBounds || !tableBounds) return null
   const right = tableBounds.x + tableBounds.width + GAP
   const fitsRight = right + FIELD_POPOVER_WIDTH <= editor.viewportSize().width
   const top = fieldBounds.y + fieldBounds.height / 2

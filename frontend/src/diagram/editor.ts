@@ -28,7 +28,7 @@ import {
 } from '@maxgraph/core'
 import * as Y from 'yjs'
 import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
-import { fieldText, renameField, splitField } from '../sql/tableField.ts'
+import { fieldText, plainText, renameField, splitField } from '../sql/tableField.ts'
 import {
   allowsAutoWidth,
   anchoredX,
@@ -41,6 +41,19 @@ import {
   wrapLabel,
   type Align,
 } from './autoWidth.ts'
+import {
+  BASE_KEY,
+  BASE_TABLE_KEY,
+  baseOptions,
+  baseTableId,
+  DEFAULT_BASE_KEY,
+  defaultBase,
+  inheritedFieldId,
+  isBaseTable,
+  isDefaultBase,
+  pageTables,
+  syncBaseTables,
+} from './baseTables.ts'
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
@@ -68,7 +81,7 @@ import {
   type ShapePreset,
   type ShapeStyle,
 } from './shapes.ts'
-import { badgeRoom, nameX, ROW_PADDING } from './tableRows.ts'
+import { BASE_BADGE, badgeRoom, nameX, ROW_PADDING } from './tableRows.ts'
 import {
   FIELD_PLACEHOLDER,
   isColumnField,
@@ -179,6 +192,20 @@ export interface SelectedField {
   notNull: boolean
   primaryKey: boolean
   unique: boolean
+  /** The name of the base table whose field this one inherits, or `null` for a field of its own. */
+  inheritedFrom: string | null
+}
+
+/** What the selected table, or the table of the selected field, is as to base tables. */
+export interface TableBase {
+  /** The table is a base table, whose fields the tables that choose it inherit. */
+  base: boolean
+  /** The base table that new tables of the page get. */
+  defaultBase: boolean
+  /** The id of the base table the table inherits, or `null`. */
+  baseId: string | null
+  /** Base tables the table may inherit: those of the page but itself and the tables that inherit it. */
+  options: { id: string; name: string }[]
 }
 
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
@@ -197,6 +224,8 @@ export interface EditorState {
   tableVendor: DbVendorId | null
   /** The single selected field of a table, or `null`. */
   field: SelectedField | null
+  /** The selected table, or the table of the selected field, as to base tables; `null` when none is selected. */
+  tableBase: TableBase | null
   /** Markers of the selected edges, or `null` when no edge is selected. */
   edgeMarkers: EdgeMarkers | null
   /** Colors of the selection, or `null` when nothing is selected. */
@@ -339,6 +368,15 @@ export interface DiagramEditor {
    * turns their auto width off, as auto width turns the wrap off.
    */
   setTextWrap(enabled: boolean): void
+  /**
+   * Makes the selected table a base table, whose fields the tables that choose it inherit, or an ordinary one, whose
+   * tables keep what they inherited as fields of their own.
+   */
+  setBaseTable(enabled: boolean): void
+  /** Makes the selected base table the one that new tables of the page get, or none; one at most is. */
+  setDefaultBase(enabled: boolean): void
+  /** Chooses the base of the selected table among {@link TableBase.options}; none removes the inherited fields. */
+  setTableBase(baseId: string | null): void
   /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
   setGeometry(changes: Partial<Box>): void
   /** Converts a client (viewport) position to diagram coordinates. */
@@ -380,6 +418,10 @@ export interface DiagramEditor {
 
 /** Narrowest editor of the name of a field, so that it is seen even in a table of short names. */
 const MIN_NAME_EDITOR_WIDTH = 120
+/** Text of the fields a table inherits from a base table, which are edited there. */
+const INHERITED_FIELD_COLOR = '#6e7781'
+/** Border of a base table, a template of fields rather than a table of the database. */
+const BASE_TABLE_DASH = '6 4'
 
 /** Connection point shown next to the right border of a hovered shape; dragging it creates an edge. */
 const CONNECT_ICON = new ImageBox(
@@ -549,6 +591,9 @@ const CHANGING_COMMANDS = [
   'setLineStyle',
   'setAutoWidth',
   'setTextWrap',
+  'setBaseTable',
+  'setDefaultBase',
+  'setTableBase',
   'setGeometry',
   'undo',
   'redo',
@@ -653,7 +698,20 @@ export function createDiagramEditor(
     const parts = field && splitField(String(field.getValue() ?? ''))
     if (!field || !parts) return null
     const { type, notNull, primaryKey, unique } = parts
-    return { cellId: field.getId()!, tableId: field.getParent()!.getId()!, type, notNull, primaryKey, unique }
+    const inherited = inheritedFieldId(field)
+    const inheritedFrom = inherited === null ? null : plainText(String(model.getCell(inherited)?.getParent()?.getValue() ?? ''))
+    return { cellId: field.getId()!, tableId: field.getParent()!.getId()!, type, notNull, primaryKey, unique, inheritedFrom }
+  }
+  const selectedTableBase = (): TableBase | null => {
+    const table = selectedTable()
+    if (!table) return null
+    const tables = pageTables(graph)
+    return {
+      base: isBaseTable(table),
+      defaultBase: isDefaultBase(table),
+      baseId: baseTableId(table),
+      options: baseOptions(table, tables).map((base) => ({ id: base.getId()!, name: plainText(String(base.getValue() ?? '')) })),
+    }
   }
   /** The single selected shape with a group; a table field is part of its table, not a shape of its own. */
   const quickConnectSource = (): { cell: Cell; group: ShapeGroup } | null => {
@@ -800,7 +858,8 @@ export function createDiagramEditor(
       if (!label) return []
       const style = { fontSize: fontSizeOf(part), ...graph.getCellStyle(part) }
       const vendor = isTable(part) && style.shape === 'swimlane' ? vendorOf(part.getStyle()) : null
-      return [fittedWidth(measureLabel(label, style) + (vendor ? 2 * badgeRoom(vendor.badge) : 0), style, gridSize)]
+      const badge = Math.max(vendor ? badgeRoom(vendor.badge) : 0, isBaseTable(part) ? badgeRoom(BASE_BADGE) : 0)
+      return [fittedWidth(measureLabel(label, style) + 2 * badge, style, gridSize)]
     })
     return widths.length > 0 ? Math.max(...widths) : null
   }
@@ -868,6 +927,19 @@ export function createDiagramEditor(
     setStyleValue(resized, AUTO_WIDTH_KEY, undefined)
   }
   graph.addListener(InternalEvent.RESIZE_CELLS, handleResize)
+  // The fields that tables inherit follow their base tables in the change that changes them, when it is done but not
+  // yet laid out and written: one undo step for everybody. Changes that the binding brings were synced by their author.
+  let syncingBases = false
+  const syncBases = () => {
+    if (readOnly || syncingBases || binding.isApplyingRemote()) return
+    syncingBases = true
+    try {
+      model.batchUpdate(() => fitAutoWidth(syncBaseTables(graph)))
+    } finally {
+      syncingBases = false
+    }
+  }
+  model.addListener(InternalEvent.END_EDIT, syncBases)
 
   const readState = (): EditorState => {
     const edges = selectedEdges()
@@ -878,6 +950,7 @@ export function createDiagramEditor(
       tableSelected: selectedTable() !== null,
       tableVendor: vendorOf(selectedTable()?.getStyle() ?? {})?.id ?? null,
       field: selectedFieldProps(),
+      tableBase: selectedTableBase(),
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
       line: selectionLine(),
@@ -931,7 +1004,10 @@ export function createDiagramEditor(
 
   const removeSelection = () => {
     if (graph.isEditing() || graph.isSelectionEmpty()) return
-    const cells = graph.getSelectionCells()
+    const selected = graph.getSelectionCells()
+    // An inherited field goes with its table only: it is removed in its base table.
+    const cells = selected.filter((cell) => inheritedFieldId(cell) === null || selected.includes(cell.getParent()!))
+    if (cells.length === 0) return
     // Tables of removed fields and those whose fields show references to what is removed.
     const tables = cells.flatMap(tablesShowing)
     model.batchUpdate(() => {
@@ -1079,7 +1155,10 @@ export function createDiagramEditor(
   }
 
   /** Inserts a palette shape with its children; the caller wraps it in a model update. */
-  const insertShape = (shape: ShapePreset, parent: Cell, x: number, y: number): Cell => {
+  const insertShape = (preset: ShapePreset, parent: Cell, x: number, y: number): Cell => {
+    // A new table with the default base of the page has the fields of the base instead of those of the preset.
+    const base = isTableStyle(preset.style) ? defaultBase(pageTables(graph)) : null
+    const shape = base ? { ...preset, style: { ...preset.style, [BASE_TABLE_KEY]: base.getId()! }, children: [] } : preset
     const cell = graph.insertVertex({
       parent,
       value: shape.value,
@@ -1250,7 +1329,7 @@ export function createDiagramEditor(
     setFieldProps(props) {
       const field = selectedField()
       const parts = field && splitField(String(field.getValue() ?? ''))
-      if (!field || !parts) return
+      if (!field || !parts || inheritedFieldId(field) !== null) return
       const next = { ...parts, ...props }
       // What is typed after the type, e.g. `NOT NULL`, is not a part of it.
       if (props.type !== undefined) next.type = splitField(`field ${props.type}`)?.type ?? ''
@@ -1260,6 +1339,37 @@ export function createDiagramEditor(
       model.batchUpdate(() => {
         model.setValue(field, text)
         fitAutoWidth([field, ...tablesShowing(field)])
+      })
+    },
+    setBaseTable(enabled) {
+      const table = selectedTable()
+      if (!table || isBaseTable(table) === enabled) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue([table], BASE_KEY, enabled ? true : undefined)
+        if (!enabled) setStyleValue([table], DEFAULT_BASE_KEY, undefined)
+        fitAutoWidth([table])
+      })
+    },
+    setDefaultBase(enabled) {
+      const table = selectedTable()
+      if (!table || !isBaseTable(table) || isDefaultBase(table) === enabled) return
+      model.batchUpdate(() => {
+        const others = [...pageTables(graph).values()].filter((other) => other !== table)
+        if (enabled) setStyleValue(others, DEFAULT_BASE_KEY, undefined)
+        setStyleValue([table], DEFAULT_BASE_KEY, enabled ? true : undefined)
+      })
+    },
+    setTableBase(baseId) {
+      const table = selectedTable()
+      if (!table || baseTableId(table) === baseId) return
+      if (baseId !== null && !baseOptions(table, pageTables(graph)).some((base) => base.getId() === baseId)) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue([table], BASE_TABLE_KEY, baseId ?? undefined)
+        // Without a base the sync would keep the inherited fields as fields of the table.
+        if (baseId === null) graph.removeCells(table.getChildren().filter((field) => inheritedFieldId(field) !== null), true)
+        fitAutoWidth([table])
       })
     },
     setTableVendor(vendor) {
@@ -1934,10 +2044,15 @@ function configureTableFields(graph: Graph) {
       const width = cell.getGeometry()?.width ?? 0
       const row = tableRowsOf(graph, cell.getParent()!).get(cell)
       const spacingRight = Math.max(ROW_PADDING, width - (row?.nameEnd ?? width - ROW_PADDING))
-      return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: row?.nameX ?? nameX(1), spacingRight }
+      const inherited = inheritedFieldId(cell) !== null && { fontColor: INHERITED_FIELD_COLOR }
+      return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: row?.nameX ?? nameX(1), spacingRight, ...inherited }
     }
+    if (isBaseTable(cell)) return { ...style, dashed: true, dashPattern: BASE_TABLE_DASH }
     return style
   }
+  // An inherited field is edited in its base table.
+  const isCellEditable = graph.isCellEditable.bind(graph)
+  graph.isCellEditable = (cell) => inheritedFieldId(cell) === null && isCellEditable(cell)
   const getLabel = graph.getLabel.bind(graph)
   graph.getLabel = (cell) => {
     const label = getLabel(cell)

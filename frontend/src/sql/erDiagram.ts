@@ -1,3 +1,4 @@
+import { isBaseStyle } from '../diagram/baseTables.ts'
 import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
@@ -205,7 +206,10 @@ interface DiagramReference {
 
 /** The schema of the tables of a page: fields parsed from their text, references from the edges between fields. */
 export function diagramSchema(cells: CellData[]): SqlSchema {
-  const tableCells = cells.filter((cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle))
+  // A base table is a template of fields rather than a table of the database: its tables have them as their columns.
+  const tableCells = cells.filter(
+    (cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) && !isBaseStyle(cell.style),
+  )
   const tables: SqlTable[] = []
   const columnOf = new Map<string, { table: SqlTable; column: SqlColumn & { foreignKey: boolean } }>()
   for (const tableCell of tableCells) {
