@@ -39,6 +39,9 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
       }
       const now = performance.now()
       if (now - lastSent >= CURSOR_INTERVAL_MS) {
+        // A timer that has not fired yet, e.g. on a busy page, would send an older position after this one.
+        clearTimeout(timer)
+        timer = undefined
         lastSent = now
         publishCursor(point)
         return

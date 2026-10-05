@@ -49,6 +49,23 @@ describe('usePresencePublisher', () => {
     ])
   })
 
+  it('never sends an older position after a newer one when the timer of the interval fires late', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+    const now = vi.spyOn(performance, 'now')
+
+    now.mockReturnValue(0)
+    editor.movePointer({ x: 1, y: 1 })
+    now.mockReturnValue(10)
+    editor.movePointer({ x: 2, y: 2 })
+    // A busy page runs the timer of the interval late: the next move is past the interval already.
+    now.mockReturnValue(60)
+    editor.movePointer({ x: 3, y: 3 })
+    vi.advanceTimersByTime(CURSOR_INTERVAL_MS)
+
+    expect(local().cursor).toEqual({ x: 3, y: 3 })
+    now.mockRestore()
+  })
+
   it('clears the cursor when the pointer leaves the canvas', () => {
     renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
     editor.movePointer({ x: 1, y: 1 })
