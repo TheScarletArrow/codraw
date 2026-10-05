@@ -7,6 +7,7 @@ import { isForbidden, isNotFound, isUnauthorized } from '../api/http.ts'
 import { recheckSession } from '../auth/session.ts'
 import type { ParticipantIdentity } from './identity.ts'
 import { threadsKey } from '../comments/threads.ts'
+import { embedKey } from '../embed/links.ts'
 import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
@@ -70,7 +71,12 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
 
   useEffect(() => {
     const document = new Y.Doc()
-    const refetchBoard = () => queryClient.invalidateQueries({ queryKey: ['boards', boardId], exact: true })
+    const refetchBoard = () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['boards', boardId], exact: true }),
+        // The owner may have turned the live image on or off.
+        queryClient.invalidateQueries({ queryKey: embedKey(boardId), exact: true }),
+      ])
     let authenticated = false
     const provider = new HocuspocusProvider({
       url: collabUrl(),

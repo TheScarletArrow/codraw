@@ -24,6 +24,9 @@ import { CommentBadges } from '../comments/CommentBadges.tsx'
 import { CommentsButton } from '../comments/CommentsButton.tsx'
 import { CommentsPanel, type ThreadDraft, type ThreadFocus } from '../comments/CommentsPanel.tsx'
 import { useThreads } from '../comments/useComments.ts'
+import { fetchEmbed } from '../api/embed.ts'
+import { embedKey } from '../embed/links.ts'
+import { useEmbedPublisher } from '../embed/useEmbedPublisher.ts'
 import { PageHistories } from '../diagram/binding.ts'
 import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
@@ -104,6 +107,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setCommentDraft(null)
     setCommentFocus(null)
   }
+  // The live image of a page: the browsers of the participants who edit publish its picture after their changes.
+  const embed = useQuery({ queryKey: embedKey(board.id), queryFn: () => fetchEmbed(board.id) })
+  useEmbedPublisher(board.id, document, embed.data, !readOnly)
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
@@ -248,7 +254,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onToggle={() => (commentsOpen ? closeComments() : openComments())}
         />
         <ShortcutsHelp readOnly={readOnly} />
-        <ShareButton board={board} pageId={currentPage?.id ?? null} onChanged={notifyBoardChanged} />
+        <ShareButton
+          board={board}
+          pageId={currentPage?.id ?? null}
+          onChanged={notifyBoardChanged}
+          embed={embed.data}
+          pages={pages}
+          document={document}
+        />
       </div>
       {connection.tooLarge && (
         <div
