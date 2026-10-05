@@ -249,7 +249,7 @@ export class DiagramBinding {
   }
 }
 
-function createCell(data: CellData): Cell {
+export function createCell(data: CellData): Cell {
   const cell = new Cell(data.value, toGeometry(data.geometry) ?? undefined, { ...data.style } as CellStyle)
   cell.setId(data.id)
   if (data.kind === 'edge') cell.setEdge(true)

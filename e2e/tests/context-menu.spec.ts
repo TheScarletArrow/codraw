@@ -106,7 +106,8 @@ test('a field and the empty canvas get their own menus', async ({ browser }) => 
 
   await rightClick(page, await emptyPoint(page))
   expect(await menuLabels(page)).toEqual(['Вставить', 'Выделить всё', 'Отменить', 'Повторить'])
-  await expect(item(page, 'Вставить')).toBeDisabled()
+  // Chromium lets the page read the clipboard of the system, so there may be something to paste.
+  await expect(item(page, 'Вставить')).toBeEnabled()
   expect(await selectedIds(page)).toEqual([])
 
   await item(page, 'Выделить всё').click()
@@ -168,6 +169,8 @@ test('a shape copied without its neighbour is pasted without the edge, and paste
   browser,
 }) => {
   const page = await freshBoard(browser)
+  // «Вставить» of the menu reads the clipboard of the system, which the browser would ask the user about.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   const service = await addShape(page, 'Сервис')
   const database = await addShape(page, 'База данных')
   const box = await cellBox(page, database)

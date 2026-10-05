@@ -144,6 +144,18 @@ function diagramXml(doc: Y.Doc, page: { id: string; name: string }, only?: Reado
 
 const mxfile = (diagrams: string[]) => `<mxfile host="CoDraw" type="device">${diagrams.join('')}</mxfile>\n`
 
+/**
+ * Writes cells as a `<mxGraphModel>` of draw.io with its root and layer, as draw.io copies them; cells without a parent
+ * are on the layer.
+ */
+export function cellsModelXml(cells: CellData[]): string {
+  return (
+    `<mxGraphModel><root><mxCell id="${ROOT_CELL_ID}"/><mxCell id="${LAYER_CELL_ID}" parent="${ROOT_CELL_ID}"/>` +
+    cells.map((cell) => cellXml(cell, {})).join('') +
+    `</root></mxGraphModel>`
+  )
+}
+
 /** Writes all pages of the board as an uncompressed `.drawio` file. */
 export function exportDrawio(doc: Y.Doc): string {
   return mxfile(listPages(doc).map((page) => diagramXml(doc, page)))

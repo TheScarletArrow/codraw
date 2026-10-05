@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
@@ -56,15 +56,30 @@ describe('CanvasMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Вставить' })).toBeEnabled()
   })
 
-  it('pastes at the point of the click, closes and gives the keyboard back to the canvas', async () => {
+  it('pastes the system clipboard at the point of the click, closes and gives the keyboard back to the canvas', async () => {
+    // user-event puts its own clipboard into jsdom, which has none.
+    const user = userEvent.setup()
+    await navigator.clipboard.writeText('Заметка')
     act(() => editor.setState({ canPaste: true }))
     rightClick('canvas')
 
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Вставить' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Вставить' }))
 
-    expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 })
+    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, 'Заметка'))
     expect(screen.queryByRole('menu')).toBeNull()
     expect(editor.focus).toHaveBeenCalled()
+  })
+
+  it('pastes the clipboard of the tab when the browser does not let the page read the system clipboard', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(navigator.clipboard, 'readText').mockRejectedValue(new DOMException('Denied', 'NotAllowedError'))
+    act(() => editor.setState({ canPaste: true }))
+    rightClick('canvas')
+
+    await user.click(screen.getByRole('menuitem', { name: 'Вставить' }))
+
+    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, undefined))
+    vi.restoreAllMocks()
   })
 
   it('runs the command of the chosen item', async () => {
