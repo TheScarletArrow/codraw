@@ -1,11 +1,16 @@
 import type { Cell } from '@maxgraph/core'
 import { DrawioFormatError, parseDrawio } from '../drawio/parse.ts'
 import { cellsModelXml } from '../drawio/serialize.ts'
+import { mermaidCells } from '../mermaid/mermaidCells.ts'
+import { isMermaid, MermaidError, parseMermaid } from '../mermaid/parseMermaid.ts'
 import { createCell, fromGeometry, fromStyle } from './binding.ts'
 import { LAYER_CELL_ID, type CellData } from './model.ts'
 
-/** What the text of the clipboard holds for the canvas: cells of a diagram, or text for a text shape. */
-export type ClipboardContent = { kind: 'cells'; cells: Cell[] } | { kind: 'text'; text: string }
+/**
+ * What the text of the clipboard holds for the canvas: cells of a diagram, a new diagram drawn from its text (Mermaid),
+ * which has no place of its own yet, or text for a text shape.
+ */
+export type ClipboardContent = { kind: 'cells' | 'diagram'; cells: Cell[] } | { kind: 'text'; text: string }
 
 /**
  * The text of the clipboard for copied cells: a `<mxGraphModel>` of draw.io encoded with `encodeURIComponent`, as
@@ -44,8 +49,9 @@ export function clipboardText(cells: Cell[]): string {
 
 /**
  * Reads the text of the clipboard: a `<mxGraphModel>` or `<mxfile>` of draw.io or CoDraw, encoded or not, becomes
- * cells (of the first page of a file) with their children inside them and edges connected to their ends; any other
- * text that is not empty becomes text without spaces at its ends. `null` when there is nothing to paste.
+ * cells (of the first page of a file) with their children inside them and edges connected to their ends; a flowchart
+ * or an ER diagram of Mermaid becomes a laid out diagram; any other text that is not empty becomes text without spaces
+ * at its ends. `null` when there is nothing to paste.
  */
 export async function readClipboardText(text: string): Promise<ClipboardContent | null> {
   const trimmed = text.trim()
@@ -59,6 +65,15 @@ export async function readClipboardText(text: string): Promise<ClipboardContent 
     } catch (error) {
       // XML that is not a diagram is pasted as text.
       if (!(error instanceof DrawioFormatError)) throw error
+    }
+  }
+  if (isMermaid(trimmed)) {
+    try {
+      const cells = dataToCells(await mermaidCells(parseMermaid(trimmed), { x: 0, y: 0 }))
+      // Text that only looks like Mermaid, without a node, is pasted as text.
+      if (cells.some((cell) => cell.isVertex())) return { kind: 'diagram', cells }
+    } catch (error) {
+      if (!(error instanceof MermaidError)) throw error
     }
   }
   return { kind: 'text', text: trimmed }

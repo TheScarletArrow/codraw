@@ -6,6 +6,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
 import { downloadBlob, fileName } from '../lib/download.ts'
+import { mermaidCells, mermaidSummary } from '../mermaid/mermaidCells.ts'
+import { MermaidError, parseMermaid, type MermaidDiagram } from '../mermaid/parseMermaid.ts'
 import { diagramSchema, placeBeside, schemaCells, schemaMermaid, schemaSql } from './erDiagram.ts'
 import { parseSql, parseSqlFiles, type SqlFile, type SqlSchema } from './parseSql.ts'
 
@@ -26,7 +28,7 @@ const MESSAGES: Record<Message, string> = {
   'sql-copied': 'SQL скопирован',
   'mermaid-copied': 'Mermaid скопирован',
   'copy-failed': 'Не удалось скопировать',
-  'import-failed': 'Не удалось добавить таблицы',
+  'import-failed': 'Не удалось добавить схему',
 }
 
 /** The cells of a page, as its document has them. */
@@ -39,13 +41,29 @@ function importedSchema(files: SqlFile[], text: string): SqlSchema {
   return parseSql(text, parseSqlFiles(files))
 }
 
+/** The diagram of Mermaid in the text, or why there is none. */
+function importedDiagram(text: string): { diagram: MermaidDiagram | null; error: string | null } {
+  if (text.trim() === '') return { diagram: null, error: null }
+  try {
+    const diagram = parseMermaid(text)
+    const empty = diagram.kind === 'flowchart' ? diagram.nodes.length === 0 : diagram.tables.length === 0
+    return { diagram: empty ? null : diagram, error: empty ? 'В тексте нет ни одного узла или таблицы' : null }
+  } catch (error) {
+    if (error instanceof MermaidError) return { diagram: null, error: error.message }
+    throw error
+  }
+}
+
 const countReferences = (schema: SqlSchema) =>
   schema.tables.reduce((sum, table) => sum + table.foreignKeys.reduce((keys, key) => keys + key.columns.length, 0), 0)
 
-/** Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid. */
+/**
+ * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
+ * a flowchart or an ER diagram of Mermaid becomes a diagram of the page.
+ */
 export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
   const [open, setOpen] = useState(false)
-  const [importing, setImporting] = useState(false)
+  const [importing, setImporting] = useState<'sql' | 'mermaid' | null>(null)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<SqlFile[]>([])
   const [busy, setBusy] = useState(false)
@@ -54,10 +72,11 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
 
   const schema = open && doc && pageId ? diagramSchema(pageCells(doc, pageId)) : null
   const tables = schema?.tables.length ?? 0
-  const imported = importing ? importedSchema(files, text) : null
+  const imported = importing === 'sql' ? importedSchema(files, text) : null
+  const mermaid = importing === 'mermaid' ? importedDiagram(text) : null
 
   const reset = () => {
-    setImporting(false)
+    setImporting(null)
     setText('')
     setFiles([])
     setMessage(null)
@@ -78,10 +97,18 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
   }
 
   const addTables = async () => {
-    if (!editor || !doc || !pageId || !imported || imported.tables.length === 0) return
+    if (!editor || !doc || !pageId) return
+    const origin = () => placeBeside(pageCells(doc, pageId))
+    const cells =
+      imported && imported.tables.length > 0
+        ? () => schemaCells(imported, origin())
+        : mermaid?.diagram
+          ? () => mermaidCells(mermaid.diagram!, origin())
+          : null
+    if (!cells) return
     setBusy(true)
     try {
-      editor.insertCells(await schemaCells(imported, placeBeside(pageCells(doc, pageId))))
+      editor.insertCells(await cells())
       setOpen(false)
       reset()
     } catch {
@@ -100,12 +127,54 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="SQL" title="SQL: импорт и выгрузка таблиц" disabled={!doc || !pageId}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="SQL и Mermaid"
+          title="SQL и Mermaid: импорт и выгрузка схем"
+          disabled={!doc || !pageId}
+        >
           <Database />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" aria-label="SQL" className={importing ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}>
-        {importing && imported ? (
+      <PopoverContent align="end" aria-label="SQL и Mermaid" className={importing ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}>
+        {importing === 'mermaid' && mermaid ? (
+          <>
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={reset}>
+                <ArrowLeft />
+              </Button>
+              <h2 className="text-sm font-semibold">Импорт Mermaid</h2>
+            </div>
+            <textarea
+              aria-label="Mermaid"
+              placeholder={'flowchart LR\n  client[Клиент] -->|HTTPS| api(API)\n  api --> db[(PostgreSQL)]'}
+              rows={8}
+              spellCheck={false}
+              className="w-full resize-y rounded-md border bg-background px-2 py-1.5 font-mono text-xs"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+            {mermaid.error ? (
+              <p role="alert" className="text-xs text-destructive">
+                {mermaid.error}
+              </p>
+            ) : (
+              <p role="status" className="text-xs text-muted-foreground">
+                {mermaid.diagram ? mermaidSummary(mermaid.diagram) : 'Блок-схема (flowchart, graph) или ER-диаграмма (erDiagram)'}
+              </p>
+            )}
+            {message && (
+              <p role="alert" className="text-xs text-destructive">
+                {MESSAGES[message]}
+              </p>
+            )}
+            <Button type="button" size="sm" disabled={busy || !mermaid.diagram} onClick={() => void addTables()}>
+              Добавить на страницу
+            </Button>
+          </>
+        ) : importing === 'sql' && imported ? (
           <>
             <div className="flex items-center gap-1">
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={reset}>
@@ -157,9 +226,20 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           <>
             <p className="px-2 pb-1 text-xs text-muted-foreground">Таблиц на странице: {tables}</p>
             {!readOnly && (
-              <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting(true)}>
-                Импорт SQL…
-              </Button>
+              <>
+                <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('sql')}>
+                  Импорт SQL…
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start font-normal"
+                  onClick={() => setImporting('mermaid')}
+                >
+                  Импорт Mermaid…
+                </Button>
+              </>
             )}
             <Button
               type="button"

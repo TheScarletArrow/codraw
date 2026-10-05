@@ -216,7 +216,8 @@ export interface DiagramEditor {
   /**
    * Adds `text` of the clipboard of the system, or without it the clipboard of the tab, as one undo step: cells of
    * CoDraw or draw.io shifted further with every paste of the same content, or with their top-left corner at `at`;
-   * other text as a text shape in the middle of the visible area, or with its top-left corner at `at`.
+   * a flowchart or an ER diagram of Mermaid laid out, and other text as a text shape, in the middle of the visible
+   * area, or with the top-left corner at `at`.
    */
   paste(at?: Point, text?: string): void
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
@@ -1131,6 +1132,17 @@ export function createDiagramEditor(
         if (destroyed || !content) return
         if (content.kind === 'text') {
           addText(content.text, at)
+          return
+        }
+        // A new diagram goes to the point of the click, or into the middle of the visible area.
+        if (content.kind === 'diagram') {
+          // As in the clipboard: without a parent, maxGraph would take an edge for the label of an edge and drop it.
+          const holder = new Cell()
+          content.cells.forEach((cell) => holder.insert(cell))
+          const bounds = graph.getBoundingBoxFromGeometry(content.cells, false)
+          const center = visibleCenter()
+          pasteCells(content.cells, at ?? { x: center.x - (bounds?.width ?? 0) / 2, y: center.y - (bounds?.height ?? 0) / 2 })
+          notify()
           return
         }
         clipboard.put(content.cells, text)

@@ -43,7 +43,7 @@ function renderMenu({ document = boardWithTables(), readOnly = false } = {}) {
   return { editor, document }
 }
 
-const menu = () => screen.getByRole('dialog', { name: 'SQL' })
+const menu = () => screen.getByRole('dialog', { name: 'SQL и Mermaid' })
 
 describe('SqlMenu', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -53,7 +53,7 @@ describe('SqlMenu', () => {
     const writeText = vi.spyOn(navigator.clipboard, 'writeText')
     renderMenu()
 
-    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     expect(menu()).toHaveTextContent('Таблиц на странице: 2')
     await user.click(screen.getByRole('button', { name: 'Скопировать SQL' }))
 
@@ -70,7 +70,7 @@ describe('SqlMenu', () => {
   it('saves the SQL as a file named after the board and the page', async () => {
     renderMenu()
 
-    await userEvent.click(screen.getByRole('button', { name: 'SQL' }))
+    await userEvent.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     await userEvent.click(screen.getByRole('button', { name: 'Скачать .sql' }))
 
     const [blob, name] = vi.mocked(downloadBlob).mock.lastCall!
@@ -83,20 +83,21 @@ describe('SqlMenu', () => {
     initializeDocument(empty)
     renderMenu({ document: empty, readOnly: true })
 
-    await userEvent.click(screen.getByRole('button', { name: 'SQL' }))
+    await userEvent.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
 
     expect(menu()).toHaveTextContent('Таблиц на странице: 0')
     expect(screen.getByRole('button', { name: 'Скопировать SQL' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Скачать .sql' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Скопировать Mermaid' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Импорт SQL…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт Mermaid…' })).toBeNull()
   })
 
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
     const user = userEvent.setup()
     const { editor } = renderMenu()
 
-    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
     await user.click(screen.getByRole('textbox', { name: 'DDL' }))
     await user.paste(
@@ -118,7 +119,7 @@ describe('SqlMenu', () => {
   it('reads migrations of Flyway from files in the order of their versions', async () => {
     const user = userEvent.setup()
     renderMenu()
-    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
 
     await user.upload(screen.getByLabelText('Файлы SQL'), [
@@ -133,10 +134,41 @@ describe('SqlMenu', () => {
     expect(screen.getByRole('button', { name: 'Импорт SQL…' })).toBeInTheDocument()
   })
 
+  it('adds a flowchart of Mermaid to the right of the page', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт Mermaid…' }))
+
+    await user.click(screen.getByRole('textbox', { name: 'Mermaid' }))
+    await user.paste('flowchart LR\n  a[Клиент] --> b(API)\n  subgraph k [Кластер]\n    b\n  end\n  style a fill:#fff')
+    expect(screen.getByRole('status')).toHaveTextContent('Узлов: 2, связей: 1, рамок: 1, пропущено строк: 1')
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.value)).toEqual(['Кластер', 'Клиент', 'API'])
+    expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
+  })
+
+  it('says which kinds of Mermaid it draws', async () => {
+    const user = userEvent.setup()
+    renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт Mermaid…' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Блок-схема (flowchart, graph) или ER-диаграмма (erDiagram)')
+
+    await user.click(screen.getByRole('textbox', { name: 'Mermaid' }))
+    await user.paste('sequenceDiagram\n  A->>B: hi')
+
+    expect(screen.getByRole('alert')).toHaveTextContent('CoDraw рисует из Mermaid блок-схемы (flowchart, graph) и ER-диаграммы')
+    expect(screen.getByRole('button', { name: 'Добавить на страницу' })).toBeDisabled()
+  })
+
   it('cannot add anything until the DDL has a table', async () => {
     const user = userEvent.setup()
     renderMenu()
-    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
 
     await user.click(screen.getByRole('textbox', { name: 'DDL' }))
