@@ -36,6 +36,9 @@ test('? on the canvas and the button of the header open the shortcuts, ? in a la
   await alice.getByRole('button', { name: 'Горячие клавиши' }).click()
   await expect(help).toBeVisible()
   await alice.keyboard.press('Escape')
+  // The closed window gives the keyboard back to its button on a timeout; a label edited before that would lose it.
+  await expect(help).toBeHidden()
+  await expect(alice.getByRole('button', { name: 'Горячие клавиши' })).toBeFocused()
 
   await alice.mouse.dblclick(...(Object.values(center(await cellBox(alice, shape))) as [number, number]))
   // The keys go to the label once its editor has the keyboard.
