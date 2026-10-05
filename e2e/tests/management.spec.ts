@@ -1,5 +1,13 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { addShape, createBoard, openBoard, openBoardList, twoParticipants, userPage } from './helpers.ts'
+import {
+  addShape,
+  createBoard,
+  hasStoredDocument,
+  openBoard,
+  openBoardList,
+  twoParticipants,
+  userPage,
+} from './helpers.ts'
 
 /** The row of a board in the list of own boards; test users keep boards of earlier tests with the same titles. */
 const boardRow = (page: Page, boardPath: string) =>
@@ -82,6 +90,8 @@ test('a board deleted in the list of boards closes for a participant with their 
   const url = await createBoard(alice)
   await openBoard(bob, url)
   const boardPath = new URL(url).pathname
+  // A store of the board that Alice's page set up, coming after the deletion, would close it for Bob before his change.
+  await expect.poll(() => hasStoredDocument(boardPath.split('/').pop()!), { timeout: 10_000 }).toBe(true)
   await alice.goto('/')
 
   await deleteThroughMenu(alice, boardRow(alice, boardPath), 'Новая доска', 'Удалить')

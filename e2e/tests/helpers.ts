@@ -1,6 +1,7 @@
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { expect, type APIRequestContext, type Browser, type Page } from '@playwright/test'
 import * as Y from 'yjs'
+import { env } from './env.ts'
 
 /** Signs in as the test user with this name through the test login of the backend `e2e` profile. */
 export async function signIn(request: APIRequestContext, name: string) {
@@ -17,6 +18,17 @@ export async function openBoardList(page: Page): Promise<string[]> {
   await page.goto('/')
   const boards = (await (await shared).json()) as { id: string }[]
   return boards.map((board) => board.id)
+}
+
+/**
+ * Whether the backend has a stored document of the board. collab stores a document a moment after its last change,
+ * e.g. after the page of the owner set up a new board.
+ */
+export async function hasStoredDocument(boardId: string): Promise<boolean> {
+  const response = await fetch(`${env.backendUrl}/internal/boards/${boardId}/document`, {
+    headers: { 'X-Internal-Token': env.internalToken },
+  })
+  return response.status === 200
 }
 
 /** A page in a fresh browser context signed in as the test user with this name. */
