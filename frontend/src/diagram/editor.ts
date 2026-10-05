@@ -30,9 +30,9 @@ import { allowsAutoWidth, anchoredX, AUTO_WIDTH_KEY, fittedWidth, hasAutoWidth, 
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
-import { clipboardText, readClipboardText } from './clipboardFormat.ts'
+import { clipboardText, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import { registerDiagramExtensions } from './extensions.ts'
-import { DEFAULT_PAGE_ID, getCells, type StyleValue } from './model.ts'
+import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
@@ -216,6 +216,8 @@ export interface DiagramEditor {
   paste(at?: Point, text?: string): void
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
   duplicate(): void
+  /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
+  insertCells(cells: CellData[]): void
   bringToFront(): void
   sendToBack(): void
   /** Selects all shapes and edges of the page. */
@@ -436,6 +438,7 @@ const CHANGING_COMMANDS = [
   'cut',
   'paste',
   'duplicate',
+  'insertCells',
   'moveSelection',
   'bringToFront',
   'sendToBack',
@@ -1108,6 +1111,15 @@ export function createDiagramEditor(
     duplicate() {
       const cells = cellsToCopy()
       if (cells.length > 0) insertCopies(cells, PASTE_OFFSET, PASTE_OFFSET)
+    },
+    insertCells(data) {
+      const cells = dataToCells(data)
+      if (cells.length === 0) return
+      // As in the clipboard: without a parent, maxGraph would take an edge for the label of an edge and drop it.
+      const holder = new Cell()
+      cells.forEach((cell) => holder.insert(cell))
+      insertCopies(cells, 0, 0)
+      editor.zoomToFit()
     },
     bringToFront() {
       const cells = selectedShapesAndEdges()
