@@ -14,12 +14,22 @@ export interface RemotePresence extends ParticipantIdentity {
   /** Pointer position in diagram coordinates, or `null` when it is outside the canvas. */
   cursor: Point | null
   selection: string[]
+  /** The middle of the visible area of the participant in diagram coordinates and their scale; `null` for old clients. */
+  viewport: Viewport | null
+}
+
+/** What a participant sees: the middle of their visible area in diagram coordinates and the scale. */
+export interface Viewport extends Point {
+  scale: number
 }
 
 /** Cursor updates are sent at most this often (20 per second). */
 export const CURSOR_INTERVAL_MS = 50
 
-/** Publishes the page, the local pointer and the selection of the editor to the other participants. */
+/** Updates of the view are sent at most this often (10 per second). */
+export const VIEW_INTERVAL_MS = 100
+
+/** Publishes the page, the view, the local pointer and the selection of the editor to the other participants. */
 export function usePresencePublisher(editor: DiagramEditor | null, awareness: Awareness | null) {
   useEffect(() => {
     if (!editor || !awareness) return
@@ -56,10 +66,31 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
     })
     const offSelection = editor.onSelectionChange((ids) => awareness.setLocalStateField('selection', ids))
 
+    const publishView = () => {
+      const center = editor.viewportCenter()
+      const viewport: Viewport = {
+        x: Math.round(center.x),
+        y: Math.round(center.y),
+        scale: Math.round(editor.getState().scale * 100) / 100,
+      }
+      awareness.setLocalStateField('viewport', viewport)
+    }
+    publishView()
+    let viewTimer: ReturnType<typeof setTimeout> | undefined
+    const offView = editor.onViewChange(() => {
+      viewTimer ??= setTimeout(() => {
+        viewTimer = undefined
+        publishView()
+      }, VIEW_INTERVAL_MS)
+    })
+
     return () => {
       offPointer()
       offSelection()
+      offView()
       clearTimeout(timer)
+      clearTimeout(viewTimer)
+      awareness.setLocalStateField('viewport', null)
       awareness.setLocalStateField('cursor', null)
       awareness.setLocalStateField('selection', [])
     }
@@ -102,6 +133,7 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
     if (clientId === awareness.clientID || !user?.name || !user.color) return
     const cursor = state.cursor as Point | null | undefined
     const selection = state.selection as unknown
+    const viewport = state.viewport as Viewport | null | undefined
     result.push({
       clientId,
       name: user.name,
@@ -110,6 +142,8 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
       page: participantPage(state),
       cursor: cursor && Number.isFinite(cursor.x) && Number.isFinite(cursor.y) ? cursor : null,
       selection: Array.isArray(selection) ? selection.filter((id): id is string => typeof id === 'string') : [],
+      viewport:
+        viewport && [viewport.x, viewport.y, viewport.scale].every(Number.isFinite) && viewport.scale > 0 ? viewport : null,
     })
   })
   return result

@@ -11,12 +11,21 @@ interface ParticipantsProps {
   /** Pages of the board, to name the page of a participant who is on another page. */
   pages?: PageInfo[]
   currentPageId?: string | null
-  /** Brings the viewer to another participant: to their page and their cursor. */
+  /** Follows another participant: their page, the middle of their view and their scale. */
   onFollow?: (clientId: number) => void
+  /** The participant being followed. */
+  followingClientId?: number | null
   className?: string
 }
 
-export function Participants({ participants, pages = [], currentPageId = null, onFollow, className }: ParticipantsProps) {
+export function Participants({
+  participants,
+  pages = [],
+  currentPageId = null,
+  onFollow,
+  followingClientId = null,
+  className,
+}: ParticipantsProps) {
   return (
     <ul aria-label="Участники" className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-sm', className)}>
       {participants.map((participant) => {
@@ -44,8 +53,13 @@ export function Participants({ participants, pages = [], currentPageId = null, o
             ) : (
               <button
                 type="button"
-                title={`Перейти к участнику ${participant.name}`}
-                className="-mx-1 flex items-center gap-1.5 rounded px-1 hover:bg-accent"
+                title={
+                  participant.clientId === followingClientId
+                    ? `Вы следуете за участником ${participant.name}`
+                    : `Следовать за участником ${participant.name}`
+                }
+                aria-pressed={participant.clientId === followingClientId}
+                className="-mx-1 flex items-center gap-1.5 rounded px-1 hover:bg-accent aria-pressed:bg-accent"
                 onClick={() => onFollow(participant.clientId)}
               >
                 {content}

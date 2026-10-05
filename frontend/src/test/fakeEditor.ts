@@ -114,6 +114,12 @@ export function createFakeEditor({
       changeView()
     }),
     revealCell: vi.fn((id: string) => cells.get(id) != null),
+    viewportCenter: () => ({ x: offset.x + viewport.width / 2, y: offset.y + viewport.height / 2 }),
+    zoomTo: vi.fn((scale: number) => {
+      state = { ...state, scale }
+      listeners.forEach((listener) => listener())
+      changeView()
+    }),
     onPointerMove: (listener) => listen(pointerListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),

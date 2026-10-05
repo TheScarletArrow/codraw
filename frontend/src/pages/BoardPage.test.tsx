@@ -822,6 +822,76 @@ describe('BoardPage', () => {
       await waitFor(() => expect(canvas.editor!.centerOn).toHaveBeenCalledWith({ x: 1500, y: 900 }))
       expect(canvas.editor!.pageId).toBe(second)
     })
+
+    describe('following', () => {
+      const bob = { name: 'Боб', color: '#dc2626', avatarUrl: null }
+      const banner = () => screen.queryByRole('region', { name: 'Следование' })
+
+      async function followBob(provider: Awaited<ReturnType<typeof openPages>>, page: string) {
+        act(() => provider.awareness.setState(7, { user: bob, page, viewport: { x: 1500, y: 900, scale: 1.5 } }))
+        await userEvent.click(within(screen.getByRole('list', { name: 'Участники' })).getByRole('button', { name: /Боб/ }))
+      }
+
+      it('takes the page, the middle of the view and the scale of the leader, and follows their moves', async () => {
+        const provider = await openPages()
+        let second = ''
+        act(() => {
+          second = addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+        })
+
+        await followBob(provider, second)
+
+        expect(shownPage()).toBe(second)
+        await waitFor(() => expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(1.5))
+        expect(canvas.editor!.centerOn).toHaveBeenLastCalledWith(expect.objectContaining({ x: 1500, y: 900 }))
+        expect(banner()).toHaveTextContent('Вы следуете за Боб')
+        expect(within(screen.getByRole('list', { name: 'Участники' })).getByRole('button', { name: /Боб/ })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        )
+
+        act(() => provider.awareness.setState(7, { user: bob, page: second, viewport: { x: 200, y: 100, scale: 0.5 } }))
+        expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(0.5)
+        expect(canvas.editor!.centerOn).toHaveBeenLastCalledWith(expect.objectContaining({ x: 200, y: 100 }))
+
+        act(() => provider.awareness.setState(7, { user: bob, page: DEFAULT_PAGE_ID, viewport: { x: 1, y: 2, scale: 1 } }))
+        await waitFor(() => expect(shownPage()).toBe(DEFAULT_PAGE_ID))
+      })
+
+      it('stops when the viewer presses on the canvas, presses Escape or «Остановить», or the leader leaves', async () => {
+        const provider = await openPages()
+
+        await followBob(provider, DEFAULT_PAGE_ID)
+        fireEvent.pointerDown(screen.getByTestId('diagram-canvas'))
+        expect(banner()).toBeNull()
+
+        await followBob(provider, DEFAULT_PAGE_ID)
+        await userEvent.keyboard('{Escape}')
+        expect(banner()).toBeNull()
+
+        await followBob(provider, DEFAULT_PAGE_ID)
+        await userEvent.click(screen.getByRole('button', { name: 'Остановить' }))
+        expect(banner()).toBeNull()
+
+        await followBob(provider, DEFAULT_PAGE_ID)
+        act(() => provider.awareness.setState(7, null))
+        expect(banner()).toBeNull()
+      })
+
+      it('stops when the viewer opens another page on their own', async () => {
+        const provider = await openPages()
+        let second = ''
+        act(() => {
+          second = addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+        })
+        await followBob(provider, DEFAULT_PAGE_ID)
+
+        await userEvent.click(screen.getByRole('tab', { name: 'Контейнеры' }))
+
+        expect(shownPage()).toBe(second)
+        expect(banner()).toBeNull()
+      })
+    })
   })
 
   describe('comments', () => {

@@ -289,6 +289,10 @@ export interface DiagramEditor {
   viewportSize(): { width: number; height: number }
   /** Scrolls (or, beyond the scrollable area, pans) the canvas so that a diagram point is in its middle. */
   centerOn(point: Point): void
+  /** The middle of the visible area in diagram coordinates. */
+  viewportCenter(): Point
+  /** Zooms to `scale` (1 is 100%), between 10% and 800%, keeping the middle of the visible area. */
+  zoomTo(scale: number): void
   /** Selects the cell and centres the canvas on it; `false` when the page has no such shape or edge. */
   revealCell(id: string): boolean
   /** Reports the pointer position over the canvas in diagram coordinates, and `null` when it leaves. */
@@ -339,6 +343,10 @@ const GROUP_STYLE = {
   verticalAlign: 'top',
   pointerEvents: false,
 } as const satisfies CellStyle
+
+/** The smallest and the largest scale that following another participant takes. */
+const MIN_SCALE = 0.1
+const MAX_SCALE = 8
 
 /** Margin around the page when it is fitted into the canvas, in pixels. */
 const FIT_MARGIN = 20
@@ -1474,6 +1482,14 @@ export function createDiagramEditor(
       const dy = top - container.scrollTop
       if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) view.setTranslate(translate.x - dx / scale, translate.y - dy / scale)
       notifyView()
+    },
+    viewportCenter: () => visibleCenter(),
+    zoomTo(scale) {
+      const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
+      if (Math.abs(clamped - graph.getView().scale) < 0.001) return
+      const center = visibleCenter()
+      graph.zoomTo(clamped)
+      editor.centerOn(center)
     },
     revealCell(id) {
       const cell = model.getCell(id)
