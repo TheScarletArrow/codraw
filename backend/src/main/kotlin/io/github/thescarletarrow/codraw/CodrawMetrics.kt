@@ -12,6 +12,19 @@ enum class Limit(val tag: String) {
     GUESTS("guests"),
     DOCUMENT("document"),
     VERSION("version"),
+    CLIENT_ERRORS("client-errors"),
+}
+
+/** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */
+enum class ClientErrorKind(val tag: String) {
+    /** An error the page did not handle. */
+    ERROR("error"),
+
+    /** A rejected promise nobody handled. */
+    UNHANDLED_REJECTION("unhandledrejection"),
+
+    /** An error while React drew the page. */
+    RENDER("render"),
 }
 
 /** Metrics of what CoDraw does, next to those of HTTP, the JVM and the database pool that Micrometer collects. */
@@ -46,6 +59,13 @@ class CodrawMetrics(registry: MeterRegistry) {
             .register(registry)
     }
 
+    private val clientErrors = ClientErrorKind.entries.associateWith { kind ->
+        Counter.builder("codraw.client.errors")
+            .description("Errors that browsers of participants reported")
+            .tag("kind", kind.tag)
+            .register(registry)
+    }
+
     fun boardCreated() = boardsCreated.increment()
 
     fun guestCreated() = guestsCreated.increment()
@@ -53,6 +73,8 @@ class CodrawMetrics(registry: MeterRegistry) {
     fun documentStored(size: Int) = documentsStored.record(size.toDouble())
 
     fun limitReached(limit: Limit) = limitsReached.getValue(limit).increment()
+
+    fun clientError(kind: ClientErrorKind) = clientErrors.getValue(kind).increment()
 
     fun guestCleanupDeleted(boards: Int, guests: Int) {
         cleanupDeleted.getValue("boards").increment(boards.toDouble())

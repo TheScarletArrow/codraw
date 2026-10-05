@@ -59,3 +59,19 @@ tests:
         exp_alerts:
           - exp_labels: { severity: warning }
             exp_annotations: { summary: "Запросы backend 5 минут ждут соединений с базой" }
+
+  - interval: 1m
+    input_series:
+      - series: 'codraw_client_errors_total{job="backend", instance="backend:8080", kind="error"}'
+        values: "0 0 0 0 15 15 15"
+      - series: 'codraw_client_errors_total{job="backend", instance="backend:8080", kind="render"}'
+        values: "0 0 0 0 15 15 15"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: CodrawClientErrors
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: CodrawClientErrors
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: { summary: "Больше 20 ошибок в браузерах участников за 10 минут" }
