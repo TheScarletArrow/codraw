@@ -85,6 +85,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'Дублировать',
     'На передний план',
     'На задний план',
+    'Комментировать',
     'Удалить',
   ])
   await page.keyboard.press('Escape')
@@ -100,7 +101,7 @@ test('a field and the empty canvas get their own menus', async ({ browser }) => 
   const box = await cellBox(page, table)
 
   await rightClick(page, { x: box.x + box.width / 2, y: box.y + 30 + 13 })
-  expect(await menuLabels(page)).toEqual(['Изменить', 'Добавить поле ниже', 'Удалить поле'])
+  expect(await menuLabels(page)).toEqual(['Изменить', 'Добавить поле ниже', 'Комментировать', 'Удалить поле'])
   expect(await selectedIds(page)).toEqual(await fieldIds(page, table))
   await page.keyboard.press('Escape')
 
@@ -269,7 +270,7 @@ test('reversing an edge swaps its ends', async ({ browser }) => {
   const [start, next] = [points[0]!, points[1]!]
 
   await rightClick(page, { x: canvas.x + (start.x + next.x) / 2, y: canvas.y + (start.y + next.y) / 2 })
-  expect(await menuLabels(page)).toEqual(['Изменить подпись', 'Развернуть направление', 'Удалить'])
+  expect(await menuLabels(page)).toEqual(['Изменить подпись', 'Развернуть направление', 'Комментировать', 'Удалить'])
   await item(page, 'Развернуть направление').click()
 
   await expect.poll(async () => (await edges(page))[0]).toMatchObject({ id: edge!.id, source: database, target: service })

@@ -13,6 +13,7 @@ enum class Limit(val tag: String) {
     DOCUMENT("document"),
     VERSION("version"),
     CLIENT_ERRORS("client-errors"),
+    COMMENTS("comments"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */

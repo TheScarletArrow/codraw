@@ -6,7 +6,8 @@ import { fetchCollabToken } from '../api/boards.ts'
 import { isForbidden, isNotFound, isUnauthorized } from '../api/http.ts'
 import { recheckSession } from '../auth/session.ts'
 import type { ParticipantIdentity } from './identity.ts'
-import { BOARD_CHANGED, isBoardChanged } from './messages.ts'
+import { threadsKey } from '../comments/threads.ts'
+import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
 /** `forbidden`: the owner closed the link to the board, and the participant has no access to it any more. */
@@ -139,9 +140,12 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
           setGeneration((current) => current + 1)
         }
       },
-      // Another participant renamed or deleted the board: its title, or its absence, comes from the API.
+      // Another participant renamed or deleted the board: its title, or its absence, comes from the API. So do the
+      // comments that another participant changed.
       onStateless: ({ payload }) => {
-        if (isBoardChanged(payload)) void refetchBoard()
+        const change = changeOf(payload)
+        if (change === 'board-changed') void refetchBoard()
+        else if (change === 'comments-changed') void queryClient.invalidateQueries({ queryKey: threadsKey(boardId) })
       },
     })
     providerRef.current = provider
@@ -182,6 +186,9 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
   /** Tells the other participants that the board changed, e.g. its title, so that they fetch it again. */
   const notifyBoardChanged = useCallback(() => providerRef.current?.sendStateless(BOARD_CHANGED), [])
 
+  /** Tells the other participants that the comments changed, so that they fetch them again. */
+  const notifyCommentsChanged = useCallback(() => providerRef.current?.sendStateless(COMMENTS_CHANGED), [])
+
   const dismissTooLarge = useCallback(() => setTooLarge(false), [])
 
   return {
@@ -193,5 +200,6 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
     document: session?.document ?? null,
     awareness: session?.awareness ?? null,
     notifyBoardChanged,
+    notifyCommentsChanged,
   }
 }

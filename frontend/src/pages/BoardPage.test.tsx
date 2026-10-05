@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
 import { participantColor } from '../board/identity.ts'
-import { BOARD_CHANGED } from '../board/messages.ts'
+import type { CommentThread } from '../api/comments.ts'
+import { BOARD_CHANGED, COMMENTS_CHANGED } from '../board/messages.ts'
 import * as Y from 'yjs'
-import { DEFAULT_PAGE_ID, getCells, initializeDocument } from '../diagram/model.ts'
+import { DEFAULT_PAGE_ID, getCells, initializeDocument, writePage } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
@@ -81,6 +82,8 @@ async function openBoard(responses: Record<string, MockResponse | MockResponse[]
     'GET /api/me': { body: ALICE },
     [`GET /api/boards/${boardId}`]: { body: board },
     [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
+    [`GET ${boardUrl}/threads`]: { body: [] },
+    [`GET ${boardUrl}/people`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null }] },
     ...responses,
   })
   const { unmount, router } = renderRoutes(routes, `/boards/${boardId}${search}`)
@@ -817,6 +820,120 @@ describe('BoardPage', () => {
       expect(shownPage()).toBe(second)
       await waitFor(() => expect(canvas.editor!.centerOn).toHaveBeenCalledWith({ x: 1500, y: 900 }))
       expect(canvas.editor!.pageId).toBe(second)
+    })
+  })
+
+  describe('comments', () => {
+    const threadsUrl = `${boardUrl}/threads`
+    const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread => ({
+      id,
+      pageId: DEFAULT_PAGE_ID,
+      cellId: 'api',
+      createdAt: '2026-10-05T10:00:00Z',
+      resolvedAt: null,
+      resolvedBy: null,
+      comments: [
+        {
+          id: `${id}-1`,
+          author: { id: 'bob', name: 'Боб', avatarUrl: null },
+          body: 'Почему без кэша?',
+          mentions: [],
+          createdAt: '2026-10-05T10:00:00Z',
+          editedAt: null,
+        },
+      ],
+      ...changes,
+    })
+    const panel = () => screen.getByRole('complementary', { name: 'Комментарии' })
+
+    it('shows how many threads are open and opens the comments of the board', async () => {
+      const provider = await openBoard({
+        [`GET ${threadsUrl}`]: { body: [thread('a'), thread('b', { cellId: null }), thread('c', { resolvedAt: '2026-10-05T11:00:00Z' })] },
+      })
+      act(() => provider.emitSynced())
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Комментарии (2)' }))
+
+      expect(within(panel()).getAllByRole('article')).toHaveLength(2)
+      await userEvent.click(screen.getByRole('button', { name: 'Закрыть комментарии' }))
+      expect(screen.queryByRole('complementary', { name: 'Комментарии' })).toBeNull()
+    })
+
+    it('lets a viewer comment on an element from its menu and tells the other participants', async () => {
+      const created = thread('new')
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: { body: boardToView },
+        [`GET ${threadsUrl}`]: [{ body: [] }, { body: [created] }],
+        [`POST ${threadsUrl}`]: { status: 201, body: created },
+      })
+      initializeDocument(provider.document)
+      act(() => provider.emitSynced())
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true'))
+
+      act(() => canvas.editor!.rightClick({ x: 10, y: 10, point: { x: 10, y: 10 }, target: 'shape', cellId: 'api' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать' }))
+      const field = within(panel()).getByRole('combobox', { name: 'Новый комментарий' })
+      await userEvent.type(field, 'Почему без кэша?{Enter}')
+
+      await waitFor(() => expect(provider.sentStateless).toEqual([COMMENTS_CHANGED]))
+      const [[, init]] = requests(provider.fetchMock, 'POST', threadsUrl)
+      expect(JSON.parse(init!.body as string)).toEqual({
+        pageId: DEFAULT_PAGE_ID,
+        cellId: 'api',
+        body: 'Почему без кэша?',
+        mentions: [],
+      })
+      expect(await screen.findByRole('button', { name: 'Комментарии (1)' })).toBeInTheDocument()
+    })
+
+    it('fetches the comments again when another participant changed them', async () => {
+      const provider = await openBoard({ [`GET ${threadsUrl}`]: [{ body: [] }, { body: [thread('a')] }] })
+      act(() => provider.emitSynced())
+      await screen.findByRole('button', { name: 'Комментарии' })
+
+      act(() => provider.emitStateless(COMMENTS_CHANGED))
+
+      expect(await screen.findByRole('button', { name: 'Комментарии (1)' })).toBeInTheDocument()
+      expect(requests(provider.fetchMock, 'GET', threadsUrl)).toHaveLength(2)
+    })
+
+    it('opens the threads of an element from its badge on the canvas', async () => {
+      const provider = await openBoard({ [`GET ${threadsUrl}`]: { body: [thread('a'), thread('b', { cellId: 'db' })] } })
+      act(() => provider.emitSynced())
+      act(() => canvas.editor!.placeCell('api', { x: 100, y: 100, width: 120, height: 60 }))
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Комментарии к элементу: 1' }))
+
+      const cards = within(panel()).getAllByRole('article')
+      expect(cards[0]).toHaveClass('ring-2')
+      expect(cards[1]).not.toHaveClass('ring-2')
+    })
+
+    it('goes to the page of a thread and shows its element', async () => {
+      const provider = await openBoard({ [`GET ${threadsUrl}`]: { body: [thread('far', { pageId: 'page-2', cellId: 'db' })] } })
+      act(() => {
+        provider.emitSynced()
+        provider.document.transact(() => writePage(provider.document, 'page-2', { name: 'Данные', order: 'a5' }))
+      })
+      await userEvent.click(screen.getByRole('button', { name: 'Комментарии (1)' }))
+
+      const card = within(within(panel()).getByRole('region', { name: 'Данные' })).getByRole('article')
+      await userEvent.click(within(card).getByRole('button', { name: 'Элемент удалён' }))
+
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('db'))
+    })
+
+    it('closes the comments when the owner opens the history of versions', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}/versions`]: { body: [] } })
+      act(() => provider.emitSynced())
+      await userEvent.click(screen.getByRole('button', { name: /^Комментарии/ }))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
+
+      expect(screen.queryByRole('complementary', { name: 'Комментарии' })).toBeNull()
+      expect(screen.getByRole('complementary', { name: 'История версий' })).toBeInTheDocument()
     })
   })
 

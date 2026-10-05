@@ -13,8 +13,8 @@ describe('CanvasMenu', () => {
     render(<CanvasMenu editor={editor} />)
   })
 
-  const rightClick = (target: MenuTarget) =>
-    act(() => editor.rightClick({ x: 100, y: 50, point: { x: 300, y: 200 }, target }))
+  const rightClick = (target: MenuTarget, cellId: string | null = target === 'canvas' || target === 'selection' ? null : 'cell-1') =>
+    act(() => editor.rightClick({ x: 100, y: 50, point: { x: 300, y: 200 }, target, cellId }))
   const items = () => within(screen.getByRole('menu')).getAllByRole('menuitem')
 
   it('is closed until the canvas is right-clicked', () => {
@@ -136,6 +136,42 @@ describe('CanvasMenu', () => {
     expect(editor.ungroup).toHaveBeenCalled()
   })
 
+  describe('with comments', () => {
+    const onComment = vi.fn()
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onComment.mockReset()
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onComment={onComment} />)
+    })
+
+    it('comments on a single element, and leaves the keyboard to the field of the comment', async () => {
+      rightClick('edge', 'edge-7')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual([
+        'Изменить подпись',
+        'Развернуть направление',
+        'Комментировать',
+        'Удалить',
+      ])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать' }))
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+      expect(onComment).toHaveBeenCalledWith('edge-7')
+      expect(screen.queryByRole('menu')).toBeNull()
+      expect(editor.focus).not.toHaveBeenCalled()
+    })
+
+    it('does not comment on the canvas or on several elements', () => {
+      rightClick('selection')
+      expect(screen.queryByRole('menuitem', { name: 'Комментировать' })).toBeNull()
+
+      rightClick('canvas')
+      expect(screen.queryByRole('menuitem', { name: 'Комментировать' })).toBeNull()
+    })
+  })
+
   describe('for a participant who may only view', () => {
     beforeEach(() => {
       document.body.innerHTML = ''
@@ -155,6 +191,17 @@ describe('CanvasMenu', () => {
       rightClick('edge')
 
       expect(screen.queryByRole('menu')).toBeNull()
+    })
+
+    it('comments on an edge when the page takes comments', async () => {
+      document.body.innerHTML = ''
+      const onComment = vi.fn()
+      render(<CanvasMenu editor={editor} onComment={onComment} />)
+      rightClick('edge', 'edge-7')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Комментировать'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать' }))
+      expect(onComment).toHaveBeenCalledWith('edge-7')
     })
   })
 })

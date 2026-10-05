@@ -17,6 +17,7 @@ export type MenuCommand =
   | 'group'
   | 'ungroup'
   | 'delete'
+  | 'comment'
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
 export type Shortcut =
@@ -49,10 +50,12 @@ export interface MenuAvailability {
   canGroup?: boolean
   /** The participant may only view the board: the menu has only the items that change nothing. */
   readOnly?: boolean
+  /** The page comments on single elements, which viewers do too. */
+  canComment?: boolean
 }
 
 /** Items of a participant who may only view the board. */
-const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll'])
+const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll', 'comment'])
 
 type Entry = [MenuCommand, string, Shortcut?]
 
@@ -67,6 +70,7 @@ const ORDER: Entry[] = [
 ]
 const DELETE: Entry = ['delete', 'Удалить', 'Delete']
 const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
+const COMMENT: Entry[] = [['comment', 'Комментировать']]
 
 /** Groups of the menu of each target, in the order of the menu. */
 const MENUS: Record<MenuTarget, Entry[][]> = {
@@ -80,27 +84,28 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
       ['redo', 'Повторить', 'Mod+Shift+Z'],
     ],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, ORDER, [DELETE]],
-  table: [[EDIT_LABEL, ['addField', 'Добавить поле']], CLIPBOARD, ORDER, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, ORDER, COMMENT, [DELETE]],
+  table: [[EDIT_LABEL, ['addField', 'Добавить поле']], CLIPBOARD, ORDER, COMMENT, [DELETE]],
   field: [
     [
       ['editLabel', 'Изменить', 'F2'],
       ['addField', 'Добавить поле ниже'],
     ],
+    COMMENT,
     [['delete', 'Удалить поле', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], [DELETE]],
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, COMMENT, [DELETE]],
   selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, ORDER, [DELETE]],
 }
 
 /**
  * Items of the context menu for a target; the ones that cannot be done now are disabled. A participant who may only
- * view gets only copying and selecting, so their menu may be empty.
+ * view gets only copying, selecting and commenting, so their menu may be empty.
  */
 export function menuItems(
   target: MenuTarget,
-  { canPaste, canUndo, canRedo, canGroup = false, readOnly = false }: MenuAvailability,
+  { canPaste, canUndo, canRedo, canGroup = false, readOnly = false, canComment = false }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
     paste: !canPaste,
@@ -109,7 +114,11 @@ export function menuItems(
     group: !canGroup,
   }
   const groups = MENUS[target]
-    .map((group) => group.filter(([command]) => !readOnly || VIEWING_COMMANDS.has(command)))
+    .map((group) =>
+      group.filter(
+        ([command]) => (!readOnly || VIEWING_COMMANDS.has(command)) && (canComment || command !== 'comment'),
+      ),
+    )
     .filter((group) => group.length > 0)
   return groups.flatMap((group, groupIndex) =>
     group.map(([command, label, shortcut], index) => ({
