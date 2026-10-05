@@ -1,0 +1,147 @@
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as Y from 'yjs'
+import type { CellData } from '../diagram/model.ts'
+import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
+import { downloadBlob } from '../lib/download.ts'
+import { DiagramBuilder } from '../templates/builder.ts'
+import { createFakeEditor } from '../test/fakeEditor.ts'
+import { SqlMenu } from './SqlMenu.tsx'
+
+vi.mock('../lib/download.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/download.ts')>()),
+  downloadBlob: vi.fn(),
+}))
+
+/** A board whose first page has the tables `users` and `boards`, and an edge from `boards.owner_id` to `users.id`. */
+function boardWithTables() {
+  const document = new Y.Doc()
+  initializeDocument(document)
+  const builder = new DiagramBuilder()
+  const users = builder.table('users', 40, 40, ['id uuid PK', 'email text NOT NULL'])
+  const boards = builder.table('boards', 400, 40, ['id uuid PK', 'owner_id uuid FK NOT NULL'])
+  builder.edge(boards.fields[1]!, users.fields[0]!)
+  const cells = getCells(document, DEFAULT_PAGE_ID)
+  document.transact(() => builder.build().forEach((cell) => writeCell(cells, cell)))
+  return document
+}
+
+function renderMenu({ document = boardWithTables(), readOnly = false } = {}) {
+  const editor = createFakeEditor()
+  render(
+    <SqlMenu
+      editor={editor}
+      document={document}
+      pageId={DEFAULT_PAGE_ID}
+      boardTitle="Схема"
+      pageName="БД"
+      pageCount={2}
+      readOnly={readOnly}
+    />,
+  )
+  return { editor, document }
+}
+
+const menu = () => screen.getByRole('dialog', { name: 'SQL' })
+
+describe('SqlMenu', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('copies the tables of the page as SQL and as Mermaid', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
+    renderMenu()
+
+    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    expect(menu()).toHaveTextContent('Таблиц на странице: 2')
+    await user.click(screen.getByRole('button', { name: 'Скопировать SQL' }))
+
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('CREATE TABLE users (\n    id uuid PRIMARY KEY,'))
+    expect(writeText).toHaveBeenLastCalledWith(
+      expect.stringContaining('ALTER TABLE boards ADD FOREIGN KEY (owner_id) REFERENCES users (id);'),
+    )
+    expect(await within(menu()).findByText('SQL скопирован')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Скопировать Mermaid' }))
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('users ||--o{ boards : "owner_id"'))
+  })
+
+  it('saves the SQL as a file named after the board and the page', async () => {
+    renderMenu()
+
+    await userEvent.click(screen.getByRole('button', { name: 'SQL' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Скачать .sql' }))
+
+    const [blob, name] = vi.mocked(downloadBlob).mock.lastCall!
+    expect(name).toBe('Схема — БД.sql')
+    expect(await blob.text()).toContain('CREATE TABLE boards')
+  })
+
+  it('offers no export without tables, and no import to a participant who may only view', async () => {
+    const empty = new Y.Doc()
+    initializeDocument(empty)
+    renderMenu({ document: empty, readOnly: true })
+
+    await userEvent.click(screen.getByRole('button', { name: 'SQL' }))
+
+    expect(menu()).toHaveTextContent('Таблиц на странице: 0')
+    expect(screen.getByRole('button', { name: 'Скопировать SQL' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Скачать .sql' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Скопировать Mermaid' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Импорт SQL…' })).toBeNull()
+  })
+
+  it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+
+    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+    await user.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await user.paste(
+      'CREATE TABLE teams (id uuid PRIMARY KEY); CREATE TABLE members (team_id uuid REFERENCES teams); CREATE INDEX i ON members (team_id);',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 2, связей: 1, пропущено операторов: 1')
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    const teams = cells.find((cell) => cell.value === 'teams')!
+    expect(cells.find((cell) => cell.value === 'team_id uuid FK')).toBeDefined()
+    // The page has `boards` from 400 to 620: new tables start 80 to the right of it.
+    expect(Math.min(...cells.filter((cell) => cell.parent === '1' && cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
+    expect(teams.geometry!.y).toBeGreaterThanOrEqual(40)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('reads migrations of Flyway from files in the order of their versions', async () => {
+    const user = userEvent.setup()
+    renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+
+    await user.upload(screen.getByLabelText('Файлы SQL'), [
+      new File(['ALTER TABLE users ADD COLUMN name text;'], 'V2__name.sql'),
+      new File(['CREATE TABLE users (id uuid PRIMARY KEY);'], 'V1__users.sql'),
+      new File(['DROP TABLE users;'], 'U1__users.sql'),
+    ])
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 1, связей: 0, пропущено операторов: 0'))
+    expect(menu()).toHaveTextContent('Файлов: 3')
+    await user.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('button', { name: 'Импорт SQL…' })).toBeInTheDocument()
+  })
+
+  it('cannot add anything until the DDL has a table', async () => {
+    const user = userEvent.setup()
+    renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+
+    await user.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await user.paste('SELECT 1;')
+
+    expect(screen.getByRole('button', { name: 'Добавить на страницу' })).toBeDisabled()
+  })
+})
