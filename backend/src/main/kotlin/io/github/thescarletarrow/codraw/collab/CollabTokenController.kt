@@ -25,8 +25,8 @@ class CollabTokenController(
     fun issue(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): CollabToken {
         val board = BoardIds.parse(id)?.let(boards::find)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
-        val role = board.roleOf(principal.userId) ?: throw linkAccessClosed()
+        board.roleOf(principal.userId) ?: throw linkAccessClosed()
         val user = checkNotNull(users.find(principal.userId)) { "Signed-in user ${principal.userId} does not exist" }
-        return tokens.issue(user, checkNotNull(board.id), if (role.canEdit) DocumentAccess.EDIT else DocumentAccess.VIEW)
+        return tokens.issue(user, checkNotNull(board.id))
     }
 }

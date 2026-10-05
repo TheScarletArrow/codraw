@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import java.time.Duration
+import java.util.UUID
 import kotlin.test.assertEquals
 
 @IntegrationTest
@@ -34,6 +35,7 @@ class BoardApiTest(
     @Autowired private val jdbcClient: JdbcClient,
     @Autowired private val clock: MutableClock,
     @Autowired private val users: UserService,
+    @Autowired private val boards: BoardService,
 ) {
 
     private val uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -301,6 +303,19 @@ class BoardApiTest(
             jsonPath("$.title") { value("Платежи") }
             jsonPath("$.updatedAt") { value(clock.instant().toString()) }
         }
+    }
+
+    @Test
+    fun `renaming keeps a link access that changed after the board was read`() {
+        val id = UUID.fromString(createBoard("Новая доска", alice))
+        val read = checkNotNull(boards.find(id))
+
+        boards.changeLinkAccess(read, LinkAccess.NONE)
+        boards.rename(read, "Платежи")
+
+        val stored = checkNotNull(boards.find(id))
+        assertEquals("Платежи", stored.title)
+        assertEquals(LinkAccess.NONE, stored.linkAccess)
     }
 
     @Test

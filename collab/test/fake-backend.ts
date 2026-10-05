@@ -12,8 +12,6 @@ export interface TokenOptions {
   expiresAt?: number | string;
   /** Signs with this key instead of the published one, keeping the published key id. */
   signWith?: CryptoKey;
-  /** The access the token gives; `null` leaves the claim out. */
-  access?: "edit" | "view" | null;
   /** The user the token is issued to. */
   subject?: string;
 }
@@ -49,10 +47,10 @@ export class FakeBackend {
   /** Issues a collab token for the board like the backend does; options build invalid tokens. */
   issueToken(
     board: string,
-    { audience = "codraw-collab", expiresAt = "5m", signWith, access = "edit", subject = ALICE }: TokenOptions = {},
+    { audience = "codraw-collab", expiresAt = "5m", signWith, subject = ALICE }: TokenOptions = {},
   ): Promise<string> {
     const key = this.keys[0]!;
-    return new SignJWT({ board, name: "Alice", avatar: "https://avatars.example.com/alice.png", ...(access && { access }) })
+    return new SignJWT({ board, name: "Alice", avatar: "https://avatars.example.com/alice.png" })
       .setProtectedHeader({ alg: "RS256", kid: key.kid })
       .setSubject(subject)
       .setAudience(audience)

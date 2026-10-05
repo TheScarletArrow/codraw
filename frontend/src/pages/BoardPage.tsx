@@ -61,10 +61,13 @@ export function BoardPage() {
 
 function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const identity = useMemo(() => participantIdentity(user), [user])
-  const { status, participants, document, awareness, notifyBoardChanged } = useBoardConnection(board.id, identity)
+  const viewer = !canEdit(board)
+  const connection = useBoardConnection(board.id, identity, viewer)
+  const { status, participants, document, awareness, notifyBoardChanged } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
-  const readOnly = !canEdit(board)
+  // Until the page fetches the role again, the access of the connection may be narrower than the role.
+  const readOnly = viewer || connection.readOnly
   // A participant who may only view never writes to the document: collab would reject it, and their document would
   // differ from everybody else's. A board nobody has edited yet has no page for them.
   useEffect(() => {

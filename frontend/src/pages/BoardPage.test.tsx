@@ -307,6 +307,31 @@ describe('BoardPage', () => {
       expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(2)
     })
 
+    it('edits only over a connection that accepts changes, when the access changed before the page connected', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }] })
+      const updates = vi.fn()
+      provider.document.on('update', updates)
+
+      act(() => {
+        provider.emitAuthenticated('readonly')
+        provider.emitSynced()
+      })
+
+      expect(screen.getByText('Только просмотр')).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+      expect(updates).not.toHaveBeenCalled()
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(2))
+    })
+
+    it('shows "Нет доступа" when collab rejects a participant whom the board no longer gives access', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
+
+      act(() => provider.emitAuthenticationFailed('no-access'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(provider.disconnected).toBe(true)
+    })
+
     it('shows "Нет доступа" when the owner closed the link while the participant works on the board', async () => {
       const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
       act(() => provider.emitSynced())

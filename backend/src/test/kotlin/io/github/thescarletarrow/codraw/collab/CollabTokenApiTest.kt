@@ -27,6 +27,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @IntegrationTest
@@ -97,20 +98,15 @@ class CollabTokenApiTest(
     }
 
     @Test
-    fun `the token lets the owner and users of an editable link edit`() {
-        val board = createBoard(alice)
-
-        assertEquals("edit", SignedJWT.parse(issueToken(alice, board).token).jwtClaimsSet.getStringClaim("access"))
-        assertEquals("edit", SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet.getStringClaim("access"))
-    }
-
-    @Test
-    fun `the token lets users of a link for viewing only view, while the owner still edits`() {
+    fun `issues tokens to users of a link for viewing only, which collab makes read-only`() {
         val board = createBoard(alice)
         changeLinkAccess(board, "view")
 
-        assertEquals("edit", SignedJWT.parse(issueToken(alice, board).token).jwtClaimsSet.getStringClaim("access"))
-        assertEquals("view", SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet.getStringClaim("access"))
+        val claims = SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet
+
+        assertEquals(bob.id.toString(), claims.subject)
+        // What the user may do is not in the token: collab asks for it when they connect.
+        assertNull(claims.getClaim("access"))
     }
 
     @Test

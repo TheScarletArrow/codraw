@@ -33,12 +33,12 @@ enum class LinkAccess(@get:JsonValue val value: String) {
 }
 
 /** What the user may do on a board. */
-enum class BoardRole(@get:JsonValue val value: String, val canEdit: Boolean) {
-    OWNER("owner", canEdit = true),
+enum class BoardRole(@get:JsonValue val value: String) {
+    OWNER("owner"),
 
     /** Opened the board through its link, which gives editing. */
-    EDITOR("editor", canEdit = true),
+    EDITOR("editor"),
 
     /** Opened the board through its link, which gives viewing only. */
-    VIEWER("viewer", canEdit = false),
+    VIEWER("viewer"),
 }

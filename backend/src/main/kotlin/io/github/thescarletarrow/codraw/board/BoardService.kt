@@ -36,7 +36,11 @@ class BoardService(
     fun visitedBy(userId: UUID): List<VisitedBoard> = visits.visitedBy(userId, VISITED_LIMIT)
 
     /** Gives the [board] a new [title]; renaming is a change of the board. */
-    fun rename(board: Board, title: String): Board = boards.save(board.copy(title = title, updatedAt = now()))
+    fun rename(board: Board, title: String): Board {
+        val now = now()
+        boards.rename(checkNotNull(board.id), title, now)
+        return board.copy(title = title, updatedAt = now)
+    }
 
     /** Sets what the link to the [board] gives to others; this is not a change of the board itself. */
     fun changeLinkAccess(board: Board, linkAccess: LinkAccess): Board {
