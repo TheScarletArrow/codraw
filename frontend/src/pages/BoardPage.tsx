@@ -14,7 +14,8 @@ import { participantIdentity } from '../board/identity.ts'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
-import { readRemotePresence, usePresencePublisher } from '../board/presence.ts'
+import { FollowBanner } from '../board/FollowBanner.tsx'
+import { readRemotePresence, usePresencePublisher, useRemotePresence } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
 import { VersionPreview } from '../board/VersionPreview.tsx'
@@ -155,9 +156,39 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     },
     [awareness],
   )
+  // Following another participant: their page, the middle of their view and their scale, until the viewer moves on
+  // their own. A participant who has left is followed no more.
+  const presence = useRemotePresence(awareness)
+  const [leaderId, setLeaderId] = useState<number | null>(null)
+  const leader = (leaderId !== null && presence.find((participant) => participant.clientId === leaderId)) || null
+  const stopFollowing = useCallback(() => setLeaderId(null), [])
+  useEffect(() => {
+    if (!leader?.viewport) return
+    if (leader.page !== currentPage?.id) {
+      if (pages.some((page) => page.id === leader.page)) selectPage(leader.page)
+      return
+    }
+    // Waiting for the canvas of the leader's page.
+    if (!editor || editor.pageId !== leader.page) return
+    editor.zoomTo(leader.viewport.scale)
+    editor.centerOn(leader.viewport)
+  }, [leader, editor, currentPage, pages, selectPage])
+  useEffect(() => {
+    if (!leader) return
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') stopFollowing()
+    }
+    window.document.addEventListener('keydown', handleKey)
+    return () => window.document.removeEventListener('keydown', handleKey)
+  }, [leader, stopFollowing])
   const follow = (clientId: number) => {
     const target = participants.find((participant) => participant.clientId === clientId)
     if (!target) return
+    if (presence.find((participant) => participant.clientId === clientId)?.viewport) {
+      setLeaderId(clientId)
+      return
+    }
+    // A client that publishes no view: to its page and its cursor, once.
     if (editor && target.page === editor.pageId) {
       centreOn(editor, clientId)
     } else if (pages.some((page) => page.id === target.page)) {
@@ -246,6 +277,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           pages={pages}
           currentPageId={currentPage?.id ?? null}
           onFollow={follow}
+          followingClientId={leader?.clientId ?? null}
           className="ml-auto shrink-0"
         />
         <CommentsButton
@@ -289,7 +321,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           />
         ) : (
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="relative min-h-0 flex-1">
+            <div
+              className="relative min-h-0 flex-1"
+              // Moving the canvas on one's own ends following.
+              onPointerDownCapture={leader ? stopFollowing : undefined}
+              onWheelCapture={leader ? stopFollowing : undefined}
+              style={leader ? { outline: `2px solid ${leader.color}`, outlineOffset: -2 } : undefined}
+            >
+              {leader && <FollowBanner leader={leader} onStop={stopFollowing} />}
               {document && currentPage ? (
                 <>
                   <DiagramCanvas
@@ -314,7 +353,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                 pages={pages}
                 currentPageId={currentPage?.id ?? null}
                 visitors={participants.filter((participant) => !participant.isSelf)}
-                onSelect={selectPage}
+                onSelect={(id) => {
+                  stopFollowing()
+                  selectPage(id)
+                }}
                 onAdd={() => selectPage(addPage(document, currentPage?.id))}
                 onRename={(id, name) => renamePage(document, id, name)}
                 onDuplicate={(id) => {

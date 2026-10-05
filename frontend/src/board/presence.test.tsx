@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeAwareness } from '../test/fakeProvider.ts'
 import { PresenceLayer } from './PresenceLayer.tsx'
-import { CURSOR_INTERVAL_MS, usePresencePublisher, type Awareness } from './presence.ts'
+import { CURSOR_INTERVAL_MS, readRemotePresence, usePresencePublisher, VIEW_INTERVAL_MS, type Awareness } from './presence.ts'
 
 const asAwareness = (awareness: FakeAwareness) => awareness as unknown as Awareness
 const bob = { name: 'Боб', color: '#dc2626', avatarUrl: 'https://avatars.example.com/bob.png' }
@@ -92,14 +92,39 @@ describe('usePresencePublisher', () => {
     expect(local().selection).toEqual(['a', 'b'])
   })
 
-  it('clears cursor and selection when the editor goes away', () => {
+  it('clears cursor, selection and view when the editor goes away', () => {
     const { unmount } = renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
     editor.movePointer({ x: 1, y: 1 })
     editor.select(['a'])
 
     unmount()
 
-    expect(local()).toMatchObject({ cursor: null, selection: [] })
+    expect(local()).toMatchObject({ cursor: null, selection: [], viewport: null })
+  })
+
+  it('publishes the middle of the visible area and the scale at once and at most once per interval after', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+    expect(local().viewport).toEqual({ x: 400, y: 300, scale: 1 })
+
+    editor.scrollTo({ x: 100.4, y: 50 })
+    editor.zoomTo(1.5)
+    expect(local().viewport).toEqual({ x: 400, y: 300, scale: 1 })
+
+    vi.advanceTimersByTime(VIEW_INTERVAL_MS)
+    expect(local().viewport).toEqual({ x: 500, y: 350, scale: 1.5 })
+  })
+
+  it('reads the view of others and ignores a view that is not one', () => {
+    const others = new FakeAwareness(1)
+    others.setState(2, { user: bob, viewport: { x: 10, y: 20, scale: 2 } })
+    others.setState(3, { user: { ...bob, name: 'Вера' }, viewport: { x: 'a', y: 0, scale: 1 } })
+    others.setState(4, { user: { ...bob, name: 'Гена' } })
+
+    expect(readRemotePresence(asAwareness(others)).map((participant) => participant.viewport)).toEqual([
+      { x: 10, y: 20, scale: 2 },
+      null,
+      null,
+    ])
   })
 })
 
