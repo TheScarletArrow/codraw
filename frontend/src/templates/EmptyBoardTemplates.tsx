@@ -23,7 +23,8 @@ export function EmptyBoardTemplates({ editor, onlyPage }: EmptyBoardTemplatesPro
   // A shape dragged from the palette goes through the card onto the canvas under it.
   const [dragging, setDragging] = useState(false)
   useEffect(() => {
-    const start = (event: DragEvent) => setDragging(event.dataTransfer?.types.includes(SHAPE_DRAG_TYPE) ?? false)
+    // Drags of other things, e.g. of text, may come without the types of their data.
+    const start = (event: DragEvent) => setDragging(event.dataTransfer?.types?.includes(SHAPE_DRAG_TYPE) ?? false)
     const end = () => setDragging(false)
     document.addEventListener('dragstart', start)
     document.addEventListener('dragend', end)
