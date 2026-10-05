@@ -5,7 +5,7 @@ import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { EditorToolbar } from './EditorToolbar.tsx'
 
 /** Text without font styles and with the default alignment. */
-const plainText = { fontFamily: 'Arial', bold: false, italic: false, underline: false, align: 'center' } as const
+const plainText = { fontFamily: 'Arial', bold: false, italic: false, underline: false, align: 'center', textWrap: null } as const
 
 describe('EditorToolbar', () => {
   let editor: FakeEditor
@@ -258,6 +258,26 @@ describe('EditorToolbar', () => {
     expect(autoWidth).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(autoWidth)
     expect(editor.setAutoWidth).toHaveBeenLastCalledWith(false)
+  })
+
+  it('turns the text wrap on and off', async () => {
+    act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: false, textWrap: false } }))
+    const wrap = screen.getByRole('button', { name: 'Перенос' })
+    expect(wrap).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(wrap)
+    expect(editor.setTextWrap).toHaveBeenLastCalledWith(true)
+
+    act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: false, textWrap: true } }))
+    expect(wrap).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(wrap)
+    expect(editor.setTextWrap).toHaveBeenLastCalledWith(false)
+  })
+
+  it('offers no text wrap when no selected shape allows it', () => {
+    act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: true, textWrap: null } }))
+
+    expect(screen.getByRole('button', { name: 'Автоширина' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Перенос' })).toBeNull()
   })
 
   it('offers no auto width when no selected shape allows it', () => {

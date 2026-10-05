@@ -95,3 +95,10 @@ describe('fonts in files of draw.io', () => {
     expect(parseStyle(formatStyle({ fontFamily: 'Courier New' }, 'vertex'), 'vertex').fontFamily).toBe('Courier New')
   })
 })
+
+describe('text wrap in files of draw.io', () => {
+  it('keeps the wrap of a label both ways', () => {
+    expect(parseStyle('rounded=1;whiteSpace=wrap;html=1;', 'vertex').whiteSpace).toBe('wrap')
+    expect(parseStyle(formatStyle({ whiteSpace: 'wrap' }, 'vertex'), 'vertex').whiteSpace).toBe('wrap')
+  })
+})

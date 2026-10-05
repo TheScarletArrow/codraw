@@ -52,6 +52,7 @@ describe('read-only editor', () => {
     viewer.setFontSize(32)
     viewer.stepFontSize(1)
     viewer.setAutoWidth(true)
+    viewer.setTextWrap(true)
     viewer.setGeometry({ x: 0, width: 300 })
     viewer.editLabel()
     viewer.deleteSelection()

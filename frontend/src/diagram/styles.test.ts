@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { getCells, initializeDocument, readCell } from './model.ts'
@@ -184,5 +184,69 @@ describe('line and text styles', () => {
 
     // jsdom measures no text, so the fitted width is the same; the browser makes it wider (see e2e).
     expect(text.getGeometry()!.width).toBeGreaterThanOrEqual(width)
+  })
+
+  it('wraps the labels of the selected shapes as one undo step and turns their auto width off', () => {
+    const { doc, editor, a, edge } = open()
+    const text = editor.addShape('text', { x: 100, y: 500 })!
+    editor.graph.setSelectionCells([a, text, edge])
+    expect(editor.getState().text).toMatchObject({ textWrap: false, autoWidth: false })
+
+    editor.setTextWrap(true)
+
+    expect(styleOf(doc, a.getId()!).whiteSpace).toBe('wrap')
+    expect(styleOf(doc, text.getId()!).whiteSpace).toBe('wrap')
+    expect(styleOf(doc, text.getId()!)).not.toHaveProperty('autosize')
+    expect(styleOf(doc, edge.getId()!)).not.toHaveProperty('whiteSpace')
+    expect(editor.getState().text).toMatchObject({ textWrap: true, autoWidth: false })
+    editor.undo()
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('whiteSpace')
+    expect(styleOf(doc, text.getId()!)).not.toHaveProperty('whiteSpace')
+    expect(styleOf(doc, text.getId()!).autosize).toBe(true)
+  })
+
+  it('turns the wrap off, and auto width turns it off as well', () => {
+    const { doc, editor, a } = open()
+    editor.graph.setSelectionCell(a)
+    expect(editor.graph.isWrapping(a)).toBe(false)
+    editor.setTextWrap(true)
+
+    editor.setTextWrap(false)
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('whiteSpace')
+
+    editor.setTextWrap(true)
+    editor.setAutoWidth(true)
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('whiteSpace')
+    expect(editor.getState().text).toMatchObject({ textWrap: false, autoWidth: true })
+  })
+
+  it('offers no wrap for edges, tables and their fields', () => {
+    const { editor, edge } = open()
+    const table = editor.addShape('table', { x: 700, y: 100 })!
+
+    for (const cell of [edge, table, table.getChildAt(0)]) {
+      editor.graph.setSelectionCell(cell)
+      expect(editor.getState().text?.textWrap).toBeNull()
+    }
+  })
+
+  it('lays the label of a shape with wrap out on lines that fit its width', () => {
+    // jsdom measures no text: every letter is 10 pixels wide.
+    const measuring = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      measureText: (text: string) => ({ width: text.length * 10 }),
+    } as unknown as CanvasRenderingContext2D)
+    onTestFinished(() => measuring.mockRestore())
+    const { editor, a } = open()
+    const label = () => editor.graph.getView().getState(a)!.text!.value
+    editor.graph.getDataModel().setValue(a, 'один два три четыре пять')
+    editor.graph.setSelectionCell(a)
+    expect(label()).toBe('один два три четыре пять')
+
+    editor.setTextWrap(true)
+    expect(label()).toBe('один два\nтри четыре\nпять')
+    expect(editor.graph.getEditingValue(a, null)).toBe('один два три четыре пять')
+
+    editor.setGeometry({ width: 240 })
+    expect(label()).toBe('один два три четыре\nпять')
   })
 })

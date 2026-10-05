@@ -93,3 +93,36 @@ test('the font of a shape reaches the other participant', async ({ browser }) =>
   await expect.poll(async () => (await styleOf(bob, shape))?.fontFamily).toBeUndefined()
   await close()
 })
+
+/** Widths of the lines of the label of a cell as drawn, and the width of the cell. */
+function drawnLabel(page: Page, id: string): Promise<{ width: number; lines: number[] }> {
+  return page.evaluate((id) => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const { graph } = container.__codrawEditor
+    const state = graph.getView().getState(graph.getDataModel().getCell(id))
+    const lines = [...state.text.node.querySelectorAll('text')] as SVGTextElement[]
+    return { width: state.width, lines: lines.map((line) => line.getBBox().width) }
+  }, id)
+}
+
+test('a label with text wrap is drawn on lines that fit the shape for the other participant', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const shape = await addShape(alice, 'Прямоугольник')
+  await select(alice, shape)
+  await alice.keyboard.press('F2')
+  await alice.keyboard.type('Сервис уведомлений пользователей')
+  await alice.getByTestId('diagram-canvas').click({ position: { x: 20, y: 20 } })
+  await expect.poll(async () => (await cells(bob)).find((cell) => cell.id === shape)?.value).toBe('Сервис уведомлений пользователей')
+  expect((await drawnLabel(bob, shape)).lines).toHaveLength(1)
+
+  await select(alice, shape)
+  await alice.getByRole('button', { name: 'Перенос' }).click()
+
+  await expect.poll(async () => (await drawnLabel(bob, shape)).lines.length).toBeGreaterThan(1)
+  const { width, lines } = await drawnLabel(bob, shape)
+  for (const line of lines) expect(line).toBeLessThanOrEqual(width)
+  expect((await styleOf(bob, shape))?.whiteSpace).toBe('wrap')
+  await alice.getByRole('button', { name: 'Перенос' }).click()
+  await expect.poll(async () => (await drawnLabel(bob, shape)).lines.length).toBe(1)
+  await close()
+})

@@ -29,7 +29,18 @@ import {
 import * as Y from 'yjs'
 import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
 import { fieldText, renameField, splitField } from '../sql/tableField.ts'
-import { allowsAutoWidth, anchoredX, AUTO_WIDTH_KEY, fittedWidth, hasAutoWidth, measureLabel, type Align } from './autoWidth.ts'
+import {
+  allowsAutoWidth,
+  anchoredX,
+  AUTO_WIDTH_KEY,
+  fittedWidth,
+  hasAutoWidth,
+  hasTextWrap,
+  measureLabel,
+  TEXT_WRAP_KEY,
+  wrapLabel,
+  type Align,
+} from './autoWidth.ts'
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
@@ -142,6 +153,11 @@ export interface SelectionText {
    * when no selected shape allows it.
    */
   autoWidth: boolean | null
+  /**
+   * The words of the labels of the selected shapes wrap onto lines that fit them: `true` when they do for all of them
+   * that allow it, `null` when no selected shape allows it.
+   */
+  textWrap: boolean | null
 }
 
 /** Position and size of the selected shapes; `null` for a value that differs between them. */
@@ -318,6 +334,11 @@ export interface DiagramEditor {
   setLineStyle(changes: { width?: number; dash?: LineDash; edgeShape?: EdgeShape }): void
   /** Turns on or off the width that follows the label for the selected shapes that allow it; on, it fits them at once. */
   setAutoWidth(enabled: boolean): void
+  /**
+   * Turns on or off the wrap of the words of the labels of the selected shapes that allow it, as one undo step; on, it
+   * turns their auto width off, as auto width turns the wrap off.
+   */
+  setTextWrap(enabled: boolean): void
   /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
   setGeometry(changes: Partial<Box>): void
   /** Converts a client (viewport) position to diagram coordinates. */
@@ -527,6 +548,7 @@ const CHANGING_COMMANDS = [
   'setTextAlign',
   'setLineStyle',
   'setAutoWidth',
+  'setTextWrap',
   'setGeometry',
   'undo',
   'redo',
@@ -557,6 +579,7 @@ export function createDiagramEditor(
   graph.setHtmlLabels(false)
   configureStyles(graph)
   configureTableFields(graph)
+  configureTextWrap(graph)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
   configureSelection(graph)
@@ -675,11 +698,9 @@ export function createDiagramEditor(
     return [...cells]
   }
   const fontSizeOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontSize ?? StyleDefaultsConfig.fontSize)
-  /** A shape with a size of its own: not a field, which its table places, nor a label of an edge. */
-  const isFreeShape = (cell: Cell) =>
-    cell.isVertex() && !isTable(cell.getParent()) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
   const allowsAutoWidthCell = (cell: Cell) => isFreeShape(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
+  const textWrapCells = () => graph.getSelectionCells().filter((cell) => allowsTextWrap(graph, cell))
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
   /** The cell of the page that a cell belongs to: a field to its table, a shape of a group to the group. */
   const pageCell = (cell: Cell): Cell | null => {
@@ -710,6 +731,7 @@ export function createDiagramEditor(
     const cells = textCells()
     if (cells.length === 0) return null
     const shapes = autoWidthCells()
+    const wrapping = textWrapCells()
     return {
       fontSize: same(cells.map(fontSizeOf)),
       fontFamily: same(cells.map((cell) => fontFamilyOf(graph.getCellStyle(cell)))),
@@ -718,6 +740,7 @@ export function createDiagramEditor(
       underline: hasFontStyle(cells, 'underline'),
       align: same(cells.map((cell) => alignOf(graph.getCellStyle(cell)))),
       autoWidth: shapes.length > 0 ? shapes.every((cell) => hasAutoWidth(cell.getStyle())) : null,
+      textWrap: wrapping.length > 0 ? wrapping.every((cell) => hasTextWrap(cell.getStyle())) : null,
     }
   }
   const selectionLine = (): SelectionLine | null => {
@@ -1588,7 +1611,17 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleValue(cells, AUTO_WIDTH_KEY, enabled ? true : undefined)
+        if (enabled) setStyleValue(cells, TEXT_WRAP_KEY, undefined)
         fitAutoWidth(cells)
+      })
+    },
+    setTextWrap(enabled) {
+      const cells = textWrapCells()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue(cells, TEXT_WRAP_KEY, enabled ? 'wrap' : undefined)
+        if (enabled) setStyleValue(cells, AUTO_WIDTH_KEY, undefined)
       })
     },
     setGeometry({ x, y, width, height }) {
@@ -1773,6 +1806,16 @@ function alignOf(style: CellStyle): Align {
   return style.align === 'left' || style.align === 'right' ? style.align : 'center'
 }
 
+/** A shape with a size of its own: not a field, which its table places, nor a label of an edge. */
+function isFreeShape(cell: Cell): boolean {
+  return cell.isVertex() && !isTable(cell.getParent()) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
+}
+
+/** A shape whose words may wrap: one that allows auto width, but not a table, whose name and fields are a line each. */
+function allowsTextWrap(graph: Graph, cell: Cell): boolean {
+  return isFreeShape(cell) && !isTable(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+}
+
 function isTable(cell: Cell | null): boolean {
   return cell?.isVertex() === true && isTableStyle(cell.getStyle() as ShapeStyle)
 }
@@ -1906,6 +1949,20 @@ function configureTableFields(graph: Graph) {
     cellLabelChanged(cell, isColumnField(cell) ? renameField(String(cell.getValue() ?? ''), String(value ?? '')) : value, autoSize)
 }
 
+/**
+ * maxGraph wraps only labels in HTML, and labels here are plain text: the label of a shape with text wrap is shown in
+ * the lines that fit its width. The value and the edited text stay as the participant wrote them.
+ */
+function configureTextWrap(graph: Graph) {
+  const getLabel = graph.getLabel.bind(graph)
+  graph.getLabel = (cell) => {
+    const label = getLabel(cell)
+    return label && cell && hasTextWrap(cell.getStyle()) && allowsTextWrap(graph, cell)
+      ? wrapLabel(label, graph.getCellStyle(cell), cell.getGeometry()!.width)
+      : label
+  }
+}
+
 function configureStyles(graph: Graph) {
   const stylesheet = graph.getStylesheet()
   Object.assign(stylesheet.getDefaultVertexStyle(), {
@@ -1913,7 +1970,6 @@ function configureStyles(graph: Graph) {
     strokeColor: '#1f2328',
     fontColor: '#1f2328',
     fontSize: 13,
-    whiteSpace: 'wrap',
   })
   Object.assign(stylesheet.getDefaultEdgeStyle(), {
     edgeStyle: 'orthogonalEdgeStyle',

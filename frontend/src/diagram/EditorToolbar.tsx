@@ -8,6 +8,7 @@ import {
   Italic,
   Maximize,
   Redo2,
+  TextWrap,
   Underline,
   Undo2,
   UnfoldHorizontal,
@@ -265,6 +266,20 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
         >
           <UnfoldHorizontal />
           Автоширина
+        </Button>
+      )}
+      {text.textWrap !== null && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={text.textWrap}
+          title="Перенос: слова подписи переносятся по ширине фигуры"
+          className={cn(text.textWrap && 'bg-accent text-accent-foreground')}
+          onClick={() => editor?.setTextWrap(!text.textWrap)}
+        >
+          <TextWrap />
+          Перенос
         </Button>
       )}
     </>

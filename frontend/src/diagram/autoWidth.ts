@@ -4,6 +4,9 @@ import { DEFAULT_FONT_SIZE } from './textSize.ts'
 /** Style key of auto width. draw.io has the same key for fitting a shape to its label, so files keep it. */
 export const AUTO_WIDTH_KEY = 'autosize'
 
+/** Style key of text wrap: draw.io wraps the words of a label with `whiteSpace=wrap`. */
+export const TEXT_WRAP_KEY = 'whiteSpace'
+
 /** Font of labels without their own, as in maxGraph. */
 export const DEFAULT_FONT_FAMILY = 'Arial,Helvetica,sans-serif'
 
@@ -28,6 +31,11 @@ export type Align = 'left' | 'center' | 'right'
 export function hasAutoWidth(style: Record<string, unknown>): boolean {
   const value = style[AUTO_WIDTH_KEY]
   return value === true || value === 1 || value === '1'
+}
+
+/** The words of the label wrap onto lines that fit the shape; auto width, which fits the shape to the lines, wins. */
+export function hasTextWrap(style: Record<string, unknown>): boolean {
+  return style[TEXT_WRAP_KEY] === 'wrap' && !hasAutoWidth(style)
 }
 
 /**
@@ -78,4 +86,44 @@ export function measureLabel(text: string, style: LabelStyle): number {
   if (!measuring) return 0
   measuring.font = cssFont(style)
   return Math.max(0, ...text.split('\n').map((line) => measuring.measureText(line).width))
+}
+
+/**
+ * The label of a shape `width` wide with its words on lines that fit the room {@link fittedWidth} leaves for the text.
+ * The lines of the label stay; a word longer than a line is broken between its letters.
+ */
+export function wrapLabel(text: string, style: LabelStyle, width: number): string {
+  const spacing = numeric(style.spacing, DEFAULT_SPACING)
+  const room = width - 2 * spacing - numeric(style.spacingLeft, 0) - numeric(style.spacingRight, 0) - 2 * MARGIN
+  const fits = (line: string) => measureLabel(line, style) <= room
+  return text
+    .split('\n')
+    .flatMap((line) => (fits(line) ? [line] : wrapLine(line, fits)))
+    .join('\n')
+}
+
+function wrapLine(line: string, fits: (line: string) => boolean): string[] {
+  const lines: string[] = []
+  let current = ''
+  for (const word of line.split(' ').filter(Boolean)) {
+    const joined = current ? `${current} ${word}` : word
+    if (fits(joined)) {
+      current = joined
+      continue
+    }
+    if (current) lines.push(current)
+    current = ''
+    if (fits(word)) {
+      current = word
+      continue
+    }
+    for (const letter of word) {
+      if (current && !fits(current + letter)) {
+        lines.push(current)
+        current = ''
+      }
+      current += letter
+    }
+  }
+  return [...lines, current]
 }

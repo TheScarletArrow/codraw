@@ -105,6 +105,7 @@ export function createFakeEditor({
     setTextAlign: vi.fn(),
     setLineStyle: vi.fn(),
     setAutoWidth: vi.fn(),
+    setTextWrap: vi.fn(),
     setGeometry: vi.fn(),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
     toCanvasPoint: ({ x, y }) => ({ x: x - offset.x, y: y - offset.y }),
