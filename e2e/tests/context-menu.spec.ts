@@ -125,7 +125,8 @@ test('a right click on one of the selected shapes keeps the whole selection', as
 
   await rightClick(page, center(await cellBox(page, service)))
 
-  expect((await menuLabels(page))[0]).toBe('Вырезать')
+  // The menu of several elements: grouping first.
+  expect((await menuLabels(page)).slice(0, 2)).toEqual(['Сгруппировать', 'Вырезать'])
   expect((await selectedIds(page)).sort()).toEqual([service, database].sort())
 
   await page.context().close()

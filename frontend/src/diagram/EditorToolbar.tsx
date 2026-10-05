@@ -6,6 +6,7 @@ import {
   AlignRight,
   Bold,
   Italic,
+  Maximize,
   Plus,
   Redo2,
   Underline,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { ArrangePicker } from './ArrangePicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
@@ -98,6 +100,17 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
       >
         <ZoomIn />
       </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Показать всё"
+        title="Показать всё (Ctrl+Shift+H)"
+        disabled={!editor}
+        onClick={() => editor?.zoomToFit()}
+      >
+        <Maximize />
+      </Button>
       {!readOnly && <EditingTools editor={editor} />}
     </div>
   )
@@ -105,7 +118,7 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
 
 /** Tools that change the selected objects. */
 function EditingTools({ editor }: { editor: DiagramEditor | null }) {
-  const { tableSelected, edgeMarkers, colors, line, text, geometry } = useEditorState(editor)
+  const { tableSelected, edgeMarkers, colors, line, text, geometry, arrange } = useEditorState(editor)
 
   return (
     <>
@@ -148,6 +161,13 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
       {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
       {text && <TextTools text={text} editor={editor} />}
       {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
+      {arrange >= 2 && (
+        <ArrangePicker
+          count={arrange}
+          onAlign={(align) => editor?.alignShapes(align)}
+          onDistribute={(direction) => editor?.distributeShapes(direction)}
+        />
+      )}
       {edgeMarkers && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />

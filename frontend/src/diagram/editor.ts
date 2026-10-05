@@ -3,6 +3,7 @@ import {
   CellEditorHandler,
   Client,
   ConnectionHandler,
+  FitPlugin,
   Geometry,
   Graph,
   GraphDataModel,
@@ -91,6 +92,11 @@ export type TextAlign = 'left' | 'center' | 'right'
 
 export type FontStyleFlag = 'bold' | 'italic' | 'underline'
 
+/** Which side or centre line of the selected area the shapes line up on. */
+export type ShapeAlign = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+
+export type Direction = 'horizontal' | 'vertical'
+
 /** Lines of the selected objects; `null` for a value that differs between them. */
 export interface SelectionLine {
   width: number | null
@@ -153,6 +159,12 @@ export interface EditorState {
   quickConnect: QuickConnectSource | null
   /** The clipboard of the browser tab holds something to paste. */
   canPaste: boolean
+  /** Number of selected shapes that can be aligned and distributed: shapes of their own, not fields of tables. */
+  arrange: number
+  /** At least two selected shapes or edges of one parent can become a group. */
+  canGroup: boolean
+  /** A group is selected. */
+  canUngroup: boolean
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -195,6 +207,14 @@ export interface DiagramEditor {
   selectAll(): void
   /** Swaps the ends of the selected edge with its bend points, as one undo step. */
   reverseEdge(): void
+  /** Lines the selected shapes up on a side or a centre line of the area they cover, as one undo step. */
+  alignShapes(align: ShapeAlign): void
+  /** Spaces at least three selected shapes evenly between the outermost ones, as one undo step. */
+  distributeShapes(direction: Direction): void
+  /** Puts the selected shapes of one parent and the edges between them into a new group and selects it. */
+  group(): Cell | null
+  /** Moves the shapes of the selected groups back to the page in their places and selects them. */
+  ungroup(): void
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
@@ -246,6 +266,8 @@ export interface DiagramEditor {
   zoomIn(): void
   zoomOut(): void
   zoomActual(): void
+  /** Scales and scrolls the canvas so that the whole page is visible, at most at 100%. */
+  zoomToFit(): void
   getState(): EditorState
   /** Calls `listener` whenever {@link getState} changes; returns an unsubscribe function. */
   subscribe(listener: () => void): () => void
@@ -272,6 +294,17 @@ export const MAX_LINE_WIDTH = 20
 /** Pattern of a dotted line: dashes of one width with gaps of two, in widths of the line. */
 const DOTTED_PATTERN = '1 2'
 
+/** Style of a group: the `group` style of draw.io, a container without a fill and a border. */
+const GROUP_STYLE = {
+  fillColor: 'none',
+  strokeColor: 'none',
+  verticalAlign: 'top',
+  pointerEvents: false,
+} as const satisfies CellStyle
+
+/** Margin around the page when it is fitted into the canvas, in pixels. */
+const FIT_MARGIN = 20
+
 /** Bits of the `fontStyle` style key. */
 const FONT_STYLE_BITS: Record<FontStyleFlag, number> = { bold: 1, italic: 2, underline: 4 }
 
@@ -284,6 +317,8 @@ const KEY_A = 65
 const KEY_B = 66
 const KEY_C = 67
 const KEY_D = 68
+const KEY_G = 71
+const KEY_H = 72
 const KEY_I = 73
 const KEY_U = 85
 const KEY_V = 86
@@ -321,6 +356,10 @@ const CHANGING_COMMANDS = [
   'bringToFront',
   'sendToBack',
   'reverseEdge',
+  'alignShapes',
+  'distributeShapes',
+  'group',
+  'ungroup',
   'editLabel',
   'deleteSelection',
   'setEdgeMarker',
@@ -362,6 +401,11 @@ export function createDiagramEditor(
   configureConnections(graph)
   configureSelection(graph)
   configureRegionSelection(graph)
+  // Resizing a group scales what it holds, as in draw.io; tables lay their fields out themselves.
+  graph.isRecursiveResize = (state?: CellState | null) => !!state && isGroup(state.cell)
+  const fitter = graph.getPlugin<FitPlugin>('fit')
+  // A small diagram is not blown up.
+  if (fitter) fitter.maxFitScale = 1
   if (readOnly) {
     // Locked cells cannot be moved, resized, bent or disconnected.
     graph.setCellsLocked(true)
@@ -435,6 +479,14 @@ export function createDiagramEditor(
   const allowsAutoWidthCell = (cell: Cell) => isFreeShape(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
+  /** Selected cells that can become a group: those of the parent of the first one, fields of tables aside. */
+  const groupableCells = (): Cell[] => {
+    const cells = graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()))
+    const parent = cells[0]?.getParent()
+    if (!parent) return []
+    return cells.filter((cell) => cell.getParent() === parent).sort((a, b) => parent.getIndex(a) - parent.getIndex(b))
+  }
+  const canGroup = () => groupableCells().filter((cell) => cell.isVertex()).length >= 2
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -576,6 +628,9 @@ export function createDiagramEditor(
       geometry: selectionGeometry(),
       quickConnect: readOnly ? null : quickConnect(),
       canPaste: !readOnly && clipboard.read() !== null,
+      arrange: geometryCells().length,
+      canGroup: !readOnly && canGroup(),
+      canUngroup: !readOnly && graph.getSelectionCells().some(isGroup),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -622,7 +677,11 @@ export function createDiagramEditor(
     keyHandler.bindControlKey(KEY_B, () => editor.toggleFontStyle('bold'))
     keyHandler.bindControlKey(KEY_I, () => editor.toggleFontStyle('italic'))
     keyHandler.bindControlKey(KEY_U, () => editor.toggleFontStyle('underline'))
+    keyHandler.bindControlKey(KEY_G, () => editor.group())
+    keyHandler.bindControlShiftKey(KEY_G, () => editor.ungroup())
   }
+  // The scale is the participant's own, so a participant who may only view fits the page too.
+  keyHandler.bindControlShiftKey(KEY_H, () => editor.zoomToFit())
 
   // maxGraph cancels pointerdown, so the canvas would not take focus and its keyboard shortcuts would
   // not work after clicking a palette button. The in-place label editor keeps its own focus.
@@ -674,6 +733,7 @@ export function createDiagramEditor(
     const cell = cells[0]!
     if (cell.isEdge()) return 'edge'
     if (isTable(cell.getParent())) return 'field'
+    if (isGroup(cell)) return 'group'
     return isTable(cell) ? 'table' : 'shape'
   }
   // maxGraph decides when a right click is a menu click (not panning), and selects the cell under the pointer
@@ -748,9 +808,15 @@ export function createDiagramEditor(
     return cell
   }
 
-  /** The selection with fields replaced by their tables, and the edges of the page between those shapes. */
+  /** The selection with fields and shapes of groups replaced by their tables and groups, and the edges between them. */
   const cellsToCopy = (): Cell[] => {
-    const owner = (cell: Cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)
+    const layer = graph.getDefaultParent()
+    // The ancestor on the page: a field belongs to its table, a shape of a group to the group.
+    const owner = (cell: Cell) => {
+      let current = cell
+      while (current.getParent() && current.getParent() !== layer) current = current.getParent()!
+      return current
+    }
     const shapes = new Set(
       graph
         .getSelectionCells()
@@ -902,6 +968,55 @@ export function createDiagramEditor(
     selectAll() {
       graph.stopEditing(false)
       graph.selectAll()
+    },
+    alignShapes(align) {
+      const cells = geometryCells()
+      if (cells.length < 2) return
+      graph.stopEditing(false)
+      graph.alignCells(align, cells)
+    },
+    distributeShapes(direction) {
+      const cells = geometryCells()
+      if (cells.length < 3) return
+      const horizontal = direction === 'horizontal'
+      const start = (geometry: Geometry) => (horizontal ? geometry.x : geometry.y)
+      const size = (geometry: Geometry) => (horizontal ? geometry.width : geometry.height)
+      const sorted = [...cells].sort((a, b) => start(a.getGeometry()!) - start(b.getGeometry()!))
+      const first = sorted[0]!.getGeometry()!
+      const last = sorted.at(-1)!.getGeometry()!
+      const sizes = sorted.reduce((sum, cell) => sum + size(cell.getGeometry()!), 0)
+      // Equal gaps rather than equal steps of centres: shapes of different sizes look even.
+      const gap = (start(last) + size(last) - start(first) - sizes) / (sorted.length - 1)
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        let position = start(first) + size(first) + gap
+        for (const cell of sorted.slice(1, -1)) {
+          const moved = cell.getGeometry()!.clone()
+          if (horizontal) moved.x = position
+          else moved.y = position
+          model.setGeometry(cell, moved)
+          position += size(moved) + gap
+        }
+      })
+    },
+    group() {
+      if (!canGroup()) return null
+      graph.stopEditing(false)
+      const group = new Cell('', new Geometry(), { ...GROUP_STYLE })
+      group.setVertex(true)
+      group.setConnectable(false)
+      // maxGraph moves the cells into the group relative to it, and edges between them follow (maintainEdgeParent).
+      graph.groupCells(group, 0, groupableCells())
+      graph.setSelectionCell(group)
+      container.focus({ preventScroll: true })
+      return group
+    },
+    ungroup() {
+      const groups = graph.getSelectionCells().filter(isGroup)
+      if (groups.length === 0) return
+      graph.stopEditing(false)
+      graph.setSelectionCells(graph.ungroupCells(groups))
+      container.focus({ preventScroll: true })
     },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
@@ -1088,6 +1203,10 @@ export function createDiagramEditor(
     zoomIn: () => graph.zoomIn(),
     zoomOut: () => graph.zoomOut(),
     zoomActual: () => graph.zoomActual(),
+    zoomToFit() {
+      fitter?.fit({ margin: FIT_MARGIN })
+      notifyView()
+    },
     getState: () => state,
     subscribe: (listener) => listen(listeners, listener),
     destroy() {
@@ -1172,6 +1291,16 @@ function isTable(cell: Cell | null): boolean {
 }
 
 /**
+ * A group: a container of shapes without a fill and a border, like the groups of draw.io. Tables, and containers of
+ * draw.io with a fill or a border, are not groups.
+ */
+export function isGroup(cell: Cell | null): boolean {
+  if (!cell?.isVertex() || cell.getChildCount() === 0 || isTable(cell)) return false
+  const style = cell.getStyle()
+  return style.fillColor === 'none' && style.strokeColor === 'none'
+}
+
+/**
  * Stacks the fields of a table under its header in the order of the cells, across the whole width of the table,
  * and fits the table height to them.
  */
@@ -1229,7 +1358,8 @@ function configureRegionSelection(graph: Graph) {
           const points = state.absolutePoints.filter((point) => point !== null)
           return touchedByRegion(region, { kind: 'edge', box: state, points })
         }
-        const frame = (cell.getStyle() as ShapeStyle).pointerEvents === false
+        // Groups let clicks through their empty space like frames do, but the selection frame takes them like shapes.
+        const frame = !isGroup(cell) && (cell.getStyle() as ShapeStyle).pointerEvents === false
         return touchedByRegion(region, { kind: frame ? 'frame' : 'shape', box: state })
       })
     graph.selectCellsForEvent(cells, event)

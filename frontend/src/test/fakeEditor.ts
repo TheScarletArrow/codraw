@@ -39,6 +39,9 @@ export function createFakeEditor({
     geometry: null,
     quickConnect: null,
     canPaste: false,
+    arrange: 0,
+    canGroup: false,
+    canUngroup: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -74,6 +77,10 @@ export function createFakeEditor({
     sendToBack: vi.fn(),
     selectAll: vi.fn(),
     reverseEdge: vi.fn(),
+    alignShapes: vi.fn(),
+    distributeShapes: vi.fn(),
+    group: vi.fn(() => null),
+    ungroup: vi.fn(),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),
@@ -108,6 +115,7 @@ export function createFakeEditor({
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
     zoomActual: vi.fn(),
+    zoomToFit: vi.fn(),
     getState: () => state,
     subscribe: (listener) => listen(listeners, listener),
     destroy: vi.fn(),

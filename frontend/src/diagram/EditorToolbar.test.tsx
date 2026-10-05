@@ -122,6 +122,27 @@ describe('EditorToolbar', () => {
     expect(editor.setTextAlign).toHaveBeenCalledWith('right')
   })
 
+  it('fits the page into the canvas', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Показать всё' }))
+
+    expect(editor.zoomToFit).toHaveBeenCalled()
+  })
+
+  it('aligns two selected shapes and distributes three', async () => {
+    expect(screen.queryByRole('button', { name: 'Выравнивание' })).toBeNull()
+    act(() => editor.setState({ arrange: 2 }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Выравнивание' }))
+    const panel = screen.getByRole('dialog', { name: 'Выравнивание' })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Выровнять по верхнему краю' }))
+    expect(editor.alignShapes).toHaveBeenCalledWith('top')
+    expect(within(panel).getByRole('button', { name: 'Распределить по горизонтали' })).toBeDisabled()
+
+    act(() => editor.setState({ arrange: 3 }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Распределить по вертикали' }))
+    expect(editor.distributeShapes).toHaveBeenCalledWith('vertical')
+  })
+
   it('shows the text size of the selection and changes it', async () => {
     act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: false } }))
 
@@ -208,7 +229,7 @@ describe('EditorToolbar', () => {
       within(toolbar)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить'])
+    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё'])
     expect(within(toolbar).queryByRole('combobox')).toBeNull()
     expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
   })
