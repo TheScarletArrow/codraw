@@ -50,7 +50,8 @@ describe('BoardsPage', () => {
     renderRoutes(routes)
 
     await screen.findByRole('link', { name: 'Свежая' })
-    const links = screen.getAllByRole('link')
+    // Links of the boards, not those to the documents at the bottom.
+    const links = screen.getAllByRole('link').filter((link) => !link.closest('nav'))
     expect(links.map((link) => link.textContent)).toEqual(['Свежая', 'Старая'])
     expect(links[0]).toHaveAttribute('href', '/boards/b')
   })
@@ -160,6 +161,15 @@ describe('BoardsPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл draw.io')
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+  })
+
+  it('links to the terms of use and the privacy policy at the bottom', async () => {
+    mockFetch({ 'GET /api/boards': { body: [] } })
+    renderRoutes(routes)
+
+    const documents = await screen.findByRole('navigation', { name: 'Документы' })
+    expect(within(documents).getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+    expect(within(documents).getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute('href', '/privacy')
   })
 
   it('lists the boards opened through links with their owners, without the menu of the owner', async () => {

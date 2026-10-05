@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.security
 
 import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
+import io.github.thescarletarrow.codraw.legal.LegalController
 import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.GuestLoginController
 import io.github.thescarletarrow.codraw.user.UserService
@@ -56,6 +57,8 @@ class SecurityConfiguration {
                 authorize(HttpMethod.POST, GuestLoginController.PATH, permitAll)
               // The login page breaks too: its errors are reported without a sign-in.
               authorize(HttpMethod.POST, ClientErrorController.PATH, permitAll)
+              // The privacy policy and the terms of use are read before signing in.
+              authorize(HttpMethod.GET, LegalController.PATH, permitAll)
                 authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)
             }

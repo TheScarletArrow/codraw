@@ -151,6 +151,15 @@ export function BoardsPage() {
           </ul>
         </section>
       )}
+
+      <nav aria-label="Документы" className="mt-10 flex flex-wrap gap-4 border-t pt-4 text-sm text-muted-foreground">
+        <Link to="/terms" className="underline">
+          Условия использования
+        </Link>
+        <Link to="/privacy" className="underline">
+          Политика конфиденциальности
+        </Link>
+      </nav>
     </section>
   )
 }

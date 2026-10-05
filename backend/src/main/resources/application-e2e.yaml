@@ -16,3 +16,6 @@ codraw:
     # Test users keep the boards of all runs, and every test signs in from the same address.
     boards-per-user: 1000000
     guests-per-address-per-hour: 1000000
+  legal:
+    operator: Команда CoDraw
+    contact-email: privacy@codraw.test
