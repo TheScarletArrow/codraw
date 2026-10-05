@@ -80,10 +80,36 @@ export interface SelectionColors {
   hasShapes: boolean
 }
 
+/** How a line is drawn: whole, in dashes or in dots. */
+export type LineDash = 'solid' | 'dashed' | 'dotted'
+
+/** How an edge goes from its source to its target. */
+export type EdgeShape = 'straight' | 'orthogonal' | 'curved'
+
+/** Where the text of a label is in its shape. */
+export type TextAlign = 'left' | 'center' | 'right'
+
+export type FontStyleFlag = 'bold' | 'italic' | 'underline'
+
+/** Lines of the selected objects; `null` for a value that differs between them. */
+export interface SelectionLine {
+  width: number | null
+  dash: LineDash | null
+  /** Shape of the selected edges; `null` without edges, when it differs, or for a routing CoDraw does not offer. */
+  edgeShape: EdgeShape | null
+  hasEdges: boolean
+}
+
 /** Text of the selected objects. */
 export interface SelectionText {
   /** Size of the text; `null` when it differs between the selected objects. */
   fontSize: number | null
+  /** Every selected object has the text bold, italic or underlined. */
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  /** Alignment of the text; `null` when it differs between the selected objects. */
+  align: TextAlign | null
   /**
    * The width of the selected shapes follows their labels: `true` when it does for all of them that allow it, `null`
    * when no selected shape allows it.
@@ -117,6 +143,8 @@ export interface EditorState {
   edgeMarkers: EdgeMarkers | null
   /** Colors of the selection, or `null` when nothing is selected. */
   colors: SelectionColors | null
+  /** Lines of the selection, or `null` when nothing is selected. */
+  line: SelectionLine | null
   /** Text of the selection, or `null` when nothing is selected. */
   text: SelectionText | null
   /** Position and size of the selected shapes, or `null` when no shape is selected; fields are not shapes here. */
@@ -182,6 +210,15 @@ export interface DiagramEditor {
   setFontSize(size: number): void
   /** Makes the text of each object {@link setFontSize} would change one size of the row larger or smaller. */
   stepFontSize(direction: 1 | -1): void
+  /**
+   * Turns a font style on for the objects {@link setFontSize} would change, or off when all of them have it, as one undo
+   * step.
+   */
+  toggleFontStyle(flag: FontStyleFlag): void
+  /** Aligns the text of the objects {@link setFontSize} would change, as one undo step. */
+  setTextAlign(align: TextAlign): void
+  /** Sets the width or the dash of the lines of the selected objects, or the shape of the selected edges, as one undo step. */
+  setLineStyle(changes: { width?: number; dash?: LineDash; edgeShape?: EdgeShape }): void
   /** Turns on or off the width that follows the label for the selected shapes that allow it; on, it fits them at once. */
   setAutoWidth(enabled: boolean): void
   /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
@@ -228,14 +265,27 @@ const CONNECT_ICON = new ImageBox(
 /** The smallest width and height of a shape that can be typed in. */
 export const MIN_SHAPE_SIZE = 10
 
+/** Limits of the width of a line. */
+export const MIN_LINE_WIDTH = 1
+export const MAX_LINE_WIDTH = 20
+
+/** Pattern of a dotted line: dashes of one width with gaps of two, in widths of the line. */
+const DOTTED_PATTERN = '1 2'
+
+/** Bits of the `fontStyle` style key. */
+const FONT_STYLE_BITS: Record<FontStyleFlag, number> = { bold: 1, italic: 2, underline: 4 }
+
 /** Property of the canvas element that exposes the editor to end-to-end tests. */
 export const EDITOR_PROPERTY = '__codrawEditor'
 
 const KEY_BACKSPACE = 8
 const KEY_DELETE = 46
 const KEY_A = 65
+const KEY_B = 66
 const KEY_C = 67
 const KEY_D = 68
+const KEY_I = 73
+const KEY_U = 85
 const KEY_V = 86
 const KEY_X = 88
 const KEY_Y = 89
@@ -277,6 +327,9 @@ const CHANGING_COMMANDS = [
   'setColor',
   'setFontSize',
   'stepFontSize',
+  'toggleFontStyle',
+  'setTextAlign',
+  'setLineStyle',
   'setAutoWidth',
   'setGeometry',
   'undo',
@@ -382,13 +435,31 @@ export function createDiagramEditor(
   const allowsAutoWidthCell = (cell: Cell) => isFreeShape(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
+  const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
+  const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
+    cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
   const selectionText = (): SelectionText | null => {
     const cells = textCells()
     if (cells.length === 0) return null
     const shapes = autoWidthCells()
     return {
       fontSize: same(cells.map(fontSizeOf)),
+      bold: hasFontStyle(cells, 'bold'),
+      italic: hasFontStyle(cells, 'italic'),
+      underline: hasFontStyle(cells, 'underline'),
+      align: same(cells.map((cell) => alignOf(graph.getCellStyle(cell)))),
       autoWidth: shapes.length > 0 ? shapes.every((cell) => hasAutoWidth(cell.getStyle())) : null,
+    }
+  }
+  const selectionLine = (): SelectionLine | null => {
+    const cells = graph.getSelectionCells()
+    if (cells.length === 0) return null
+    const edges = cells.filter((cell) => cell.isEdge())
+    return {
+      width: same(cells.map(lineWidthOf)),
+      dash: same(cells.map(lineDashOf)),
+      edgeShape: edges.length > 0 ? same(edges.map(edgeShapeOf)) : null,
+      hasEdges: edges.length > 0,
     }
   }
   const selectionGeometry = (): SelectionGeometry | null => {
@@ -500,6 +571,7 @@ export function createDiagramEditor(
       tableSelected: selectedTable() !== null,
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
+      line: selectionLine(),
       text: selectionText(),
       geometry: selectionGeometry(),
       quickConnect: readOnly ? null : quickConnect(),
@@ -547,6 +619,9 @@ export function createDiagramEditor(
     keyHandler.bindControlKey(KEY_V, () => editor.paste())
     keyHandler.bindControlKey(KEY_D, () => editor.duplicate())
     keyHandler.bindKey(KEY_F2, () => editor.editLabel())
+    keyHandler.bindControlKey(KEY_B, () => editor.toggleFontStyle('bold'))
+    keyHandler.bindControlKey(KEY_I, () => editor.toggleFontStyle('italic'))
+    keyHandler.bindControlKey(KEY_U, () => editor.toggleFontStyle('underline'))
   }
 
   // maxGraph cancels pointerdown, so the canvas would not take focus and its keyboard shortcuts would
@@ -888,6 +963,50 @@ export function createDiagramEditor(
     stepFontSize(direction) {
       applyFontSizes(textCells(), (cell) => nextFontSize(fontSizeOf(cell), direction))
     },
+    toggleFontStyle(flag) {
+      const cells = textCells()
+      if (cells.length === 0) return
+      const bit = FONT_STYLE_BITS[flag]
+      const on = !hasFontStyle(cells, flag)
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        for (const cell of cells) {
+          const next = on ? fontStyleOf(cell) | bit : fontStyleOf(cell) & ~bit
+          setStyleValue([cell], 'fontStyle', next === 0 ? undefined : next)
+        }
+        // Bold and italic text is wider.
+        fitAutoWidth(cells)
+      })
+    },
+    setTextAlign(align) {
+      const cells = textCells()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      // Centred is the default of shapes and edges; fields of tables store their left alignment.
+      setStyleValue(cells, 'align', align === 'center' ? undefined : align)
+    },
+    setLineStyle({ width, dash, edgeShape }) {
+      const cells = graph.getSelectionCells()
+      if (cells.length === 0) return
+      graph.stopEditing(false)
+      // Default values are kept by removing their keys, as draw.io does.
+      model.batchUpdate(() => {
+        if (width !== undefined) {
+          const clamped = Math.min(MAX_LINE_WIDTH, Math.max(MIN_LINE_WIDTH, width))
+          setStyleValue(cells, 'strokeWidth', clamped === MIN_LINE_WIDTH ? undefined : clamped)
+        }
+        if (dash !== undefined) {
+          setStyleValue(cells, 'dashed', dash === 'solid' ? undefined : true)
+          setStyleValue(cells, 'dashPattern', dash === 'dotted' ? DOTTED_PATTERN : undefined)
+        }
+        const edges = cells.filter((cell) => cell.isEdge())
+        if (edgeShape !== undefined && edges.length > 0) {
+          // Without edgeStyle an edge follows the orthogonal default of CoDraw.
+          setStyleValue(edges, 'edgeStyle', edgeShape === 'straight' ? 'none' : undefined)
+          setStyleValue(edges, 'curved', edgeShape === 'curved' ? true : undefined)
+        }
+      })
+    },
     setAutoWidth(enabled) {
       const cells = autoWidthCells()
       if (cells.length === 0) return
@@ -1009,6 +1128,24 @@ export function createDiagramEditor(
 }
 
 const COLOR_KEYS = { fill: 'fillColor', stroke: 'strokeColor', font: 'fontColor' } as const
+
+function lineWidthOf(cell: Cell): number {
+  return Number(cell.getStyle().strokeWidth ?? MIN_LINE_WIDTH)
+}
+
+function lineDashOf(cell: Cell): LineDash {
+  const style = cell.getStyle()
+  if (!style.dashed) return 'solid'
+  return style.dashPattern === DOTTED_PATTERN ? 'dotted' : 'dashed'
+}
+
+/** The shape of an edge, or `null` for a routing of draw.io that CoDraw does not offer, e.g. `elbowEdgeStyle`. */
+function edgeShapeOf(edge: Cell): EdgeShape | null {
+  const style = edge.getStyle()
+  if (style.curved) return 'curved'
+  if (style.edgeStyle === 'none') return 'straight'
+  return style.edgeStyle === undefined || style.edgeStyle === 'orthogonalEdgeStyle' ? 'orthogonal' : null
+}
 
 /** Style keys of where an edge leaves its source and enters its target; reversing the edge swaps them. */
 const END_STYLE_KEYS = [

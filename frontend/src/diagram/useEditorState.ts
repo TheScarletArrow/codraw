@@ -8,6 +8,7 @@ const NO_EDITOR: EditorState = {
   tableSelected: false,
   edgeMarkers: null,
   colors: null,
+  line: null,
   text: null,
   geometry: null,
   quickConnect: null,

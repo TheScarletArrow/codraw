@@ -1,10 +1,27 @@
-import { AArrowDown, AArrowUp, Plus, Redo2, Undo2, UnfoldHorizontal, ZoomIn, ZoomOut } from 'lucide-react'
+import {
+  AArrowDown,
+  AArrowUp,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Italic,
+  Plus,
+  Redo2,
+  Underline,
+  Undo2,
+  UnfoldHorizontal,
+  ZoomIn,
+  ZoomOut,
+  type LucideIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ColorPicker } from './ColorPicker.tsx'
-import type { DiagramEditor, EdgeEnd, SelectionText } from './editor.ts'
+import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
+import { LineStylePicker } from './LineStylePicker.tsx'
 import { NumberField } from './NumberField.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
@@ -88,7 +105,7 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
 
 /** Tools that change the selected objects. */
 function EditingTools({ editor }: { editor: DiagramEditor | null }) {
-  const { tableSelected, edgeMarkers, colors, text, geometry } = useEditorState(editor)
+  const { tableSelected, edgeMarkers, colors, line, text, geometry } = useEditorState(editor)
 
   return (
     <>
@@ -128,6 +145,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
           />
         </>
       )}
+      {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
       {text && <TextTools text={text} editor={editor} />}
       {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
       {edgeMarkers && (
@@ -141,7 +159,22 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
   )
 }
 
-/** Text size of the selected objects, and the width of the selected shapes that follows their labels. */
+const FONT_STYLES: { flag: FontStyleFlag; label: string; shortcut: string; icon: LucideIcon }[] = [
+  { flag: 'bold', label: 'Жирный', shortcut: 'Ctrl+B', icon: Bold },
+  { flag: 'italic', label: 'Курсив', shortcut: 'Ctrl+I', icon: Italic },
+  { flag: 'underline', label: 'Подчёркнутый', shortcut: 'Ctrl+U', icon: Underline },
+]
+
+const TEXT_ALIGNS: { align: TextAlign; label: string; icon: LucideIcon }[] = [
+  { align: 'left', label: 'Текст по левому краю', icon: AlignLeft },
+  { align: 'center', label: 'Текст по центру', icon: AlignCenter },
+  { align: 'right', label: 'Текст по правому краю', icon: AlignRight },
+]
+
+/**
+ * Size, font styles and alignment of the text of the selected objects, and the width of the selected shapes that
+ * follows their labels.
+ */
 function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEditor | null }) {
   return (
     <>
@@ -174,6 +207,36 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
       >
         <AArrowUp />
       </Button>
+      {FONT_STYLES.map(({ flag, label, shortcut, icon: Icon }) => (
+        <Button
+          key={flag}
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          aria-pressed={text[flag]}
+          title={`${label} (${shortcut})`}
+          className={cn(text[flag] && 'bg-accent text-accent-foreground')}
+          onClick={() => editor?.toggleFontStyle(flag)}
+        >
+          <Icon />
+        </Button>
+      ))}
+      {TEXT_ALIGNS.map(({ align, label, icon: Icon }) => (
+        <Button
+          key={align}
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          aria-pressed={text.align === align}
+          title={label}
+          className={cn(text.align === align && 'bg-accent text-accent-foreground')}
+          onClick={() => editor?.setTextAlign(align)}
+        >
+          <Icon />
+        </Button>
+      ))}
       {text.autoWidth !== null && (
         <Button
           type="button"
