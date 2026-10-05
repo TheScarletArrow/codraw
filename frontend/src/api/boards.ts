@@ -1,7 +1,13 @@
 import { request } from './http.ts'
 
-/** What the user may do on a board: its owner manages it, anybody else opened it through its link. */
-export type BoardRole = 'owner' | 'editor'
+/**
+ * What the user may do on a board: its owner manages it, anybody else opened it through its link, which lets them edit
+ * or only view it.
+ */
+export type BoardRole = 'owner' | 'editor' | 'viewer'
+
+/** What a link to a board gives to users other than its owner: nothing, viewing or editing. */
+export type LinkAccess = 'none' | 'view' | 'edit'
 
 export interface BoardOwner {
   id: string
@@ -14,6 +20,7 @@ export interface Board {
   title: string
   createdAt: string
   updatedAt: string
+  linkAccess: LinkAccess
   owner: BoardOwner
   /** The role of the current user. */
   role: BoardRole
@@ -60,6 +67,18 @@ export function renameBoard(id: string, title: string): Promise<Board> {
     body: JSON.stringify({ title }),
   })
 }
+
+/** Sets what the link to a board of the current user gives to others. */
+export function changeLinkAccess(id: string, linkAccess: LinkAccess): Promise<Board> {
+  return request(`/api/boards/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ linkAccess }),
+  })
+}
+
+/** The user may change the document of the board. */
+export const canEdit = (board: Pick<Board, 'role'>) => board.role !== 'viewer'
 
 /** Deletes a board of the current user for good, with its document. */
 export function deleteBoard(id: string): Promise<void> {

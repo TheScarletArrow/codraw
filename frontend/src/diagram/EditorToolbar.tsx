@@ -1,42 +1,71 @@
-import { AArrowDown, AArrowUp, Plus, Redo2, Undo2, UnfoldHorizontal, ZoomIn, ZoomOut } from 'lucide-react'
+import {
+  AArrowDown,
+  AArrowUp,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Italic,
+  Maximize,
+  Plus,
+  Redo2,
+  Underline,
+  Undo2,
+  UnfoldHorizontal,
+  ZoomIn,
+  ZoomOut,
+  type LucideIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { ArrangePicker } from './ArrangePicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
-import type { DiagramEditor, EdgeEnd, SelectionText } from './editor.ts'
+import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
+import { LineStylePicker } from './LineStylePicker.tsx'
 import { NumberField } from './NumberField.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
 
-export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
-  const { canUndo, canRedo, scale, tableSelected, edgeMarkers, colors, text, geometry } = useEditorState(editor)
+interface EditorToolbarProps {
+  editor: DiagramEditor | null
+  /** The participant may only view the board: only the scale is shown. */
+  readOnly?: boolean
+}
+
+export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) {
+  const { canUndo, canRedo, scale } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Отменить"
-        title="Отменить (Ctrl+Z)"
-        disabled={!editor || !canUndo}
-        onClick={() => editor?.undo()}
-      >
-        <Undo2 />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Повторить"
-        title="Повторить (Ctrl+Shift+Z)"
-        disabled={!editor || !canRedo}
-        onClick={() => editor?.redo()}
-      >
-        <Redo2 />
-      </Button>
-      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      {!readOnly && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Отменить"
+            title="Отменить (Ctrl+Z)"
+            disabled={!editor || !canUndo}
+            onClick={() => editor?.undo()}
+          >
+            <Undo2 />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Повторить"
+            title="Повторить (Ctrl+Shift+Z)"
+            disabled={!editor || !canRedo}
+            onClick={() => editor?.redo()}
+          >
+            <Redo2 />
+          </Button>
+          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+        </>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -71,6 +100,28 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
       >
         <ZoomIn />
       </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Показать всё"
+        title="Показать всё (Ctrl+Shift+H)"
+        disabled={!editor}
+        onClick={() => editor?.zoomToFit()}
+      >
+        <Maximize />
+      </Button>
+      {!readOnly && <EditingTools editor={editor} />}
+    </div>
+  )
+}
+
+/** Tools that change the selected objects. */
+function EditingTools({ editor }: { editor: DiagramEditor | null }) {
+  const { tableSelected, edgeMarkers, colors, line, text, geometry, arrange } = useEditorState(editor)
+
+  return (
+    <>
       {tableSelected && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -107,8 +158,16 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
           />
         </>
       )}
+      {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
       {text && <TextTools text={text} editor={editor} />}
       {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
+      {arrange >= 2 && (
+        <ArrangePicker
+          count={arrange}
+          onAlign={(align) => editor?.alignShapes(align)}
+          onDistribute={(direction) => editor?.distributeShapes(direction)}
+        />
+      )}
       {edgeMarkers && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -116,11 +175,26 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
           <MarkerSelect label="Конец" end="end" value={edgeMarkers.end} editor={editor} />
         </>
       )}
-    </div>
+    </>
   )
 }
 
-/** Text size of the selected objects, and the width of the selected shapes that follows their labels. */
+const FONT_STYLES: { flag: FontStyleFlag; label: string; shortcut: string; icon: LucideIcon }[] = [
+  { flag: 'bold', label: 'Жирный', shortcut: 'Ctrl+B', icon: Bold },
+  { flag: 'italic', label: 'Курсив', shortcut: 'Ctrl+I', icon: Italic },
+  { flag: 'underline', label: 'Подчёркнутый', shortcut: 'Ctrl+U', icon: Underline },
+]
+
+const TEXT_ALIGNS: { align: TextAlign; label: string; icon: LucideIcon }[] = [
+  { align: 'left', label: 'Текст по левому краю', icon: AlignLeft },
+  { align: 'center', label: 'Текст по центру', icon: AlignCenter },
+  { align: 'right', label: 'Текст по правому краю', icon: AlignRight },
+]
+
+/**
+ * Size, font styles and alignment of the text of the selected objects, and the width of the selected shapes that
+ * follows their labels.
+ */
 function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEditor | null }) {
   return (
     <>
@@ -153,6 +227,36 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
       >
         <AArrowUp />
       </Button>
+      {FONT_STYLES.map(({ flag, label, shortcut, icon: Icon }) => (
+        <Button
+          key={flag}
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          aria-pressed={text[flag]}
+          title={`${label} (${shortcut})`}
+          className={cn(text[flag] && 'bg-accent text-accent-foreground')}
+          onClick={() => editor?.toggleFontStyle(flag)}
+        >
+          <Icon />
+        </Button>
+      ))}
+      {TEXT_ALIGNS.map(({ align, label, icon: Icon }) => (
+        <Button
+          key={align}
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          aria-pressed={text.align === align}
+          title={label}
+          className={cn(text.align === align && 'bg-accent text-accent-foreground')}
+          onClick={() => editor?.setTextAlign(align)}
+        >
+          <Icon />
+        </Button>
+      ))}
       {text.autoWidth !== null && (
         <Button
           type="button"

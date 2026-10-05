@@ -9,10 +9,12 @@ interface BoardHeadingProps {
   board: Board
   /** Tells the other participants that the board was renamed or deleted. */
   onChanged: () => void
+  /** Opens the versions of the board. */
+  onOpenHistory?: () => void
 }
 
 /** Title of the board; its owner renames it with a click and deletes it from the menu of the board. */
-export function BoardHeading({ board, onChanged }: BoardHeadingProps) {
+export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [renaming, setRenaming] = useState(false)
@@ -67,6 +69,7 @@ export function BoardHeading({ board, onChanged }: BoardHeadingProps) {
         deleteLabel="Удалить доску"
         disabled={remove.isPending}
         onRename={() => setRenaming(true)}
+        onHistory={onOpenHistory}
         onDelete={() => remove.mutate()}
       />
       {(rename.isError || remove.isError) && (

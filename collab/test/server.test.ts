@@ -1,12 +1,12 @@
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import type { Server } from "@hocuspocus/server";
 import { createRemoteJWKSet, generateKeyPair } from "jose";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { createTokenVerifier } from "../src/auth.js";
 import { createBackendClient } from "../src/backend-client.js";
 import { createCollabServer, type CollabServerOptions } from "../src/server.js";
-import { FakeBackend } from "./fake-backend.js";
+import { ALICE, FakeBackend } from "./fake-backend.js";
 
 const board = "0199a000-0000-7000-8000-000000000001";
 const otherBoard = "0199a000-0000-7000-8000-000000000002";
@@ -224,6 +224,192 @@ describe("collab server", () => {
 
       await expect(Promise.all(closed)).resolves.toEqual(["board-not-found", "board-not-found"]);
       expect(backend.documents.has(board)).toBe(false);
+    });
+  });
+
+  describe("viewing only", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+
+    beforeEach(() => {
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+    });
+
+    it("does not apply changes of a participant who may only view, who still gets the changes of others", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+
+      viewer.document.getMap("meta").set("title", "Viewer");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(title(editor)).toBeUndefined();
+
+      editor.document.getMap("meta").set("description", "Editor");
+      await waitFor(() => viewer.document.getMap("meta").get("description") === "Editor");
+      await waitFor(() => backend.storesFor(board) > 0);
+      const stored = new Y.Doc();
+      Y.applyUpdate(stored, backend.documents.get(board)!);
+      expect(stored.getMap("meta").toJSON()).toEqual({ description: "Editor" });
+    });
+
+    it("shows the cursor of a participant who may only view to the others", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+
+      viewer.provider.setAwarenessField("cursor", { x: 10, y: 20 });
+
+      await waitFor(() =>
+        [...editor.provider.awareness!.getStates().values()].some((state) => state.cursor?.x === 10),
+      );
+    });
+
+    it("tells the client that its connection is read-only", async () => {
+      await startServer();
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+
+      expect(viewer.provider.authorizedScope).toBe("readonly");
+      expect((await connect(board)).provider.authorizedScope).toBe("read-write");
+    });
+  });
+
+  describe("changes of access", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+
+    function closeReasonOf({ provider }: Connection): Promise<string> {
+      return new Promise((resolve) => provider.on("close", ({ event }: { event: CloseEvent }) => resolve(event.reason)));
+    }
+
+    it("closes the connections whose access changed, and their clients reconnect with the new access", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const ownerClosed = vi.fn();
+      owner.provider.on("close", ownerClosed);
+      const bobClosed = closeReasonOf(bob);
+      const bobResynced = new Promise<void>((resolve) =>
+        bob.provider.on("authenticated", ({ scope }: { scope: string }) => scope === "readonly" && resolve()),
+      );
+
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+
+      await expect(bobClosed).resolves.toBe("access-changed");
+      await bobResynced;
+      expect(ownerClosed).not.toHaveBeenCalled();
+      bob.document.getMap("meta").set("title", "After the change");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(title(owner)).toBeUndefined();
+    });
+
+    it("keeps the connections whose access stays the same", async () => {
+      await startServer();
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const closed = vi.fn();
+      owner.provider.on("close", closed);
+      bob.provider.on("close", closed);
+      const before = backend.accessRequestsFor(board);
+
+      bob.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+
+      await waitFor(() => backend.accessRequestsFor(board) > before);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(closed).not.toHaveBeenCalled();
+    });
+
+    it("closes the connections of others when the owner closes the link", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const bobClosed = closeReasonOf(bob);
+
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+
+      await expect(bobClosed).resolves.toBe("access-changed");
+    });
+
+    it("closes the connections of a deleted board when it is checked", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const watching = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const closed = closeReasonOf(watching);
+
+      backend.boards.delete(board);
+      owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+
+      await expect(closed).resolves.toBe("board-not-found");
+    });
+
+    it("checks the access of a document once at a time, however many participants ask", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const before = backend.accessRequestsFor(board);
+
+      for (let i = 0; i < 10; i++) owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+
+      await waitFor(() => backend.accessRequestsFor(board) > before);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(backend.accessRequestsFor(board) - before).toBeLessThanOrEqual(2);
+    });
+
+    it("checks the open documents from time to time, also when nobody tells about a change", async () => {
+      await startServer({ accessCheckInterval: 100 });
+      await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const bobClosed = closeReasonOf(bob);
+
+      // E.g. the owner closed the link through the API, without the board open.
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+
+      await expect(bobClosed).resolves.toBe("access-changed");
+    });
+  });
+
+  describe("access on connecting", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+
+    it("gives the access that the board gives when the user connects, not when the token was issued", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const token = await backend.issueToken(board, { subject: BOB });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+
+      const bob = await connect(board, token);
+      bob.document.getMap("meta").set("title", "With an old token");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(bob.provider.authorizedScope).toBe("readonly");
+      expect(title(owner)).toBeUndefined();
+    });
+
+    it("rejects a user whom the board no longer gives access, whatever their token, and sends them nothing", async () => {
+      await startServer();
+      const stored = new Y.Doc();
+      stored.getMap("meta").set("title", "Secret");
+      backend.documents.set(board, Y.encodeStateAsUpdate(stored));
+      const token = await backend.issueToken(board, { subject: BOB });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+
+      await expect(connect(board, token)).rejects.toThrow("no-access");
+
+      expect(backend.requests).toEqual([{ method: "GET access", boardId: board }]);
+    });
+
+    it("lets the owner edit whatever the link gives", async () => {
+      await startServer();
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+
+      expect((await connect(board)).provider.authorizedScope).toBe("read-write");
+    });
+
+    it("tells a user that the board does not exist when it was deleted after the token was issued", async () => {
+      await startServer();
+      const token = await backend.issueToken(board, { subject: BOB });
+      backend.boards.delete(board);
+
+      await expect(connect(board, token)).rejects.toThrow("board-not-found");
     });
   });
 

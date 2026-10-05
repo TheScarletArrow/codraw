@@ -1,5 +1,5 @@
 /** What a right click on the canvas is about: nothing selected, one element of a kind, or several elements. */
-export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'edge' | 'selection'
+export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'edge' | 'group' | 'selection'
 
 export type MenuCommand =
   | 'paste'
@@ -14,10 +14,23 @@ export type MenuCommand =
   | 'bringToFront'
   | 'sendToBack'
   | 'reverseEdge'
+  | 'group'
+  | 'ungroup'
   | 'delete'
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
-export type Shortcut = 'Mod+X' | 'Mod+C' | 'Mod+V' | 'Mod+D' | 'Mod+A' | 'Mod+Z' | 'Mod+Shift+Z' | 'Delete' | 'F2'
+export type Shortcut =
+  | 'Mod+X'
+  | 'Mod+C'
+  | 'Mod+V'
+  | 'Mod+D'
+  | 'Mod+A'
+  | 'Mod+Z'
+  | 'Mod+Shift+Z'
+  | 'Mod+G'
+  | 'Mod+Shift+G'
+  | 'Delete'
+  | 'F2'
 
 export interface MenuItem {
   command: MenuCommand
@@ -32,7 +45,14 @@ export interface MenuAvailability {
   canPaste: boolean
   canUndo: boolean
   canRedo: boolean
+  /** The selection has at least two shapes of one parent to group. */
+  canGroup?: boolean
+  /** The participant may only view the board: the menu has only the items that change nothing. */
+  readOnly?: boolean
 }
+
+/** Items of a participant who may only view the board. */
+const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll'])
 
 type Entry = [MenuCommand, string, Shortcut?]
 
@@ -70,13 +90,28 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     [['delete', 'Удалить поле', 'Delete']],
   ],
   edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], [DELETE]],
-  selection: [CLIPBOARD, ORDER, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, [DELETE]],
+  selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, ORDER, [DELETE]],
 }
 
-/** Items of the context menu for a target; the ones that cannot be done now are disabled. */
-export function menuItems(target: MenuTarget, { canPaste, canUndo, canRedo }: MenuAvailability): MenuItem[] {
-  const unavailable: Partial<Record<MenuCommand, boolean>> = { paste: !canPaste, undo: !canUndo, redo: !canRedo }
-  return MENUS[target].flatMap((group, groupIndex) =>
+/**
+ * Items of the context menu for a target; the ones that cannot be done now are disabled. A participant who may only
+ * view gets only copying and selecting, so their menu may be empty.
+ */
+export function menuItems(
+  target: MenuTarget,
+  { canPaste, canUndo, canRedo, canGroup = false, readOnly = false }: MenuAvailability,
+): MenuItem[] {
+  const unavailable: Partial<Record<MenuCommand, boolean>> = {
+    paste: !canPaste,
+    undo: !canUndo,
+    redo: !canRedo,
+    group: !canGroup,
+  }
+  const groups = MENUS[target]
+    .map((group) => group.filter(([command]) => !readOnly || VIEWING_COMMANDS.has(command)))
+    .filter((group) => group.length > 0)
+  return groups.flatMap((group, groupIndex) =>
     group.map(([command, label, shortcut], index) => ({
       command,
       label,

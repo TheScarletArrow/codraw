@@ -27,13 +27,23 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
   return {
-    DiagramCanvas: ({ pageId, onEditor }: { pageId: string; onEditor: (editor: FakeEditor | null) => void }) => {
+    DiagramCanvas: ({
+      pageId,
+      readOnly = false,
+      onEditor,
+    }: {
+      pageId: string
+      readOnly?: boolean
+      onEditor: (editor: FakeEditor | null) => void
+    }) => {
       useEffect(() => {
-        if (canvas.editor?.pageId !== pageId) canvas.editor = createFakeEditor({ pageId })
+        if (canvas.editor?.pageId !== pageId || canvas.editor.readOnly !== readOnly) {
+          canvas.editor = createFakeEditor({ pageId, readOnly })
+        }
         onEditor(canvas.editor)
         return () => onEditor(null)
-      }, [pageId, onEditor])
-      return <div data-testid="diagram-canvas" data-page={pageId} />
+      }, [pageId, readOnly, onEditor])
+      return <div data-testid="diagram-canvas" data-page={pageId} data-read-only={readOnly} />
     },
   }
 })
@@ -44,11 +54,14 @@ const board: Board = {
   title: 'Архитектура',
   createdAt: '2026-10-01T10:00:00Z',
   updatedAt: '2026-10-01T10:00:00Z',
+  linkAccess: 'edit',
   owner: { id: ALICE.id, name: ALICE.name, avatarUrl: ALICE.avatarUrl },
   role: 'owner',
 }
 /** The board of Алиса as Боб sees it, having opened it through its link. */
 const boardOfAnother: Board = { ...board, role: 'editor' }
+/** The board of Алиса whose link gives viewing only, as Боб sees it. */
+const boardToView: Board = { ...board, role: 'viewer', linkAccess: 'view' }
 const routes = [
   { path: '/', element: <p>Список досок</p> },
   { path: '/boards/:boardId', element: <BoardPage /> },
@@ -218,6 +231,268 @@ describe('BoardPage', () => {
     provider.unmount()
 
     expect(provider.destroyed).toBe(true)
+  })
+
+  describe('access through the link', () => {
+    it('shows "Нет доступа" when the owner closed the link of the board', async () => {
+      mockFetch({ 'GET /api/me': { body: ALICE }, [`GET /api/boards/${boardId}`]: { status: 403 } })
+
+      renderRoutes(routes, `/boards/${boardId}`)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа: владелец закрыл доступ к доске по ссылке')
+      expect(FakeHocuspocusProvider.instances).toEqual([])
+    })
+
+    it('shows "Нет доступа" and stops connecting when no token is issued because the link was closed', async () => {
+      const provider = await openBoard({ [tokenUrl]: { status: 403 } })
+
+      await act(() => expect(provider.requestToken()).rejects.toThrow('403'))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(provider.disconnected).toBe(true)
+    })
+
+    it('shows a participant who may only view the board without the means to change it', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      initializeDocument(provider.document)
+      act(() => provider.emitSynced())
+
+      expect(screen.getByText('Только просмотр')).toBeInTheDocument()
+      expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Отменить' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Добавить страницу' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Импорт из .drawio' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Экспорт в .drawio' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Увеличить' })).toBeEnabled()
+    })
+
+    it('does not write to the document of a participant who may only view, even when it is empty', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      const updates = vi.fn()
+      provider.document.on('update', updates)
+
+      act(() => provider.emitSynced())
+
+      expect(await screen.findByText('Доска пока пуста')).toBeInTheDocument()
+      expect(updates).not.toHaveBeenCalled()
+    })
+
+    it('takes the new role when collab closes the connection because the access changed, and keeps connecting', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }] })
+      act(() => provider.emitSynced())
+      expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'false')
+
+      act(() => provider.emitClose('access-changed'))
+
+      expect(await screen.findByText('Только просмотр')).toBeInTheDocument()
+      expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(canvas.editor!.readOnly).toBe(true)
+      expect(provider.disconnected).toBe(false)
+    })
+
+    it('takes the role again on every reconnection, as the access may have changed while it was offline', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardToView }, { body: boardOfAnother }] })
+      initializeDocument(provider.document)
+      act(() => {
+        provider.emitAuthenticated('readonly')
+        provider.emitSynced()
+      })
+      expect(screen.getByText('Только просмотр')).toBeInTheDocument()
+      expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(1)
+
+      act(() => provider.emitAuthenticated('read-write'))
+
+      await waitFor(() => expect(screen.queryByText('Только просмотр')).toBeNull())
+      expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(2)
+    })
+
+    it('edits only over a connection that accepts changes, when the access changed before the page connected', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }] })
+      const updates = vi.fn()
+      provider.document.on('update', updates)
+
+      act(() => {
+        provider.emitAuthenticated('readonly')
+        provider.emitSynced()
+      })
+
+      expect(screen.getByText('Только просмотр')).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+      expect(updates).not.toHaveBeenCalled()
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', boardUrl)).toHaveLength(2))
+    })
+
+    it('shows "Нет доступа" when collab rejects a participant whom the board no longer gives access', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
+
+      act(() => provider.emitAuthenticationFailed('no-access'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(provider.disconnected).toBe(true)
+    })
+
+    it('shows "Нет доступа" when the owner closed the link while the participant works on the board', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
+      act(() => provider.emitSynced())
+
+      act(() => provider.emitStateless(BOARD_CHANGED))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(provider.destroyed).toBe(true)
+    })
+
+    it('gives the link to the board on the current page and copies it', async () => {
+      const writeText = vi.fn(async () => {})
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+
+      await userEvent.click(screen.getByRole('button', { name: 'Поделиться' }))
+      const link = `${location.origin}/boards/${boardId}?page=${DEFAULT_PAGE_ID}`
+      expect(screen.getByRole('textbox', { name: 'Ссылка на доску' })).toHaveValue(link)
+      await userEvent.click(screen.getByRole('button', { name: 'Копировать' }))
+
+      expect(writeText).toHaveBeenCalledWith(link)
+      expect(screen.getByRole('button', { name: 'Скопировано' })).toBeInTheDocument()
+    })
+
+    it('lets the owner change what the link gives and tells the other participants', async () => {
+      const provider = await openBoard({ [`PATCH ${boardUrl}`]: { body: { ...board, linkAccess: 'view' } } })
+      act(() => provider.emitSynced())
+
+      await userEvent.click(screen.getByRole('button', { name: 'Поделиться' }))
+      expect(screen.getByRole('radio', { name: /Редактирование/ })).toBeChecked()
+      await userEvent.click(screen.getByRole('radio', { name: /Просмотр/ }))
+
+      await waitFor(() => expect(provider.sentStateless).toEqual([BOARD_CHANGED]))
+      const [[, init]] = requests(provider.fetchMock, 'PATCH', boardUrl)
+      expect(JSON.parse(init!.body as string)).toEqual({ linkAccess: 'view' })
+      expect(screen.getByRole('radio', { name: /Просмотр/ })).toBeChecked()
+    })
+
+    it('shows a participant who does not own the board what the link gives, without changing it', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      act(() => provider.emitSynced())
+
+      await userEvent.click(screen.getByRole('button', { name: 'Поделиться' }))
+
+      expect(screen.getByText('По ссылке доску можно только смотреть')).toBeInTheDocument()
+      expect(screen.queryByRole('radio')).toBeNull()
+    })
+  })
+
+  describe('versions', () => {
+    const versionsUrl = `/api/boards/${boardId}/versions`
+    const version = (id: string, reason: 'auto' | 'manual' | 'restore', createdAt = '2026-10-01T09:00:00Z') => ({
+      id,
+      reason,
+      createdAt,
+    })
+
+    /** The state of a board with one shape on its first page, as a version keeps it. */
+    function versionState() {
+      const doc = new Y.Doc()
+      initializeDocument(doc)
+      getCells(doc).set('kept', new Y.Map(Object.entries({ kind: 'vertex', parent: '1', order: 'a0', value: 'Сервис' })))
+      return Y.encodeStateAsUpdate(doc)
+    }
+
+    async function openHistory(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+      const provider = await openBoard({ [`GET ${versionsUrl}`]: { body: [version('v2', 'manual'), version('v1', 'auto')] }, ...responses })
+      act(() => provider.emitSynced())
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
+      return provider
+    }
+
+    it('lists the versions of the board for its owner', async () => {
+      await openHistory()
+
+      const history = screen.getByRole('complementary', { name: 'История версий' })
+      const items = await within(history).findAllByRole('button', { pressed: false })
+      expect(items.map((item) => item.textContent)).toEqual([
+        expect.stringContaining('Вручную'),
+        expect.stringContaining('Автоматически'),
+      ])
+    })
+
+    it('saves the current state of the board as a version', async () => {
+      const provider = await openHistory({
+        [`POST ${versionsUrl}?reason=manual`]: { status: 201, body: version('v3', 'manual') },
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }))
+
+      await waitFor(() => expect(requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=manual`)).toHaveLength(1))
+      const [[, init]] = requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=manual`)
+      const saved = new Y.Doc()
+      Y.applyUpdate(saved, init!.body as Uint8Array)
+      expect(getCells(saved).toJSON()).toEqual(getCells(provider.document).toJSON())
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', versionsUrl)).toHaveLength(2))
+    })
+
+    it('shows a selected version in place of the board, for viewing only', async () => {
+      await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: versionState() } })
+
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      expect(await within(preview).findByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(within(preview).getByRole('tab', { name: 'Страница 1' })).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Закрыть' }))
+      expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull()
+      expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
+    })
+
+    it('keeps the current state as a version, then restores the selected one for everybody', async () => {
+      const provider = await openHistory({
+        [`GET ${versionsUrl}/v1`]: { bytes: versionState() },
+        [`POST ${versionsUrl}?reason=restore`]: { status: 201, body: version('v3', 'restore') },
+      })
+      getCells(provider.document).set('later', new Y.Map(Object.entries({ kind: 'vertex', parent: '1', order: 'a1' })))
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      await within(preview).findByTestId('diagram-canvas')
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить эту версию' }))
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Восстановление версии' })).getByRole('button', { name: 'Восстановить' }))
+
+      await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
+      const [[, init]] = requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=restore`)
+      const kept = new Y.Doc()
+      Y.applyUpdate(kept, init!.body as Uint8Array)
+      expect(getCells(kept).has('later')).toBe(true)
+      expect(getCells(provider.document).has('later')).toBe(false)
+      expect(getCells(provider.document).get('kept')?.get('value')).toBe('Сервис')
+    })
+
+    it('leaves the board as it is when the current state cannot be kept', async () => {
+      const provider = await openHistory({
+        [`GET ${versionsUrl}/v1`]: { bytes: versionState() },
+        [`POST ${versionsUrl}?reason=restore`]: { status: 500 },
+      })
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      await within(preview).findByTestId('diagram-canvas')
+      const before = Y.encodeStateVector(provider.document)
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить эту версию' }))
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Восстановление версии' })).getByRole('button', { name: 'Восстановить' }))
+
+      expect(await within(preview).findByRole('alert')).toHaveTextContent('Не удалось восстановить версию')
+      expect(Y.encodeStateVector(provider.document)).toEqual(before)
+    })
+
+    it('offers no history to a participant who does not own the board', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+      act(() => provider.emitSynced())
+
+      expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).toBeNull()
+      expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull()
+    })
   })
 
   describe('managing the board', () => {

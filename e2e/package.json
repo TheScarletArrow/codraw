@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:stack": "playwright test --config playwright.stack.config.ts"
   },
   "devDependencies": {
     "@hocuspocus/provider": "^4.7.0",

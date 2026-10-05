@@ -1,0 +1,95 @@
+# CoDraw on one origin: the app, the API and sync. No CORS, and the session cookie reaches all of them.
+# The entrypoint of the image fills in the variables in braces from the environment.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Behind a proxy that terminates TLS the scheme comes from it; without one, it is this server's.
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ''      $scheme;
+}
+
+# The port of the address in the browser, which the backend puts into links to itself, e.g. the OAuth callback URL.
+# Behind a proxy it is the one the proxy tells, if any, or else the backend takes the default port of the scheme.
+# Without one, it is the port in the Host header, which a container port mapped to another one on the server keeps.
+map $http_x_forwarded_proto $forwarded_port {
+    default $http_x_forwarded_port;
+    ''      $host_port;
+}
+
+map $http_host $host_port {
+    ~:(?<port_in_host>[0-9]+)$ $port_in_host;
+    default                    80;
+}
+
+server {
+    listen 8080;
+    server_name _;
+    server_tokens off;
+    root /usr/share/nginx/html;
+
+    # Upstreams are resolved per request: a recreated container of backend or collab gets a new address.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+    set $backend ${BACKEND_URL};
+    set $collab ${COLLAB_URL};
+
+    # Imports of .drawio files are read in the browser; the largest bodies are versions of a board, up to 16 MB.
+    client_max_body_size 16m;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    location /api/ {
+        proxy_pass $backend;
+        # The backend builds the OAuth callback URL and the secure cookie from these.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-Port $forwarded_port;
+    }
+
+    location = /collab {
+        proxy_pass $collab;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # A board stays open for hours; collab pings the clients, so a dead connection still ends.
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    # Not proxied anyway; without these the app would answer them.
+    location ^~ /internal/ {
+        return 404;
+    }
+
+    location ^~ /actuator/ {
+        return 404;
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Files of the build have a hash in their names: a new build has new names.
+    location /assets/ {
+        include /etc/nginx/codraw/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Any other path is a page of the app, e.g. /boards/{id}; the browser checks for a new build every time.
+    location / {
+        include /etc/nginx/codraw/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+}

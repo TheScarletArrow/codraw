@@ -19,6 +19,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
@@ -26,6 +27,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @IntegrationTest
@@ -95,6 +97,33 @@ class CollabTokenApiTest(
         assertEquals(board, claims.getStringClaim("board"))
     }
 
+    @Test
+    fun `issues tokens to users of a link for viewing only, which collab makes read-only`() {
+        val board = createBoard(alice)
+        changeLinkAccess(board, "view")
+
+        val claims = SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet
+
+        assertEquals(bob.id.toString(), claims.subject)
+        // What the user may do is not in the token: collab asks for it when they connect.
+        assertNull(claims.getClaim("access"))
+    }
+
+    @Test
+    fun `answers 403 to other users when the link is closed`() {
+        val board = createBoard(alice)
+        changeLinkAccess(board, "none")
+
+        mockMvc.post("/api/boards/$board/collab-token") {
+            with(bob.session())
+            with(csrf())
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.token") { doesNotExist() }
+        }
+        issueToken(alice, board)
+    }
+
     @ParameterizedTest
     @ValueSource(strings = ["0199a000-0000-7000-8000-000000000000", "not-a-uuid"])
     fun `answers 404 for an unknown board`(board: String) {
@@ -135,6 +164,15 @@ class CollabTokenApiTest(
         }.andExpect { status { isOk() } }.andReturn().response.contentAsString
         val node = json.readTree(body)
         return CollabToken(node["token"].asString(), Instant.parse(node["expiresAt"].asString()))
+    }
+
+    private fun changeLinkAccess(board: String, access: String) {
+        mockMvc.patch("/api/boards/$board") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"linkAccess": "$access"}"""
+        }.andExpect { status { isOk() } }
     }
 
     private fun createBoard(owner: User): String {

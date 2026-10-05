@@ -21,7 +21,11 @@ class CollabTokenService(keys: CollabSigningKeys, private val clock: Clock) {
 
     private val encoder = NimbusJwtEncoder(ImmutableJWKSet(JWKSet(keys.current)))
 
-    /** Issues a token for [user] to the document of the board [boardId]. The caller checks access to the board. */
+    /**
+     * Issues a token for [user] to the document of the board [boardId]. The caller checks access to the board. The token
+     * tells who the user is, not what they may do: the owner may change the link while the token is valid, so collab asks
+     * for the access when the user connects.
+     */
     fun issue(user: User, boardId: UUID): CollabToken {
         // JWT times have a precision of seconds.
         val issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS)

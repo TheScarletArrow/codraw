@@ -14,6 +14,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 !.env.development
 *.local
 
@@ -27,6 +28,7 @@ build/
 # Playwright
 test-results/
 playwright-report/
+playwright-report-stack/
 
 # Local backend configuration with secrets (Spring Boot reads backend/config/ automatically)
 backend/config/

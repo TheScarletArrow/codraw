@@ -1,11 +1,9 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
+import { accessOnConnect, BOARD_DELETED, createAccessChecks } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
-import { BOARD_NOT_FOUND, BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
 import { BOARD_CHANGED, isBoardChanged } from "./messages.js";
-
-/** Closes the connections of a deleted board; the client shows that the board does not exist. */
-const BOARD_DELETED = { code: 4404, reason: BOARD_NOT_FOUND };
 
 const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -20,6 +18,11 @@ export interface CollabServerOptions {
   maxDebounce?: number;
   /** Store pending changes and exit on SIGINT, SIGQUIT and SIGTERM. */
   stopOnSignals?: boolean;
+  /**
+   * Period of checking the connections of open documents against the current access to their boards, in milliseconds.
+   * It bounds how long a change of access that no participant told collab about takes to reach the connections.
+   */
+  accessCheckInterval?: number;
 }
 
 export function createCollabServer({
@@ -30,7 +33,10 @@ export function createCollabServer({
   debounce = 2_000,
   maxDebounce = 10_000,
   stopOnSignals = true,
+  accessCheckInterval = 60_000,
 }: CollabServerOptions): Server {
+  const checkAccess = createAccessChecks(backend);
+  let accessChecks: NodeJS.Timeout | undefined;
   return new Server({
     port,
     quiet,
@@ -44,9 +50,6 @@ export function createCollabServer({
         // Every document is a board; its name is the board id.
         // Throwing here makes Hocuspocus close the connection and report the error reason to the client.
         async fetch({ documentName }) {
-          if (!canonicalUuid.test(documentName)) {
-            throw new BoardNotFoundError(documentName);
-          }
           return backend.loadDocument(documentName);
         },
         async store({ documentName, state, document }) {
@@ -65,13 +68,37 @@ export function createCollabServer({
       }),
     ],
     // Runs before the document is loaded: a rejected client gets neither the document nor the awareness of others.
-    async onAuthenticate({ token, documentName }) {
-      return { user: await verifyToken(token, documentName) };
+    // The token tells who the user is, and the backend what the board lets them do now. A client that may only view
+    // gets a read-only connection: Hocuspocus does not apply its changes, but its cursor and selection still reach the
+    // others.
+    async onAuthenticate({ token, documentName, connectionConfig }) {
+      // Any other name is not a board; the backend is not asked about it.
+      if (!canonicalUuid.test(documentName)) {
+        throw new BoardNotFoundError(documentName);
+      }
+      const user = await verifyToken(token, documentName);
+      const access = await accessOnConnect(backend, documentName, user.id);
+      connectionConfig.readOnly = access === "view";
+      return { user, access };
     },
     // A participant changed the board; the others fetch it again. Only this message passes, written by collab itself.
+    // The change may be of the access to the board, so the connections are checked against it too.
     async onStateless({ payload, document, connection }) {
       if (!isBoardChanged(payload)) return;
       document.broadcastStateless(BOARD_CHANGED, (other) => other !== connection);
+      void checkAccess(document);
+    },
+    // Participants tell collab about changes of access, but the owner may change it without the board open, and such a
+    // message may be lost: open documents are checked from time to time as well.
+    async onListen({ instance }) {
+      accessChecks = setInterval(
+        () => instance.documents.forEach((document) => void checkAccess(document)),
+        accessCheckInterval,
+      );
+      accessChecks.unref();
+    },
+    async onDestroy() {
+      clearInterval(accessChecks);
     },
     async onRequest({ request, response }) {
       if (request.method === "GET" && request.url === "/health") {

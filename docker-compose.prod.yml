@@ -1,0 +1,78 @@
+# CoDraw on a server: the app with its API and sync on one port, behind a proxy that terminates TLS.
+# Variables: .env.prod.example; the whole guide: docs/deploy.md.
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+# Its own project name: the containers and the volume do not mix with those of docker-compose.yml for development.
+name: codraw-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-codraw}
+      POSTGRES_USER: ${POSTGRES_USER:-codraw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD, the password of the database}
+    volumes:
+      # PostgreSQL 18 images keep data in a versioned subdirectory of /var/lib/postgresql.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *restart
+    image: ${CODRAW_IMAGE_PREFIX:-ghcr.io/thescarletarrow/codraw-}backend:${CODRAW_VERSION:-latest}
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-codraw}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-codraw}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      CODRAW_INTERNAL_TOKEN: ${CODRAW_INTERNAL_TOKEN:?set CODRAW_INTERNAL_TOKEN, the secret of the internal API shared by backend and collab}
+      CODRAW_COLLAB_TOKEN_SIGNING_KEY: ${CODRAW_COLLAB_TOKEN_SIGNING_KEY:?set CODRAW_COLLAB_TOKEN_SIGNING_KEY, the RSA key that signs sync tokens}
+      CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY: ${CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY:-}
+      # The backend needs some value to start; until the OAuth applications are set up only the guest sign-in works.
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-not-configured}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-not-configured}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-not-configured}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-not-configured}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  collab:
+    <<: *restart
+    image: ${CODRAW_IMAGE_PREFIX:-ghcr.io/thescarletarrow/codraw-}collab:${CODRAW_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: collab/Dockerfile
+    environment:
+      BACKEND_URL: http://backend:8080
+      BACKEND_JWKS_URL: http://backend:8080/.well-known/jwks.json
+      CODRAW_INTERNAL_TOKEN: ${CODRAW_INTERNAL_TOKEN}
+    depends_on:
+      # Collab verifies sync tokens with the keys of the backend.
+      backend:
+        condition: service_healthy
+
+  frontend:
+    <<: *restart
+    image: ${CODRAW_IMAGE_PREFIX:-ghcr.io/thescarletarrow/codraw-}frontend:${CODRAW_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      # The only published port: the app, the API and sync.
+      - "${CODRAW_HTTP_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+      collab:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -27,6 +27,8 @@ interface PageTabsProps {
   onDelete: (id: string) => void
   /** Moves a page so that it ends up at `index` in the list. */
   onMove: (id: string, index: number) => void
+  /** The participant may only view the board: the tabs only switch pages. */
+  readOnly?: boolean
 }
 
 /** Tabs of the pages of a board under the canvas, as in draw.io. */
@@ -40,6 +42,7 @@ export function PageTabs({
   onDuplicate,
   onDelete,
   onMove,
+  readOnly = false,
 }: PageTabsProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menuFor, setMenuFor] = useState<string | null>(null)
@@ -69,19 +72,19 @@ export function PageTabs({
                   aria-selected={selected}
                   tabIndex={selected ? 0 : -1}
                   title={page.name}
-                  draggable={renaming !== page.id}
+                  draggable={!readOnly && renaming !== page.id}
                   className={cn(
                     'group flex max-w-56 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 select-none',
                     selected ? 'bg-background font-medium' : 'text-muted-foreground hover:bg-background/60',
                   )}
                   onClick={() => onSelect(page.id)}
-                  onDoubleClick={() => setRenaming(page.id)}
+                  onDoubleClick={() => !readOnly && setRenaming(page.id)}
                   onContextMenu={(event) => {
                     event.preventDefault()
-                    setMenuFor(page.id)
+                    if (!readOnly) setMenuFor(page.id)
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === 'F2') setRenaming(page.id)
+                    if (event.key === 'F2' && !readOnly) setRenaming(page.id)
                   }}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(PAGE_DRAG_TYPE, page.id)
@@ -116,12 +119,13 @@ export function PageTabs({
                       ))}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    aria-label={`Меню страницы «${page.name}»`}
-                    className={cn(
-                      'rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground',
-                      !selected && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Меню страницы «${page.name}»`}
+                      className={cn(
+                        'rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground',
+                        !selected && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
                     )}
                     onClick={(event) => {
                       event.stopPropagation()
@@ -130,6 +134,7 @@ export function PageTabs({
                   >
                     <ChevronDown className="size-3.5" />
                   </button>
+                  )}
                 </div>
               </PopoverAnchor>
               <PageMenu
@@ -158,17 +163,19 @@ export function PageTabs({
           )
         })}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="m-0.5 size-8"
-        aria-label="Добавить страницу"
-        title="Добавить страницу"
-        onClick={onAdd}
-      >
-        <Plus />
-      </Button>
+      {!readOnly && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="m-0.5 size-8"
+          aria-label="Добавить страницу"
+          title="Добавить страницу"
+          onClick={onAdd}
+        >
+          <Plus />
+        </Button>
+      )}
     </div>
   )
 }

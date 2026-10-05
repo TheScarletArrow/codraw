@@ -42,8 +42,9 @@ describe('menuItems', () => {
     expect(labels('edge')).toEqual(['Изменить подпись', 'Развернуть направление', 'Удалить'])
   })
 
-  it('offers the clipboard, the order and deletion for several elements', () => {
+  it('offers grouping, the clipboard, the order and deletion for several elements', () => {
     expect(labels('selection')).toEqual([
+      'Сгруппировать',
       'Вырезать',
       'Копировать',
       'Дублировать',
@@ -51,6 +52,24 @@ describe('menuItems', () => {
       'На задний план',
       'Удалить',
     ])
+  })
+
+  it('offers ungrouping first for a group', () => {
+    expect(labels('group')).toEqual([
+      'Разгруппировать',
+      'Вырезать',
+      'Копировать',
+      'Дублировать',
+      'На передний план',
+      'На задний план',
+      'Удалить',
+    ])
+    expect(menuItems('group', all)[0]).toMatchObject({ command: 'ungroup', shortcut: 'Mod+Shift+G', disabled: false })
+  })
+
+  it('disables grouping until two shapes of one level are selected', () => {
+    expect(menuItems('selection', all)[0]).toMatchObject({ command: 'group', shortcut: 'Mod+G', disabled: true })
+    expect(menuItems('selection', { ...all, canGroup: true })[0]).toMatchObject({ disabled: false })
   })
 
   it('separates the groups of items', () => {
@@ -85,6 +104,7 @@ describe('shortcutLabel', () => {
   it('writes Ctrl outside macOS', () => {
     expect(shortcutLabel('Mod+C', false)).toBe('Ctrl+C')
     expect(shortcutLabel('Mod+Shift+Z', false)).toBe('Ctrl+Shift+Z')
+    expect(shortcutLabel('Mod+Shift+G', false)).toBe('Ctrl+Shift+G')
     expect(shortcutLabel('Delete', false)).toBe('Delete')
     expect(shortcutLabel('F2', false)).toBe('F2')
   })
@@ -94,5 +114,17 @@ describe('shortcutLabel', () => {
     expect(shortcutLabel('Mod+Shift+Z', true)).toBe('⇧⌘Z')
     expect(shortcutLabel('Delete', true)).toBe('⌫')
     expect(shortcutLabel('F2', true)).toBe('F2')
+  })
+
+  it('offers a participant who may only view copying and selecting all, and nothing for a field or an edge', () => {
+    const viewing = { ...all, readOnly: true }
+
+    expect(labels('canvas', viewing)).toEqual(['Выделить всё'])
+    expect(labels('shape', viewing)).toEqual(['Копировать'])
+    expect(labels('table', viewing)).toEqual(['Копировать'])
+    expect(labels('selection', viewing)).toEqual(['Копировать'])
+    expect(labels('field', viewing)).toEqual([])
+    expect(labels('edge', viewing)).toEqual([])
+    expect(menuItems('shape', viewing).every((item) => !item.separatorBefore)).toBe(true)
   })
 })

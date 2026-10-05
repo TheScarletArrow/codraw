@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { EditorToolbar } from './EditorToolbar.tsx'
 
+/** Text without font styles and with the default alignment. */
+const plainText = { bold: false, italic: false, underline: false, align: 'center' } as const
+
 describe('EditorToolbar', () => {
   let editor: FakeEditor
 
@@ -72,8 +75,76 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('button', { name: 'Цвет текста' })).toBeInTheDocument()
   })
 
+  it('changes the width, the dash and the edge shape of the selected lines', async () => {
+    act(() => editor.setState({ line: { width: 2, dash: 'dashed', edgeShape: 'orthogonal', hasEdges: true } }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
+    const panel = screen.getByRole('dialog', { name: 'Стиль линии' })
+    expect(within(panel).getByRole('spinbutton', { name: 'Толщина линии' })).toHaveValue(2)
+    expect(within(panel).getByRole('button', { name: 'Пунктир' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(panel).getByRole('button', { name: 'Ортогональная' })).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Точки' }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Кривая' }))
+    const width = within(panel).getByRole('spinbutton', { name: 'Толщина линии' })
+    await userEvent.clear(width)
+    await userEvent.type(width, '5{Enter}')
+
+    expect(editor.setLineStyle).toHaveBeenCalledWith({ dash: 'dotted' })
+    expect(editor.setLineStyle).toHaveBeenCalledWith({ edgeShape: 'curved' })
+    expect(editor.setLineStyle).toHaveBeenCalledWith({ width: 5 })
+  })
+
+  it('offers no edge shape when no edge is selected, and no value where the selection differs', async () => {
+    act(() => editor.setState({ line: { width: null, dash: null, edgeShape: null, hasEdges: false } }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
+    const panel = screen.getByRole('dialog', { name: 'Стиль линии' })
+
+    expect(within(panel).queryByRole('group', { name: 'Форма связи' })).toBeNull()
+    expect(within(panel).getByRole('spinbutton', { name: 'Толщина линии' })).toHaveValue(null)
+    expect(within(panel).queryAllByRole('button', { pressed: true })).toEqual([])
+  })
+
+  it('shows the font styles and the alignment of the selected text and changes them', async () => {
+    act(() => editor.setState({ text: { ...plainText, bold: true, align: 'left', fontSize: 13, autoWidth: null } }))
+
+    expect(screen.getByRole('button', { name: 'Жирный' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Курсив' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Текст по левому краю' })).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Курсив' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Подчёркнутый' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Текст по правому краю' }))
+
+    expect(editor.toggleFontStyle).toHaveBeenCalledWith('italic')
+    expect(editor.toggleFontStyle).toHaveBeenCalledWith('underline')
+    expect(editor.setTextAlign).toHaveBeenCalledWith('right')
+  })
+
+  it('fits the page into the canvas', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Показать всё' }))
+
+    expect(editor.zoomToFit).toHaveBeenCalled()
+  })
+
+  it('aligns two selected shapes and distributes three', async () => {
+    expect(screen.queryByRole('button', { name: 'Выравнивание' })).toBeNull()
+    act(() => editor.setState({ arrange: 2 }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Выравнивание' }))
+    const panel = screen.getByRole('dialog', { name: 'Выравнивание' })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Выровнять по верхнему краю' }))
+    expect(editor.alignShapes).toHaveBeenCalledWith('top')
+    expect(within(panel).getByRole('button', { name: 'Распределить по горизонтали' })).toBeDisabled()
+
+    act(() => editor.setState({ arrange: 3 }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Распределить по вертикали' }))
+    expect(editor.distributeShapes).toHaveBeenCalledWith('vertical')
+  })
+
   it('shows the text size of the selection and changes it', async () => {
-    act(() => editor.setState({ text: { fontSize: 13, autoWidth: false } }))
+    act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: false } }))
 
     expect(screen.getByRole('spinbutton', { name: 'Размер текста' })).toHaveValue(13)
     await userEvent.click(screen.getByRole('button', { name: 'Увеличить текст' }))
@@ -87,26 +158,26 @@ describe('EditorToolbar', () => {
   })
 
   it('shows an empty text size when the selected objects have different sizes', () => {
-    act(() => editor.setState({ text: { fontSize: null, autoWidth: null } }))
+    act(() => editor.setState({ text: { ...plainText, fontSize: null, autoWidth: null } }))
 
     expect(screen.getByRole('spinbutton', { name: 'Размер текста' })).toHaveValue(null)
   })
 
   it('turns the auto width on and off', async () => {
-    act(() => editor.setState({ text: { fontSize: 13, autoWidth: false } }))
+    act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: false } }))
     const autoWidth = screen.getByRole('button', { name: 'Автоширина' })
     expect(autoWidth).toHaveAttribute('aria-pressed', 'false')
     await userEvent.click(autoWidth)
     expect(editor.setAutoWidth).toHaveBeenLastCalledWith(true)
 
-    act(() => editor.setState({ text: { fontSize: 13, autoWidth: true } }))
+    act(() => editor.setState({ text: { ...plainText, fontSize: 13, autoWidth: true } }))
     expect(autoWidth).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(autoWidth)
     expect(editor.setAutoWidth).toHaveBeenLastCalledWith(false)
   })
 
   it('offers no auto width when no selected shape allows it', () => {
-    act(() => editor.setState({ text: { fontSize: 11, autoWidth: null } }))
+    act(() => editor.setState({ text: { ...plainText, fontSize: 11, autoWidth: null } }))
 
     expect(screen.getByRole('spinbutton', { name: 'Размер текста' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Автоширина' })).toBeNull()
@@ -137,5 +208,29 @@ describe('EditorToolbar', () => {
 
     expect(screen.getByRole('spinbutton', { name: 'Высота' })).toBeDisabled()
     expect(screen.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
+  })
+
+  it('offers a participant who may only view the scale only', () => {
+    document.body.innerHTML = ''
+    render(<EditorToolbar editor={editor} readOnly />)
+    act(() =>
+      editor.setState({
+        canUndo: true,
+        tableSelected: true,
+        edgeMarkers: { start: 'none', end: 'classic' },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+        text: { ...plainText, fontSize: 12, autoWidth: false },
+        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
+      }),
+    )
+
+    const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
+    expect(
+      within(toolbar)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё'])
+    expect(within(toolbar).queryByRole('combobox')).toBeNull()
+    expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
   })
 })

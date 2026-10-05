@@ -108,4 +108,38 @@ describe('CanvasMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(editor.deleteSelection).not.toHaveBeenCalled()
   })
+
+  it('groups the selection and ungroups a group', async () => {
+    act(() => editor.setState({ canGroup: true }))
+    rightClick('selection')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Сгруппировать' }))
+    expect(editor.group).toHaveBeenCalled()
+
+    rightClick('group')
+    expect(screen.getByRole('menuitem', { name: 'Разгруппировать' })).toHaveTextContent('Ctrl+Shift+G')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Разгруппировать' }))
+    expect(editor.ungroup).toHaveBeenCalled()
+  })
+
+  describe('for a participant who may only view', () => {
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      editor = createFakeEditor({ readOnly: true })
+      render(<CanvasMenu editor={editor} />)
+    })
+
+    it('offers copying a shape', async () => {
+      rightClick('shape')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Копировать' }))
+      expect(editor.copy).toHaveBeenCalled()
+    })
+
+    it('does not open for an edge, which they cannot do anything with', () => {
+      rightClick('edge')
+
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+  })
 })

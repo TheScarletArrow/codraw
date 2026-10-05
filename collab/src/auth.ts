@@ -10,7 +10,7 @@ export interface CollabUser {
   avatar?: string;
 }
 
-/** Checks that the token grants access to the document of the board and returns its user; throws otherwise. */
+/** Checks that the token was issued for the document of the board and returns its user; throws otherwise. */
 export type TokenVerifier = (token: string, boardId: string) => Promise<CollabUser>;
 
 /** Rejects a connection; Hocuspocus sends the reason to the client. */
@@ -23,7 +23,10 @@ export class AccessDeniedError extends Error {
   }
 }
 
-/** Verifies collab tokens with the backend keys: signature, audience, expiry and the board they were issued for. */
+/**
+ * Verifies collab tokens with the backend keys: signature, audience, expiry and the board they were issued for. What the
+ * user may do with the document is not in the token: collab asks the backend when the user connects.
+ */
 export function createTokenVerifier(keys: JWTVerifyGetKey): TokenVerifier {
   return async (token, boardId) => {
     // jose errors carry their own `reason`; the client gets the same one whatever is wrong with the token.

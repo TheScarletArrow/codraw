@@ -98,6 +98,10 @@ export class FakeHocuspocusProvider {
     return typeof token === 'function' ? await token() : (token ?? null)
   }
 
+  emitAuthenticated(scope: 'read-write' | 'readonly' = 'read-write') {
+    this.configuration.onAuthenticated?.({ scope })
+  }
+
   emitAuthenticationFailed(reason: string) {
     this.configuration.onAuthenticationFailed?.({ reason })
   }

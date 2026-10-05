@@ -3,14 +3,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { fetchCollabToken } from '../api/boards.ts'
-import { isNotFound, isUnauthorized } from '../api/http.ts'
+import { isForbidden, isNotFound, isUnauthorized } from '../api/http.ts'
 import { recheckSession } from '../auth/session.ts'
-import { initializeDocument } from '../diagram/model.ts'
 import type { ParticipantIdentity } from './identity.ts'
 import { BOARD_CHANGED, isBoardChanged } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
-export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found'
+/** `forbidden`: the owner closed the link to the board, and the participant has no access to it any more. */
+export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found' | 'forbidden'
 
 export interface Participant extends ParticipantIdentity {
   clientId: number
@@ -22,21 +22,46 @@ export interface Participant extends ParticipantIdentity {
 /** Reason that collab sends when the board does not exist, also when it closes the connections of a deleted board. */
 const BOARD_NOT_FOUND = 'board-not-found'
 
+/**
+ * Reason of collab closing the connection after the owner changed the access to the board: the provider reconnects and
+ * gets the new access.
+ */
+const ACCESS_CHANGED = 'access-changed'
+
+/** Reason of collab rejecting a participant whom the board gives no access, e.g. the owner just closed the link. */
+const NO_ACCESS = 'no-access'
+
 export function collabUrl(location: Location = window.location) {
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/collab`
 }
 
-/** Connects to the shared document of a board and tracks the connection status and participants. */
-export function useBoardConnection(boardId: string, identity: ParticipantIdentity) {
+/**
+ * Connects to the shared document of a board and tracks the connection status and participants. The document is
+ * handed out once its stored state has arrived; initializing it is up to a participant who may edit the board.
+ *
+ * `viewer` tells whether the role of the participant that the page fetched lets them only view the board.
+ */
+export function useBoardConnection(boardId: string, identity: ParticipantIdentity, viewer: boolean) {
   const queryClient = useQueryClient()
+  const viewerRef = useRef(viewer)
+  useEffect(() => {
+    viewerRef.current = viewer
+  }, [viewer])
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [participants, setParticipants] = useState<Participant[]>([])
+  /**
+   * Collab gives every connection the access the board gives when it connects, which the role the page fetched before
+   * may not match yet: the page edits only over a connection that accepts changes.
+   */
+  const [readOnly, setReadOnly] = useState(false)
   /** The board document and the participants' awareness, available once the document has been synced. */
   const [session, setSession] = useState<{ document: Y.Doc; awareness: Awareness } | null>(null)
   const providerRef = useRef<HocuspocusProvider | null>(null)
 
   useEffect(() => {
     const document = new Y.Doc()
+    const refetchBoard = () => queryClient.invalidateQueries({ queryKey: ['boards', boardId], exact: true })
+    let authenticated = false
     const provider = new HocuspocusProvider({
       url: collabUrl(),
       name: boardId,
@@ -49,6 +74,10 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
           if (isNotFound(error)) {
             setStatus('not-found')
             provider.disconnect()
+          } else if (isForbidden(error)) {
+            setStatus('forbidden')
+            provider.disconnect()
+            void refetchBoard()
           } else if (isUnauthorized(error)) {
             void recheckSession(queryClient)
           }
@@ -57,31 +86,47 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
       },
       onSynced: ({ state }) => {
         if (!state) return
-        // Initialize only after the stored state has arrived, so that a non-empty board is never overwritten.
-        initializeDocument(document)
         setSession((current) => current ?? { document, awareness: provider.awareness! })
         setStatus('synced')
       },
       onStatus: ({ status }) => {
-        if (status === 'disconnected') setStatus((current) => (current === 'not-found' ? current : 'offline'))
+        if (status === 'disconnected') {
+          setStatus((current) => (current === 'not-found' || current === 'forbidden' ? current : 'offline'))
+        }
+      },
+      // Every connection gets the access the board gives now. A participant who was offline while it changed, e.g.
+      // reconnecting after an earlier change, missed the message about it: the board tells their role again. So does
+      // a first connection whose access differs from the role the page fetched just before.
+      onAuthenticated: ({ scope }) => {
+        const connectionReadOnly = scope === 'readonly'
+        setReadOnly(connectionReadOnly)
+        if (authenticated || connectionReadOnly !== viewerRef.current) void refetchBoard()
+        authenticated = true
       },
       onAuthenticationFailed: ({ reason }) => {
         if (reason === BOARD_NOT_FOUND) {
           setStatus('not-found')
           // The board will not appear by reconnecting.
           provider.disconnect()
+        } else if (reason === NO_ACCESS) {
+          setStatus('forbidden')
+          provider.disconnect()
+          void refetchBoard()
         }
       },
-      // Collab closes the connections of a board that was deleted while participants worked on it.
+      // Collab closes the connections of a board that was deleted while participants worked on it, and the connections
+      // whose access changed: the provider reconnects then, and the page gets the new role of the participant.
       onClose: ({ event }) => {
         if (event.reason === BOARD_NOT_FOUND) {
           setStatus('not-found')
           provider.disconnect()
+        } else if (event.reason === ACCESS_CHANGED) {
+          void refetchBoard()
         }
       },
       // Another participant renamed or deleted the board: its title, or its absence, comes from the API.
       onStateless: ({ payload }) => {
-        if (isBoardChanged(payload)) void queryClient.invalidateQueries({ queryKey: ['boards', boardId], exact: true })
+        if (isBoardChanged(payload)) void refetchBoard()
       },
     })
     providerRef.current = provider
@@ -112,6 +157,7 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
     return () => {
       awareness.off('change', updateParticipants)
       setSession(null)
+      setReadOnly(false)
       providerRef.current = null
       provider.destroy()
       document.destroy()
@@ -123,6 +169,7 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
 
   return {
     status,
+    readOnly,
     participants,
     document: session?.document ?? null,
     awareness: session?.awareness ?? null,

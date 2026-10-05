@@ -8,10 +8,14 @@ const NO_EDITOR: EditorState = {
   tableSelected: false,
   edgeMarkers: null,
   colors: null,
+  line: null,
   text: null,
   geometry: null,
   quickConnect: null,
   canPaste: false,
+  arrange: 0,
+  canGroup: false,
+  canUngroup: false,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

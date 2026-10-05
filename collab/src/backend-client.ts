@@ -11,11 +11,21 @@ export class BoardNotFoundError extends Error {
   }
 }
 
+/** What a link to a board gives to users other than its owner. */
+export type LinkAccess = "none" | "view" | "edit";
+
+/** Who may do what with the document of a board now: its owner edits, anybody else gets what its link gives. */
+export interface BoardAccess {
+  ownerId: string;
+  linkAccess: LinkAccess;
+}
+
 /** Client for the backend internal API that stores board documents. */
 export interface BackendClient {
   /** Returns the stored Yjs state of the board, or `null` when the board has no state yet. */
   loadDocument(boardId: string): Promise<Uint8Array | null>;
   storeDocument(boardId: string, state: Uint8Array): Promise<void>;
+  loadAccess(boardId: string): Promise<BoardAccess>;
 }
 
 export interface BackendClientOptions {
@@ -24,8 +34,9 @@ export interface BackendClientOptions {
 }
 
 export function createBackendClient({ baseUrl, internalToken }: BackendClientOptions): BackendClient {
-  const documentUrl = (boardId: string) =>
-    new URL(`/internal/boards/${encodeURIComponent(boardId)}/document`, baseUrl);
+  const boardUrl = (boardId: string, resource: "document" | "access") =>
+    new URL(`/internal/boards/${encodeURIComponent(boardId)}/${resource}`, baseUrl);
+  const documentUrl = (boardId: string) => boardUrl(boardId, "document");
   const headers = { "X-Internal-Token": internalToken };
 
   return {
@@ -56,6 +67,17 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
       if (!response.ok) {
         throw new Error(`Storing board ${boardId} failed: backend responded with ${response.status}`);
       }
+    },
+
+    async loadAccess(boardId) {
+      const response = await fetch(boardUrl(boardId, "access"), { headers });
+      if (response.status === 404) {
+        throw new BoardNotFoundError(boardId);
+      }
+      if (!response.ok) {
+        throw new Error(`Loading access to board ${boardId} failed: backend responded with ${response.status}`);
+      }
+      return (await response.json()) as BoardAccess;
     },
   };
 }

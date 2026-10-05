@@ -30,6 +30,8 @@ export function renderRoutes(routes: RouteObject[], path = '/') {
 export interface MockResponse {
   status?: number
   body?: unknown
+  /** A binary body instead of JSON. */
+  bytes?: Uint8Array
 }
 
 /**
@@ -48,6 +50,12 @@ export function mockFetch(responses: Record<string, MockResponse | MockResponse[
       throw new Error(`Unexpected request: ${key}`)
     }
     const status = response.status ?? 200
+    if (response.bytes) {
+      return new Response(new Uint8Array(response.bytes), {
+        status,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    }
     return new Response(response.body === undefined ? null : JSON.stringify(response.body), {
       status,
       headers: { 'Content-Type': 'application/json' },
