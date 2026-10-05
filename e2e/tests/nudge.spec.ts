@@ -34,6 +34,8 @@ test('the arrow keys move the caret, not the shape, while its label is edited', 
   const start = await positionOf(alice, shape)
 
   await alice.mouse.dblclick(...(Object.values(center(await cellBox(alice, shape))) as [number, number]))
+  // The keys go to the label once its editor has the keyboard.
+  await expect(alice.locator('[data-testid=diagram-canvas] [contenteditable="true"]')).toBeFocused()
   await alice.keyboard.press('ArrowLeft')
   await alice.keyboard.press('ArrowUp')
   await alice.keyboard.press('Escape')
