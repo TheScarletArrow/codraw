@@ -3,11 +3,13 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { menuItems, shortcutLabel, type MenuCommand } from './canvasMenu.ts'
+import { readSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor } from './editor.ts'
 import { useEditorState } from './useEditorState.ts'
 
 const COMMANDS: Record<MenuCommand, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
-  paste: (editor, { point }) => editor.paste(point),
+  // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
+  paste: (editor, { point }) => void readSystemClipboard().then((text) => editor.paste(point, text ?? undefined)),
   selectAll: (editor) => editor.selectAll(),
   undo: (editor) => editor.undo(),
   redo: (editor) => editor.redo(),

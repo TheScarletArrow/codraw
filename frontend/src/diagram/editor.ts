@@ -28,7 +28,8 @@ import * as Y from 'yjs'
 import { allowsAutoWidth, anchoredX, AUTO_WIDTH_KEY, fittedWidth, hasAutoWidth, measureLabel, type Align } from './autoWidth.ts'
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
-import { clipboard } from './clipboard.ts'
+import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
+import { clipboardText, readClipboardText } from './clipboardFormat.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { DEFAULT_PAGE_ID, getCells, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
@@ -158,7 +159,7 @@ export interface EditorState {
   geometry: SelectionGeometry | null
   /** The single selected shape with a group, or `null` when there is none. */
   quickConnect: QuickConnectSource | null
-  /** The clipboard of the browser tab holds something to paste. */
+  /** The clipboard of the browser tab holds something to paste, or the browser lets the page read the system's. */
   canPaste: boolean
   /** Number of selected shapes that can be aligned and distributed: shapes of their own, not fields of tables. */
   arrange: number
@@ -198,12 +199,20 @@ export interface DiagramEditor {
    * step, and selects the new shape.
    */
   addConnectedShape(side: Side, shape: ShapeId): Cell | null
-  /** Puts the selected shapes, tables of selected fields and the edges between them into the clipboard. */
-  copy(): void
+  /**
+   * Puts the selected shapes, tables of selected fields and the edges between them into the clipboard of the tab and,
+   * in the format of draw.io, into the clipboard of the system: into `data` of a clipboard event, or through the
+   * Clipboard API.
+   */
+  copy(data?: DataTransfer | null): void
   /** Copies like {@link copy} and removes what was copied, as one undo step. */
-  cut(): void
-  /** Adds the clipboard as one undo step: shifted further with every paste, or with its top-left corner at `at`. */
-  paste(at?: Point): void
+  cut(data?: DataTransfer | null): void
+  /**
+   * Adds `text` of the clipboard of the system, or without it the clipboard of the tab, as one undo step: cells of
+   * CoDraw or draw.io shifted further with every paste of the same content, or with their top-left corner at `at`;
+   * other text as a text shape in the middle of the visible area, or with its top-left corner at `at`.
+   */
+  paste(at?: Point, text?: string): void
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
   duplicate(): void
   bringToFront(): void
@@ -325,20 +334,23 @@ const KEY_BACKSPACE = 8
 const KEY_DELETE = 46
 const KEY_A = 65
 const KEY_B = 66
-const KEY_C = 67
 const KEY_D = 68
 const KEY_G = 71
 const KEY_H = 72
 const KEY_I = 73
 const KEY_U = 85
-const KEY_V = 86
-const KEY_X = 88
 const KEY_Y = 89
 const KEY_Z = 90
 const KEY_F2 = 113
 
 /** Shift of a duplicate, and of every next paste of the same clipboard with the keyboard. */
 const PASTE_OFFSET = 20
+
+/** Height of a line of a label in sizes of its font, as maxGraph draws labels. */
+const LINE_HEIGHT = 1.2
+
+/** Room above and below the lines of a pasted text, so that one line has the height of the «Текст» of the palette. */
+const TEXT_PADDING = 14
 
 export interface DiagramEditorOptions {
   /** The page to show; the default page of a new board by default. */
@@ -637,7 +649,7 @@ export function createDiagramEditor(
       text: selectionText(),
       geometry: selectionGeometry(),
       quickConnect: readOnly ? null : quickConnect(),
-      canPaste: !readOnly && clipboard.read() !== null,
+      canPaste: !readOnly && (clipboard.read() !== null || canReadSystemClipboard()),
       arrange: geometryCells().length,
       canGroup: !readOnly && canGroup(),
       canUngroup: !readOnly && graph.getSelectionCells().some(isGroup),
@@ -674,7 +686,8 @@ export function createDiagramEditor(
   const keyHandler = new KeyHandler(graph)
   // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
   keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
-  keyHandler.bindControlKey(KEY_C, () => editor.copy())
+  // Ctrl+C, Ctrl+X and Ctrl+V are clipboard events (see below): binding them would cancel the keys, and the events with
+  // them.
   keyHandler.bindControlKey(KEY_A, () => editor.selectAll())
   if (!readOnly) {
     keyHandler.bindKey(KEY_DELETE, removeSelection)
@@ -682,8 +695,6 @@ export function createDiagramEditor(
     keyHandler.bindControlKey(KEY_Z, () => editor.undo())
     keyHandler.bindControlShiftKey(KEY_Z, () => editor.redo())
     keyHandler.bindControlKey(KEY_Y, () => editor.redo())
-    keyHandler.bindControlKey(KEY_X, () => editor.cut())
-    keyHandler.bindControlKey(KEY_V, () => editor.paste())
     keyHandler.bindControlKey(KEY_D, () => editor.duplicate())
     keyHandler.bindKey(KEY_F2, () => editor.editLabel())
     keyHandler.bindControlKey(KEY_B, () => editor.toggleFontStyle('bold'))
@@ -694,6 +705,34 @@ export function createDiagramEditor(
   }
   // The scale is the participant's own, so a participant who may only view fits the page too.
   keyHandler.bindControlShiftKey(KEY_H, () => editor.zoomToFit())
+
+  // The browser fires clipboard events at the focused element, or at the body when nothing has the focus; maxGraph
+  // takes keys from both. While a label is edited, the browser copies and pastes its text.
+  const page = container.ownerDocument
+  const isCanvasEvent = (event: Event) => {
+    const target = event.target
+    if (graph.isEditing()) return false
+    return target === page.body || target === page.documentElement || (target instanceof Node && container.contains(target))
+  }
+  const handleCopy = (event: ClipboardEvent) => {
+    if (!isCanvasEvent(event) || !event.clipboardData || cellsToCopy().length === 0) return
+    event.preventDefault()
+    editor.copy(event.clipboardData)
+  }
+  const handleCut = (event: ClipboardEvent) => {
+    if (readOnly || !isCanvasEvent(event) || !event.clipboardData || cellsToCopy().length === 0) return
+    event.preventDefault()
+    editor.cut(event.clipboardData)
+  }
+  const handlePaste = (event: ClipboardEvent) => {
+    if (readOnly || !isCanvasEvent(event)) return
+    event.preventDefault()
+    editor.paste(undefined, event.clipboardData?.getData('text/plain') ?? '')
+  }
+  page.addEventListener('copy', handleCopy)
+  page.addEventListener('cut', handleCut)
+  page.addEventListener('paste', handlePaste)
+  let destroyed = false
 
   // maxGraph cancels pointerdown, so the canvas would not take focus and its keyboard shortcuts would
   // not work after clicking a palette button. The in-place label editor keeps its own focus.
@@ -848,6 +887,57 @@ export function createDiagramEditor(
     graph.setSelectionCells(graph.importCells(cells, dx, dy, graph.getDefaultParent()))
     container.focus({ preventScroll: true })
   }
+  /** Puts clones of `cells` into the clipboard of the tab and their text into the clipboard of the system. */
+  const copyCells = (cells: Cell[], data?: DataTransfer | null) => {
+    // Clones without a graph: the copied cells may change or be removed before they are pasted.
+    const clones = graph.cloneCells(cells, false)
+    const text = clipboardText(clones)
+    clipboard.put(clones, text)
+    if (data) data.setData('text/plain', text)
+    else writeSystemClipboard(text)
+    notify()
+  }
+  /** Adds copies of clipboard cells: with their top-left corner at `at`, or shifted further with every paste. */
+  const pasteCells = (cells: Cell[] | null, at?: Point) => {
+    if (!cells) return
+    if (at) {
+      const bounds = graph.getBoundingBoxFromGeometry(cells, false)
+      insertCopies(cells, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0))
+    } else {
+      const shift = clipboard.nextPaste() * PASTE_OFFSET
+      insertCopies(cells, shift, shift)
+    }
+  }
+  /**
+   * Adds a text shape with `text`: with its top-left corner at `at`, or in the middle of the visible area. The height
+   * holds all lines, the width follows the longest one.
+   */
+  const addText = (text: string, at?: Point) => {
+    const preset = findShape('text')!
+    const lines = text.split(/\r?\n/).length
+    const fontSize = Number(graph.getStylesheet().getDefaultVertexStyle().fontSize ?? StyleDefaultsConfig.fontSize)
+    const height = Math.max(preset.height, Math.ceil(lines * fontSize * LINE_HEIGHT + TEXT_PADDING))
+    const center = visibleCenter()
+    const x = at ? at.x : center.x - preset.width / 2
+    const y = at ? at.y : center.y - height / 2
+    graph.stopEditing(false)
+    model.beginUpdate()
+    let cell: Cell
+    try {
+      cell = insertShape({ ...preset, value: text.replace(/\r\n/g, '\n'), height }, graph.getDefaultParent(), x, y)
+      // The fitted width keeps the centre of the text; a text pasted at a point starts there.
+      const geometry = cell.getGeometry()!
+      if (at && geometry.x !== at.x) {
+        const placed = geometry.clone()
+        placed.x = at.x
+        model.setGeometry(cell, placed)
+      }
+    } finally {
+      model.endUpdate()
+    }
+    graph.setSelectionCell(cell)
+    container.focus({ preventScroll: true })
+  }
   /** Selected cells without table fields: the table layout, not the user, orders fields. */
   const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()))
 
@@ -939,31 +1029,34 @@ export function createDiagramEditor(
       container.focus({ preventScroll: true })
       return cell
     },
-    copy() {
+    copy(data) {
       const cells = cellsToCopy()
       if (cells.length === 0) return
-      // Clones without a graph: the copied cells may change or be removed before they are pasted.
-      clipboard.put(graph.cloneCells(cells, false))
-      notify()
+      copyCells(cells, data)
     },
-    cut() {
+    cut(data) {
       const cells = cellsToCopy()
       if (cells.length === 0) return
       graph.stopEditing(false)
-      clipboard.put(graph.cloneCells(cells, false))
+      copyCells(cells, data)
       graph.removeCells(cells, true)
-      notify()
     },
-    paste(at) {
-      const cells = clipboard.read()
-      if (!cells) return
-      if (at) {
-        const bounds = graph.getBoundingBoxFromGeometry(cells, false)
-        insertCopies(cells, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0))
-      } else {
-        const shift = clipboard.nextPaste() * PASTE_OFFSET
-        insertCopies(cells, shift, shift)
+    paste(at, text) {
+      if (text === undefined || text === clipboard.text()) {
+        pasteCells(clipboard.read(), at)
+        return
       }
+      // Reading a compressed diagram of draw.io takes a moment.
+      void readClipboardText(text).then((content) => {
+        if (destroyed || !content) return
+        if (content.kind === 'text') {
+          addText(content.text, at)
+          return
+        }
+        clipboard.put(content.cells, text)
+        pasteCells(content.cells, at)
+        notify()
+      })
     },
     duplicate() {
       const cells = cellsToCopy()
@@ -1248,6 +1341,10 @@ export function createDiagramEditor(
       container.removeEventListener('pointermove', handlePointerMove, true)
       container.removeEventListener('pointerleave', handlePointerLeave)
       container.removeEventListener('scroll', notifyView)
+      page.removeEventListener('copy', handleCopy)
+      page.removeEventListener('cut', handleCut)
+      page.removeEventListener('paste', handlePaste)
+      destroyed = true
       graph.getSelectionModel().removeListener(handleSelectionChange)
       graph.getSelectionModel().removeListener(notify)
       graph.removeListener(handleLabelChanged)
