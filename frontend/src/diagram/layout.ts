@@ -15,6 +15,8 @@ export interface LayoutShape extends LayoutBox {
   id: string
   /** A frame holds the shapes whose centres lie inside it, and is resized around them. */
   frame: boolean
+  /** The frame the shape is in, when it is known rather than found from where the shapes are, e.g. for a new diagram. */
+  parent?: string | null
 }
 
 /** An edge between two shapes to lay out, its ends already lifted to them. */
@@ -44,13 +46,15 @@ const holds = (frame: LayoutBox, shape: LayoutBox) => {
   return x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height
 }
 
-/** The frame each shape is in: the smallest frame larger than the shape that holds its centre. */
+/** The frame each shape is in: the one it names, else the smallest frame larger than the shape that holds its centre. */
 export function frameParents(shapes: LayoutShape[]): Map<string, string | null> {
   const frames = shapes.filter((shape) => shape.frame).sort((a, b) => area(a) - area(b))
   return new Map(
     shapes.map((shape) => [
       shape.id,
-      frames.find((frame) => frame.id !== shape.id && area(frame) > area(shape) && holds(frame, shape))?.id ?? null,
+      shape.parent !== undefined
+        ? shape.parent
+        : (frames.find((frame) => frame.id !== shape.id && area(frame) > area(shape) && holds(frame, shape))?.id ?? null),
     ]),
   )
 }

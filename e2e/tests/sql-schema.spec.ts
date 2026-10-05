@@ -11,8 +11,8 @@ test('migrations of Flyway become tables with their reference for everybody, are
   const { alice, bob, close } = await twoParticipants(browser)
   await alice.context().grantPermissions(['clipboard-read', 'clipboard-write'])
 
-  await alice.getByRole('button', { name: 'SQL' }).click()
-  const menu = alice.getByRole('dialog', { name: 'SQL' })
+  await alice.getByRole('button', { name: 'SQL и Mermaid' }).click()
+  const menu = alice.getByRole('dialog', { name: 'SQL и Mermaid' })
   await menu.getByRole('button', { name: 'Импорт SQL…' }).click()
   await menu.getByLabel('Файлы SQL').setInputFiles([
     { name: 'V3__title.sql', mimeType: 'text/plain', buffer: Buffer.from(TITLE) },
@@ -39,7 +39,7 @@ test('migrations of Flyway become tables with their reference for everybody, are
   expect(fields.boards).toEqual(['id uuid PK', 'owner_id uuid FK NOT NULL', 'title text NOT NULL'])
   expect(fields.edges).toEqual([['owner_id uuid FK NOT NULL', 'id uuid PK']])
 
-  await alice.getByRole('button', { name: 'SQL' }).click()
+  await alice.getByRole('button', { name: 'SQL и Mermaid' }).click()
   await expect(menu).toContainText('Таблиц на странице: 2')
   await menu.getByRole('button', { name: 'Скопировать SQL' }).click()
   await expect(menu).toContainText('SQL скопирован')

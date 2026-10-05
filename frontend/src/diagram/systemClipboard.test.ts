@@ -158,6 +158,38 @@ describe('clipboard events of the canvas', () => {
     expect(shapes(editor)).toHaveLength(0)
   })
 
+  it('pastes a flowchart of Mermaid as a laid out diagram, as one undo step', async () => {
+    const { editor, container } = open()
+
+    fireClipboard('paste', container, 'flowchart LR\n  client[Клиент] -->|HTTPS| api(API)\n  api --> db[(PostgreSQL)]')
+
+    await vi.waitFor(() => expect(shapes(editor)).toHaveLength(3))
+    const [client, api, db] = shapes(editor)
+    expect([client, api, db].map((cell) => cell!.getValue())).toEqual(['Клиент', 'API', 'PostgreSQL'])
+    expect(client!.getGeometry()!.x).toBeLessThan(api!.getGeometry()!.x)
+    expect(api!.getGeometry()!.x).toBeLessThan(db!.getGeometry()!.x)
+    const edges = editor.graph.getDefaultParent().getChildren().filter((cell) => cell.isEdge())
+    expect(edges.map((edge) => [edge.getTerminal(true), edge.getTerminal(false), edge.getValue()])).toEqual([
+      [client, api, 'HTTPS'],
+      [api, db, ''],
+    ])
+    editor.undo()
+    expect(shapes(editor)).toHaveLength(0)
+  })
+
+  it('pastes a diagram of Mermaid with its top-left corner at a point, and other kinds of Mermaid as text', async () => {
+    const { editor } = open()
+
+    editor.paste({ x: 300, y: 200 }, 'graph TD\n  a --> b')
+    await vi.waitFor(() => expect(shapes(editor)).toHaveLength(2))
+    expect(Math.min(...shapes(editor).map((cell) => cell.getGeometry()!.x))).toBe(300)
+    expect(Math.min(...shapes(editor).map((cell) => cell.getGeometry()!.y))).toBe(200)
+
+    editor.paste(undefined, 'sequenceDiagram\n  A->>B: hi')
+    await vi.waitFor(() => expect(shapes(editor)).toHaveLength(3))
+    expect(shapes(editor)[2]!.getValue()).toBe('sequenceDiagram\n  A->>B: hi')
+  })
+
   it('pastes text with its top-left corner at a point', async () => {
     const { editor } = open()
 

@@ -1,4 +1,4 @@
-import { compareCells, LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
+import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -111,14 +111,25 @@ function referencedColumns(foreignKey: SqlForeignKey, table: SqlTable): string[]
   return table.columns.filter((column) => column.primaryKey).map((column) => column.name)
 }
 
+/** A relation between two tables whose columns are not known, e.g. of an ER diagram of Mermaid. */
+export interface TableLink {
+  /** The table that refers to the other. */
+  from: string
+  to: string
+  label: string
+  style: Record<string, StyleValue>
+}
+
 /**
  * Tables of an ER diagram for the schema, laid out in layers along their references, with the top-left corner at
- * `origin`: a field per column and an edge from each referencing field to the field it refers to.
+ * `origin`: a field per column, an edge from each referencing field to the field it refers to, and an edge between the
+ * tables of each of `links`.
  */
 export async function schemaCells(
   schema: SqlSchema,
   origin: { x: number; y: number },
   engine?: () => Promise<LayoutEngine>,
+  links: TableLink[] = [],
 ): Promise<CellData[]> {
   const builder = new DiagramBuilder()
   const referencing = (table: SqlTable, column: string) => table.foreignKeys.some((key) => key.columns.includes(column))
@@ -143,6 +154,12 @@ export async function schemaCells(
         references.push({ source: built.get(table.name)!.id, target: built.get(target.name)!.id })
       })
     }
+  }
+  for (const link of links) {
+    const [from, to] = [built.get(link.from)?.id, built.get(link.to)?.id]
+    if (!from || !to) continue
+    builder.edge(from, to, { value: link.label, style: link.style })
+    references.push({ source: from, target: to })
   }
   const cells = builder.build()
   const tables = cells.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')
