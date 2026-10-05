@@ -1,5 +1,5 @@
 import type { Cell, CellEditorHandler } from '@maxgraph/core'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import * as Y from 'yjs'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
@@ -89,6 +89,23 @@ describe('fields of tables', () => {
     expect(textarea.dataset.placeholder).toBeUndefined()
     expect(textarea.style.minWidth).toBe('')
     expect(shown()).toContain('имя поля')
+  })
+
+  it('stops editing the name of a new field when the editor is destroyed', () => {
+    vi.useFakeTimers()
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    const { doc, editor } = open()
+    editors.pop()
+    const table = editor.addShape('table', { x: 100, y: 100 })!
+    editor.graph.setSelectionCell(table)
+    const field = editor.addTableField()!
+
+    editor.destroy()
+
+    expect(() => vi.runAllTimers()).not.toThrow()
+    expect(textOf(doc, field)).toBe('')
   })
 
   it('sets the type and the keys of the selected field, each as one undo step', () => {
