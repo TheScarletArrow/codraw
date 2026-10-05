@@ -1,0 +1,7 @@
+# Local build output and caches, and the local configuration with secrets.
+build/
+.gradle/
+.kotlin/
+config/
+*.iml
+.idea/

@@ -206,8 +206,19 @@ pnpm --filter @codraw/frontend exec vite preview --port 4173
 
 В PowerShell переменные задаются иначе: `$env:CODRAW_INTERNAL_TOKEN="local-secret"` перед командой.
 
-`vite preview` — средство проверки, а не production-сервер. Docker-образы и nginx появятся отдельным
-изменением.
+`vite preview` — средство проверки, а не production-сервер. Для сервера есть Docker-образы и nginx:
+[docs/deploy.md](deploy.md). Тот же стек локально, со сборкой образов из исходников:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/codraw-key.pem
+POSTGRES_PASSWORD=local CODRAW_INTERNAL_TOKEN=local-secret \
+CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat /tmp/codraw-key.pem)" \
+docker compose -f docker-compose.prod.yml up -d --build --wait
+# приложение: http://localhost:8080; проверка стека в браузере:
+STACK_URL=http://localhost:8080 pnpm --filter @codraw/e2e test:stack
+```
+
+Порт 8080 тот же, что у backend при разработке: остановите `bootRun` или задайте `CODRAW_HTTP_PORT=8088`.
 
 ## Тесты
 

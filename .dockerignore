@@ -1,0 +1,15 @@
+# Context of the collab and frontend images: the pnpm workspace without installed packages and build output.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+.claude
+backend
+docs
+openspec
+e2e/test-results
+e2e/playwright-report
+**/.env
+**/.env.*
+!**/.env.example

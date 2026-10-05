@@ -5,9 +5,16 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["playwright.config.ts", "tests"]
+  "include": [
+    "playwright.config.ts",
+    "playwright.stack.config.ts",
+    "tests",
+    "stack"
+  ]
 }

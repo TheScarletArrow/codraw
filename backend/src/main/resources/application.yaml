@@ -21,6 +21,9 @@ spring:
 
 server:
   port: ${PORT:8080}
+  # Behind nginx and a TLS proxy: the scheme and the host of the user come from X-Forwarded-* of trusted proxies
+  # (internal addresses), so OAuth callback URLs use https and session cookies are Secure.
+  forward-headers-strategy: native
   servlet:
     session:
       cookie:

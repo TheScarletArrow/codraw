@@ -57,11 +57,12 @@
   `try_files $uri /index.html` с `Cache-Control: no-cache`: после обновления пользователь получает новую сборку.
 - Заголовки безопасности — в отдельном файле, который подключают обе `location` со статикой: `add_header` во вложенной
   `location` отменяет заголовки уровня `server`. Ответы API их не получают: Spring Security ставит свои.
-- CSP: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:` плюс
-  домены аватаров GitHub и Google; `connect-src 'self'` (по CSP3 включает `ws:`/`wss:` того же адреса);
-  `object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`. `'unsafe-inline'` для стилей —
-  уступка maxGraph, который задаёт стили элементам атрибутом `style`; скрипты inline запрещены, а сборка Vite
-  инлайн-скриптов не содержит. `img-src data:` — значки maxGraph в виде data-URI.
+- CSP: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:` плюс домены аватаров
+  GitHub и Google; `connect-src 'self'` (по CSP3 включает `ws:`/`wss:` того же адреса); `object-src 'none';
+  base-uri 'self'; form-action 'self'; frame-ancestors 'none'`. Ничего inline: сборка Vite не содержит инлайн-скриптов,
+  а React, Radix и maxGraph задают стили через DOM (`element.style`), что CSP разрешает. Это проверено прогоном всего
+  набора e2e через nginx с этой политикой и `report-uri`: отчётов о нарушениях не было. `img-src data:` — значки
+  maxGraph в виде data-URI.
 - `server_tokens off`, gzip для текста, `client_max_body_size` — 10 МБ: импорт `.drawio` разбирается в браузере,
   а через API идут только короткие JSON.
 

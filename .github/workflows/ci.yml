@@ -78,6 +78,85 @@ jobs:
           path: e2e/playwright-report
           retention-days: 7
 
+  images:
+    name: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CODRAW_VERSION: ${{ github.sha }}
+      # Test secrets of the stack that this job starts.
+      POSTGRES_PASSWORD: ci-postgres-password
+      CODRAW_INTERNAL_TOKEN: ci-internal-token
+    steps:
+      - uses: actions/checkout@v5
+      - name: Name the images
+        # Image names must be lower case; the owner of the repository need not be.
+        run: echo "CODRAW_IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}backend:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build collab
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: collab/Dockerfile
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}collab:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=collab
+          cache-to: type=gha,mode=max,scope=collab
+      - name: Build frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}frontend:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: Start the stack from the images
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$RUNNER_TEMP/signing-key.pem"
+          { echo 'CODRAW_COLLAB_TOKEN_SIGNING_KEY<<KEY'; cat "$RUNNER_TEMP/signing-key.pem"; echo KEY; } >> "$GITHUB_ENV"
+          export CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat "$RUNNER_TEMP/signing-key.pem")"
+          docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 300
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @codraw/e2e exec playwright install --with-deps chromium
+      - name: Check the stack in a browser
+        run: pnpm --filter @codraw/e2e test:stack
+        env:
+          STACK_URL: http://localhost:8080
+      - if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --no-color
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-stack
+          path: e2e/playwright-report-stack
+          retention-days: 7
+      - name: Publish the images
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for service in backend collab frontend; do
+            image="${CODRAW_IMAGE_PREFIX}${service}"
+            docker tag "$image:$CODRAW_VERSION" "$image:latest"
+            docker push "$image:$CODRAW_VERSION"
+            docker push "$image:latest"
+          done
+
   specs:
     name: openspec
     runs-on: ubuntu-latest
