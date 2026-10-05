@@ -55,7 +55,7 @@ import {
   type ShapePreset,
   type ShapeStyle,
 } from './shapes.ts'
-import { badgeRoom, NAME_X, ROW_PADDING } from './tableRows.ts'
+import { badgeRoom, nameX, ROW_PADDING } from './tableRows.ts'
 import {
   isColumnField,
   registerTableShapes,
@@ -1826,8 +1826,9 @@ function configureTableFields(graph: Graph) {
     if (isColumnField(cell)) {
       // The label is the name in its column, aligned there; the shape draws the columns after it.
       const width = cell.getGeometry()?.width ?? 0
-      const nameEnd = tableRowsOf(graph, cell.getParent()!).get(cell)?.nameEnd ?? width - ROW_PADDING
-      return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: NAME_X, spacingRight: Math.max(ROW_PADDING, width - nameEnd) }
+      const row = tableRowsOf(graph, cell.getParent()!).get(cell)
+      const spacingRight = Math.max(ROW_PADDING, width - (row?.nameEnd ?? width - ROW_PADDING))
+      return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: row?.nameX ?? nameX(1), spacingRight }
     }
     return style
   }

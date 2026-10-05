@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { NAME_X, ROW_PADDING, tableRows, type RowField } from './tableRows.ts'
+import { ICON_STEP, nameX, ROW_PADDING, tableRows, type RowField } from './tableRows.ts'
 
 /** Each character is 10 pixels wide at size 10, so the expected positions are easy to count. */
 const measure = (text: string, font: { fontSize?: unknown }) => text.length * Number(font.fontSize ?? 10)
+/** Left edge of names in a table whose fields have one icon at most. */
+const NAME_X = nameX(1)
 const field = (text: string, reference: string | null = null, fontSize = 10): RowField => ({ text, font: { fontSize }, reference })
 
 describe('rows of a table', () => {
@@ -37,7 +39,16 @@ describe('rows of a table', () => {
       [field('id uuid PK'), field('user_id uuid PK', 'users.id'), field('team_id uuid FK'), field('board_id uuid', 'boards.id'), field('name text')],
       measure,
     )
-    expect(rows.map((row) => row.icon)).toEqual(['key', 'key', 'link', 'link', null])
+    expect(rows.map((row) => row.icons)).toEqual([['key'], ['key'], ['link'], ['link'], []])
+    expect(rows.every((row) => row.nameX === NAME_X)).toBe(true)
+  })
+
+  it('marks a unique field with a diamond after its key and makes room for two icons in the whole table', () => {
+    const rows = tableRows([field('email text UNIQUE'), field('profile_id uuid UNIQUE', 'profiles.id'), field('name text')], measure)
+
+    expect(rows.map((row) => row.icons)).toEqual([['unique'], ['link', 'unique'], []])
+    expect(rows.map((row) => row.nameX)).toEqual([NAME_X + ICON_STEP, NAME_X + ICON_STEP, NAME_X + ICON_STEP])
+    expect(rows[2]!.nameEnd).toBe(NAME_X + ICON_STEP + 100)
   })
 
   it('shows the rest of a field after its reference and leaves out an empty type', () => {
@@ -55,7 +66,7 @@ describe('rows of a table', () => {
   })
 
   it('keeps a text that is not a field as it is', () => {
-    expect(tableRows([field('')], measure)[0]).toEqual({ parts: null, icon: null, nameEnd: null, columns: [], width: 0 })
+    expect(tableRows([field('')], measure)[0]).toEqual({ parts: null, icons: [], nameX: NAME_X, nameEnd: null, columns: [], width: 0 })
     expect(tableRows([field('(x)')], measure)[0]!.width).toBe(NAME_X + 30 + ROW_PADDING)
   })
 })

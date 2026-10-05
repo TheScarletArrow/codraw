@@ -12,7 +12,7 @@ export interface RowField {
   reference: string | null
 }
 
-export type FieldIcon = 'key' | 'link'
+export type FieldIcon = 'key' | 'link' | 'unique'
 
 /** A text drawn after the name of a field, with its left edge from the left edge of the field. */
 export interface RowColumn {
@@ -23,7 +23,10 @@ export interface RowColumn {
 export interface TableRow {
   /** `null` when the text is not a field, e.g. while a new field is empty. */
   parts: FieldParts | null
-  icon: FieldIcon | null
+  /** Icons before the name, from the left. */
+  icons: FieldIcon[]
+  /** Left edge of the name, after the icons of the field with the most of them, so that the names line up. */
+  nameX: number
   /** Right edge of the column of names, where the label of the field ends; `null` without columns. */
   nameEnd: number | null
   /** The type, `NULL` or `NOT NULL`, then the reference and the rest of the field. */
@@ -32,11 +35,12 @@ export interface TableRow {
   width: number
 }
 
-/** Left edge of the icon and its size. */
+/** Left edge of the first icon, the size of an icon and the room it takes with the gap after it. */
 export const ICON_X = 8
 export const ICON_SIZE = 12
-/** Left edge of the name: after the icon, so that the names of all fields line up whether they have an icon or not. */
-export const NAME_X = ICON_X + ICON_SIZE + 6
+export const ICON_STEP = ICON_SIZE + 3
+/** Left edge of the name after `icons` icons; there is room for one even in a table without any. */
+export const nameX = (icons: number) => ICON_X + Math.max(1, icons) * ICON_STEP + 3
 /** Room after the last column. */
 export const ROW_PADDING = 8
 /** Room between the columns. */
@@ -52,16 +56,24 @@ export const badgeRoom = (badge: string) => BADGE_X + badgeWidth(badge) + 4
 
 const nullability = (parts: FieldParts) => (parts.notNull ? 'NOT NULL' : 'NULL')
 
+/** A key for a primary key, else a link for a field that refers to another one; then a diamond for a unique field. */
+function iconsOf(field: FieldParts | null, reference: string | null): FieldIcon[] {
+  if (!field) return []
+  const key: FieldIcon | null = field.primaryKey ? 'key' : field.foreignKey || reference ? 'link' : null
+  return [...(key ? [key] : []), ...(field.unique ? (['unique'] as const) : [])]
+}
+
 /**
- * Rows of the fields of a table: the name, then the type, the nullability and the reference with the rest, each in a
- * column as wide as its longest text in the table, so that the columns line up. A primary key has a key, a field that
- * refers to another one a link.
+ * Rows of the fields of a table: the icons, the name, then the type, the nullability and the reference with the rest,
+ * each in a column as wide as its longest text in the table, so that the columns line up.
  */
 export function tableRows(fields: RowField[], measure: Measure): TableRow[] {
   const parts = fields.map((field) => splitField(field.text))
+  const icons = parts.map((field, index) => iconsOf(field, fields[index]!.reference))
   const widest = (text: (parts: FieldParts) => string) =>
     Math.max(0, ...parts.map((field, index) => (field ? measure(text(field), fields[index]!.font) : 0)))
-  const nameEnd = NAME_X + widest((field) => field.name)
+  const nameLeft = nameX(Math.max(0, ...icons.map((row) => row.length)))
+  const nameEnd = nameLeft + widest((field) => field.name)
   const typeX = nameEnd + GAP
   const typeWidth = widest((field) => field.type)
   const nullX = typeWidth > 0 ? typeX + typeWidth + GAP : typeX
@@ -69,7 +81,8 @@ export function tableRows(fields: RowField[], measure: Measure): TableRow[] {
   return fields.map(({ text, font, reference }, index) => {
     const field = parts[index]!
     if (!field) {
-      return { parts: null, icon: null, nameEnd: null, columns: [], width: text.trim() ? NAME_X + measure(text, font) + ROW_PADDING : 0 }
+      const width = text.trim() ? nameLeft + measure(text, font) + ROW_PADDING : 0
+      return { parts: null, icons: [], nameX: nameLeft, nameEnd: null, columns: [], width }
     }
     const extra = [reference && `→ ${reference}`, field.rest].filter(Boolean).join('  ')
     const columns: RowColumn[] = [
@@ -80,7 +93,8 @@ export function tableRows(fields: RowField[], measure: Measure): TableRow[] {
     const last = columns.at(-1)!
     return {
       parts: field,
-      icon: field.primaryKey ? 'key' : field.foreignKey || reference ? 'link' : null,
+      icons: icons[index]!,
+      nameX: nameLeft,
       nameEnd,
       columns,
       width: last.x + measure(last.text, font) + ROW_PADDING,

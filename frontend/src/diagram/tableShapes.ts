@@ -16,6 +16,7 @@ import {
   BADGE_X,
   badgeWidth,
   ICON_SIZE,
+  ICON_STEP,
   ICON_X,
   ROW_PADDING,
   tableRows,
@@ -30,6 +31,7 @@ const BADGE_FONT_SIZE = 9
 
 const KEY_COLOR = '#b7791f'
 const LINK_COLOR = '#2563eb'
+const UNIQUE_COLOR = '#7c3aed'
 /** Opacity of the texts after the name of a field, so that the name stands out. */
 const MUTED = 0.6
 
@@ -138,6 +140,16 @@ function paintIcon(c: AbstractCanvas2D, icon: FieldIcon, x: number, y: number) {
     c.moveTo(x + ICON_SIZE - 0.75, y + 6)
     c.lineTo(x + ICON_SIZE - 0.75, y + 8.5)
     c.stroke()
+  } else if (icon === 'unique') {
+    c.setStrokeColor(UNIQUE_COLOR)
+    c.setFillColor(UNIQUE_COLOR)
+    c.begin()
+    c.moveTo(x + 6, y + 1.5)
+    c.lineTo(x + 10.5, y + 6)
+    c.lineTo(x + 6, y + 10.5)
+    c.lineTo(x + 1.5, y + 6)
+    c.close()
+    c.fillAndStroke()
   } else {
     c.setStrokeColor(LINK_COLOR)
     c.roundrect(x, y + 3.5, 7, 5, 2.5, 2.5)
@@ -148,7 +160,7 @@ function paintIcon(c: AbstractCanvas2D, icon: FieldIcon, x: number, y: number) {
   c.restore()
 }
 
-/** `codraw.tableField`: the icon of a key and the columns after the name, which the label of the field draws. */
+/** `codraw.tableField`: the icons of keys and the columns after the name, which the label of the field draws. */
 class TableFieldShape extends RectangleShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
     super.paintVertexShape(c, x, y, w, h)
@@ -156,7 +168,7 @@ class TableFieldShape extends RectangleShape {
     const table = cell?.getParent()
     const row = cell && table && tableRowsOf(this.state!.view.graph, table).get(cell)
     if (!row) return
-    if (row.icon) paintIcon(c, row.icon, x + ICON_X, y + (h - ICON_SIZE) / 2)
+    row.icons.forEach((icon, index) => paintIcon(c, icon, x + ICON_X + index * ICON_STEP, y + (h - ICON_SIZE) / 2))
     const style = this.style ?? {}
     c.save()
     c.setAlpha(MUTED)

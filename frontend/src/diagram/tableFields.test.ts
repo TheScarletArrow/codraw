@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { getCells, initializeDocument, readCell } from './model.ts'
+import { nameX } from './tableRows.ts'
 import { tableRowsOf } from './tableShapes.ts'
 
 describe('fields of tables', () => {
@@ -52,7 +53,7 @@ describe('fields of tables', () => {
     expect(editor.graph.getCellStyle(field).shape).toBe('codraw.tableField')
     expect(editor.graph.getLabel(field)).toBe('id')
     expect(tableRowsOf(editor.graph, table).get(field)).toMatchObject({
-      icon: 'key',
+      icons: ['key'],
       columns: [{ text: 'uuid' }, { text: 'NOT NULL' }],
     })
   })
@@ -82,8 +83,11 @@ describe('fields of tables', () => {
     editor.setFieldProps({ notNull: false, unique: true })
     expect(textOf(doc, field)).toBe('id bigint UNIQUE')
     expect(editor.getState().field).toEqual({ type: 'bigint', notNull: false, primaryKey: false, unique: true })
+    expect(tableRowsOf(editor.graph, field.getParent()!).get(field)!.icons).toEqual(['unique'])
     editor.setFieldProps({ primaryKey: true })
     expect(textOf(doc, field)).toBe('id bigint PK UNIQUE')
+    expect(tableRowsOf(editor.graph, field.getParent()!).get(field)!.icons).toEqual(['key', 'unique'])
+    expect(editor.graph.getCellStyle(field).spacingLeft).toBe(nameX(2))
 
     // Adding the table is one more step.
     expect(undoSteps(editor)).toBe(5)
@@ -124,7 +128,7 @@ describe('fields of tables', () => {
     editor.graph.insertEdge({ parent: editor.graph.getDefaultParent(), value: '', source: owner, target: field(users, 0) })
 
     expect(tableRowsOf(editor.graph, boards).get(owner)).toMatchObject({
-      icon: 'link',
+      icons: ['link'],
       columns: [{ text: 'uuid' }, { text: 'NOT NULL' }, { text: '→ users.id' }],
     })
     expect(redraw).toHaveBeenCalledWith(editor.graph.getView().getState(owner), true, true)
