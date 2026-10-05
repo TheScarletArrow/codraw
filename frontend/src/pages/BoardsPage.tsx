@@ -184,6 +184,7 @@ function SharedBoardItem({ board }: { board: SharedBoard }) {
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
           {board.owner.avatarUrl && <img src={board.owner.avatarUrl} alt="" className="size-4 rounded-full" />}
           {board.owner.name}
+          {board.role === 'viewer' && <span className="rounded bg-muted px-1.5 text-xs">просмотр</span>}
         </span>
       </div>
       <time dateTime={board.openedAt} className="whitespace-nowrap text-muted-foreground" title="Открыта">

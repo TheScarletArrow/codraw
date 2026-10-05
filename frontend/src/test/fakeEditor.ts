@@ -17,11 +17,16 @@ export type FakeEditor = DiagramEditor & {
 
 export interface FakeEditorOptions {
   pageId?: string
+  readOnly?: boolean
   viewport?: { width: number; height: number }
 }
 
 /** Editor stand-in for page tests: records calls and lets tests drive its events. */
-export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width: 800, height: 600 } }: FakeEditorOptions = {}): FakeEditor {
+export function createFakeEditor({
+  pageId = DEFAULT_PAGE_ID,
+  readOnly = false,
+  viewport = { width: 800, height: 600 },
+}: FakeEditorOptions = {}): FakeEditor {
   let state: EditorState = {
     canUndo: false,
     canRedo: false,
@@ -56,6 +61,7 @@ export function createFakeEditor({ pageId = DEFAULT_PAGE_ID, viewport = { width:
   return {
     graph: undefined as never,
     pageId,
+    readOnly,
     addShape: vi.fn(() => null),
     addTableField: vi.fn(() => null),
     addConnectedShape: vi.fn(() => null),

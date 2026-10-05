@@ -17,4 +17,9 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Modifying
     @Query("UPDATE boards SET updated_at = :updatedAt WHERE id = :id")
     fun touch(id: UUID, updatedAt: Instant): Boolean
+
+    /** Changes only the link access, so that a concurrent change of the title or of the document keeps its time. */
+    @Modifying
+    @Query("UPDATE boards SET link_access = :linkAccess WHERE id = :id")
+    fun updateLinkAccess(id: UUID, linkAccess: String): Boolean
 }

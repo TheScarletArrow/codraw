@@ -185,6 +185,101 @@ class BoardApiTest(
         }
     }
 
+    @Test
+    fun `a new board is editable through its link`() {
+        mockMvc.post("/api/boards") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"title": "Доска"}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.linkAccess") { value("edit") }
+        }
+    }
+
+    @Test
+    fun `the link access sets the role of other users, and the owner stays the owner`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        changeLinkAccess(id, alice, "view").andExpect { status { isOk() } }
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$.role") { value("viewer") }
+            jsonPath("$.linkAccess") { value("view") }
+        }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.role") { value("owner") } }
+    }
+
+    @Test
+    fun `a closed link answers 403 to other users and does not record their visit`() {
+        val id = createBoard("Доска Алисы", alice)
+        changeLinkAccess(id, alice, "none").andExpect { status { isOk() } }
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect { status { isForbidden() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$.role") { value("owner") }
+            jsonPath("$.linkAccess") { value("none") }
+        }
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { content { json("[]") } }
+    }
+
+    @Test
+    fun `the owner changes the link access, which does not mark the board as changed`() {
+        val id = createBoard("Доска", alice)
+        val createdAt = clock.instant()
+        clock.advance(Duration.ofMinutes(1))
+
+        changeLinkAccess(id, alice, "view").andExpect {
+            status { isOk() }
+            jsonPath("$.linkAccess") { value("view") }
+            jsonPath("$.title") { value("Доска") }
+            jsonPath("$.updatedAt") { value(createdAt.toString()) }
+            jsonPath("$.role") { value("owner") }
+        }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect {
+            jsonPath("$.linkAccess") { value("view") }
+            jsonPath("$.updatedAt") { value(createdAt.toString()) }
+        }
+    }
+
+    @Test
+    fun `the owner renames a board and changes its link access at once`() {
+        val id = createBoard("Доска", alice)
+
+        rename(id, alice, """{"title": "Платежи", "linkAccess": "none"}""").andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("Платежи") }
+            jsonPath("$.linkAccess") { value("none") }
+        }
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect {
+            jsonPath("$.title") { value("Платежи") }
+            jsonPath("$.linkAccess") { value("none") }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["public", "VIEW", ""])
+    fun `rejects an unknown link access`(access: String) {
+        val id = createBoard("Доска", alice)
+
+        changeLinkAccess(id, alice, access).andExpect { status { isBadRequest() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.linkAccess") { value("edit") } }
+    }
+
+    @Test
+    fun `only the owner changes the link access`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        changeLinkAccess(id, bob, "none").andExpect { status { isForbidden() } }
+
+        mockMvc.get("/api/boards/$id") { with(alice.session()) }.andExpect { jsonPath("$.linkAccess") { value("edit") } }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = ["0199a000-0000-7000-8000-000000000000", "not-a-uuid", "1-1-1-1-1"])
     fun `returns 404 for an unknown board`(id: String) {
@@ -339,6 +434,22 @@ class BoardApiTest(
     }
 
     @Test
+    fun `a board with a closed link leaves the boards opened through links and comes back when it opens again`() {
+        val id = createBoard("Доска Алисы", alice)
+        open(id, bob)
+
+        changeLinkAccess(id, alice, "none").andExpect { status { isOk() } }
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { content { json("[]") } }
+
+        changeLinkAccess(id, alice, "view").andExpect { status { isOk() } }
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(id)) }
+            jsonPath("$[0].role") { value("viewer") }
+            jsonPath("$[0].linkAccess") { value("view") }
+        }
+    }
+
+    @Test
     fun `lists at most 50 boards opened through links`() {
         val ids = (1..51).map { index ->
             createBoard("Доска $index", alice).also {
@@ -371,6 +482,9 @@ class BoardApiTest(
         contentType = MediaType.APPLICATION_JSON
         content = body
     }
+
+    private fun changeLinkAccess(id: String, user: User, access: String): ResultActionsDsl =
+        rename(id, user, """{"linkAccess": "$access"}""")
 
     private fun delete(id: String, user: User): ResultActionsDsl = mockMvc.delete("/api/boards/$id") {
         with(user.session())

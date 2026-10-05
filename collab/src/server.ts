@@ -1,11 +1,9 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
+import { BOARD_DELETED, createAccessChecks } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
-import { BOARD_NOT_FOUND, BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
 import { BOARD_CHANGED, isBoardChanged } from "./messages.js";
-
-/** Closes the connections of a deleted board; the client shows that the board does not exist. */
-const BOARD_DELETED = { code: 4404, reason: BOARD_NOT_FOUND };
 
 const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +29,7 @@ export function createCollabServer({
   maxDebounce = 10_000,
   stopOnSignals = true,
 }: CollabServerOptions): Server {
+  const checkAccess = createAccessChecks(backend);
   return new Server({
     port,
     quiet,
@@ -65,13 +64,19 @@ export function createCollabServer({
       }),
     ],
     // Runs before the document is loaded: a rejected client gets neither the document nor the awareness of others.
-    async onAuthenticate({ token, documentName }) {
-      return { user: await verifyToken(token, documentName) };
+    // A client that may only view gets a read-only connection: Hocuspocus does not apply its changes, but its cursor
+    // and selection still reach the others.
+    async onAuthenticate({ token, documentName, connectionConfig }) {
+      const user = await verifyToken(token, documentName);
+      connectionConfig.readOnly = user.access === "view";
+      return { user };
     },
     // A participant changed the board; the others fetch it again. Only this message passes, written by collab itself.
+    // The change may be of the access to the board, so the connections are checked against it too.
     async onStateless({ payload, document, connection }) {
       if (!isBoardChanged(payload)) return;
       document.broadcastStateless(BOARD_CHANGED, (other) => other !== connection);
+      void checkAccess(document);
     },
     async onRequest({ request, response }) {
       if (request.method === "GET" && request.url === "/health") {

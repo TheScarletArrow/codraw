@@ -1,6 +1,10 @@
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey, type JWK } from "jose";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { BoardAccess } from "../src/backend-client.js";
+
+/** The user that tokens are issued to by default, and the owner of the boards. */
+export const ALICE = "0199a000-0000-7000-8000-0000000000a1";
 
 export interface TokenOptions {
   audience?: string;
@@ -8,12 +12,18 @@ export interface TokenOptions {
   expiresAt?: number | string;
   /** Signs with this key instead of the published one, keeping the published key id. */
   signWith?: CryptoKey;
+  /** The access the token gives; `null` leaves the claim out. */
+  access?: "edit" | "view" | null;
+  /** The user the token is issued to. */
+  subject?: string;
 }
 
 /** In-memory stand-in for the backend: the internal API, the collab token keys and token issuing. */
 export class FakeBackend {
   readonly boards = new Set<string>();
   readonly documents = new Map<string, Uint8Array>();
+  /** Access to the boards; a board without an entry is owned by {@link ALICE} and editable through its link. */
+  readonly access = new Map<string, BoardAccess>();
   readonly requests: { method: string; boardId: string }[] = [];
   private keys: { kid: string; privateKey: CryptoKey; publicJwk: JWK }[] = [];
   private server?: Server;
@@ -37,11 +47,14 @@ export class FakeBackend {
   }
 
   /** Issues a collab token for the board like the backend does; options build invalid tokens. */
-  issueToken(board: string, { audience = "codraw-collab", expiresAt = "5m", signWith }: TokenOptions = {}): Promise<string> {
+  issueToken(
+    board: string,
+    { audience = "codraw-collab", expiresAt = "5m", signWith, access = "edit", subject = ALICE }: TokenOptions = {},
+  ): Promise<string> {
     const key = this.keys[0]!;
-    return new SignJWT({ board, name: "Alice", avatar: "https://avatars.example.com/alice.png" })
+    return new SignJWT({ board, name: "Alice", avatar: "https://avatars.example.com/alice.png", ...(access && { access }) })
       .setProtectedHeader({ alg: "RS256", kid: key.kid })
-      .setSubject("0199a000-0000-7000-8000-0000000000a1")
+      .setSubject(subject)
       .setAudience(audience)
       .setIssuedAt()
       .setExpirationTime(expiresAt)
@@ -52,6 +65,10 @@ export class FakeBackend {
     return this.requests.filter((r) => r.method === "PUT" && r.boardId === boardId).length;
   }
 
+  accessRequestsFor(boardId: string): number {
+    return this.requests.filter((r) => r.method === "GET access" && r.boardId === boardId).length;
+  }
+
   async start(): Promise<void> {
     await this.rotateKey();
     this.server = createServer(async (request, response) => {
@@ -60,13 +77,14 @@ export class FakeBackend {
         response.end(JSON.stringify({ keys: this.keys.map((key) => key.publicJwk) }));
         return;
       }
-      const match = /^\/internal\/boards\/([^/]+)\/document$/.exec(request.url ?? "");
+      const match = /^\/internal\/boards\/([^/]+)\/(document|access)$/.exec(request.url ?? "");
       if (!match) {
         response.writeHead(404).end();
         return;
       }
       const boardId = decodeURIComponent(match[1]!);
-      this.requests.push({ method: request.method ?? "", boardId });
+      const isAccess = match[2] === "access";
+      this.requests.push({ method: `${request.method ?? ""}${isAccess ? " access" : ""}`, boardId });
 
       if (request.headers["x-internal-token"] !== this.token) {
         response.writeHead(401).end();
@@ -74,6 +92,11 @@ export class FakeBackend {
       }
       if (!this.boards.has(boardId)) {
         response.writeHead(404).end();
+        return;
+      }
+      if (isAccess) {
+        const access = this.access.get(boardId) ?? { ownerId: ALICE, linkAccess: "edit" };
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(access));
         return;
       }
       if (request.method === "GET") {

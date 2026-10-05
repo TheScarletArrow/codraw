@@ -95,4 +95,16 @@ describe('shortcutLabel', () => {
     expect(shortcutLabel('Delete', true)).toBe('⌫')
     expect(shortcutLabel('F2', true)).toBe('F2')
   })
+
+  it('offers a participant who may only view copying and selecting all, and nothing for a field or an edge', () => {
+    const viewing = { ...all, readOnly: true }
+
+    expect(labels('canvas', viewing)).toEqual(['Выделить всё'])
+    expect(labels('shape', viewing)).toEqual(['Копировать'])
+    expect(labels('table', viewing)).toEqual(['Копировать'])
+    expect(labels('selection', viewing)).toEqual(['Копировать'])
+    expect(labels('field', viewing)).toEqual([])
+    expect(labels('edge', viewing)).toEqual([])
+    expect(menuItems('shape', viewing).every((item) => !item.separatorBefore)).toBe(true)
+  })
 })

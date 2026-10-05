@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
-import { fetchBoard, type Board } from '../api/boards.ts'
-import { isNotFound } from '../api/http.ts'
+import { canEdit, fetchBoard, type Board } from '../api/boards.ts'
+import { isForbidden, isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { participantIdentity } from '../board/identity.ts'
@@ -12,6 +12,7 @@ import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
 import { readRemotePresence, usePresencePublisher } from '../board/presence.ts'
+import { ShareButton } from '../board/ShareButton.tsx'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import { PageHistories } from '../diagram/binding.ts'
@@ -20,6 +21,7 @@ import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
+import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
@@ -31,6 +33,7 @@ const STATUS_LABELS: Record<ConnectionStatus, string> = {
   synced: 'Синхронизировано',
   offline: 'Нет связи',
   'not-found': 'Доска не найдена',
+  forbidden: 'Нет доступа',
 }
 
 const STATUS_COLORS: Record<ConnectionStatus, string> = {
@@ -38,6 +41,7 @@ const STATUS_COLORS: Record<ConnectionStatus, string> = {
   synced: 'bg-success',
   offline: 'bg-destructive',
   'not-found': 'bg-destructive',
+  forbidden: 'bg-destructive',
 }
 
 export function BoardPage() {
@@ -47,6 +51,7 @@ export function BoardPage() {
 
   if (board.isPending || user.isPending) return <Message>Загрузка…</Message>
   if (isNotFound(board.error)) return <BoardNotFound />
+  if (isForbidden(board.error)) return <NoAccess />
   if (board.isError || user.isError) return <Message alert>Не удалось загрузить доску</Message>
   return <BoardWorkspace board={board.data} user={user.data} />
 }
@@ -56,7 +61,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const { status, participants, document, awareness, notifyBoardChanged } = useBoardConnection(board.id, identity)
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
-  const pages = usePages(document)
+  const readOnly = !canEdit(board)
+  // A participant who may only view never writes to the document: collab would reject it, and their document would
+  // differ from everybody else's. A board nobody has edited yet has no page for them.
+  useEffect(() => {
+    if (document && !readOnly) initializeDocument(document)
+  }, [document, readOnly])
+  const pages = usePages(document, !readOnly)
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
@@ -117,6 +128,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   }, [editor, centreOn])
 
   if (status === 'not-found') return <BoardNotFound />
+  if (status === 'forbidden') return <NoAccess />
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -127,9 +139,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
           {STATUS_LABELS[status]}
         </span>
-        <DrawioActions document={document} title={board.title} onImported={selectPage} />
+        {readOnly && (
+          <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-sm whitespace-nowrap text-muted-foreground">
+            Только просмотр
+          </span>
+        )}
+        <DrawioActions document={document} title={board.title} onImported={selectPage} readOnly={readOnly} />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-        <EditorToolbar editor={editor} />
+        <EditorToolbar editor={editor} readOnly={readOnly} />
         <Participants
           participants={participants}
           pages={pages}
@@ -137,20 +154,27 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onFollow={follow}
           className="ml-auto shrink-0"
         />
+        <ShareButton board={board} pageId={currentPage?.id ?? null} onChanged={notifyBoardChanged} />
       </div>
       <div className="flex min-h-0 flex-1">
-        <ShapePalette editor={editor} />
+        {!readOnly && <ShapePalette editor={editor} />}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             {document && currentPage ? (
               <>
-                <DiagramCanvas document={document} pageId={currentPage.id} histories={histories} onEditor={setEditor} />
+                <DiagramCanvas
+                  document={document}
+                  pageId={currentPage.id}
+                  histories={histories}
+                  readOnly={readOnly}
+                  onEditor={setEditor}
+                />
                 <PresenceLayer editor={editor} awareness={awareness} />
-                <QuickConnect editor={editor} />
+                {!readOnly && <QuickConnect editor={editor} />}
                 <CanvasMenu editor={editor} />
               </>
             ) : (
-              <Message>Загрузка доски…</Message>
+              <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>
             )}
           </div>
           {document && (
@@ -167,6 +191,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
               }}
               onDelete={(id) => deletePage(document, id)}
               onMove={(id, index) => movePage(document, id, index)}
+              readOnly={readOnly}
             />
           )}
         </div>
@@ -177,6 +202,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
 
 function BoardNotFound() {
   return <Message alert>{STATUS_LABELS['not-found']}</Message>
+}
+
+function NoAccess() {
+  return <Message alert>Нет доступа: владелец закрыл доступ к доске по ссылке</Message>
 }
 
 function Message({ children, alert = false }: { children: string; alert?: boolean }) {

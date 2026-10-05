@@ -25,7 +25,7 @@ import {
 } from '@maxgraph/core'
 import * as Y from 'yjs'
 import { allowsAutoWidth, anchoredX, AUTO_WIDTH_KEY, fittedWidth, hasAutoWidth, measureLabel, type Align } from './autoWidth.ts'
-import { createUndoManager, DiagramBinding } from './binding.ts'
+import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { clipboard } from './clipboard.ts'
 import { registerDiagramExtensions } from './extensions.ts'
@@ -142,6 +142,8 @@ export interface DiagramEditor {
   readonly graph: Graph
   /** The page whose cells the canvas shows. */
   readonly pageId: string
+  /** The participant may only view the page: the commands that would change it do nothing. */
+  readonly readOnly: boolean
   /** Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area. */
   addShape(shape: ShapeId, center?: Point): Cell | null
   /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
@@ -251,12 +253,40 @@ export interface DiagramEditorOptions {
    * Without it the editor keeps its own history and destroys it with itself.
    */
   undoManager?: Y.UndoManager
+  /**
+   * The participant may only view the page: they select, copy, scroll and zoom, but cannot move, resize, connect,
+   * edit or delete anything, and nothing they do is written to the document.
+   */
+  readOnly?: boolean
 }
+
+/** Commands of the editor that change the page; a read-only editor ignores them. */
+const CHANGING_COMMANDS = [
+  'addShape',
+  'addTableField',
+  'addConnectedShape',
+  'cut',
+  'paste',
+  'duplicate',
+  'bringToFront',
+  'sendToBack',
+  'reverseEdge',
+  'editLabel',
+  'deleteSelection',
+  'setEdgeMarker',
+  'setColor',
+  'setFontSize',
+  'stepFontSize',
+  'setAutoWidth',
+  'setGeometry',
+  'undo',
+  'redo',
+] as const satisfies readonly (keyof DiagramEditor)[]
 
 export function createDiagramEditor(
   container: HTMLElement,
   document: Y.Doc,
-  { pageId = DEFAULT_PAGE_ID, undoManager: sharedUndoManager }: DiagramEditorOptions = {},
+  { pageId = DEFAULT_PAGE_ID, undoManager: sharedUndoManager, readOnly = false }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
   const cells = getCells(document, pageId)
@@ -279,11 +309,19 @@ export function createDiagramEditor(
   configureConnections(graph)
   configureSelection(graph)
   configureRegionSelection(graph)
+  if (readOnly) {
+    // Locked cells cannot be moved, resized, bent or disconnected.
+    graph.setCellsLocked(true)
+    graph.setCellsEditable(false)
+    graph.setCellsDeletable(false)
+    graph.setCellsCloneable(false)
+    graph.setConnectable(false)
+  }
   const layoutManager = new LayoutManager(graph)
   const tableLayout = new TableLayout(graph)
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
-  const binding = new DiagramBinding(model, cells)
+  const binding = new DiagramBinding(model, cells, LOCAL_ORIGIN, readOnly)
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
@@ -456,16 +494,16 @@ export function createDiagramEditor(
   const readState = (): EditorState => {
     const edges = selectedEdges()
     return {
-      canUndo: undoManager.canUndo(),
-      canRedo: undoManager.canRedo(),
+      canUndo: !readOnly && undoManager.canUndo(),
+      canRedo: !readOnly && undoManager.canRedo(),
       scale: graph.getView().scale,
       tableSelected: selectedTable() !== null,
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
       text: selectionText(),
       geometry: selectionGeometry(),
-      quickConnect: quickConnect(),
-      canPaste: clipboard.read() !== null,
+      quickConnect: readOnly ? null : quickConnect(),
+      canPaste: !readOnly && clipboard.read() !== null,
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -497,17 +535,19 @@ export function createDiagramEditor(
   const keyHandler = new KeyHandler(graph)
   // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
   keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
-  keyHandler.bindKey(KEY_DELETE, removeSelection)
-  keyHandler.bindKey(KEY_BACKSPACE, removeSelection)
-  keyHandler.bindControlKey(KEY_Z, () => editor.undo())
-  keyHandler.bindControlShiftKey(KEY_Z, () => editor.redo())
-  keyHandler.bindControlKey(KEY_Y, () => editor.redo())
   keyHandler.bindControlKey(KEY_C, () => editor.copy())
-  keyHandler.bindControlKey(KEY_X, () => editor.cut())
-  keyHandler.bindControlKey(KEY_V, () => editor.paste())
-  keyHandler.bindControlKey(KEY_D, () => editor.duplicate())
   keyHandler.bindControlKey(KEY_A, () => editor.selectAll())
-  keyHandler.bindKey(KEY_F2, () => editor.editLabel())
+  if (!readOnly) {
+    keyHandler.bindKey(KEY_DELETE, removeSelection)
+    keyHandler.bindKey(KEY_BACKSPACE, removeSelection)
+    keyHandler.bindControlKey(KEY_Z, () => editor.undo())
+    keyHandler.bindControlShiftKey(KEY_Z, () => editor.redo())
+    keyHandler.bindControlKey(KEY_Y, () => editor.redo())
+    keyHandler.bindControlKey(KEY_X, () => editor.cut())
+    keyHandler.bindControlKey(KEY_V, () => editor.paste())
+    keyHandler.bindControlKey(KEY_D, () => editor.duplicate())
+    keyHandler.bindKey(KEY_F2, () => editor.editLabel())
+  }
 
   // maxGraph cancels pointerdown, so the canvas would not take focus and its keyboard shortcuts would
   // not work after clicking a palette button. The in-place label editor keeps its own focus.
@@ -661,6 +701,7 @@ export function createDiagramEditor(
   const editor: DiagramEditor = {
     graph,
     pageId,
+    readOnly,
     addShape(shapeId, center = visibleCenter()) {
       const shape = findShape(shapeId)
       if (!shape) return null
@@ -958,6 +999,10 @@ export function createDiagramEditor(
       binding.destroy()
       graph.destroy()
     },
+  }
+  if (readOnly) {
+    const ignore = () => null
+    Object.assign(editor, Object.fromEntries(CHANGING_COMMANDS.map((command) => [command, ignore])))
   }
   Object.defineProperty(container, EDITOR_PROPERTY, { value: editor, configurable: true })
   return editor

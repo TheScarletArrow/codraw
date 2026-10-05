@@ -41,6 +41,9 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  * - local edits (model `CHANGE` events) are written to Yjs in one transaction with {@link LOCAL_ORIGIN};
  * - other transactions (remote participants, undo/redo) are reconciled into the model: every affected
  *   cell is re-read from Yjs, so the model ends up equal to the document whatever the order of events.
+ *
+ * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
+ * leaving the document of this client different from everybody else's.
  */
 export class DiagramBinding {
   private applyingRemote = false
@@ -48,11 +51,13 @@ export class DiagramBinding {
   private readonly model: GraphDataModel
   private readonly cells: CellsMap
   private readonly origin: unknown
+  private readonly readOnly: boolean
 
-  constructor(model: GraphDataModel, cells: CellsMap, origin: unknown = LOCAL_ORIGIN) {
+  constructor(model: GraphDataModel, cells: CellsMap, origin: unknown = LOCAL_ORIGIN, readOnly = false) {
     this.model = model
     this.cells = cells
     this.origin = origin
+    this.readOnly = readOnly
     // Cells are created by several clients at once, so ids must be globally unique.
     model.createId = () => newId()
     // maxGraph's ConnectionHandler inserts edges with the id '' and the model only generates ids for null,
@@ -91,7 +96,7 @@ export class DiagramBinding {
   }
 
   private readonly handleLocalChanges = (_sender: unknown, event: EventObject) => {
-    if (this.applyingRemote) return
+    if (this.applyingRemote || this.readOnly) return
     const touched = new Set<Cell>()
     for (const change of event.getProperty('changes') as unknown[]) {
       if (change instanceof ChildChange) {

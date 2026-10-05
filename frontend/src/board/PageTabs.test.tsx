@@ -151,4 +151,20 @@ describe('PageTabs', () => {
     expect(within(tab('Контейнеры')).getByLabelText('На странице: Боб, Ева')).toBeInTheDocument()
     expect(within(tab('Контекст')).queryAllByTestId('page-visitor')).toHaveLength(0)
   })
+
+  it('lets a participant who may only view switch pages, and nothing else', async () => {
+    const handlers = renderTabs({ readOnly: true })
+
+    await userEvent.click(tab('Контейнеры'))
+    await userEvent.dblClick(tab('Контекст'))
+    fireEvent.contextMenu(tab('Контекст'))
+    fireEvent.keyDown(tab('Контекст'), { key: 'F2' })
+
+    expect(handlers.onSelect).toHaveBeenCalledWith('p2')
+    expect(screen.queryByRole('textbox', { name: 'Имя страницы' })).toBeNull()
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Добавить страницу' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Меню страницы «Контекст»' })).toBeNull()
+    expect(tab('Контекст')).toHaveAttribute('draggable', 'false')
+  })
 })

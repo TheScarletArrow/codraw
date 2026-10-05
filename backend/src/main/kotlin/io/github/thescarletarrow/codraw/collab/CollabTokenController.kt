@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.collab
 
 import io.github.thescarletarrow.codraw.board.BoardIds
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.linkAccessClosed
 import io.github.thescarletarrow.codraw.user.UserService
 import io.github.thescarletarrow.codraw.user.userId
 import org.springframework.http.HttpStatus
@@ -19,12 +20,13 @@ class CollabTokenController(
     private val tokens: CollabTokenService,
 ) {
 
-    /** Token to connect to the document of any existing board: a link to a board gives access to it. */
+    /** Token to connect to the document of a board that the user owns or whose link gives them access. */
     @PostMapping("/api/boards/{id}/collab-token")
     fun issue(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): CollabToken {
         val board = BoardIds.parse(id)?.let(boards::find)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
+        val role = board.roleOf(principal.userId) ?: throw linkAccessClosed()
         val user = checkNotNull(users.find(principal.userId)) { "Signed-in user ${principal.userId} does not exist" }
-        return tokens.issue(user, checkNotNull(board.id))
+        return tokens.issue(user, checkNotNull(board.id), if (role.canEdit) DocumentAccess.EDIT else DocumentAccess.VIEW)
     }
 }

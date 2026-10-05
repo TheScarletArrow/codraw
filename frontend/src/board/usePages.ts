@@ -5,8 +5,11 @@ import { listPages, type PageInfo } from '../diagram/pages.ts'
 
 const NO_PAGES: PageInfo[] = []
 
-/** Pages of the board in their order; re-renders when other participants change them. */
-export function usePages(document: Y.Doc | null): PageInfo[] {
+/**
+ * Pages of the board in their order; re-renders when other participants change them. A participant who may edit the
+ * board (`editable`) gives a board left without pages its first page again.
+ */
+export function usePages(document: Y.Doc | null, editable = true): PageInfo[] {
   const snapshot = useRef<PageInfo[]>(NO_PAGES)
   const subscribe = useCallback(
     (onChange: () => void) => {
@@ -14,7 +17,7 @@ export function usePages(document: Y.Doc | null): PageInfo[] {
       const pages = getPages(document)
       const update = () => {
         // Concurrent deletions by several participants can leave the board without pages.
-        if (pages.size === 0) initializeDocument(document)
+        if (pages.size === 0 && editable) initializeDocument(document)
         snapshot.current = listPages(document)
         onChange()
       }
@@ -22,7 +25,7 @@ export function usePages(document: Y.Doc | null): PageInfo[] {
       pages.observeDeep(update)
       return () => pages.unobserveDeep(update)
     },
-    [document],
+    [document, editable],
   )
   return useSyncExternalStore(subscribe, () => (document ? snapshot.current : NO_PAGES))
 }

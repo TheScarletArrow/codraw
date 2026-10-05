@@ -9,34 +9,44 @@ import { NumberField } from './NumberField.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
 
-export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
-  const { canUndo, canRedo, scale, tableSelected, edgeMarkers, colors, text, geometry } = useEditorState(editor)
+interface EditorToolbarProps {
+  editor: DiagramEditor | null
+  /** The participant may only view the board: only the scale is shown. */
+  readOnly?: boolean
+}
+
+export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) {
+  const { canUndo, canRedo, scale } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Отменить"
-        title="Отменить (Ctrl+Z)"
-        disabled={!editor || !canUndo}
-        onClick={() => editor?.undo()}
-      >
-        <Undo2 />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Повторить"
-        title="Повторить (Ctrl+Shift+Z)"
-        disabled={!editor || !canRedo}
-        onClick={() => editor?.redo()}
-      >
-        <Redo2 />
-      </Button>
-      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      {!readOnly && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Отменить"
+            title="Отменить (Ctrl+Z)"
+            disabled={!editor || !canUndo}
+            onClick={() => editor?.undo()}
+          >
+            <Undo2 />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Повторить"
+            title="Повторить (Ctrl+Shift+Z)"
+            disabled={!editor || !canRedo}
+            onClick={() => editor?.redo()}
+          >
+            <Redo2 />
+          </Button>
+          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+        </>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -71,6 +81,17 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
       >
         <ZoomIn />
       </Button>
+      {!readOnly && <EditingTools editor={editor} />}
+    </div>
+  )
+}
+
+/** Tools that change the selected objects. */
+function EditingTools({ editor }: { editor: DiagramEditor | null }) {
+  const { tableSelected, edgeMarkers, colors, text, geometry } = useEditorState(editor)
+
+  return (
+    <>
       {tableSelected && (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -116,7 +137,7 @@ export function EditorToolbar({ editor }: { editor: DiagramEditor | null }) {
           <MarkerSelect label="Конец" end="end" value={edgeMarkers.end} editor={editor} />
         </>
       )}
-    </div>
+    </>
   )
 }
 

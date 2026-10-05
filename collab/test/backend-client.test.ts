@@ -37,11 +37,22 @@ describe("backend client", () => {
     await expect(client.storeDocument(missing, new Uint8Array([1]))).rejects.toBeInstanceOf(BoardNotFoundError);
   });
 
+  it("loads the access to a board", async () => {
+    backend.access.set(board, { ownerId: "0199a000-0000-7000-8000-0000000000b1", linkAccess: "view" });
+
+    await expect(client.loadAccess(board)).resolves.toEqual({
+      ownerId: "0199a000-0000-7000-8000-0000000000b1",
+      linkAccess: "view",
+    });
+    await expect(client.loadAccess("0199a000-0000-7000-8000-000000000002")).rejects.toBeInstanceOf(BoardNotFoundError);
+  });
+
   it("fails on other backend errors", async () => {
     const unauthorized = createBackendClient({ baseUrl: backend.url, internalToken: "wrong" });
 
     await expect(unauthorized.loadDocument(board)).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.storeDocument(board, new Uint8Array([1]))).rejects.toThrow("backend responded with 401");
+    await expect(unauthorized.loadAccess(board)).rejects.toThrow("backend responded with 401");
   });
 });
 

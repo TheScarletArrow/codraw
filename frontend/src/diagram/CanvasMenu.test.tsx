@@ -108,4 +108,26 @@ describe('CanvasMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(editor.deleteSelection).not.toHaveBeenCalled()
   })
+
+  describe('for a participant who may only view', () => {
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      editor = createFakeEditor({ readOnly: true })
+      render(<CanvasMenu editor={editor} />)
+    })
+
+    it('offers copying a shape', async () => {
+      rightClick('shape')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Копировать' }))
+      expect(editor.copy).toHaveBeenCalled()
+    })
+
+    it('does not open for an edge, which they cannot do anything with', () => {
+      rightClick('edge')
+
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+  })
 })

@@ -24,7 +24,7 @@ class BoardService(
     /** Boards of the user [ownerId], most recently changed first. */
     fun list(ownerId: UUID): List<Board> = boards.findAllByOwnerIdOrderByUpdatedAtDesc(ownerId)
 
-    /** Returns the board of any user: a link to a board gives access to it. */
+    /** Returns the board of any user; what the caller may do with it depends on [Board.roleOf]. */
     fun find(id: UUID): Board? = boards.findByIdOrNull(id)
 
     /** Records that the user [userId] opened the [board] of another user through its link. */
@@ -37,6 +37,12 @@ class BoardService(
 
     /** Gives the [board] a new [title]; renaming is a change of the board. */
     fun rename(board: Board, title: String): Board = boards.save(board.copy(title = title, updatedAt = now()))
+
+    /** Sets what the link to the [board] gives to others; this is not a change of the board itself. */
+    fun changeLinkAccess(board: Board, linkAccess: LinkAccess): Board {
+        boards.updateLinkAccess(checkNotNull(board.id), linkAccess.name)
+        return board.copy(linkAccess = linkAccess)
+    }
 
     /** Deletes the [board] for good, with its document and the visits of other users. */
     fun delete(board: Board) {

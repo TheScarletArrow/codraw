@@ -32,7 +32,12 @@ export interface MenuAvailability {
   canPaste: boolean
   canUndo: boolean
   canRedo: boolean
+  /** The participant may only view the board: the menu has only the items that change nothing. */
+  readOnly?: boolean
 }
+
+/** Items of a participant who may only view the board. */
+const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll'])
 
 type Entry = [MenuCommand, string, Shortcut?]
 
@@ -73,10 +78,19 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   selection: [CLIPBOARD, ORDER, [DELETE]],
 }
 
-/** Items of the context menu for a target; the ones that cannot be done now are disabled. */
-export function menuItems(target: MenuTarget, { canPaste, canUndo, canRedo }: MenuAvailability): MenuItem[] {
+/**
+ * Items of the context menu for a target; the ones that cannot be done now are disabled. A participant who may only
+ * view gets only copying and selecting, so their menu may be empty.
+ */
+export function menuItems(
+  target: MenuTarget,
+  { canPaste, canUndo, canRedo, readOnly = false }: MenuAvailability,
+): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = { paste: !canPaste, undo: !canUndo, redo: !canRedo }
-  return MENUS[target].flatMap((group, groupIndex) =>
+  const groups = MENUS[target]
+    .map((group) => group.filter(([command]) => !readOnly || VIEWING_COMMANDS.has(command)))
+    .filter((group) => group.length > 0)
+  return groups.flatMap((group, groupIndex) =>
     group.map(([command, label, shortcut], index) => ({
       command,
       label,

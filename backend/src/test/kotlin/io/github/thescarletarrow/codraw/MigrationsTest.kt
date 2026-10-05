@@ -4,6 +4,7 @@ import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.core.io.ClassPathResource
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.init.ScriptUtils
@@ -11,6 +12,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 @Testcontainers
 class MigrationsTest {
@@ -34,9 +36,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V3 create tables on an empty database and U3, U2, U1 revert them`() {
-        assertEquals(3, flyway().migrate().migrationsExecuted)
+    fun `V1 to V4 create tables on an empty database and U4, U3, U2, U1 revert them`() {
+        assertEquals(4, flyway().migrate().migrationsExecuted)
         assertEquals(boardManagementTables, appTables())
+        assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+
+        revert("U4__claude_bold_cannon_6zvbpn.sql")
+        assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at"), boardColumns())
 
         revert("U3__claude_focused_cori_b96u4j.sql")
         assertEquals(userAuthTables, appTables())
@@ -48,7 +54,7 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(3, flyway().migrate().migrationsExecuted)
+        assertEquals(4, flyway().migrate().migrationsExecuted)
         assertEquals(boardManagementTables, appTables())
     }
 
@@ -92,7 +98,7 @@ class MigrationsTest {
             """,
         ).update()
 
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("3").migrate().migrationsExecuted)
         jdbcClient.sql(
             """
             INSERT INTO board_visits (user_id, board_id, visited_at)
@@ -102,6 +108,30 @@ class MigrationsTest {
         jdbcClient.sql("DELETE FROM boards").update()
 
         assertEquals(0, count("board_visits"))
+    }
+
+    @Test
+    fun `V4 keeps existing boards editable through their links and accepts only known link access`() {
+        flyway("3").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now())
+            """,
+        ).update()
+        jdbcClient.sql(
+            """
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway().migrate().migrationsExecuted)
+
+        assertEquals("EDIT", jdbcClient.sql("SELECT link_access FROM boards").query(String::class.java).single())
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE boards SET link_access = 'PUBLIC'").update()
+        }
     }
 
     private fun flyway(target: String = "latest") =

@@ -32,6 +32,13 @@ export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
   useEffect(
     () =>
       editor?.onContextMenu((next) => {
+        // A participant who may only view has nothing to do with, e.g., an edge.
+        if (
+          menuItems(next.target, { canPaste: false, canUndo: false, canRedo: false, readOnly: editor.readOnly })
+            .length === 0
+        ) {
+          return
+        }
         openRequest.current = next
         setRequest(next)
       }),
@@ -71,7 +78,7 @@ export function CanvasMenu({ editor }: { editor: DiagramEditor | null }) {
         }}
       >
         <div role="menu" aria-label="Действия" className="flex flex-col">
-          {menuItems(request.target, { canPaste, canUndo, canRedo }).map((item) => (
+          {menuItems(request.target, { canPaste, canUndo, canRedo, readOnly: editor.readOnly }).map((item) => (
             <Fragment key={item.command}>
               {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
               <Button

@@ -138,4 +138,28 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('spinbutton', { name: 'Высота' })).toBeDisabled()
     expect(screen.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
   })
+
+  it('offers a participant who may only view the scale only', () => {
+    document.body.innerHTML = ''
+    render(<EditorToolbar editor={editor} readOnly />)
+    act(() =>
+      editor.setState({
+        canUndo: true,
+        tableSelected: true,
+        edgeMarkers: { start: 'none', end: 'classic' },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+        text: { fontSize: 12, autoWidth: false },
+        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
+      }),
+    )
+
+    const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
+    expect(
+      within(toolbar)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить'])
+    expect(within(toolbar).queryByRole('combobox')).toBeNull()
+    expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
+  })
 })
