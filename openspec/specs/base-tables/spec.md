@@ -1,7 +1,8 @@
 # base-tables Specification
 
 ## Purpose
-TBD - created by archiving change add-base-tables. Update Purpose after archive.
+Позволяет вынести общие поля таблиц схемы базы данных (`id`, `created_at`) в базовые таблицы с иерархией, как
+базовый класс сущностей в коде: таблицы, выбравшие базу, получают её поля и их изменения, а правят их в одном месте.
 
 ## Requirements
 

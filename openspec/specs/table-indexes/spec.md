@@ -1,7 +1,8 @@
 # table-indexes Specification
 
 ## Purpose
-TBD - created by archiving change add-table-indexes. Update Purpose after archive.
+Показывает индексы таблиц схемы базы данных — составные, уникальные и частичные — блоком под полями таблицы,
+позволяет добавлять и править их на доске и переносит их через импорт и выгрузку SQL, копирование и файлы `.drawio`.
 
 ## Requirements
 
