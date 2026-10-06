@@ -1,6 +1,8 @@
 package io.github.thescarletarrow.codraw.legal
 
+import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.BoardVersionService
+import io.github.thescarletarrow.codraw.notification.NotificationProperties
 import io.github.thescarletarrow.codraw.user.GuestLoginController
 import io.github.thescarletarrow.codraw.user.GuestProperties
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -32,10 +34,19 @@ data class LegalResponse(
     val guestSessionDays: Long,
     /** The most versions kept of a board. */
     val versionsPerBoard: Int,
+    /** A notification is deleted once it is this many days old. */
+    val notificationRetentionDays: Long,
+    /** The most notifications kept of a user. */
+    val notificationsPerUser: Int,
 )
 
 @RestController
-class LegalController(private val legal: LegalProperties, private val guests: GuestProperties) {
+class LegalController(
+    private val legal: LegalProperties,
+    private val guests: GuestProperties,
+    private val notifications: NotificationProperties,
+    private val limits: LimitProperties,
+) {
 
     /** Open without a sign-in: the privacy policy and the terms of use are read before signing in. */
     @GetMapping(PATH)
@@ -45,6 +56,8 @@ class LegalController(private val legal: LegalProperties, private val guests: Gu
         guestBoardRetentionDays = guests.boardRetention.toDays(),
         guestSessionDays = GuestLoginController.SESSION_TIMEOUT.toDays(),
         versionsPerBoard = BoardVersionService.LIMIT,
+        notificationRetentionDays = notifications.retention.toDays(),
+        notificationsPerUser = limits.notificationsPerUser,
     )
 
     companion object {

@@ -151,6 +151,24 @@ class Comments(private val jdbc: JdbcClient) {
             .update()
     }
 
+    /** The users that the comment [commentId] mentions. */
+    fun mentionsOf(commentId: UUID): Set<UUID> = jdbc.sql(
+        "SELECT user_id FROM comment_mentions WHERE comment_id = :commentId",
+    )
+        .param("commentId", commentId)
+        .query(UUID::class.java)
+        .list()
+        .filterNotNullTo(mutableSetOf())
+
+    /** The authors of the comments of the thread [threadId], but those who are deleted. */
+    fun authors(threadId: UUID): Set<UUID> = jdbc.sql(
+        "SELECT DISTINCT author_id FROM comments WHERE thread_id = :threadId AND author_id IS NOT NULL",
+    )
+        .param("threadId", threadId)
+        .query(UUID::class.java)
+        .list()
+        .filterNotNullTo(mutableSetOf())
+
     fun deleteComment(commentId: UUID) {
         jdbc.sql("DELETE FROM comments WHERE id = :commentId").param("commentId", commentId).update()
     }

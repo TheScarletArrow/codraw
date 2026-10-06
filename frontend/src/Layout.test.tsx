@@ -5,6 +5,8 @@ import { Layout } from './Layout.tsx'
 import { BoardsPage } from './pages/BoardsPage.tsx'
 import { ALICE, mockFetch, renderRoutes } from './test/render.tsx'
 
+const unreadCount = { 'GET /api/notifications/unread-count': { body: { count: 0 } } }
+
 const routes = [
   { path: '/login', element: <p>Страница входа</p> },
   {
@@ -42,7 +44,7 @@ describe('Layout', () => {
   })
 
   it('shows the name and the avatar of the signed-in user in the header', async () => {
-    mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] } })
+    mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] }, ...unreadCount })
 
     renderRoutes(routes)
 
@@ -52,8 +54,25 @@ describe('Layout', () => {
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
   })
 
+  it('shows the notifications of the signed-in user in the header, of a guest too', async () => {
+    mockFetch({
+      'GET /api/me': { body: { id: 'guest-1', name: 'Гость 42', avatarUrl: null, guest: true } },
+      'GET /api/boards': { body: [] },
+      'GET /api/notifications/unread-count': { body: { count: 3 } },
+    })
+
+    renderRoutes(routes)
+
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByRole('button', { name: 'Уведомления (3)' })).toBeInTheDocument()
+  })
+
   it('offers a guest to sign in instead of signing out', async () => {
-    mockFetch({ 'GET /api/me': { body: { id: 'guest-1', name: 'Гость 42', avatarUrl: null, guest: true } }, 'GET /api/boards': { body: [] } })
+    mockFetch({
+      'GET /api/me': { body: { id: 'guest-1', name: 'Гость 42', avatarUrl: null, guest: true } },
+      'GET /api/boards': { body: [] },
+      ...unreadCount,
+    })
     const { router } = renderRoutes(routes)
 
     const header = await screen.findByRole('banner')
@@ -71,6 +90,7 @@ describe('Layout', () => {
       'GET /api/me': { body: ALICE },
       'GET /api/boards': { body: [] },
       'POST /api/logout': { status: 204 },
+      ...unreadCount,
     })
     const { router } = renderRoutes(routes)
 
@@ -83,7 +103,7 @@ describe('Layout', () => {
   })
 
   it('opens the login page when the session ends while the user works', async () => {
-    mockFetch({ 'GET /api/me': [{ body: ALICE }, { status: 401 }], 'GET /api/boards': { status: 401 } })
+    mockFetch({ 'GET /api/me': [{ body: ALICE }, { status: 401 }], 'GET /api/boards': { status: 401 }, ...unreadCount })
 
     const { router } = renderRoutes(routes)
 

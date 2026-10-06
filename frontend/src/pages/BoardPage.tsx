@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import type { BoardVersion } from '../api/versions.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
-import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
+import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
@@ -28,7 +28,8 @@ import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConn
 import { usePages } from '../board/usePages.ts'
 import { CommentBadges } from '../comments/CommentBadges.tsx'
 import { CommentsButton } from '../comments/CommentsButton.tsx'
-import { CommentsPanel, type ThreadDraft, type ThreadFocus } from '../comments/CommentsPanel.tsx'
+import { CommentsPanel, type ThreadDraft } from '../comments/CommentsPanel.tsx'
+import type { ThreadFocus } from '../comments/threads.ts'
 import { useThreads } from '../comments/useComments.ts'
 import { fetchEmbed } from '../api/embed.ts'
 import { embedKey } from '../embed/links.ts'
@@ -88,6 +89,7 @@ export function BoardPage() {
 }
 
 function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
+  const queryClient = useQueryClient()
   const identity = useMemo(() => participantIdentity(user), [user])
   // Who the elements this participant adds and changes name as who changed them last.
   const author = useMemo<Author>(() => ({ id: user.id, name: user.name }), [user.id, user.name])
@@ -139,18 +141,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedPage = searchParams.get('page')
   const currentPage = pages.find((page) => page.id === requestedPage) ?? pages[0] ?? null
-  const selectPage = useCallback(
-    (id: string) =>
+  // One change of the address per render: a second one would start from the same address and undo the first.
+  const changeParams = useCallback(
+    (change: (params: URLSearchParams) => void) =>
       setSearchParams(
         (params) => {
           const next = new URLSearchParams(params)
-          next.set('page', id)
+          change(next)
           return next
         },
         { replace: true },
       ),
     [setSearchParams],
   )
+  const selectPage = useCallback((id: string) => changeParams((params) => params.set('page', id)), [changeParams])
   // An unknown page, e.g. one deleted by another participant, is replaced with the first page.
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
@@ -174,14 +178,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
 
   // Going to a thread: switch to its page, then show its element once that page is shown.
   const revealing = useRef<{ pageId: string; cellId: string } | null>(null)
+  /** Shows the element of the thread, at once or once its page is on the canvas; `true` when that page is another one. */
+  const revealThread = useCallback(
+    (thread: CommentThread) => {
+      if (editor && editor.pageId === thread.pageId) {
+        if (thread.cellId) editor.revealCell(thread.cellId)
+        return false
+      }
+      revealing.current = thread.cellId ? { pageId: thread.pageId, cellId: thread.cellId } : null
+      return true
+    },
+    [editor],
+  )
   const showThread = (thread: CommentThread) => {
-    if (!pages.some((page) => page.id === thread.pageId)) return
-    if (editor && editor.pageId === thread.pageId) {
-      if (thread.cellId) editor.revealCell(thread.cellId)
-      return
-    }
-    revealing.current = thread.cellId ? { pageId: thread.pageId, cellId: thread.cellId } : null
-    selectPage(thread.pageId)
+    if (pages.some((page) => page.id === thread.pageId) && revealThread(thread)) selectPage(thread.pageId)
   }
   useEffect(() => {
     const target = revealing.current
@@ -200,6 +210,46 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     openComments()
     setCommentFocus({ pageId: editor.pageId, cellId })
   }
+  // A link, e.g. from a notification, asks the page once to open something: the page opens it as soon as it can and
+  // takes the request out of the address, so that a reload does not open it again.
+  // `?thread=` opens the comments on that thread, once the threads and the pages are there, and goes to its page and
+  // its element; a thread that is gone opens the comments only.
+  const linkedThread = searchParams.get('thread')
+  const readyLink = linkedThread !== null && threads.data && pages.length > 0 ? linkedThread : null
+  const [openedLink, setOpenedLink] = useState<string | null>(null)
+  if (readyLink !== openedLink) {
+    setOpenedLink(readyLink)
+    if (readyLink) {
+      const thread = threads.data?.find((candidate) => candidate.id === readyLink)
+      openComments()
+      setCommentDraft(null)
+      setCommentFocus(thread ? { threadId: thread.id } : null)
+    }
+  }
+  useEffect(() => {
+    if (!linkedThread || !threads.data || pages.length === 0) return
+    const thread = threads.data.find((candidate) => candidate.id === linkedThread)
+    const shown = thread && pages.some((page) => page.id === thread.pageId) ? thread : null
+    if (shown) revealThread(shown)
+    changeParams((params) => {
+      params.delete('thread')
+      if (shown) params.set('page', shown.pageId)
+    })
+  }, [linkedThread, threads.data, pages, revealThread, changeParams])
+
+  // `?share=` opens «Поделиться», e.g. on the requests for access, which it fetches again.
+  const shareLinked = searchParams.has('share')
+  const [shareOpen, setShareOpen] = useState(false)
+  const [openedShare, setOpenedShare] = useState(false)
+  if (shareLinked !== openedShare) {
+    setOpenedShare(shareLinked)
+    if (shareLinked) setShareOpen(true)
+  }
+  useEffect(() => {
+    if (!shareLinked) return
+    void queryClient.invalidateQueries({ queryKey: accessRequestsKey(board.id), exact: true })
+    changeParams((params) => params.delete('share'))
+  }, [shareLinked, queryClient, board.id, changeParams])
 
   if (status === 'not-found') return <BoardNotFound />
   if (status === 'forbidden') return <NoAccess boardId={board.id} />
@@ -278,6 +328,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           embed={embed.data}
           pages={pages}
           document={document}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
         />
       </div>
       {connection.tooLarge && (

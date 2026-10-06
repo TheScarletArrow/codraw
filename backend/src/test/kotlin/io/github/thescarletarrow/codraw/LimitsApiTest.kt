@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.user.ProviderProfile
 import io.github.thescarletarrow.codraw.user.User
 import io.github.thescarletarrow.codraw.user.UserService
 import io.micrometer.core.instrument.MeterRegistry
+import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -35,6 +36,7 @@ import kotlin.test.assertEquals
         "codraw.limits.members-per-board=2",
         "codraw.limits.invites-per-board=2",
         "codraw.limits.access-requests-per-board=2",
+        "codraw.limits.notifications-per-user=3",
     ],
 )
 class LimitsApiTest(
@@ -286,6 +288,27 @@ class LimitsApiTest(
 
         assertEquals(reached + 1, limitsReached("members"))
         mockMvc.get("/api/boards/$board/access-requests") { with(alice.session()) }.andExpect { jsonPath("$", hasSize<Any>(1)) }
+    }
+
+    @Test
+    fun `a user keeps as many notifications as the limit, the newest ones`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val bob = users.gitHubUser("Bob")
+        mockMvc.get("/api/boards/$board") { with(bob.session()) }.andExpect { status { isOk() } }
+
+        repeat(4) {
+            mockMvc.post("/api/boards/$board/threads") {
+                with(alice.session())
+                with(csrf())
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"pageId": "page-1", "body": "@Bob $it", "mentions": ["${bob.id}"]}"""
+            }.andExpect { status { isCreated() } }
+        }
+
+        mockMvc.get("/api/notifications") { with(bob.session()) }.andExpect {
+            jsonPath("$.notifications[*].snippet") { value(contains("@Bob 3", "@Bob 2", "@Bob 1")) }
+        }
+        mockMvc.get("/api/notifications/unread-count") { with(bob.session()) }.andExpect { jsonPath("$.count") { value(3) } }
     }
 
     private fun askForAccess(board: String, user: User, role: String): ResultActionsDsl =

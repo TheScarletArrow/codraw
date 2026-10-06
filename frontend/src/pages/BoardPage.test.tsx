@@ -481,6 +481,28 @@ describe('BoardPage', () => {
       expect(provider.destroyed).toBe(true)
     })
 
+    it('opens «Поделиться» on the requests for access from a link, fetching them again, and takes the link out of the address', async () => {
+      const request = {
+        id: 'request-1',
+        userId: 'egor',
+        name: 'Егор',
+        avatarUrl: null,
+        role: 'editor',
+        message: 'Нужно поправить схему',
+        createdAt: '2026-10-01T10:00:00Z',
+      }
+      const provider = await openBoard({ [`GET ${boardUrl}/access-requests`]: [{ body: [] }, { body: [request] }] })
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', `${boardUrl}/access-requests`)).toHaveLength(1))
+      expect(screen.queryByRole('dialog', { name: 'Поделиться доской' })).toBeNull()
+
+      // The owner, on the board already, opens a notification of a request for access.
+      await act(() => provider.router.navigate(`/boards/${boardId}?share=requests`))
+
+      const dialog = await screen.findByRole('dialog', { name: 'Поделиться доской' })
+      expect(await within(dialog).findByRole('listitem', { name: 'Егор' })).toHaveTextContent('Нужно поправить схему')
+      expect(provider.router.state.location.search).toBe('')
+    })
+
     it('gives the link to the board on the current page and copies it', async () => {
       const writeText = vi.fn(async () => {})
       vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
@@ -1380,6 +1402,34 @@ describe('BoardPage', () => {
 
       await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('page-2'))
       await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('db'))
+    })
+
+    it('opens the comments on the thread of a link, on its page and at its element, and takes it out of the address', async () => {
+      const provider = await openBoard(
+        { [`GET ${threadsUrl}`]: { body: [thread('near'), thread('far', { pageId: 'page-2', cellId: 'db' })] } },
+        '?thread=far',
+      )
+      act(() => {
+        provider.emitSynced()
+        provider.document.transact(() => writePage(provider.document, 'page-2', { name: 'Данные', order: 'a5' }))
+      })
+
+      const card = await within(await screen.findByRole('region', { name: 'Данные' })).findByRole('article')
+      expect(card).toHaveAttribute('aria-current', 'true')
+      expect(within(panel()).getByRole('article', { name: 'Ветка: Элемент удалён', current: false })).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('db'))
+      expect(provider.router.state.location.search).toBe('?page=page-2')
+    })
+
+    it('opens the comments without a thread when the thread of a link is gone', async () => {
+      const provider = await openBoard({ [`GET ${threadsUrl}`]: { body: [thread('near')] } }, '?thread=gone')
+      act(() => provider.emitSynced())
+
+      expect(await within(await screen.findByRole('complementary', { name: 'Комментарии' })).findByRole('article')).not.toHaveAttribute(
+        'aria-current',
+      )
+      await waitFor(() => expect(provider.router.state.location.search).toBe(`?page=${DEFAULT_PAGE_ID}`))
     })
 
     it('closes the comments when the owner opens the history of versions', async () => {

@@ -19,6 +19,8 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.guestBoardRetentionDays") { value(30) }
             jsonPath("$.guestSessionDays") { value(30) }
             jsonPath("$.versionsPerBoard") { value(100) }
+            jsonPath("$.notificationRetentionDays") { value(90) }
+            jsonPath("$.notificationsPerUser") { value(200) }
         }
     }
 }
@@ -29,6 +31,7 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
         "codraw.legal.operator=ООО «Пример»",
         "codraw.legal.contact-email=privacy@example.com",
         "codraw.guests.board-retention=14d",
+        "codraw.notifications.retention=60d",
     ],
 )
 class LegalApiWithOperatorTest(@Autowired private val mockMvc: MockMvc) {
@@ -40,6 +43,7 @@ class LegalApiWithOperatorTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.operator") { value("ООО «Пример»") }
             jsonPath("$.contactEmail") { value("privacy@example.com") }
             jsonPath("$.guestBoardRetentionDays") { value(14) }
+            jsonPath("$.notificationRetentionDays") { value(60) }
         }
     }
 }

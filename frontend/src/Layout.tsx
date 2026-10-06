@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button'
 import { logout, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
+import { NotificationBell } from './notifications/NotificationBell.tsx'
 
 /**
- * Pages of a signed-in user; without a session it opens the login page, which comes back to the page, e.g. an
- * invitation, once the visitor continues as a guest.
+ * Pages of a signed-in user, with their notifications in the header; without a session it opens the login page, which
+ * comes back to the page, e.g. an invitation, once the visitor continues as a guest.
  */
 export function Layout() {
   const user = useCurrentUser()
@@ -23,7 +24,12 @@ export function Layout() {
         <Link to="/" className="font-bold">
           CoDraw
         </Link>
-        {user.data && <UserMenu user={user.data} />}
+        {user.data && (
+          <>
+            <NotificationBell className="ml-auto" />
+            <UserMenu user={user.data} />
+          </>
+        )}
       </header>
       <main className="flex min-h-0 flex-1 flex-col">
         {user.data && <Outlet />}
@@ -51,7 +57,7 @@ function UserMenu({ user }: { user: CurrentUser }) {
   })
 
   return (
-    <div className="ml-auto flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-sm">
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
       <span>{user.name}</span>
       {/* Signing out would cut a guest off from their boards; signing in through a provider keeps them. */}

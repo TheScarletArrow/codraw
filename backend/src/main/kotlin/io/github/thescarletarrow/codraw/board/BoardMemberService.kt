@@ -4,6 +4,7 @@ import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.Tokens
+import io.github.thescarletarrow.codraw.notification.NotificationService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -20,6 +21,7 @@ class BoardMemberService(
     private val members: BoardMembers,
     private val invites: BoardInvites,
     private val boards: BoardService,
+    private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
@@ -51,16 +53,19 @@ class BoardMemberService(
      * Makes the user [userId] a member of the [board] with the [role], or gives a member that role, e.g. as the owner
      * answers their request for access; the caller checks that the owner may put this user among the members. Throws
      * [MemberNotFoundException] for the owner and [MemberLimitReachedException] for a new member beyond the limit.
-     * Requests for access that the role satisfies are dropped.
+     * Requests for access that the role satisfies are dropped. A new member and a member who gets a higher role are
+     * notified.
      */
     @Transactional
     fun give(board: Board, userId: UUID, role: MemberRole): Participant {
         val boardId = board.boardId
         if (userId == board.ownerId) throw MemberNotFoundException()
         members.lockBoard(boardId)
-        if (members.roleOf(boardId, userId) == null) checkMemberLimit(boardId)
+        val before = members.roleOf(boardId, userId)
+        if (before == null) checkMemberLimit(boardId)
         members.put(boardId, userId, role, now())
         boards.dropSatisfiedRequests(board)
+        if (before == null || before < role) notifications.accessGranted(board, userId, role)
         return participants(board).first { it.id == userId }
     }
 

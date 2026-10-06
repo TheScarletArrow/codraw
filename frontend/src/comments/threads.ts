@@ -10,6 +10,24 @@ export const peopleKey = (boardId: string) => ['people', boardId] as const
 
 export const isOpen = (thread: CommentThread) => thread.resolvedAt === null
 
+/**
+ * A request to show threads: those of an element, e.g. from its badge on the canvas, or one thread, e.g. from a
+ * notification.
+ */
+export type ThreadFocus = { pageId: string; cellId: string } | { threadId: string }
+
+/** Whether the thread is one of those that the focus asks to show. */
+export function isFocused(thread: CommentThread, focus: ThreadFocus | null): boolean {
+  if (!focus) return false
+  return 'threadId' in focus ? thread.id === focus.threadId : thread.pageId === focus.pageId && thread.cellId === focus.cellId
+}
+
+/** The filter that shows the focused threads: a resolved thread is among the resolved ones only. */
+export function filterFor(focus: ThreadFocus, threads: CommentThread[] | undefined): ThreadFilter {
+  const thread = 'threadId' in focus ? threads?.find((candidate) => candidate.id === focus.threadId) : undefined
+  return thread && !isOpen(thread) ? 'resolved' : 'open'
+}
+
 export const mentionsUser = (thread: CommentThread, userId: string) =>
   thread.comments.some((comment) => comment.mentions.some((person) => person.id === userId))
 
