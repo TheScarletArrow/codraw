@@ -25,6 +25,11 @@ export const routes: RouteObject[] = [
         // The editor pulls in maxGraph, so it is loaded only when a board is opened.
         lazy: async () => ({ Component: (await import('./pages/BoardPage.tsx')).BoardPage }),
       },
+      {
+        // The draft of a proposal of changes of a board, in the editor of the board.
+        path: 'boards/:boardId/proposals/:proposalId',
+        lazy: async () => ({ Component: (await import('./pages/ProposalPage.tsx')).ProposalPage }),
+      },
     ],
   },
 ]

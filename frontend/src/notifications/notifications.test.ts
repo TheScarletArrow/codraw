@@ -14,6 +14,7 @@ function notification(changes: Partial<UserNotification> = {}): UserNotification
     pageId: 'page-2',
     threadId: 'thread-1',
     commentId: 'comment-1',
+    proposalId: null,
     snippet: '@Боб посмотри',
     actor: { id: 'anya', name: 'Аня', avatarUrl: null },
     role: null,
@@ -24,6 +25,8 @@ function notification(changes: Partial<UserNotification> = {}): UserNotification
 }
 
 const access = { pageId: null, threadId: null, commentId: null, snippet: null }
+
+const proposal = { ...access, proposalId: 'proposal-1', snippet: 'Добавить очередь' }
 
 describe('notifications', () => {
   it('says who did what on which board, whatever their gender', () => {
@@ -37,6 +40,9 @@ describe('notifications', () => {
       [{ kind: 'access-granted', role: 'viewer', ...access }, 'Аня: доступ к «Схема БД»', 'Теперь можно смотреть'],
       [{ kind: 'access-declined', role: 'editor', ...access }, 'Аня: отказ в доступе к «Схема БД»', 'Вы просили редактирование'],
       [{ kind: 'ownership', ...access }, 'Аня: передача владения «Схема БД»', 'Теперь вы владелец доски'],
+      [{ kind: 'proposal-created', ...proposal }, 'Аня: предложение изменений к «Схема БД»', 'Добавить очередь'],
+      [{ kind: 'proposal-accepted', ...proposal }, 'Аня: ваше предложение к «Схема БД» принято', 'Добавить очередь'],
+      [{ kind: 'proposal-declined', ...proposal }, 'Аня: ваше предложение к «Схема БД» отклонено', 'Добавить очередь'],
     ]
     for (const [changes, title, detail] of cases) {
       const text = describeNotification(notification(changes))
@@ -59,6 +65,9 @@ describe('notifications', () => {
       'Отказ в доступе',
     )
     expect(notificationTitle(describeNotification(notification({ ...closed, kind: 'assigned' })))).toBe('Назначение ветки')
+    expect(notificationTitle(describeNotification(notification({ ...closed, kind: 'proposal-accepted' })))).toBe(
+      'Предложение принято',
+    )
   })
 
   it('tells a kind it does not know in general words and leads to the board', () => {
@@ -68,7 +77,7 @@ describe('notifications', () => {
     expect(notificationLink(unknown)).toBe(`/boards/${boardId}`)
   })
 
-  it('leads to the thread of a mention, an answer or an assignment on its page, to the requests for access, or to the board', () => {
+  it('leads to the thread of a mention, an answer or an assignment on its page, to the requests for access, to the proposal, or to the board', () => {
     expect(notificationLink(notification())).toBe(`/boards/${boardId}?page=page-2&thread=thread-1`)
     expect(notificationLink(notification({ kind: 'reply', pageId: 'страница 1' }))).toBe(
       `/boards/${boardId}?page=%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0+1&thread=thread-1`,
@@ -81,6 +90,10 @@ describe('notifications', () => {
     )
     expect(notificationLink(notification({ kind: 'access-granted', role: 'editor', ...access }))).toBe(`/boards/${boardId}`)
     expect(notificationLink(notification({ kind: 'ownership', ...access }))).toBe(`/boards/${boardId}`)
+    expect(notificationLink(notification({ kind: 'proposal-created', ...proposal }))).toBe(
+      `/boards/${boardId}?proposal=proposal-1`,
+    )
+    expect(notificationLink(notification({ kind: 'proposal-declined', access: false, ...access }))).toBe(`/boards/${boardId}`)
     expect(notificationLink(notification({ access: false, ...access }))).toBe(`/boards/${boardId}`)
   })
 

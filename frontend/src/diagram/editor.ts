@@ -593,9 +593,15 @@ export const EDITOR_PROPERTY = '__codrawEditor'
 
 /**
  * A key the canvas responds to, in the notation of shortcuts: `Mod` is Ctrl, or Cmd on macOS; then `Shift`; then a
- * letter, `Delete`, `Backspace`, `F2` or an arrow.
+ * letter, `Delete`, `Backspace`, `F2` or an arrow. `collaboration` keys turn on a tool of working on a board with others,
+ * which a canvas without them does not bind (see {@link DiagramEditorOptions.collaboration}).
  */
-export type KeyBinding = { keys: string; editing: boolean; run: (editor: DiagramEditor) => void }
+export type KeyBinding = {
+  keys: string
+  editing: boolean
+  collaboration?: boolean
+  run: (editor: DiagramEditor) => void
+}
 
 /** Codes of the keys of {@link KEY_BINDINGS} that are not letters, as maxGraph reads them. */
 const KEY_CODES: Record<string, number> = {
@@ -624,8 +630,13 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   // The scale is the participant's own, so a participant who may only view fits the page too.
   { keys: 'Mod+Shift+H', editing: false, run: (editor) => editor.zoomToFit() },
   // The laser pointer changes nothing either, and participants who may only view comment too.
-  { keys: 'K', editing: false, run: (editor) => editor.setLaser(!editor.getState().laser) },
-  { keys: 'C', editing: false, run: (editor) => editor.setCommentTool(!editor.getState().commentTool) },
+  { keys: 'K', editing: false, collaboration: true, run: (editor) => editor.setLaser(!editor.getState().laser) },
+  {
+    keys: 'C',
+    editing: false,
+    collaboration: true,
+    run: (editor) => editor.setCommentTool(!editor.getState().commentTool),
+  },
   { keys: 'Delete', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Backspace', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Mod+Z', editing: true, run: (editor) => editor.undo() },
@@ -713,6 +724,11 @@ export interface DiagramEditorOptions {
    * changed them last, and the editor tells their own changes from others'.
    */
   participantId?: string
+  /**
+   * The page works on a board with others, who see the laser pointer and read comments: `K` and `C` turn on the laser
+   * pointer and the comment tool. `true` by default; a draft of a proposal of changes has neither.
+   */
+  collaboration?: boolean
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -767,6 +783,7 @@ export function createDiagramEditor(
     readOnly = false,
     participantName,
     participantId,
+    collaboration = true,
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -1323,7 +1340,9 @@ export function createDiagramEditor(
   keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
   for (const binding of KEY_BINDINGS) {
     // The editor is made below; the keys reach it once it is.
-    if (!readOnly || !binding.editing) bindKey(keyHandler, binding, () => editor)
+    if ((!readOnly || !binding.editing) && (collaboration || !binding.collaboration)) {
+      bindKey(keyHandler, binding, () => editor)
+    }
   }
 
   // The browser fires clipboard events at the focused element, or at the body when nothing has the focus; maxGraph

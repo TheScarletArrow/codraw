@@ -10,10 +10,12 @@ import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.board.MemberRole
 import io.github.thescarletarrow.codraw.board.VersionReason
+import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.comment.CommentService
 import io.github.thescarletarrow.codraw.comment.Reaction
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.notification.NotificationService
+import io.github.thescarletarrow.codraw.proposal.ProposalService
 import io.github.thescarletarrow.codraw.signedIn
 import io.micrometer.core.instrument.MeterRegistry
 import org.junit.jupiter.api.BeforeEach
@@ -47,6 +49,7 @@ class GuestCleanupTest(
     @Autowired private val notifications: NotificationService,
     @Autowired private val comments: CommentService,
     @Autowired private val reads: BoardReads,
+    @Autowired private val proposals: ProposalService,
 ) {
 
     @BeforeEach
@@ -154,6 +157,23 @@ class GuestCleanupTest(
         val left = comments.thread(board, thread.id)
         assertNull(left.assignee)
         assertEquals(listOf(alice.id), left.comments.single().reactions.single().people.map { it.id })
+    }
+
+    @Test
+    fun `deletes the proposals of changes of a gone guest, and those the guest decided stay without them`() {
+        val alice = users.gitHubUser("Alice")
+        val board = boards.create("Общая", alice.id)
+        val guest = users.createGuest()
+        members.put(board.id!!, guest.id, MemberRole.EDITOR, clock.instant())
+        proposals.create(board, guest.id, "Очередь", null)
+        val decided = proposals.create(board, alice.id, "Кэш", null)
+        proposals.decline(boards.participated(board.id.toString(), guest.id), guest.id, decided.id, "Не нужно")
+
+        clock.advance(Duration.ofDays(2))
+
+        assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
+        val left = jdbcClient.sql("SELECT id FROM proposals WHERE decided_by IS NULL").query(UUID::class.java).list()
+        assertEquals(listOf(decided.id), left)
     }
 
     @Test

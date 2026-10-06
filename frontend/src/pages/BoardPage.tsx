@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react'
-import { useParams, useSearchParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
@@ -8,6 +8,7 @@ import { canEdit, canManageVersions, fetchBoard, type Board } from '../api/board
 import type { BoardVersion } from '../api/versions.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
+import { fetchProposals, type Proposal } from '../api/proposals.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
@@ -59,6 +60,10 @@ import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
+import { draftPath, PROPOSALS_POLL_INTERVAL, proposalsKey } from '../proposals/proposals.ts'
+import { ProposalReview } from '../proposals/ProposalReview.tsx'
+import { ProposalsButton } from '../proposals/ProposalsButton.tsx'
+import { ProposalsPanel } from '../proposals/ProposalsPanel.tsx'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Подключение',
@@ -102,7 +107,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const author = useMemo<Author>(() => ({ id: user.id, name: user.name }), [user.id, user.name])
   const viewer = !canEdit(board)
   const connection = useBoardConnection({ id: board.id, title: board.title, viewer }, user.id, identity)
-  const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged } = connection
+  const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged, notifyProposalsChanged } =
+    connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
   // The trail of the laser pointer and the message at the cursor go with the connection.
@@ -137,21 +143,48 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
   // The threads the panel shows: with the resolved ones, the canvas marks the resolved threads at points too.
   const [commentFilter, setCommentFilter] = useState<ThreadFilter>('open')
+  // Proposals of changes, which every participant makes and the owner and the editors review; a reviewed proposal shows
+  // in place of the board.
+  const navigate = useNavigate()
+  const proposals = useQuery({
+    queryKey: proposalsKey(board.id),
+    queryFn: () => fetchProposals(board.id),
+    // Others make and decide proposals without telling every open board, e.g. from the page of a draft.
+    refetchInterval: PROPOSALS_POLL_INTERVAL,
+  })
+  const [proposalsOpen, setProposalsOpen] = useState(false)
+  const [reviewed, setReviewed] = useState<string | null>(null)
+  const review = reviewed && document && !preview ? reviewed : null
   const closeHistory = useCallback(() => {
     setHistoryOpen(false)
     setPreviewed(null)
     setComparing(false)
   }, [])
+  const closeProposals = useCallback(() => {
+    setProposalsOpen(false)
+    setReviewed(null)
+  }, [])
   const openComments = useCallback(() => {
     setCommentsOpen(true)
     closeHistory()
+    closeProposals()
     setShowingVisit(false)
-  }, [closeHistory])
+  }, [closeHistory, closeProposals])
   const closeComments = () => {
     setCommentsOpen(false)
     setCommentDraft(null)
     setCommentFocus(null)
     setCommentFilter('open')
+  }
+  const openProposals = () => {
+    setProposalsOpen(true)
+    closeHistory()
+    closeComments()
+    setShowingVisit(false)
+  }
+  const proposalCreated = (proposal: Proposal) => {
+    notifyProposalsChanged()
+    void navigate(draftPath(board.id, proposal.id))
   }
   // The live image of a page: the browsers of the participants who edit publish its picture after their changes.
   const embed = useQuery({ queryKey: embedKey(board.id), queryFn: () => fetchEmbed(board.id) })
@@ -295,6 +328,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     })
   }, [linkedThread, threads.data, linkable, pages, revealThread, changeParams])
 
+  // `?proposal=` opens the proposals with the review of that proposal, e.g. from a notification.
+  const linkedProposal = searchParams.get('proposal')
+  const [openedProposal, setOpenedProposal] = useState<string | null>(null)
+  if (linkedProposal !== openedProposal) {
+    setOpenedProposal(linkedProposal)
+    if (linkedProposal) {
+      openProposals()
+      setReviewed(linkedProposal)
+    }
+  }
+  useEffect(() => {
+    if (linkedProposal) changeParams((params) => params.delete('proposal'))
+  }, [linkedProposal, changeParams])
+
   // `?share=` opens «Поделиться», e.g. on the requests for access, which it fetches again.
   const shareLinked = searchParams.has('share')
   const [shareOpen, setShareOpen] = useState(false)
@@ -326,6 +373,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onOpenHistory={() => {
             setHistoryOpen(true)
             closeComments()
+            closeProposals()
             setShowingVisit(false)
           }}
         />
@@ -383,6 +431,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           open={commentsOpen}
           onToggle={() => (commentsOpen ? closeComments() : openComments())}
         />
+        <ProposalsButton
+          proposals={proposals.data}
+          open={proposalsOpen}
+          onToggle={() => (proposalsOpen ? closeProposals() : openProposals())}
+        />
         <ShortcutsHelp readOnly={readOnly} />
         <ShareButton
           board={board}
@@ -439,7 +492,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           className="border-b bg-destructive/10 px-3 py-1.5 text-destructive"
         />
       )}
-      {changedSince && !visitHidden && !preview && !visitChanges && (
+      {changedSince && !visitHidden && !preview && !review && !visitChanges && (
         <VisitBanner
           since={changedSince.since}
           authors={changedSince.authors}
@@ -449,6 +502,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   setShowingVisit(true)
                   closeHistory()
                   closeComments()
+                  closeProposals()
                 }
               : null
           }
@@ -456,7 +510,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         />
       )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && !preview && !visitChanges && <ShapePalette editor={editor} />}
+        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} />}
         {preview && document ? (
           <VersionPreview
             key={preview.id}
@@ -474,6 +528,23 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             }}
             onRestoreCells={restoreCells}
             onClose={() => setPreviewed(null)}
+          />
+        ) : review && document ? (
+          <ProposalReview
+            key={review}
+            boardId={board.id}
+            proposalId={review}
+            userId={user.id}
+            document={document}
+            reviewer={managesVersions}
+            // Accepting keeps the board as a version first: the board as collab has it, not a copy behind it.
+            synced={status === 'synced' && !readOnly}
+            onAccepted={(pageId) => {
+              setReviewed(null)
+              if (pageId) selectPage(pageId)
+            }}
+            onChanged={notifyProposalsChanged}
+            onClose={() => setReviewed(null)}
           />
         ) : visitChanges && document ? (
           <VisitChanges
@@ -569,6 +640,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onShow={showThread}
             onChanged={notifyCommentsChanged}
             onClose={closeComments}
+          />
+        )}
+        {proposalsOpen && (
+          <ProposalsPanel
+            boardId={board.id}
+            proposals={proposals.data}
+            failed={proposals.isError}
+            selectedId={review}
+            onSelect={(proposal) => {
+              following.stop()
+              setReviewed(proposal.id)
+            }}
+            onCreated={proposalCreated}
+            onClose={closeProposals}
           />
         )}
         {managesVersions && historyOpen && (

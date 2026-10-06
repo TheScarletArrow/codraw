@@ -17,6 +17,9 @@ const KIND_LABELS: Record<NotificationKind, string> = {
   'access-granted': 'Доступ к доске',
   'access-declined': 'Отказ в доступе',
   ownership: 'Передача владения',
+  'proposal-created': 'Предложение изменений',
+  'proposal-accepted': 'Предложение принято',
+  'proposal-declined': 'Предложение отклонено',
 }
 
 /**
@@ -61,6 +64,12 @@ export function describeNotification(notification: UserNotification): Notificati
       }
     case 'ownership':
       return { actor, action: `передача владения ${board}`, detail: 'Теперь вы владелец доски' }
+    case 'proposal-created':
+      return { actor, action: `предложение изменений к ${board}`, detail: notification.snippet }
+    case 'proposal-accepted':
+      return { actor, action: `ваше предложение к ${board} принято`, detail: notification.snippet }
+    case 'proposal-declined':
+      return { actor, action: `ваше предложение к ${board} отклонено`, detail: notification.snippet }
     default:
       return { actor, action: `событие на ${board}`, detail: notification.snippet }
   }
@@ -76,7 +85,8 @@ const THREAD_KINDS = new Set<NotificationKind>(['mention', 'reply', 'assigned'])
 
 /**
  * Where a notification leads: a mention, an answer or an assigned thread to the thread on its page, a request for
- * access to «Поделиться» with the requests, anything else and a board the user can no longer open to the board.
+ * access to «Поделиться» with the requests, a proposal of changes to its review on the board, anything else and a board
+ * the user can no longer open to the board.
  */
 export function notificationLink(notification: UserNotification): string {
   const board = `/boards/${encodeURIComponent(notification.boardId)}`
@@ -88,6 +98,7 @@ export function notificationLink(notification: UserNotification): string {
     return `${board}?${params}`
   }
   if (notification.kind === 'access-request') return `${board}?share=requests`
+  if (notification.proposalId) return `${board}?proposal=${encodeURIComponent(notification.proposalId)}`
   return board
 }
 

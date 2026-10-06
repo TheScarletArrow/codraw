@@ -755,4 +755,169 @@ describe("collab server", () => {
       expect(issued).toBe(2);
     }, 10_000);
   });
+
+  describe("drafts of proposals", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+    const CAROL = "0199a000-0000-7000-8000-0000000000c1";
+    const proposal = "0199a000-0000-7000-8000-000000000301";
+    const draft = `proposal:${proposal}`;
+
+    /** A proposal of Bob on the board of Alice, which Bob may only view and Carol edits as a member. */
+    beforeEach(() => {
+      backend.proposals.set(proposal, {
+        authorId: BOB,
+        open: true,
+        board: { ownerId: ALICE, linkAccess: "view", members: { [CAROL]: "editor" } },
+      });
+    });
+
+    /** Connects to the draft as the user, with a fresh token of the draft before every connection. */
+    const connectToDraft = (subject: string) => connect(draft, () => backend.issueProposalToken(proposal, { subject }));
+
+    function closeReasonOf({ provider }: Connection): Promise<string> {
+      return new Promise((resolve) => provider.on("close", ({ event }: { event: CloseEvent }) => resolve(event.reason)));
+    }
+
+    const storedDraftTitle = () => {
+      const stored = new Y.Doc();
+      Y.applyUpdate(stored, backend.drafts.get(proposal)!);
+      return stored.getMap("meta").get("title");
+    };
+
+    it("loads the draft and lets its author edit it, stored as the draft and not as the board", async () => {
+      const stored = new Y.Doc();
+      stored.getMap("meta").set("title", "Base");
+      backend.drafts.set(proposal, Y.encodeStateAsUpdate(stored));
+      await startServer();
+
+      const author = await connectToDraft(BOB);
+      expect(title(author)).toBe("Base");
+      expect(author.provider.authorizedScope).toBe("read-write");
+      author.document.getMap("meta").set("title", "Draft");
+
+      await waitFor(() => backend.storesFor(draft) > 0);
+      expect(storedDraftTitle()).toBe("Draft");
+      expect(backend.storesFor(board)).toBe(0);
+      expect(backend.editorsOfStores(board)).toEqual([]);
+    });
+
+    it("gives whoever edits the board a read-only connection, and nobody else any", async () => {
+      await startServer();
+      const author = await connectToDraft(BOB);
+
+      const owner = await connectToDraft(ALICE);
+      const editor = await connectToDraft(CAROL);
+      expect(owner.provider.authorizedScope).toBe("readonly");
+      expect(editor.provider.authorizedScope).toBe("readonly");
+      await expect(connectToDraft("0199a000-0000-7000-8000-0000000000d1")).rejects.toThrow("no-access");
+
+      owner.document.getMap("meta").set("title", "By the owner");
+      author.document.getMap("meta").set("description", "By the author");
+      await waitFor(() => owner.document.getMap("meta").get("description") === "By the author");
+      expect(title(author)).toBeUndefined();
+    });
+
+    it("opens a draft only with a token of the proposal, and a board only with a token of the board", async () => {
+      await startServer();
+
+      await expect(connect(draft, () => backend.issueToken(proposal, { subject: BOB }))).rejects.toThrow(
+        "permission-denied",
+      );
+      await expect(connect(board, () => backend.issueProposalToken(board))).rejects.toThrow("permission-denied");
+      await expect(connect(draft, () => backend.issueProposalToken(otherBoard, { subject: BOB }))).rejects.toThrow(
+        "permission-denied",
+      );
+    });
+
+    it("rejects the draft of a proposal that does not exist, and names that are no drafts, without storing", async () => {
+      await startServer();
+      backend.proposals.delete(proposal);
+
+      await expect(connectToDraft(BOB)).rejects.toThrow("proposal-not-found");
+      await expect(connect("proposal:not-a-uuid")).rejects.toThrow("board-not-found");
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(backend.storesFor(draft)).toBe(0);
+    });
+
+    it("makes the author view a closed proposal, whose draft no longer changes", async () => {
+      backend.proposals.set(proposal, { ...backend.proposals.get(proposal)!, open: false });
+      await startServer();
+
+      const author = await connectToDraft(BOB);
+
+      expect(author.provider.authorizedScope).toBe("readonly");
+    });
+
+    it("relays proposals-changed in a draft and makes the author view it once the proposal is closed", async () => {
+      await startServer();
+      const author = await connectToDraft(BOB);
+      const owner = await connectToDraft(ALICE);
+      const told: string[] = [];
+      author.provider.on("stateless", ({ payload }: { payload: string }) => told.push(payload));
+      const authorClosed = closeReasonOf(author);
+      const authorResynced = new Promise<void>((resolve) =>
+        author.provider.on("authenticated", ({ scope }: { scope: string }) => scope === "readonly" && resolve()),
+      );
+
+      backend.proposals.set(proposal, { ...backend.proposals.get(proposal)!, open: false });
+      owner.provider.sendStateless(JSON.stringify({ type: "proposals-changed", id: "<script>" }));
+
+      await expect(authorClosed).resolves.toBe("access-changed");
+      await authorResynced;
+      expect(told).toContain('{"type":"proposals-changed"}');
+    });
+
+    it("drops changes that the backend refuses to store for a closed proposal, and checks the connections", async () => {
+      await startServer();
+      const author = await connectToDraft(BOB);
+      author.document.getMap("meta").set("title", "Before");
+      await waitFor(() => backend.storesFor(draft) > 0);
+      const authorClosed = closeReasonOf(author);
+
+      backend.proposals.set(proposal, { ...backend.proposals.get(proposal)!, open: false });
+      author.document.getMap("meta").set("title", "After");
+
+      await expect(authorClosed).resolves.toBe("access-changed");
+      expect(storedDraftTitle()).toBe("Before");
+    });
+
+    it("closes the connections of the draft of a proposal deleted meanwhile", async () => {
+      await startServer();
+      const author = await connectToDraft(BOB);
+      const closed = closeReasonOf(author);
+
+      backend.proposals.delete(proposal);
+      author.document.getMap("meta").set("title", "After deletion");
+
+      await expect(closed).resolves.toBe("proposal-not-found");
+      expect(backend.drafts.has(proposal)).toBe(false);
+    });
+
+    it("keeps a draft within the size limit of a board document", async () => {
+      await startServer({ documentSizeLimit: 2_000 });
+      const author = await connectToDraft(BOB);
+      const closed = new Promise<string>((resolve) =>
+        author.provider.on("close", ({ event }: { event: CloseEvent }) => resolve(event.reason)),
+      );
+
+      author.document.getMap("meta").set("title", "x".repeat(3_000));
+
+      await expect(closed).resolves.toBe("document-too-large");
+    });
+
+    it("relays proposals-changed of a viewer to the other participants of the board", async () => {
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
+      await startServer();
+      const owner = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const told: string[] = [];
+      owner.provider.on("stateless", ({ payload }: { payload: string }) => told.push(payload));
+
+      viewer.provider.sendStateless(JSON.stringify({ type: "proposals-changed" }));
+
+      await waitFor(() => told.length > 0);
+      expect(told).toEqual(['{"type":"proposals-changed"}']);
+    });
+  });
 });

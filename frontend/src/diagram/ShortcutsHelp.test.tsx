@@ -52,4 +52,15 @@ describe('ShortcutsHelp', () => {
     expect(within(help).getByText('Комментарий')).toBeInTheDocument()
     expect(within(help).queryByText('Удалить')).toBeNull()
   })
+
+  it('lists no shortcuts of working together on a page without others', async () => {
+    render(<ShortcutsHelp collaboration={false} isMac={false} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Горячие клавиши' }))
+
+    const help = screen.getByRole('dialog', { name: 'Горячие клавиши' })
+    expect(within(help).getByText('Дублировать')).toBeInTheDocument()
+    expect(within(help).queryByRole('region', { name: 'Совместная работа' })).toBeNull()
+    expect(within(help).queryByText('Указка')).toBeNull()
+  })
 })

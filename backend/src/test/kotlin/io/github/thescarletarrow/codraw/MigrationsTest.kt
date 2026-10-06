@@ -38,6 +38,7 @@ class MigrationsTest {
             setOf("id", "user_id", "kind", "board_id", "comment_id", "actor_id", "role", "created_at", "read_at")
         private val versionAuthorsColumns = setOf("id", "board_id", "state", "reason", "created_at", "authors", "name")
         private val readsTables = reactionsTables + "board_reads"
+        private val proposalsTables = readsTables + "proposals"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -49,15 +50,19 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V14 create tables on an empty database and U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(14, flyway().migrate().migrationsExecuted)
-        assertEquals(readsTables, appTables())
+    fun `V1 to V15 create tables on an empty database and U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(15, flyway().migrate().migrationsExecuted)
+        assertEquals(proposalsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
-        assertEquals(notificationColumns + "thread_id", columns("notifications"))
+        assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
         assertEquals(setOf("board_id", "state", "updated_at", "editors"), columns("board_documents"))
         assertEquals(setOf("user_id", "board_id", "seen_at", "previous_seen_at", "present"), columns("board_reads"))
+
+        revert("U15__claude_epic_lovelace_pwi6v4_change_proposals.sql")
+        assertEquals(readsTables, appTables())
+        assertEquals(notificationColumns + "thread_id", columns("notifications"))
 
         revert("U14__claude_epic_lovelace_pwi6v4_changes_since_visit.sql")
         assertEquals(reactionsTables, appTables())
@@ -106,10 +111,135 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(14, flyway().migrate().migrationsExecuted)
-        assertEquals(readsTables, appTables())
+        assertEquals(15, flyway().migrate().migrationsExecuted)
+        assertEquals(proposalsTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
+        assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
+    }
+
+    @Test
+    fun `V15 keeps proposals with known statuses and short texts, which go with their board and their author, and the notifications of V12`() {
+        flyway("14").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now()),
+                   ('0199a000-0000-7000-8000-0000000000c1', 'github', '3', 'Carol', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now()),
+                   ('0199a000-0000-7000-8000-000000000002', 'Другая', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO board_versions (board_id, state, reason, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', '\x01', 'RESTORE', now());
+            INSERT INTO comment_threads (id, board_id, page_id, assignee_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-000000000001', 'page-1',
+                    '0199a000-0000-7000-8000-0000000000a1', now());
+            INSERT INTO notifications (user_id, kind, board_id, thread_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'ASSIGNED', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-0000000000c1', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("15").migrate().migrationsExecuted)
+        jdbcClient.sql(
+            """
+            INSERT INTO proposals (id, board_id, author_id, title, base, draft, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000301', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-0000000000b1', 'Очередь', '\x01', NULL, now());
+            INSERT INTO proposals (id, board_id, author_id, title, status, created_at, decided_at, decided_by, comment)
+            VALUES ('0199a000-0000-7000-8000-000000000302', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-0000000000a1', 'Кэш', 'DECLINED', now(), now(),
+                    '0199a000-0000-7000-8000-0000000000c1', 'Не нужно'),
+                   ('0199a000-0000-7000-8000-000000000303', '0199a000-0000-7000-8000-000000000002',
+                    '0199a000-0000-7000-8000-0000000000a1', 'Шлюз', 'OPEN', now(), NULL, NULL, NULL);
+            INSERT INTO board_versions (board_id, state, reason, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', '\x02', 'PROPOSAL', now());
+            INSERT INTO notifications (user_id, kind, board_id, proposal_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'PROPOSAL_CREATED', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000301', '0199a000-0000-7000-8000-0000000000b1', now()),
+                   ('0199a000-0000-7000-8000-0000000000a1', 'PROPOSAL_DECLINED', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000302', '0199a000-0000-7000-8000-0000000000c1', now())
+            """,
+        ).update()
+
+        val proposal = { title: String, status: String, decided: Boolean, comment: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO proposals (board_id, author_id, title, status, created_at, decided_at, comment)
+                VALUES ('0199a000-0000-7000-8000-000000000001', '0199a000-0000-7000-8000-0000000000a1', :title, :status,
+                        now(), CASE WHEN :decided THEN now() END, :comment)
+                """,
+            ).param("title", title).param("status", status).param("decided", decided).param("comment", comment).update()
+        }
+        for (wrong in listOf(
+            { proposal("", "OPEN", false, null) },
+            { proposal("я".repeat(121), "OPEN", false, null) },
+            { proposal("Очередь", "MERGED", true, null) },
+            // Closed ones have the time of the decision, open ones do not.
+            { proposal("Очередь", "OPEN", true, null) },
+            { proposal("Очередь", "ACCEPTED", false, null) },
+            // Only a declined one has a comment, of 1 to 2000 characters.
+            { proposal("Очередь", "ACCEPTED", true, "Хорошо") },
+            { proposal("Очередь", "DECLINED", true, "я".repeat(2001)) },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        proposal("я".repeat(120), "WITHDRAWN", true, null)
+        val notification = { kind: String, proposal: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notifications (user_id, kind, board_id, proposal_id, actor_id, created_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000c1', :kind, '0199a000-0000-7000-8000-000000000001',
+                        :proposal::uuid, '0199a000-0000-7000-8000-0000000000a1', now())
+                """,
+            ).param("kind", kind).param("proposal", proposal).update()
+        }
+        assertFailsWith<DataIntegrityViolationException> { notification("PROPOSAL_ACCEPTED", null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("OWNERSHIP", "0199a000-0000-7000-8000-000000000302") }
+        // Notifications of assigned threads keep their kind, and one per thread and recipient.
+        val assigned = { proposal: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notifications (user_id, kind, board_id, thread_id, proposal_id, actor_id, created_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', 'ASSIGNED', '0199a000-0000-7000-8000-000000000001',
+                        '0199a000-0000-7000-8000-000000000101', :proposal::uuid, '0199a000-0000-7000-8000-0000000000c1',
+                        now())
+                """,
+            ).param("proposal", proposal).update()
+        }
+        assertFailsWith<DataIntegrityViolationException> { assigned(null) }
+        assertFailsWith<DataIntegrityViolationException> { assigned("0199a000-0000-7000-8000-000000000302") }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE board_versions SET reason = 'MERGE'").update()
+        }
+
+        // Who declined goes; the proposal stays without them.
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000c1'").update()
+        assertEquals(
+            1,
+            jdbcClient.sql("SELECT count(*) FROM proposals WHERE status = 'DECLINED' AND decided_by IS NULL")
+                .query(Int::class.java).single(),
+        )
+        // The guest who proposed goes with their proposal and the notifications about it.
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(3, count("proposals"))
+        assertEquals(2, count("notifications"))
+        jdbcClient.sql("DELETE FROM boards WHERE id = '0199a000-0000-7000-8000-000000000002'").update()
+        assertEquals(2, count("proposals"))
+
+        // The version from before a proposal was accepted stays as one from before a restore.
+        revert("U15__claude_epic_lovelace_pwi6v4_change_proposals.sql")
+        assertEquals(
+            listOf("RESTORE", "RESTORE"),
+            jdbcClient.sql("SELECT reason FROM board_versions ORDER BY state").query(String::class.java).list(),
+        )
+        // The kinds of V12 stay, those of proposals go.
+        assertEquals(listOf("ASSIGNED"), jdbcClient.sql("SELECT kind FROM notifications").query(String::class.java).list())
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE notifications SET kind = 'PROPOSAL_ACCEPTED'").update()
+        }
+        assertEquals(1, flyway().migrate().migrationsExecuted)
     }
 
     @Test

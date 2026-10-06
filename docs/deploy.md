@@ -59,10 +59,13 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_LIMITS_INVITES_PER_BOARD` | `20` | больше действующих ссылок-приглашений у доски не будет; отозванные не считаются; сверх — 409 |
 | `CODRAW_LIMITS_ACCESS_REQUESTS_PER_BOARD` | `50` | больше запросов доступа, которые ждут ответа владельца, у доски не будет; замена своего запроса не считается; сверх — 409 |
 | `CODRAW_LIMITS_NOTIFICATIONS_PER_USER` | `200` | сколько последних уведомлений хранится у пользователя; более старые удаляются, когда приходят новые |
+| `CODRAW_LIMITS_PROPOSALS_PER_BOARD` | `20` | больше открытых предложений изменений у доски не будет; принятые, отклонённые и отозванные не считаются; сверх — 409 |
+| `CODRAW_LIMITS_PROPOSALS_PER_AUTHOR` | `3` | больше открытых предложений у одного автора на одной доске не будет; сверх — 409 |
+| `CODRAW_LIMITS_CLOSED_PROPOSALS_PER_BOARD` | `20` | сколько последних закрытых предложений хранит доска вместе с их черновиками; более старые удаляются, когда закрывается следующее |
 | `CODRAW_NOTIFICATIONS_RETENTION` | `90d` | уведомление удаляется, когда ему столько, прочитанное или нет; уборка идёт раз в час |
 | `CODRAW_LIMITS_EMBED_SIZE` | `2MB` | больше не примет живая картинка доски (SVG из браузеров участников); сверх — 413 |
-| `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски; у предела проходят только удаления |
-| `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
+| `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски и черновику предложения; у предела проходят только удаления |
+| `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа, черновика предложения и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
 | `CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD` | `64MB` | сколько занимают версии одной доски вместе; сверх этого удаляются старые версии — сначала без названия, затем с названием, — а новейшая остаётся всегда |
 
 Политика конфиденциальности и условия использования — шаблоны, которые описывают, что делает CoDraw: какие данные и
@@ -135,7 +138,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 | Где | Что |
 |---|---|
 | `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`) |
-| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`), отказы по причинам (`codraw_collab_rejections_total{reason}`), метрики процесса Node.js |
+| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
 каталог `deploy/prometheus` из репозитория:

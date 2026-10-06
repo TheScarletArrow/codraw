@@ -78,6 +78,7 @@ describe('items of the list of changes', () => {
         details: ['подпись', 'положение', 'размер', 'заливка', 'цвет линии', 'размер текста', 'стиль'],
         previousTitle: 'API',
         nested: 0,
+        conflict: false,
       },
     ])
   })
@@ -130,7 +131,25 @@ describe('items of the list of changes', () => {
     const now = laterState(version, (doc) => getCells(doc).delete('cache'))
 
     expect(changeItems(firstPage(version, now))).toEqual([
-      { id: 'cache', type: 'removed', title: 'Кэш', kind: 'Кэш', details: [], previousTitle: null, nested: 0 },
+      { id: 'cache', type: 'removed', title: 'Кэш', kind: 'Кэш', details: [], previousTitle: null, nested: 0, conflict: false },
+    ])
+  })
+
+  it('marks the items whose element, or an element nested in them, is among the conflicts', () => {
+    const version = boardWith(shapeData('api', 'a0', { value: 'API' }), shapeData('db', 'a1', { value: 'БД' }))
+    const now = laterState(version, (doc) => {
+      cell(doc, 'api').set('value', 'Шлюз')
+      cell(doc, 'db').set('value', 'PostgreSQL')
+      writeCell(getCells(doc), shapeData('group', 'a2', { value: 'Группа' }))
+      writeCell(getCells(doc), shapeData('inner', 'a0', { parent: 'group', value: 'Внутри' }))
+    })
+
+    const items = changeItems(firstPage(version, now), new Set(['db', 'inner']))
+
+    expect(items.map(({ title, conflict }) => [title, conflict])).toEqual([
+      ['Группа', true],
+      ['Шлюз', false],
+      ['PostgreSQL', true],
     ])
   })
 })

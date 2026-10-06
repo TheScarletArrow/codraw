@@ -4,6 +4,7 @@ export const REASON_LABELS: Record<VersionReason, string> = {
   auto: 'Автоматически',
   manual: 'Вручную',
   restore: 'Перед восстановлением',
+  proposal: 'Перед принятием предложения',
 }
 
 export const versionTimeFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })

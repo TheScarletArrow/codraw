@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitCompareArrows } from 'lucide-react'
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { fetchVersionState, saveVersion, type BoardVersion } from '../api/versions.ts'
 import { snapshotPage, type CellSnapshot } from '../diagram/diff.ts'
 import { restoreDocument, restorePage } from '../diagram/restore.ts'
+import { ConfirmedAction } from './ConfirmedAction.tsx'
 import { usePages } from './usePages.ts'
 import { VersionView } from './VersionView.tsx'
 import { versionsKey, versionTimeFormat } from './versions.ts'
@@ -151,9 +151,10 @@ export function VersionPreview({
           </span>
         )}
         {versionDocument && page && (
-          <ConfirmedRestore
+          <ConfirmedAction
             label="Восстановить страницу"
             title="Восстановление страницы"
+            confirmLabel="Восстановить"
             variant="outline"
             disabled={!synced || restore.isPending}
             describedBy={synced ? undefined : unsyncedHint}
@@ -163,17 +164,18 @@ export function VersionPreview({
               ? `Страница «${page.name}» станет такой, как в версии от ${time}, у всех участников.`
               : `Страница «${page.name}» вернётся на доску такой, как в версии от ${time}, у всех участников.`}{' '}
             Текущее состояние сохранится в истории.
-          </ConfirmedRestore>
+          </ConfirmedAction>
         )}
-        <ConfirmedRestore
+        <ConfirmedAction
           label="Восстановить эту версию"
           title="Восстановление версии"
+          confirmLabel="Восстановить"
           disabled={!versionDocument || !synced || restore.isPending}
           describedBy={synced ? undefined : unsyncedHint}
           onConfirm={() => versionDocument && restore.mutate({ target: versionDocument })}
         >
           Доска станет такой, как в версии от {time}, у всех участников. Текущее состояние сохранится в истории.
-        </ConfirmedRestore>
+        </ConfirmedAction>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
           Закрыть
         </Button>
@@ -195,60 +197,5 @@ export function VersionPreview({
         <p className="p-6 text-muted-foreground">Загрузка версии…</p>
       )}
     </section>
-  )
-}
-
-interface ConfirmedRestoreProps {
-  label: string
-  /** The name of the confirmation. */
-  title: string
-  variant?: 'default' | 'outline'
-  disabled: boolean
-  /** The id of what tells why the restore is not available. */
-  describedBy?: string
-  onConfirm: () => void
-  /** What the restore does. */
-  children: ReactNode
-}
-
-/** A button of a restore that changes the board for everybody once the user confirms it. */
-function ConfirmedRestore({
-  label,
-  title,
-  variant = 'default',
-  disabled,
-  describedBy,
-  onConfirm,
-  children,
-}: ConfirmedRestoreProps) {
-  const [confirming, setConfirming] = useState(false)
-  return (
-    <Popover open={confirming} onOpenChange={setConfirming}>
-      <PopoverTrigger asChild>
-        <Button type="button" variant={variant} size="sm" disabled={disabled} aria-describedby={describedBy}>
-          {label}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
-        <div role="alertdialog" aria-label={title} className="flex flex-col gap-2 p-2">
-          <p className="text-sm">{children}</p>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Отмена
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                setConfirming(false)
-                onConfirm()
-              }}
-            >
-              Восстановить
-            </Button>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   )
 }

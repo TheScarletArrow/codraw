@@ -12,7 +12,7 @@ describe('comment tool', () => {
   })
 
   /** An editor of a page with a rectangle centred at (200, 200); the canvas is at the top-left corner of the window. */
-  function open({ readOnly = false } = {}) {
+  function open({ readOnly = false, collaboration = true } = {}) {
     const doc = new Y.Doc()
     initializeDocument(doc)
     const owner = createDiagramEditor(document.createElement('div'), doc)
@@ -21,7 +21,7 @@ describe('comment tool', () => {
     const container = document.createElement('div')
     container.tabIndex = 0
     document.body.append(container)
-    const editor = createDiagramEditor(container, doc, { readOnly, participantName: 'Алиса' })
+    const editor = createDiagramEditor(container, doc, { readOnly, participantName: 'Алиса', collaboration })
     editors.push(editor)
     const shape = editor.graph.getDefaultParent().getChildAt(0)
     return { editor, container, shape, geometry: () => ({ x: shape.getGeometry()!.x, y: shape.getGeometry()!.y }) }
@@ -140,6 +140,17 @@ describe('comment tool', () => {
     expect(container).not.toHaveClass('comment-tool')
     drag(nodeOf(editor, shape), [{ x: 200, y: 200 }])
     expect(editor.graph.getSelectionCells()).toEqual([shape])
+  })
+
+  it('turns on with neither C nor K on a page without others, e.g. a draft of a proposal', () => {
+    const { editor, container } = open({ collaboration: false })
+    container.focus()
+
+    key(container, 'c', 67)
+    key(container, 'k', 75)
+
+    expect(editor.getState()).toMatchObject({ commentTool: false, laser: false })
+    expect(container).not.toHaveClass('comment-tool')
   })
 
   it('takes turns with the laser pointer, ending its stroke, and offers no quick connect meanwhile', () => {

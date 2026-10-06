@@ -3,11 +3,13 @@ import {
   cellOrigin,
   groupChanges,
   isTableRow,
+  type BoardDiff,
   type CellDiff,
   type CellSnapshot,
   type ChangeType,
   type PageDiff,
 } from '../diagram/diff.ts'
+import type { MergeConflicts } from '../diagram/merge.ts'
 import type { Box, Point } from '../diagram/editor.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
@@ -27,6 +29,9 @@ export const PAGE_CHANGE_LABELS: Record<ChangeType, string> = {
   removed: 'Страница удалена',
 }
 
+/** What an item of an element in conflict says: it changed on the board too since the proposal was made. */
+export const CONFLICT_LABEL = 'Изменено на доске после предложения'
+
 /** A change of an element as the list shows it. */
 export interface ChangeItem {
   id: string
@@ -41,13 +46,18 @@ export interface ChangeItem {
   previousTitle: string | null
   /** The number of elements added or removed together with this one, inside it. */
   nested: number
+  /** The element, or one added or removed with it, changed elsewhere too, e.g. on the board since a proposal. */
+  conflict: boolean
 }
 
 /** The cell as a change shows it: as the board has it now, or, for a removed cell, as the version had it. */
 export const shownCell = (change: CellDiff): CellSnapshot => (change.type === 'removed' ? change.before : change.after)
 
-/** The changes of a page as items of the list, in the order of {@link groupChanges}. */
-export function changeItems(page: PageDiff): ChangeItem[] {
+/**
+ * The changes of a page as items of the list, in the order of {@link groupChanges}; an item is in conflict when it or an
+ * element nested in it is among the `conflicts` of the page.
+ */
+export function changeItems(page: PageDiff, conflicts: ReadonlySet<string> = new Set()): ChangeItem[] {
   const before = page.before ? new Kinds(page.before.cells) : null
   const after = page.after ? new Kinds(page.after.cells) : null
   return groupChanges(page).map(({ change, nested }) => {
@@ -64,8 +74,20 @@ export function changeItems(page: PageDiff): ChangeItem[] {
       details: change.type === 'changed' ? changeDetails(change, kinds) : [],
       previousTitle: relabelled ? cellLabel(change.before.value) || null : null,
       nested: nested.length,
+      conflict: conflicts.has(change.id) || nested.some((cell) => conflicts.has(cell.id)),
     }
   })
+}
+
+/** How many items of the list and pages are in conflict, as the list counts them. */
+export function countConflicts(diff: BoardDiff, conflicts: MergeConflicts): number {
+  return diff.pages.reduce(
+    (count, page) =>
+      count +
+      Number(conflicts.pages.has(page.id)) +
+      changeItems(page, conflicts.cells.get(page.id)).filter((item) => item.conflict).length,
+    0,
+  )
 }
 
 /** Kinds of the cells of one state of a page; groups are told by their children. */

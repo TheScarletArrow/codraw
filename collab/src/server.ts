@@ -1,15 +1,25 @@
 import { Database } from "@hocuspocus/extension-database";
-import { Server } from "@hocuspocus/server";
-import { accessOnConnect, BOARD_DELETED, createAccessChecks, type ConnectionContext } from "./access.js";
+import { Server, type Document } from "@hocuspocus/server";
+import {
+  accessOnConnect,
+  BOARD_DELETED,
+  createAccessChecks,
+  PROPOSAL_DELETED,
+  type ConnectionContext,
+} from "./access.js";
 import type { TokenVerifier } from "./auth.js";
-import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import {
+  BoardNotFoundError,
+  ProposalClosedError,
+  ProposalNotFoundError,
+  type BackendClient,
+} from "./backend-client.js";
+import { documentOf, type CollabDocument } from "./documents.js";
 import { createDocumentEditors } from "./editors.js";
 import { log } from "./log.js";
-import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from "./messages.js";
+import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED, PROPOSALS_CHANGED } from "./messages.js";
 import { createMetrics, rejectionReasonOf, type Metrics } from "./metrics.js";
 import { createDocumentSizes, DOCUMENT_SIZE_LIMIT, DocumentTooLargeError } from "./size.js";
-
-const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface CollabServerOptions {
   port: number;
@@ -56,6 +66,38 @@ export function createCollabServer({
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
   let accessChecks: NodeJS.Timeout | undefined;
+  /** The board or the draft that an open document is; authentication lets no other name through. */
+  const targetOf = (documentName: string): CollabDocument => {
+    const target = documentOf(documentName);
+    if (!target) throw new BoardNotFoundError(documentName);
+    return target;
+  };
+  /**
+   * Stores a draft. A closed proposal keeps its draft as it is: the changes are dropped, and the connections are checked,
+   * so that its author views it from now on. The connections of a deleted proposal are closed.
+   */
+  const storeDraft = async (proposalId: string, state: Uint8Array, document: Document) => {
+    const started = performance.now();
+    const seconds = () => (performance.now() - started) / 1000;
+    try {
+      await backend.storeDraft(proposalId, state);
+      metrics.stored("stored", seconds());
+    } catch (error) {
+      if (error instanceof ProposalClosedError) {
+        metrics.stored("proposal_closed", seconds());
+        void checkAccess(document);
+        return;
+      }
+      if (error instanceof ProposalNotFoundError) {
+        metrics.stored("proposal_deleted", seconds());
+        document.getConnections().forEach((connection) => connection.close(PROPOSAL_DELETED));
+        return;
+      }
+      metrics.stored("failed", seconds());
+      log.error(`Failed to store the draft of proposal ${proposalId}`, error, { "codraw.proposal": proposalId });
+      throw error;
+    }
+  };
   return new Server({
     port,
     quiet,
@@ -68,22 +110,28 @@ export function createCollabServer({
     websocketOptions: { maxPayload: documentSizeLimit + MESSAGE_OVERHEAD },
     extensions: [
       new Database({
-        // Every document is a board; its name is the board id.
+        // A document is a board, named by its id, or the draft of a proposal, `proposal:<id>`.
         // Throwing here makes Hocuspocus close the connection and report the error reason to the client.
         async fetch({ documentName }) {
-          const state = await backend.loadDocument(documentName);
+          const target = targetOf(documentName);
+          const state = target.kind === "board" ? await backend.loadDocument(target.id) : await backend.loadDraft(target.id);
           sizes.set(documentName, state?.length ?? 0);
           return state;
         },
         async store({ documentName, state, document }) {
           sizes.set(documentName, state.length);
+          const target = targetOf(documentName);
+          if (target.kind === "proposal") {
+            await storeDraft(target.id, state, document);
+            return;
+          }
           // Taken before anything is awaited, right after the state was encoded: their changes are in it, and the
           // changes in it are theirs.
           const changedBy = editors.take(documentName);
           const started = performance.now();
           const seconds = () => (performance.now() - started) / 1000;
           try {
-            await backend.storeDocument(documentName, state, changedBy);
+            await backend.storeDocument(target.id, state, changedBy);
             metrics.stored("stored", seconds());
           } catch (error) {
             if (error instanceof BoardNotFoundError) {
@@ -102,17 +150,15 @@ export function createCollabServer({
       }),
     ],
     // Runs before the document is loaded: a rejected client gets neither the document nor the awareness of others.
-    // The token tells who the user is, and the backend what the board lets them do now. A client that may only view
-    // gets a read-only connection: Hocuspocus does not apply its changes, but its cursor and selection still reach the
-    // others.
+    // The token tells who the user is, and the backend what the board or the proposal lets them do now. A client that
+    // may only view gets a read-only connection: Hocuspocus does not apply its changes, but its cursor and selection
+    // still reach the others.
     async onAuthenticate({ token, documentName, connectionConfig }) {
       try {
-        // Any other name is not a board; the backend is not asked about it.
-        if (!canonicalUuid.test(documentName)) {
-          throw new BoardNotFoundError(documentName);
-        }
-        const user = await verifyToken(token, documentName);
-        const access = await accessOnConnect(backend, documentName, user.id);
+        // Any other name is neither a board nor a draft; the backend is not asked about it.
+        const target = targetOf(documentName);
+        const user = await verifyToken(token, target);
+        const access = await accessOnConnect(backend, target, user.id);
         connectionConfig.readOnly = access === "view";
         return { user, access };
       } catch (error) {
@@ -131,20 +177,21 @@ export function createCollabServer({
         throw error;
       }
     },
-    // Who changed the document goes to the backend with its next store. Hocuspocus calls this for every change it
-    // applies, before the store that the change schedules; read-only connections change nothing, so viewers are never
-    // among them.
+    // Who changed the document of a board goes to the backend with its next store. Hocuspocus calls this for every
+    // change it applies, before the store that the change schedules; read-only connections change nothing, so viewers
+    // are never among them. A draft has no versions to name them in.
     async onChange({ documentName, context }) {
       const user = (context as Partial<ConnectionContext>).user;
-      if (user) editors.add(documentName, user.id);
+      if (user && documentOf(documentName)?.kind === "board") editors.add(documentName, user.id);
     },
     async afterUnloadDocument({ documentName }) {
       sizes.forget(documentName);
       editors.forget(documentName);
     },
-    // A participant changed the board or its comments; the others fetch them again. Only these messages pass, written by
-    // collab itself. A change of the board may be of the access to it, so the connections are checked against it too.
-    // Viewers comment as well, so comments-changed passes from read-only connections.
+    // A participant changed the board, its comments or its proposals; the others fetch them again. Only these messages
+    // pass, written by collab itself. A change of the board may be of the access to it, and a change of a proposal in
+    // its draft closes it or not, so the connections are checked too. Viewers comment and propose as well, and those who
+    // review a draft view it, so comments-changed and proposals-changed pass from read-only connections.
     async onStateless({ payload, document, connection }) {
       const change = changeOf(payload);
       if (change === "board-changed") {
@@ -152,6 +199,9 @@ export function createCollabServer({
         void checkAccess(document);
       } else if (change === "comments-changed") {
         document.broadcastStateless(COMMENTS_CHANGED, (other) => other !== connection);
+      } else if (change === "proposals-changed") {
+        document.broadcastStateless(PROPOSALS_CHANGED, (other) => other !== connection);
+        if (documentOf(document.name)?.kind === "proposal") void checkAccess(document);
       }
     },
     // Participants tell collab about changes of access, but the owner may change it without the board open, and such a

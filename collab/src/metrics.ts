@@ -1,27 +1,30 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from "prom-client";
 
-/** How storing a document in the backend ended. */
-export type StoreResult = "stored" | "failed" | "board_deleted";
+/** How storing a document in the backend ended; a draft is not stored once its proposal is closed or deleted. */
+export type StoreResult = "stored" | "failed" | "board_deleted" | "proposal_closed" | "proposal_deleted";
 
 /**
  * Why collab refused a participant: at connecting (`permission-denied` for a token it does not accept, `no-access`,
- * `board-not-found`, `error` when the backend could not tell), for a change (`document-too-large`), or by closing their
- * connection after the access to the board changed (`access-changed`).
+ * `board-not-found`, `proposal-not-found`, `error` when the backend could not tell), for a change
+ * (`document-too-large`), or by closing their connection after the access to the board or the draft changed
+ * (`access-changed`).
  */
 export type RejectionReason =
   | "permission-denied"
   | "no-access"
   | "board-not-found"
+  | "proposal-not-found"
   | "error"
   | "document-too-large"
   | "access-changed";
 
-const STORE_RESULTS: StoreResult[] = ["stored", "failed", "board_deleted"];
+const STORE_RESULTS: StoreResult[] = ["stored", "failed", "board_deleted", "proposal_closed", "proposal_deleted"];
 const REJECTION_REASONS: RejectionReason[] = [
   "permission-denied",
   "no-access",
   "board-not-found",
+  "proposal-not-found",
   "error",
   "document-too-large",
   "access-changed",
@@ -37,7 +40,7 @@ export function createMetrics() {
 
   new Gauge({
     name: "codraw_collab_connections",
-    help: "Connections of participants to board documents",
+    help: "Connections of participants to board documents and drafts of proposals",
     registers: [registry],
     collect() {
       this.set(instance?.getConnectionsCount() ?? 0);
@@ -45,7 +48,7 @@ export function createMetrics() {
   });
   new Gauge({
     name: "codraw_collab_documents",
-    help: "Board documents open in collab",
+    help: "Board documents and drafts of proposals open in collab",
     registers: [registry],
     collect() {
       this.set(instance?.getDocumentsCount() ?? 0);
@@ -53,13 +56,13 @@ export function createMetrics() {
   });
   const stores = new Counter({
     name: "codraw_collab_stores_total",
-    help: "Stores of board documents in the backend, by result",
+    help: "Stores of board documents and drafts of proposals in the backend, by result",
     labelNames: ["result"],
     registers: [registry],
   });
   const storeDuration = new Histogram({
     name: "codraw_collab_store_duration_seconds",
-    help: "Time of storing a board document in the backend",
+    help: "Time of storing a board document or a draft of a proposal in the backend",
     buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   });

@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.comment.CommentService
 import io.github.thescarletarrow.codraw.notification.NotificationService
+import io.github.thescarletarrow.codraw.proposal.ProposalService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -19,6 +20,7 @@ class UserService(
     private val versions: BoardVersionService,
     private val comments: CommentService,
     private val notifications: NotificationService,
+    private val proposals: ProposalService,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
 ) {
@@ -39,7 +41,8 @@ class UserService(
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
      * the boards of the guest, the boards the guest opened through links or is a member of, the changes of the guest
-     * that versions of boards name, the comments and the notifications of the guest pass to the user signing in.
+     * that versions of boards name, the comments, the notifications and the proposals of changes of the guest pass to
+     * the user signing in.
      */
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {
@@ -50,6 +53,7 @@ class UserService(
             versions.transfer(guest.id, user.id)
             comments.transfer(guest.id, user.id)
             notifications.transfer(guest.id, user.id)
+            proposals.transfer(guest.id, user.id)
         }
         return user
     }

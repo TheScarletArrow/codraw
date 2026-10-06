@@ -6,8 +6,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { takesText } from '../lib/keyboard.ts'
 import { formatKeys, shortcutGroups } from './shortcuts.ts'
 
+interface ShortcutsHelpProps {
+  readOnly?: boolean
+  /** The page works on a board with others: the shortcuts of working together are listed. */
+  collaboration?: boolean
+  isMac?: boolean
+}
+
 /** The shortcuts of the editor in one window, from a button of the board page or with `?`. */
-export function ShortcutsHelp({ readOnly = false, isMac = Client.IS_MAC }: { readOnly?: boolean; isMac?: boolean }) {
+export function ShortcutsHelp({ readOnly = false, collaboration = true, isMac = Client.IS_MAC }: ShortcutsHelpProps) {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -33,7 +40,7 @@ export function ShortcutsHelp({ readOnly = false, isMac = Client.IS_MAC }: { rea
         className="max-h-[70vh] w-[30rem] overflow-y-auto"
       >
         <h2 className="mb-2 text-sm font-semibold">Горячие клавиши</h2>
-        {shortcutGroups(readOnly).map((group) => (
+        {shortcutGroups(readOnly, collaboration).map((group) => (
           <section key={group.title} aria-label={group.title} className="mb-3 last:mb-0">
             <h3 className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{group.title}</h3>
             <dl className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 text-sm">

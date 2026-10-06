@@ -22,6 +22,7 @@ function notification(id: string, changes: Partial<UserNotification> = {}): User
     pageId: 'page-2',
     threadId: 'thread-1',
     commentId: `comment-${id}`,
+    proposalId: null,
     snippet: '@Боб посмотри',
     actor: { id: 'anya', name: 'Аня', avatarUrl: 'https://avatars.example.com/anya.png' },
     role: null,
