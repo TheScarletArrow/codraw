@@ -8,7 +8,15 @@ import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
 import { BOARD_CHANGED, COMMENTS_CHANGED } from '../board/messages.ts'
 import * as Y from 'yjs'
 import { readAttribution } from '../diagram/attribution.ts'
-import { DEFAULT_PAGE_ID, getCells, initializeDocument, LAYER_CELL_ID, writeCell, writePage } from '../diagram/model.ts'
+import {
+  DEFAULT_PAGE_ID,
+  getCells,
+  initializeDocument,
+  LAYER_CELL_ID,
+  writeCell,
+  writePage,
+  type CellData,
+} from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
@@ -24,19 +32,22 @@ vi.mock('@hocuspocus/provider', async () => ({
 }))
 // maxGraph needs real SVG layout; the canvas is covered by unit tests of the binding and by e2e tests.
 // The stand-in hands a fake editor to the page, like the real canvas does.
-// A canvas of another page gets a new fake editor, which becomes `canvas.editor`.
-const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
+// A canvas of another page gets a new fake editor, which becomes `canvas.editor`; `canvas.document` is the document the
+// canvas shows.
+const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null, document: null as Y.Doc | null }))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
   return {
     DiagramCanvas: ({
+      document,
       pageId,
       readOnly = false,
       participantName,
       participantId,
       onEditor,
     }: {
+      document: Y.Doc
       pageId: string
       readOnly?: boolean
       participantName?: string
@@ -44,12 +55,14 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       onEditor: (editor: FakeEditor | null) => void
     }) => {
       useEffect(() => {
-        if (canvas.editor?.pageId !== pageId || canvas.editor.readOnly !== readOnly) {
+        const otherDocument = canvas.document !== null && canvas.document !== document
+        if (canvas.editor?.pageId !== pageId || canvas.editor.readOnly !== readOnly || otherDocument) {
           canvas.editor = createFakeEditor({ pageId, readOnly })
         }
+        canvas.document = document
         onEditor(canvas.editor)
         return () => onEditor(null)
-      }, [pageId, readOnly, onEditor])
+      }, [document, pageId, readOnly, onEditor])
       return (
         <div
           data-testid="diagram-canvas"
@@ -122,6 +135,7 @@ const requests = (fetchMock: ReturnType<typeof mockFetch>, method: string, url: 
 describe('BoardPage', () => {
   beforeEach(() => {
     canvas.editor = createFakeEditor()
+    canvas.document = null
     FakeHocuspocusProvider.instances = []
   })
 
@@ -647,6 +661,178 @@ describe('BoardPage', () => {
 
       expect(await within(preview).findByRole('alert')).toHaveTextContent('Не удалось восстановить версию')
       expect(Y.encodeStateVector(provider.document)).toEqual(before)
+    })
+
+    describe('comparing a version with the board', () => {
+      /** A version with «Сервис» and «Кэш» on the first page and a second page «Черновик» with «Набросок». */
+      function comparedState() {
+        const doc = new Y.Doc()
+        initializeDocument(doc)
+        doc.transact(() => {
+          writeCell(getCells(doc), shape('kept', 'a0', 'Сервис', { x: 100, y: 100 }))
+          writeCell(getCells(doc), shape('cache', 'a1', 'Кэш', { x: 400, y: 300 }))
+          writePage(doc, 'draft', { name: 'Черновик', order: 'a1' })
+          writeCell(getCells(doc, 'draft'), shape('sketch', 'a0', 'Набросок', { x: 0, y: 0 }))
+        })
+        return Y.encodeStateAsUpdate(doc)
+      }
+
+      const shape = (id: string, order: string, value: string, { x, y }: { x: number; y: number }): CellData => ({
+        id,
+        kind: 'vertex',
+        parent: '1',
+        order,
+        value,
+        geometry: { x, y, width: 120, height: 60 },
+        source: null,
+        target: null,
+        style: {},
+      })
+
+      /** The owner opens the version and turns comparing on; the board has «Сервис» renamed, «Кэш» removed, «Очередь» added. */
+      async function openComparison(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+        const provider = await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: comparedState() }, ...responses })
+        provider.document.transact(() => {
+          writeCell(getCells(provider.document), shape('kept', 'a0', 'Шлюз', { x: 100, y: 100 }))
+          writeCell(getCells(provider.document), shape('queue', 'a2', 'Очередь', { x: 600, y: 100 }))
+          writePage(provider.document, 'page-2', { name: 'Страница 2', order: 'a2' })
+        })
+        await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+        const preview = await screen.findByRole('region', { name: /^Версия от / })
+        await within(preview).findByTestId('diagram-canvas')
+        await userEvent.click(within(preview).getByRole('button', { name: 'Сравнить с текущей' }))
+        return { provider, preview }
+      }
+
+      it('shows the board now on the canvas, for viewing only, with the changes since the version over it and in a list', async () => {
+        const { provider, preview } = await openComparison()
+
+        expect(within(preview).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'true')
+        const list = await within(preview).findByRole('complementary', { name: 'Изменения' })
+        expect(within(list).getByText('Добавлено 1 · Изменено 1 · Удалено 2')).toBeInTheDocument()
+        expect(within(list).getAllByRole('button').map((item) => item.textContent!.replace(/\s+/g, ' ').trim())).toEqual([
+          'Добавлено: Очередь Прямоугольник',
+          'Изменено: Шлюз Прямоугольник · подпись было «Сервис»',
+          'Удалено: Кэш Прямоугольник',
+          'Удалено: Набросок Прямоугольник',
+        ])
+        expect(canvas.document).toBe(provider.document)
+        expect(within(preview).getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+        // The board has the second page since the version, and the version had «Черновик», which the board has not.
+        expect(within(preview).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual([
+          'Страница 1',
+          'Страница 2',
+          'Черновик',
+        ])
+        expect(within(preview).getByRole('tab', { name: 'Страница 2' })).toHaveAccessibleDescription('Страница добавлена')
+        expect(within(preview).getByRole('tab', { name: 'Черновик' })).toHaveAccessibleDescription('Страница удалена')
+        expect(within(preview).getByRole('tab', { name: 'Страница 1' })).toHaveAccessibleDescription('Страница изменена')
+
+        // Over the canvas: the frames of the shapes the canvas shows, and the ghost of the removed one.
+        act(() => {
+          canvas.editor!.placeCell('kept', { x: 100, y: 100, width: 120, height: 60 })
+          canvas.editor!.placeCell('queue', { x: 600, y: 100, width: 120, height: 60 })
+        })
+        const marks = within(preview).getAllByTestId('change-mark')
+        expect(marks.map((mark) => [mark.dataset.cell, mark.dataset.change])).toEqual([
+          ['queue', 'added'],
+          ['kept', 'changed'],
+          ['cache', 'removed'],
+        ])
+      })
+
+      it('shows who changed the selected element, as the board does', async () => {
+        const { preview } = await openComparison()
+        await within(preview).findByRole('complementary', { name: 'Изменения' })
+
+        act(() => canvas.editor!.setState({ attribution: { by: 'bob', name: 'Боб', at: Date.now(), mine: false } }))
+
+        expect(within(preview).getByTestId('diagram-canvas')).toHaveAttribute('data-participant-id', ALICE.id)
+        expect(within(preview).getByTestId('last-change')).toHaveTextContent('Изменено: Боб, только что')
+      })
+
+      it('changes nothing in the board', async () => {
+        const { provider } = await openComparison()
+        const before = Y.encodeStateVector(provider.document)
+
+        await screen.findByRole('complementary', { name: 'Изменения' })
+        await userEvent.click(screen.getByRole('button', { name: /Изменено: Шлюз/ }))
+        await userEvent.click(screen.getByRole('tab', { name: 'Черновик' }))
+
+        expect(Y.encodeStateVector(provider.document)).toEqual(before)
+      })
+
+      it('shows a changed element on the canvas, and centres the canvas on the ghost of a removed one', async () => {
+        await openComparison()
+        const list = await screen.findByRole('complementary', { name: 'Изменения' })
+        const editor = canvas.editor!
+
+        await userEvent.click(within(list).getByRole('button', { name: /Изменено: Шлюз/ }))
+        expect(editor.revealCell).toHaveBeenLastCalledWith('kept')
+        expect(within(list).getByRole('button', { name: /Изменено: Шлюз/ })).toHaveAttribute('aria-pressed', 'true')
+
+        await userEvent.click(within(list).getByRole('button', { name: /Удалено: Кэш/ }))
+        expect(editor.clearSelection).toHaveBeenCalled()
+        expect(editor.centerOn).toHaveBeenLastCalledWith({ x: 460, y: 330 })
+      })
+
+      it('goes to a page removed since the version, which shows as the version has it, and shows its element', async () => {
+        const { provider } = await openComparison()
+        const list = await screen.findByRole('complementary', { name: 'Изменения' })
+
+        await userEvent.click(within(list).getByRole('button', { name: /Удалено: Набросок/ }))
+
+        await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'draft'))
+        expect(canvas.document).not.toBe(provider.document)
+        expect(screen.getByRole('tab', { name: 'Черновик' })).toHaveAttribute('aria-selected', 'true')
+        await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('sketch'))
+      })
+
+      it('follows the changes other participants make meanwhile', async () => {
+        const { provider } = await openComparison()
+        const list = await screen.findByRole('complementary', { name: 'Изменения' })
+
+        act(() => writeCell(getCells(provider.document), shape('more', 'a3', 'Ещё', { x: 0, y: 400 })))
+
+        expect(await within(list).findByText('Добавлено 2 · Изменено 1 · Удалено 2')).toBeInTheDocument()
+      })
+
+      it('shows the version again when turned off', async () => {
+        const { provider, preview } = await openComparison()
+        await screen.findByRole('complementary', { name: 'Изменения' })
+
+        await userEvent.click(within(preview).getByRole('button', { name: 'Сравнить с текущей' }))
+
+        expect(within(preview).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'false')
+        expect(screen.queryByRole('complementary', { name: 'Изменения' })).toBeNull()
+        expect(screen.queryAllByTestId('change-mark')).toEqual([])
+        expect(canvas.document).not.toBe(provider.document)
+        expect(within(preview).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(['Страница 1', 'Черновик'])
+      })
+
+      it('stays on for another version', async () => {
+        await openComparison({ [`GET ${versionsUrl}/v2`]: { bytes: comparedState() } })
+        const history = screen.getByRole('complementary', { name: 'История версий' })
+
+        await userEvent.click(within(history).getByRole('button', { name: /Вручную/ }))
+
+        const other = await screen.findByRole('region', { name: /^Версия от / })
+        expect(within(other).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'true')
+        expect(await within(other).findByRole('complementary', { name: 'Изменения' })).toBeInTheDocument()
+      })
+
+      it('turns off when the history closes', async () => {
+        await openComparison()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Закрыть историю' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+        await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
+        const history = screen.getByRole('complementary', { name: 'История версий' })
+        await userEvent.click(await within(history).findByRole('button', { name: /Автоматически/ }))
+
+        const again = await screen.findByRole('region', { name: /^Версия от / })
+        expect(within(again).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'false')
+      })
     })
 
     it('offers the history to an editor who does not own the board, in a menu without renaming and deleting', async () => {

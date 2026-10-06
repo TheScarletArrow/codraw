@@ -1,3 +1,4 @@
+import { Geometry } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
@@ -41,5 +42,25 @@ describe('the view of the editor', () => {
 
     expect(editor.viewportCenter().x).toBeCloseTo(1200, 0)
     expect(editor.viewportCenter().y).toBeCloseTo(900, 0)
+  })
+
+  it('gives the points of the line of an edge as drawn, relative to the visible corner of the canvas', () => {
+    const editor = open()
+    const model = editor.graph.getDataModel()
+    const source = editor.addShape('rectangle', { x: 0, y: 0 })!
+    const target = editor.addShape('rectangle', { x: 0, y: 0 })!
+    model.setGeometry(source, new Geometry(100, 100, 100, 60))
+    model.setGeometry(target, new Geometry(400, 100, 100, 60))
+    const edge = editor.graph.insertEdge({ parent: editor.graph.getDefaultParent(), source, target, style: { edgeStyle: 'none' } })
+
+    const points = editor.edgePoints(edge.getId()!)!
+    const { translate, scale } = editor.graph.getView()
+
+    expect(points).toHaveLength(2)
+    expect(points[0]!.x).toBeCloseTo((200 + translate.x) * scale)
+    expect(points[0]!.y).toBeCloseTo((130 + translate.y) * scale)
+    expect(points[1]!.x).toBeCloseTo((400 + translate.x) * scale)
+    expect(editor.edgePoints(source.getId()!)).toBeNull()
+    expect(editor.edgePoints('missing')).toBeNull()
   })
 })

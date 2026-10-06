@@ -8,12 +8,11 @@ describe('revealing a cell', () => {
   const editors: DiagramEditor[] = []
   afterEach(() => editors.splice(0).forEach((editor) => editor.destroy()))
 
-  function open() {
-    const doc = new Y.Doc()
+  function open(doc = new Y.Doc(), readOnly = false) {
     initializeDocument(doc)
     const container = document.createElement('div')
     document.body.append(container)
-    const editor = createDiagramEditor(container, doc)
+    const editor = createDiagramEditor(container, doc, { readOnly })
     editors.push(editor)
     return editor
   }
@@ -29,6 +28,18 @@ describe('revealing a cell', () => {
 
     expect(editor.graph.getSelectionCells()).toEqual([cell])
     expect(centerOn).toHaveBeenCalledWith({ x: 450, y: 330 })
+  })
+
+  it('clears the selection, in a read-only editor too', () => {
+    const doc = new Y.Doc()
+    const cell = open(doc).addShape('rectangle', { x: 100, y: 100 })!
+    const viewer = open(doc, true)
+    viewer.revealCell(cell.getId()!)
+    expect(viewer.graph.getSelectionCount()).toBe(1)
+
+    viewer.clearSelection()
+
+    expect(viewer.graph.getSelectionCount()).toBe(0)
   })
 
   it('reports a cell that the page does not have', () => {

@@ -1,9 +1,12 @@
 import { ChevronDown, Plus } from 'lucide-react'
-import { useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import type { ChangeType } from '../diagram/diff.ts'
 import type { PageInfo } from '../diagram/pages.ts'
+import { ChangeIcon } from './ChangeIcon.tsx'
+import { PAGE_CHANGE_LABELS } from './changes.ts'
 import type { ParticipantIdentity } from './identity.ts'
 
 /** MIME type for dragging a page tab to another place. */
@@ -29,6 +32,8 @@ interface PageTabsProps {
   onMove: (id: string, index: number) => void
   /** The participant may only view the board: the tabs only switch pages. */
   readOnly?: boolean
+  /** What happened to the pages since a version that the board is compared with. */
+  changes?: ReadonlyMap<string, ChangeType>
   /** Shown at the right end of the bar, like a status bar: e.g. who changed the selected element last. */
   children?: ReactNode
 }
@@ -45,8 +50,10 @@ export function PageTabs({
   onDelete,
   onMove,
   readOnly = false,
+  changes,
   children,
 }: PageTabsProps) {
+  const id = useId()
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menuFor, setMenuFor] = useState<string | null>(null)
 
@@ -66,15 +73,18 @@ export function PageTabs({
         {pages.map((page, index) => {
           const selected = page.id === currentPageId
           const here = visitors.filter((visitor) => visitor.page === page.id)
+          const change = changes?.get(page.id)
+          const changeId = `${id}-${index}-change`
           return (
             <Popover key={page.id} open={menuFor === page.id} onOpenChange={(open) => setMenuFor(open ? page.id : null)}>
               <PopoverAnchor asChild>
                 <div
                   role="tab"
                   aria-label={page.name}
+                  aria-describedby={change ? changeId : undefined}
                   aria-selected={selected}
                   tabIndex={selected ? 0 : -1}
-                  title={page.name}
+                  title={change ? `${page.name} — ${PAGE_CHANGE_LABELS[change].toLowerCase()}` : page.name}
                   draggable={!readOnly && renaming !== page.id}
                   className={cn(
                     'group flex max-w-56 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 select-none',
@@ -107,7 +117,15 @@ export function PageTabs({
                       }}
                     />
                   ) : (
-                    <span className="truncate">{page.name}</span>
+                    <span className={cn('truncate', change === 'removed' && 'line-through')}>{page.name}</span>
+                  )}
+                  {change && (
+                    <>
+                      <ChangeIcon type={change} className="size-3.5" />
+                      <span id={changeId} className="sr-only">
+                        {PAGE_CHANGE_LABELS[change]}
+                      </span>
+                    </>
                   )}
                   {here.length > 0 && (
                     <span className="flex shrink-0 -space-x-1" aria-label={`На странице: ${here.map((v) => v.name).join(', ')}`}>

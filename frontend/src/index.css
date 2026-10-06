@@ -18,6 +18,10 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --success: oklch(0.627 0.17 149);
+  /* Changes of the board since a version: added, changed and removed elements. */
+  --added: oklch(0.527 0.154 150.069);
+  --changed: oklch(0.555 0.163 48.998);
+  --removed: oklch(0.577 0.245 27.325);
   color-scheme: light dark;
 }
 
@@ -38,6 +42,9 @@
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
     --success: oklch(0.723 0.19 149);
+    --added: oklch(0.792 0.209 151.711);
+    --changed: oklch(0.828 0.189 84.429);
+    --removed: oklch(0.704 0.191 22.216);
   }
 }
 
@@ -57,6 +64,9 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-success: var(--success);
+  --color-added: var(--added);
+  --color-changed: var(--changed);
+  --color-removed: var(--removed);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -99,6 +109,23 @@
 .diagram-canvas.comment-tool,
 .diagram-canvas.comment-tool * {
   cursor: crosshair !important;
+}
+
+/* The marks of changes lie on the canvas, which stays white in both themes, so they keep the colors of the light one. */
+.change-marks {
+  --added: oklch(0.527 0.154 150.069);
+  --changed: oklch(0.555 0.163 48.998);
+  --removed: oklch(0.577 0.245 27.325);
+}
+
+/* A removed element is hatched: it reads as a ghost without its color. */
+.change-marks .change-ghost {
+  background-color: rgb(255 255 255 / 0.6);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklch, var(--removed) 35%, transparent) 0 2px,
+    transparent 2px 7px
+  );
 }
 
 /* The editor of the name of an empty field of a table shows what to type. */

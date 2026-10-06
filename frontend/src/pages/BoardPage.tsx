@@ -113,6 +113,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Versions of the board, which whoever edits it sees; a selected version shows in place of the board.
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewed, setPreviewed] = useState<BoardVersion | null>(null)
+  // Comparing a version with the board stays on for the other versions until the history closes.
+  const [comparing, setComparing] = useState(false)
   const managesVersions = canManageVersions(board)
   const preview = managesVersions && previewed && document ? previewed : null
   // Comments of the board, which every participant reads and writes, in a panel in place of the history of versions.
@@ -127,6 +129,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setCommentsOpen(true)
     setHistoryOpen(false)
     setPreviewed(null)
+    setComparing(false)
   }, [])
   const closeComments = () => {
     setCommentsOpen(false)
@@ -375,6 +378,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             boardId={board.id}
             version={preview}
             document={document}
+            comparing={comparing}
+            onCompareChange={setComparing}
+            participantId={author.id}
             onRestored={() => setPreviewed(null)}
             onClose={() => setPreviewed(null)}
           />
@@ -475,6 +481,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onClose={() => {
               setHistoryOpen(false)
               setPreviewed(null)
+              setComparing(false)
             }}
           />
         )}

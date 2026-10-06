@@ -2,7 +2,7 @@ import { Cell, Geometry, GraphDataModel, type CellStyle } from '@maxgraph/core'
 import * as Y from 'yjs'
 import type { Author } from './attribution.ts'
 import { DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
-import { getCells, initializeDocument, LAYER_CELL_ID } from './model.ts'
+import { getCells, initializeDocument, LAYER_CELL_ID, writeCell, type CellData } from './model.ts'
 
 export const REMOTE_ORIGIN = 'test:remote'
 
@@ -87,3 +87,37 @@ export function childIds(model: GraphDataModel): string[] {
   const parent = layer(model)
   return Array.from({ length: parent.getChildCount() }, (_, index) => parent.getChildAt(index).getId()!)
 }
+
+/** A board document with its default page and these cells on it. */
+export function boardWith(...cells: CellData[]): Y.Doc {
+  const doc = new Y.Doc()
+  initializeDocument(doc)
+  doc.transact(() => cells.forEach((cell) => writeCell(getCells(doc), cell)))
+  return doc
+}
+
+/** A later state of a board: a copy of its document changed by `change`, as the board is a later state of a version. */
+export function laterState(doc: Y.Doc, change: (doc: Y.Doc) => void = () => {}): Y.Doc {
+  const copy = new Y.Doc()
+  Y.applyUpdate(copy, Y.encodeStateAsUpdate(doc))
+  copy.transact(() => change(copy))
+  return copy
+}
+
+/** The data of a shape of the layer, 120 by 60 at the top left corner unless `changes` say otherwise. */
+export const shapeData = (id: string, order: string, changes: Partial<CellData> = {}): CellData => ({
+  id,
+  kind: 'vertex',
+  parent: LAYER_CELL_ID,
+  order,
+  value: '',
+  geometry: { x: 0, y: 0, width: 120, height: 60 },
+  source: null,
+  target: null,
+  style: {},
+  ...changes,
+})
+
+/** The data of an edge of the layer between two cells. */
+export const edgeData = (id: string, order: string, source: string | null, target: string | null, changes: Partial<CellData> = {}) =>
+  shapeData(id, order, { kind: 'edge', source, target, geometry: { x: 0, y: 0, width: 0, height: 0, relative: true }, ...changes })

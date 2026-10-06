@@ -473,6 +473,8 @@ export interface DiagramEditor {
   toCanvasPoint(point: Point): Point
   /** Bounds of a cell relative to the visible top-left corner of the canvas, or `null` if it is not shown. */
   cellBounds(id: string): Box | null
+  /** Points of the line of an edge as drawn, relative to the visible top-left corner of the canvas; `null` if not shown. */
+  edgePoints(id: string): Point[] | null
   /** Size of the visible area of the canvas, without scrollbars. */
   viewportSize(): { width: number; height: number }
   /** Scrolls (or, beyond the scrollable area, pans) the canvas so that a diagram point is in its middle. */
@@ -483,6 +485,8 @@ export interface DiagramEditor {
   zoomTo(scale: number): void
   /** Selects the cell and centres the canvas on it; `false` when the page has no such shape or edge. */
   revealCell(id: string): boolean
+  /** Selects nothing. */
+  clearSelection(): void
   /** Reports the pointer position over the canvas in diagram coordinates, and `null` when it leaves. */
   onPointerMove(listener: (point: Point | null) => void): () => void
   /**
@@ -2207,6 +2211,12 @@ export function createDiagramEditor(
       if (!state) return null
       return { x: state.x - container.scrollLeft, y: state.y - container.scrollTop, width: state.width, height: state.height }
     },
+    edgePoints(id) {
+      const cell = model.getCell(id)
+      const points = cell?.isEdge() ? graph.getView().getState(cell)?.absolutePoints : null
+      if (!points || points.length < 2 || points.some((point) => !point)) return null
+      return points.map((point) => ({ x: point!.x - container.scrollLeft, y: point!.y - container.scrollTop }))
+    },
     viewportSize: () => ({ width: container.clientWidth, height: container.clientHeight }),
     centerOn({ x, y }) {
       const view = graph.getView()
@@ -2241,6 +2251,10 @@ export function createDiagramEditor(
       const { scale, translate } = graph.getView()
       editor.centerOn({ x: state.getCenterX() / scale - translate.x, y: state.getCenterY() / scale - translate.y })
       return true
+    },
+    clearSelection() {
+      graph.stopEditing(false)
+      graph.clearSelection()
     },
     onPointerMove: (listener) => listen(pointerListeners, listener),
     setLaser(on) {
