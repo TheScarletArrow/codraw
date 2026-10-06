@@ -23,6 +23,8 @@ test('a field typed in one line is applied on Enter as CoDraw writes it, for eve
   await alice.keyboard.press('Enter')
 
   await expect.poll(() => fieldsOf(bob, table)).toEqual(['id uuid PK', 'created_at timestamptz NOT NULL DEFAULT now()'])
-  await expect(alice.getByRole('combobox', { name: 'Тип поля' })).toHaveValue('timestamptz')
+  await expect(
+    alice.getByRole('group', { name: 'Свойства поля' }).getByRole('combobox', { name: 'Тип поля' }),
+  ).toHaveValue('timestamptz')
   await close()
 })

@@ -94,15 +94,17 @@ test('a field shows its type, nullability and reference in columns, and the tool
       return cell.getChildren().map((field: any) => field.getValue())
     }, table)
 
+  // The panel next to the table has the same controls; this test sets them on the toolbar.
+  const toolbar = alice.getByRole('toolbar', { name: 'Инструменты' })
   await select(alice, 'boards', 1)
-  await alice.getByRole('combobox', { name: 'Тип поля' }).fill('bigint')
-  await alice.getByRole('combobox', { name: 'Тип поля' }).press('Enter')
-  await alice.getByRole('button', { name: 'NULL', exact: true }).click()
+  await toolbar.getByRole('combobox', { name: 'Тип поля' }).fill('bigint')
+  await toolbar.getByRole('combobox', { name: 'Тип поля' }).press('Enter')
+  await toolbar.getByRole('button', { name: 'NULL', exact: true }).click()
   await expect.poll(() => fieldsOf(bob, 'boards')).toEqual(['id uuid PK', 'owner_id bigint FK'])
   await expect(bobCanvas.locator('text', { hasText: /^bigint$/ })).toHaveCount(1)
 
   await select(alice, 'users', null)
-  await alice.getByRole('combobox', { name: 'СУБД таблицы' }).selectOption('Oracle')
+  await toolbar.getByRole('combobox', { name: 'СУБД таблицы' }).selectOption('Oracle')
   await expect(bobCanvas.locator('text', { hasText: /^ORA$/ })).toHaveCount(1)
 
   await close()

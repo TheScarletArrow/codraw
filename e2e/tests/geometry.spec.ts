@@ -178,8 +178,9 @@ test('a text from the palette and a table with auto width widen with their text'
   expect(widened.width).toBeGreaterThan(100)
   expect(widened.labelWidth).toBeLessThan(widened.width)
 
+  // A table from the palette has auto width too: a click on the button would turn it off.
   const table = await addShape(alice, 'Таблица')
-  await toolbar(alice).getByRole('button', { name: 'Автоширина' }).click()
+  await expect(toolbar(alice).getByRole('button', { name: 'Автоширина' })).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(async () => (await cellView(bob, table))?.style.autosize).toBe(true)
   const compact = (await cellView(alice, table))!
   const before = compact.x
