@@ -59,6 +59,33 @@ test('shapes copied on a board are pasted into a board of another tab with the e
   await alice.context().close()
 })
 
+test('a copied table is SQL for other programs and the same table on a board of another tab', async ({ browser }) => {
+  const alice = await userPage(browser, 'Алиса')
+  const clipboard = await clipboardPage(alice)
+  await createBoard(alice)
+  await addShape(alice, 'Таблица')
+
+  await focusCanvas(alice)
+  await alice.keyboard.press('Control+a')
+  await alice.keyboard.press('Control+c')
+
+  expect(await clipboard.read()).toBe('CREATE TABLE "Таблица" (\n    id uuid PRIMARY KEY\n);\n')
+  const html = await alice.evaluate(async () => {
+    const [item] = await navigator.clipboard.read()
+    return (await item!.getType('text/html')).text()
+  })
+  expect(html).toContain('data-codraw="%3CmxGraphModel%3E')
+
+  const other = await alice.context().newPage()
+  await openBoard(other, await createBoard(other))
+  await focusCanvas(other)
+  await other.keyboard.press('Control+v')
+
+  await expect.poll(async () => (await vertices(other)).map((cell) => [cell.value, cell.style.dbVendor])).toEqual([['Таблица', 'postgresql']])
+
+  await alice.context().close()
+})
+
 test('a fragment copied in draw.io is pasted with its styles and edge, and the other participant sees it', async ({
   browser,
 }) => {

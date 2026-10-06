@@ -66,20 +66,21 @@ describe('CanvasMenu', () => {
 
     await user.click(screen.getByRole('menuitem', { name: 'Вставить' }))
 
-    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, 'Заметка'))
+    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, 'Заметка', ''))
     expect(screen.queryByRole('menu')).toBeNull()
     expect(editor.focus).toHaveBeenCalled()
   })
 
   it('pastes the clipboard of the tab when the browser does not let the page read the system clipboard', async () => {
     const user = userEvent.setup()
+    vi.spyOn(navigator.clipboard, 'read').mockRejectedValue(new DOMException('Denied', 'NotAllowedError'))
     vi.spyOn(navigator.clipboard, 'readText').mockRejectedValue(new DOMException('Denied', 'NotAllowedError'))
     act(() => editor.setState({ canPaste: true }))
     rightClick('canvas')
 
     await user.click(screen.getByRole('menuitem', { name: 'Вставить' }))
 
-    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, undefined))
+    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, undefined, undefined))
     vi.restoreAllMocks()
   })
 

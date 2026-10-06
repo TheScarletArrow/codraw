@@ -9,7 +9,7 @@ import { useEditorState } from './useEditorState.ts'
 
 const COMMANDS: Record<Exclude<MenuCommand, 'comment'>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
-  paste: (editor, { point }) => void readSystemClipboard().then((text) => editor.paste(point, text ?? undefined)),
+  paste: (editor, { point }) => void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html)),
   selectAll: (editor) => editor.selectAll(),
   undo: (editor) => editor.undo(),
   redo: (editor) => editor.redo(),

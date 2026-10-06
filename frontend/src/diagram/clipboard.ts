@@ -33,18 +33,51 @@ export function canReadSystemClipboard(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function'
 }
 
-/** Reads the text of the clipboard of the system; `null` when the browser does not allow it. */
-export async function readSystemClipboard(): Promise<string | null> {
+/** The text of the clipboard of the system and its HTML, empty when it has none or the browser does not give it. */
+export interface SystemClipboard {
+  text: string
+  html: string
+}
+
+/**
+ * Reads the clipboard of the system: its text and HTML where the browser lets the page read them, else its text alone;
+ * `null` when the browser does not allow reading it.
+ */
+export async function readSystemClipboard(): Promise<SystemClipboard | null> {
+  if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function') {
+    try {
+      const items = await navigator.clipboard.read()
+      const read = async (type: string) => {
+        const item = items.find((candidate) => candidate.types.includes(type))
+        return item ? (await item.getType(type)).text() : ''
+      }
+      return { text: await read('text/plain'), html: await read('text/html') }
+    } catch {
+      // The browser may refuse more than the text, e.g. without the permission to read; the text may still be allowed.
+    }
+  }
   if (!canReadSystemClipboard()) return null
   try {
-    return await navigator.clipboard.readText()
+    return { text: await navigator.clipboard.readText(), html: '' }
   } catch {
     return null
   }
 }
 
-/** Writes text to the clipboard of the system, if the browser allows it; the clipboard of the tab has the cells anyway. */
-export function writeSystemClipboard(text: string) {
-  if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') return
-  navigator.clipboard.writeText(text).catch(() => {})
+/**
+ * Writes text, and HTML when there is some, to the clipboard of the system, if the browser allows it; the clipboard of
+ * the tab has the cells anyway.
+ */
+export function writeSystemClipboard(text: string, html: string | null = null) {
+  if (typeof navigator === 'undefined') return
+  const writeText = () => navigator.clipboard?.writeText?.(text).catch(() => {})
+  if (html === null || typeof navigator.clipboard?.write !== 'function' || typeof ClipboardItem === 'undefined') {
+    writeText()
+    return
+  }
+  const item = new ClipboardItem({
+    'text/plain': new Blob([text], { type: 'text/plain' }),
+    'text/html': new Blob([html], { type: 'text/html' }),
+  })
+  navigator.clipboard.write([item]).catch(writeText)
 }

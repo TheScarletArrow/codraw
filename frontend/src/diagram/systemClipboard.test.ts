@@ -1,7 +1,9 @@
-import { Geometry, type Cell } from '@maxgraph/core'
+import { Geometry, type Cell, type CellStyle } from '@maxgraph/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
-import { clipboardText, readClipboardText } from './clipboardFormat.ts'
+import { DiagramBuilder } from '../templates/builder.ts'
+import { clipboard } from './clipboard.ts'
+import { clipboardContent, clipboardText, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { initializeDocument } from './model.ts'
 
@@ -16,15 +18,29 @@ const DRAWIO_FRAGMENT =
   '<mxGeometry relative="1" as="geometry"/></mxCell>' +
   '</root></mxGraphModel>'
 
-/** Fires a clipboard event at `target` with a clipboard that holds `text`; returns what the handler wrote. */
-function fireClipboard(type: 'copy' | 'cut' | 'paste', target: EventTarget, text = '') {
-  const data = new Map([['text/plain', text]])
+/** Fires a clipboard event at `target` with a clipboard that holds `text` and `html`; returns what the handler wrote. */
+function fireClipboard(type: 'copy' | 'cut' | 'paste', target: EventTarget, text = '', html = '') {
+  const data = new Map([
+    ['text/plain', text],
+    ['text/html', html],
+  ])
   const event = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperty(event, 'clipboardData', {
     value: { setData: (kind: string, value: string) => data.set(kind, value), getData: (kind: string) => data.get(kind) ?? '' },
   })
   target.dispatchEvent(event)
-  return { handled: event.defaultPrevented, text: data.get('text/plain') ?? '' }
+  return { handled: event.defaultPrevented, text: data.get('text/plain') ?? '', html: data.get('text/html') ?? '' }
+}
+
+/** Cells of tables `users` and `boards` with an edge from `boards.owner_id` to `users.id`, and of a rectangle. */
+function schemaCells() {
+  const builder = new DiagramBuilder()
+  const users = builder.table('users', 0, 0, ['id uuid PK', 'email text NOT NULL'])
+  const boards = builder.table('boards', 300, 0, ['id uuid PK', 'owner_id uuid NOT NULL'])
+  builder.edge(boards.fields[1]!, users.fields[0]!)
+  const rectangle = builder.shape('rectangle', 600, 0, { value: 'Сервис' })
+  const cells = builder.build()
+  return { cells, rectangle, tables: cells.filter((cell) => cell.id !== rectangle) }
 }
 
 describe('clipboard format', () => {
@@ -72,6 +88,49 @@ describe('clipboard format', () => {
     const [pasted] = content?.kind === 'cells' ? content.cells : []
     expect(pasted!.getChildAt(1).getValue()).toBe('users_id_idx (id)')
     expect(pasted!.getChildAt(1).getStyle()).toMatchObject({ codrawIndex: true })
+  })
+
+  it('writes tables alone as SQL with the cells in the HTML, and reads the cells back from the HTML', async () => {
+    const { tables } = schemaCells()
+    const { text, html } = clipboardContent(dataToCells(tables))
+
+    expect(text).toContain('CREATE TABLE users (\n    id uuid PRIMARY KEY,\n    email text NOT NULL\n);')
+    expect(text).toContain('ALTER TABLE boards ADD FOREIGN KEY (owner_id) REFERENCES users (id);')
+    expect(html).toMatch(/^<meta charset="utf-8"><pre data-codraw="%3CmxGraphModel%3E[^"]*">CREATE TABLE users/)
+    const content = await readClipboardText(text, html!)
+    expect(content?.kind).toBe('cells')
+    const cells = content?.kind === 'cells' ? content.cells : []
+    expect(cells.filter((cell) => cell.isVertex()).map((cell) => [cell.getValue(), (cell.getStyle() as Record<string, unknown>).dbVendor])).toEqual([
+      ['users', 'postgresql'],
+      ['boards', 'postgresql'],
+    ])
+    expect(cells.find((cell) => cell.isEdge())!.getTerminal(true)!.getValue()).toBe('owner_id uuid NOT NULL')
+  })
+
+  it('writes anything but tables alone, and base tables alone, in the format of draw.io without HTML', () => {
+    const { cells, tables } = schemaCells()
+    const mixed = clipboardContent(dataToCells(cells))
+    expect(decodeURIComponent(mixed.text)).toContain('value="Сервис"')
+    expect(mixed.html).toBeNull()
+
+    const builder = new DiagramBuilder()
+    builder.table('A & B < C', 0, 0, ['id uuid PK'])
+    expect(clipboardContent(dataToCells(builder.build())).html).toContain('>CREATE TABLE "A &amp; B &lt; C" (')
+
+    const base = tables.filter((cell) => cell.value === 'users' || cell.parent === tables.find((table) => table.value === 'users')!.id)
+    base[0]!.style.codrawBase = true
+    expect(clipboardContent(dataToCells(base)).html).toBeNull()
+  })
+
+  it('reads DDL with tables as a laid out diagram, and text that only has SQL words as text', async () => {
+    const content = await readClipboardText('CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL);')
+    expect(content?.kind).toBe('diagram')
+    const cells = content?.kind === 'diagram' ? content.cells : []
+    expect(cells[0]!.getValue()).toBe('users')
+    expect(cells[0]!.getChildren().map((field) => field.getValue())).toEqual(['id uuid PK', 'email text NOT NULL'])
+
+    expect(await readClipboardText('create table для заказов')).toEqual({ kind: 'text', text: 'create table для заказов' })
+    expect(await readClipboardText('просто текст', '<p data-codraw="нечто">просто текст</p>')).toEqual({ kind: 'text', text: 'просто текст' })
   })
 
   it('reads a fragment of draw.io, encoded or not, and the first page of a file', async () => {
@@ -160,6 +219,42 @@ describe('clipboard events of the canvas', () => {
 
     fireClipboard('paste', container, encodeURIComponent(DRAWIO_FRAGMENT))
     expect(shapes(editor)[2]!.getGeometry()).toMatchObject({ x: 80, y: 80 })
+  })
+
+  it('copies tables as SQL with their cells in the HTML, which another board pastes as the same tables', async () => {
+    const { editor, container } = open()
+    editor.insertCells(schemaCells().tables)
+    const tables = shapes(editor)
+    editor.graph.getDataModel().setStyle(tables[0]!, { ...tables[0]!.getStyle(), fontFamily: 'Courier New', dbVendor: 'mysql' } as CellStyle)
+    editor.graph.setSelectionCells(tables)
+
+    const copied = fireClipboard('copy', container)
+    expect(copied.text).toMatch(/^CREATE TABLE users/)
+    expect(copied.html).toContain('data-codraw="%3CmxGraphModel%3E')
+
+    // Another tab has its own clipboard: the cells come from the HTML.
+    clipboard.put([], 'другая вкладка')
+    const other = open()
+    fireClipboard('paste', other.container, copied.text, copied.html)
+    await vi.waitFor(() => expect(shapes(other.editor)).toHaveLength(2))
+    const [users] = shapes(other.editor)
+    expect(users!.getStyle()).toMatchObject({ fontFamily: 'Courier New', dbVendor: 'mysql' })
+    expect(users!.getGeometry()!.x).toBe(20)
+    other.editor.undo()
+    expect(shapes(other.editor)).toHaveLength(0)
+  })
+
+  it('pastes DDL from another program as laid out tables in the middle of the visible area, as one undo step', async () => {
+    const { editor, container } = open()
+
+    fireClipboard('paste', container, 'CREATE TABLE users (id uuid PRIMARY KEY);\nCREATE TABLE boards (owner_id uuid REFERENCES users);')
+
+    await vi.waitFor(() => expect(shapes(editor)).toHaveLength(2))
+    expect(shapes(editor).map((cell) => cell.getValue())).toEqual(['users', 'boards'])
+    expect(editor.graph.getDefaultParent().getChildren().filter((cell) => cell.isEdge())).toHaveLength(1)
+    expect(editor.graph.getSelectionCells()).toHaveLength(3)
+    editor.undo()
+    expect(shapes(editor)).toHaveLength(0)
   })
 
   it('pastes other text as a selected text shape with a line per line, as one undo step', async () => {

@@ -58,7 +58,7 @@ import {
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
-import { clipboardText, dataToCells, readClipboardText } from './clipboardFormat.ts'
+import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
@@ -311,20 +311,20 @@ export interface DiagramEditor {
    */
   addConnectedShape(side: Side, shape: ShapeId): Cell | null
   /**
-   * Puts the selected shapes, tables of selected fields and the edges between them into the clipboard of the tab and,
-   * in the format of draw.io, into the clipboard of the system: into `data` of a clipboard event, or through the
-   * Clipboard API.
+   * Puts the selected shapes, tables of selected fields and the edges between them into the clipboard of the tab and
+   * into the clipboard of the system: tables alone as SQL with the cells in its HTML, anything else in the format of
+   * draw.io; into `data` of a clipboard event, or through the Clipboard API.
    */
   copy(data?: DataTransfer | null): void
   /** Copies like {@link copy} and removes what was copied, as one undo step. */
   cut(data?: DataTransfer | null): void
   /**
-   * Adds `text` of the clipboard of the system, or without it the clipboard of the tab, as one undo step: cells of
-   * CoDraw or draw.io shifted further with every paste of the same content, or with their top-left corner at `at`;
-   * a flowchart or an ER diagram of Mermaid laid out, and other text as a text shape, in the middle of the visible
-   * area, or with the top-left corner at `at`.
+   * Adds `text` and `html` of the clipboard of the system, or without them the clipboard of the tab, as one undo step:
+   * cells of CoDraw (also from the HTML of copied tables) or draw.io shifted further with every paste of the same
+   * content, or with their top-left corner at `at`; a flowchart or an ER diagram of Mermaid and tables of DDL laid out,
+   * and other text as a text shape, in the middle of the visible area, or with the top-left corner at `at`.
    */
-  paste(at?: Point, text?: string): void
+  paste(at?: Point, text?: string, html?: string): void
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
   duplicate(): void
   /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
@@ -1092,7 +1092,7 @@ export function createDiagramEditor(
   const handlePaste = (event: ClipboardEvent) => {
     if (readOnly || !isCanvasEvent(event)) return
     event.preventDefault()
-    editor.paste(undefined, event.clipboardData?.getData('text/plain') ?? '')
+    editor.paste(undefined, event.clipboardData?.getData('text/plain') ?? '', event.clipboardData?.getData('text/html') ?? '')
   }
   page.addEventListener('copy', handleCopy)
   page.addEventListener('cut', handleCut)
@@ -1281,10 +1281,13 @@ export function createDiagramEditor(
   const copyCells = (cells: Cell[], data?: DataTransfer | null) => {
     // Clones without a graph: the copied cells may change or be removed before they are pasted.
     const clones = graph.cloneCells(cells, false)
-    const text = clipboardText(clones)
+    const { text, html } = clipboardContent(clones)
     clipboard.put(clones, text)
-    if (data) data.setData('text/plain', text)
-    else writeSystemClipboard(text)
+    if (!data) writeSystemClipboard(text, html)
+    else {
+      data.setData('text/plain', text)
+      if (html !== null) data.setData('text/html', html)
+    }
     notify()
   }
   /** Adds copies of clipboard cells: with their top-left corner at `at`, or shifted further with every paste. */
@@ -1494,13 +1497,13 @@ export function createDiagramEditor(
       copyCells(cells, data)
       graph.removeCells(cells, true)
     },
-    paste(at, text) {
+    paste(at, text, html) {
       if (text === undefined || text === clipboard.text()) {
         pasteCells(clipboard.read(), at)
         return
       }
       // Reading a compressed diagram of draw.io takes a moment.
-      void readClipboardText(text).then((content) => {
+      void readClipboardText(text, html).then((content) => {
         if (destroyed || !content) return
         if (content.kind === 'text') {
           addText(content.text, at)
