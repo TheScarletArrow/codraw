@@ -1,7 +1,7 @@
 /**
  * A line of the help on shortcuts: keys in the notation of shortcuts (`Mod` is Ctrl, or Cmd on macOS), any of which
- * does the action. Besides keys of {@link KEY_BINDINGS}, keys may be `Arrows` (the four arrows), `?`, and the mouse:
- * `Click`, `Drag`, `RightDrag` and `Wheel`.
+ * does the action. Besides keys of {@link KEY_BINDINGS}, keys may be `Arrows` (the four arrows), `?`, `/`, and the
+ * mouse: `Click`, `Drag`, `RightDrag` and `Wheel`.
  */
 export interface ShortcutEntry {
   keys: string[]
@@ -58,6 +58,13 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+Shift+H'], action: 'Показать всё' },
       { keys: ['RightDrag'], action: 'Прокрутить холст' },
       { keys: ['?'], action: 'Горячие клавиши' },
+    ],
+  },
+  {
+    title: 'Совместная работа',
+    entries: [
+      { keys: ['K'], action: 'Указка' },
+      { keys: ['/'], action: 'Сообщение у курсора' },
     ],
   },
 ]

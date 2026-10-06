@@ -10,13 +10,14 @@ import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
+import { CursorChat } from '../board/CursorChat.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
 import { useFollowing } from '../board/following.ts'
-import { usePresencePublisher } from '../board/presence.ts'
+import { useLaserPublisher, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
 import { VersionPreview } from '../board/VersionPreview.tsx'
@@ -82,6 +83,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
+  // The trail of the laser pointer and the message at the cursor go with the connection.
+  const online = status === 'synced'
+  useLaserPublisher(editor, awareness, online)
   // Until the page fetches the role again, the access of the connection may be narrower than the role.
   const readOnly = viewer || connection.readOnly
   // A participant who may only view never writes to the document: collab would reject it, and their document would
@@ -297,7 +301,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     readOnly={readOnly}
                     onEditor={setEditor}
                   />
-                  <PresenceLayer editor={editor} awareness={awareness} />
+                  <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
+                  <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}

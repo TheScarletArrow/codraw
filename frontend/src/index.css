@@ -92,6 +92,12 @@
   outline: none;
 }
 
+/* The laser pointer points with a crosshair, also over shapes and handles, which get pointers of their own. */
+.diagram-canvas.laser-pointer,
+.diagram-canvas.laser-pointer * {
+  cursor: crosshair !important;
+}
+
 /* The editor of the name of an empty field of a table shows what to type. */
 .diagram-canvas .mxCellEditor[data-placeholder]:empty::before {
   content: attr(data-placeholder);

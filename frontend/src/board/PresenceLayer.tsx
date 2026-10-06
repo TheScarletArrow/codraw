@@ -1,6 +1,8 @@
 import { ArrowRight, PenLine, TriangleAlert } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import type { Box, DiagramEditor, LabelEditing, Point } from '../diagram/editor.ts'
+import type { ParticipantIdentity } from './identity.ts'
+import { LaserTrails } from './LaserTrails.tsx'
 import { Avatar } from './Participants.tsx'
 import { useRemotePresence, type Awareness, type RemotePresence } from './presence.ts'
 
@@ -22,12 +24,22 @@ const WARNING_ROOM = 64
 const NOTICE_Z_INDEX = 4
 
 /**
- * Draws the cursors, selections and labels being edited of the other participants on the same page over the canvas. It
- * is a separate layer, not maxGraph cells, so presence never ends up in the board document. A cursor outside the
- * visible area becomes a label at the nearest edge that brings the cursor into view. Over the label that the
- * participant edits, it warns that others edit it too or have changed it.
+ * Draws the cursors with their messages, selections and labels being edited of the other participants on the same page
+ * over the canvas, and the trails of the laser pointer, the participant's own too. It is a separate layer, not maxGraph
+ * cells, so presence never ends up in the board document. A cursor outside the visible area becomes a label at the
+ * nearest edge that brings the cursor into view. Over the label that the participant edits, it warns that others edit
+ * it too or have changed it.
  */
-export function PresenceLayer({ editor, awareness }: { editor: DiagramEditor | null; awareness: Awareness | null }) {
+export function PresenceLayer({
+  editor,
+  awareness,
+  identity,
+}: {
+  editor: DiagramEditor | null
+  awareness: Awareness | null
+  /** The participant, whose own trail of the laser pointer the layer draws too. */
+  identity: ParticipantIdentity
+}) {
   const presence = useRemotePresence(awareness)
   // Positions depend on scrolling, zoom and cell geometry: re-render whenever the view changes.
   useSyncExternalStore(editor?.onViewChange ?? noSubscription, () => editor?.getViewVersion() ?? 0)
@@ -45,6 +57,7 @@ export function PresenceLayer({ editor, awareness }: { editor: DiagramEditor | n
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <LaserTrails editor={editor} awareness={awareness} name={identity.name} color={identity.color} />
       {here.flatMap((participant) =>
         // The outline of the label being edited stands for the selection of that cell.
         participant.selection.map((id) => {
@@ -217,6 +230,15 @@ function RemoteCursor({ participant, position }: { participant: RemotePresence; 
         <Avatar url={participant.avatarUrl} className="size-4" />
         {participant.name}
       </span>
+      {participant.chat && (
+        <span
+          data-testid="remote-chat"
+          className="absolute top-10 left-3 w-max max-w-60 rounded-xl rounded-tl-sm px-2 py-1 text-sm break-words text-white shadow-sm"
+          style={{ backgroundColor: participant.color }}
+        >
+          {participant.chat.text}
+        </span>
+      )}
     </div>
   )
 }

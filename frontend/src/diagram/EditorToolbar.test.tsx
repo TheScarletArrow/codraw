@@ -372,7 +372,19 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
   })
 
-  it('offers a participant who may only view the scale only', () => {
+  it('turns the laser pointer on and shows it pressed while it is on', async () => {
+    const laser = screen.getByRole('button', { name: 'Указка' })
+    expect(laser).toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(laser)
+
+    expect(editor.setLaser).toHaveBeenCalledWith(true)
+    expect(laser).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(laser)
+    expect(editor.setLaser).toHaveBeenLastCalledWith(false)
+  })
+
+  it('offers a participant who may only view the scale and the laser pointer only', () => {
     document.body.innerHTML = ''
     render(<EditorToolbar editor={editor} readOnly />)
     act(() =>
@@ -391,7 +403,7 @@ describe('EditorToolbar', () => {
       within(toolbar)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё'])
+    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё', 'Указка'])
     expect(within(toolbar).queryByRole('combobox')).toBeNull()
     expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
   })

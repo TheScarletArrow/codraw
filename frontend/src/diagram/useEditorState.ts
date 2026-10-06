@@ -23,6 +23,7 @@ const NO_EDITOR: EditorState = {
   hasCells: false,
   canCopy: false,
   layoutSelection: false,
+  laser: false,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

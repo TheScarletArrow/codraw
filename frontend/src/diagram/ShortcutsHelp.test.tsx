@@ -14,6 +14,9 @@ describe('ShortcutsHelp', () => {
     expect(within(editing).getByText('Дублировать').nextElementSibling).toHaveTextContent('Ctrl+D')
     const view = within(help).getByRole('region', { name: 'Вид' })
     expect(within(view).getByText('Показать всё').nextElementSibling).toHaveTextContent('Ctrl+Shift+H')
+    const together = within(help).getByRole('region', { name: 'Совместная работа' })
+    expect(within(together).getByText('Указка').nextElementSibling).toHaveTextContent('K')
+    expect(within(together).getByText('Сообщение у курсора').nextElementSibling).toHaveTextContent('/')
   })
 
   it('opens and closes with ?, which is a character in fields and labels', () => {
@@ -44,6 +47,7 @@ describe('ShortcutsHelp', () => {
 
     const help = screen.getByRole('dialog', { name: 'Горячие клавиши' })
     expect(within(help).getByText('Копировать')).toBeInTheDocument()
+    expect(within(help).getByText('Указка')).toBeInTheDocument()
     expect(within(help).queryByText('Удалить')).toBeNull()
   })
 })

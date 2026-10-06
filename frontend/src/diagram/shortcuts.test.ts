@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { KEY_BINDINGS } from './editor.ts'
 import { formatKeys, SHORTCUT_GROUPS, shortcutGroups } from './shortcuts.ts'
 
-/** Keys of the help that are not keys of the key handler: clipboard events, the mouse and the help itself. */
-const NOT_BOUND = /^(Mod\+[CXV]|\?)$|Click|Drag|Wheel/
+/**
+ * Keys of the help that are not keys of the key handler: clipboard events, the mouse, the help itself and the message
+ * at the cursor.
+ */
+const NOT_BOUND = /^(Mod\+[CXV]|\?|\/)$|Click|Drag|Wheel/
 
 describe('shortcuts', () => {
   it('describes exactly the keys the editor binds, with the same editing flag', () => {
@@ -41,6 +44,8 @@ describe('shortcuts', () => {
 
     expect(actions).toContain('Копировать')
     expect(actions).toContain('Показать всё')
+    expect(actions).toContain('Указка')
+    expect(actions).toContain('Сообщение у курсора')
     expect(actions).not.toContain('Удалить')
     expect(actions).not.toContain('Дублировать')
     expect(shortcutGroups(true).map((group) => group.title)).not.toContain('Текст')
