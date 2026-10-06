@@ -892,6 +892,217 @@ describe('BoardPage', () => {
         expect(banner()).toBeNull()
       })
     })
+
+    describe('presenting to everybody', () => {
+      const bob = { name: 'Боб', color: '#dc2626', avatarUrl: null }
+      const vera = { name: 'Вера', color: '#16a34a', avatarUrl: null }
+      const view = { x: 1500, y: 900, scale: 1.5 }
+      /** The presence of a participant on the first page with a view. */
+      const at = (user: typeof bob, changes: Record<string, unknown> = {}) => ({
+        user,
+        page: DEFAULT_PAGE_ID,
+        viewport: view,
+        ...changes,
+      })
+      const showing = () => screen.queryByRole('region', { name: 'Показ всем' })
+      const following = () => screen.queryByRole('region', { name: 'Следование' })
+      const local = (provider: Awaited<ReturnType<typeof openPages>>) => provider.awareness.getStates().get(1) ?? {}
+      const presentButton = () => screen.getByRole('button', { name: 'Показать всем' })
+
+      it('follows a participant who starts presenting, from another page, and tells whom it follows', async () => {
+        const provider = await openPages()
+        let second = ''
+        act(() => {
+          second = addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+        })
+        await userEvent.click(screen.getByRole('tab', { name: 'Страница 1' }))
+
+        act(() => provider.awareness.setState(7, at(bob, { page: second, presenting: 1_000 })))
+
+        expect(shownPage()).toBe(second)
+        await waitFor(() => expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(1.5))
+        expect(canvas.editor!.centerOn).toHaveBeenLastCalledWith(expect.objectContaining({ x: 1500, y: 900 }))
+        expect(showing()).toHaveTextContent('Боб показывает всем')
+        expect(within(showing()!).getByRole('button', { name: 'Не следовать' })).toBeInTheDocument()
+        expect(following()).toBeNull()
+        expect(local(provider).following).toBe(7)
+
+        const moved = { x: 200, y: 100, scale: 0.5 }
+        act(() => provider.awareness.setState(7, at(bob, { page: second, viewport: moved, presenting: 1_000 })))
+        expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(0.5)
+        expect(canvas.editor!.centerOn).toHaveBeenLastCalledWith(expect.objectContaining({ x: 200, y: 100 }))
+      })
+
+      it('follows a presentation that runs when the participant opens the board', async () => {
+        const provider = await openBoard()
+        act(() => provider.awareness.setState(7, at(bob, { presenting: 1_000 })))
+
+        act(() => provider.emitSynced())
+
+        await waitFor(() => expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(1.5))
+        expect(showing()).toHaveTextContent('Боб показывает всем')
+        expect(screen.getByRole('button', { name: 'Не следовать' })).toBeInTheDocument()
+      })
+
+      it('keeps the banner when the viewer moves the canvas on their own, and follows again with «Следовать»', async () => {
+        const provider = await openPages()
+        act(() => provider.awareness.setState(7, at(bob, { presenting: 1_000 })))
+
+        fireEvent.wheel(screen.getByTestId('diagram-canvas'))
+        expect(showing()).toHaveTextContent('Боб показывает всем')
+        expect(screen.getByRole('button', { name: 'Следовать' })).toBeInTheDocument()
+        expect(local(provider).following).toBeNull()
+        vi.mocked(canvas.editor!.zoomTo).mockClear()
+        act(() => provider.awareness.setState(7, at(bob, { viewport: { ...view, scale: 2 }, presenting: 1_000 })))
+        expect(canvas.editor!.zoomTo).not.toHaveBeenCalled()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Следовать' }))
+        expect(screen.getByRole('button', { name: 'Не следовать' })).toBeInTheDocument()
+        expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(2)
+        expect(local(provider).following).toBe(7)
+      })
+
+      it('keeps the banner when the viewer presses «Не следовать» or Escape or opens another page', async () => {
+        const provider = await openPages()
+        let second = ''
+        act(() => {
+          second = addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+        })
+        await userEvent.click(screen.getByRole('tab', { name: 'Страница 1' }))
+        act(() => provider.awareness.setState(7, at(bob, { presenting: 1_000 })))
+
+        // Pressing «Не следовать» is not pressing on the canvas twice: the viewer does not follow again.
+        await userEvent.click(screen.getByRole('button', { name: 'Не следовать' }))
+        expect(screen.getByRole('button', { name: 'Следовать' })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Следовать' }))
+        await userEvent.keyboard('{Escape}')
+        expect(screen.getByRole('button', { name: 'Следовать' })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Следовать' }))
+        await userEvent.click(screen.getByRole('tab', { name: 'Контейнеры' }))
+        expect(shownPage()).toBe(second)
+        expect(screen.getByRole('button', { name: 'Следовать' })).toBeInTheDocument()
+      })
+
+      it('stops following when the presentation ends or its presenter leaves the board', async () => {
+        const provider = await openPages()
+
+        act(() => provider.awareness.setState(7, at(bob, { presenting: 1_000 })))
+        expect(local(provider).following).toBe(7)
+        act(() => provider.awareness.setState(7, at(bob, { presenting: null })))
+        expect(showing()).toBeNull()
+        expect(following()).toBeNull()
+        expect(local(provider).following).toBeNull()
+
+        act(() => provider.awareness.setState(7, at(bob, { presenting: 2_000 })))
+        expect(screen.getByRole('button', { name: 'Не следовать' })).toBeInTheDocument()
+        act(() => provider.awareness.setState(7, null))
+        expect(showing()).toBeNull()
+        expect(local(provider).following).toBeNull()
+      })
+
+      it('follows a participant who takes the presentation over, also after moving away from the last one', async () => {
+        const provider = await openPages()
+        act(() => provider.awareness.setState(7, at(bob, { presenting: 1_000 })))
+        await userEvent.click(screen.getByRole('button', { name: 'Не следовать' }))
+
+        act(() => {
+          provider.awareness.setState(8, at(vera, { presenting: 2_000 }))
+          // Bob's client sees the presentation of Vera and ends his own.
+          provider.awareness.setState(7, at(bob, { presenting: null }))
+        })
+
+        expect(showing()).toHaveTextContent('Вера показывает всем')
+        expect(screen.getByRole('button', { name: 'Не следовать' })).toBeInTheDocument()
+        expect(local(provider).following).toBe(8)
+      })
+
+      it('presents to everybody, counts the participants who follow and ends with «Закончить показ»', async () => {
+        const provider = await openPages()
+        act(() => {
+          provider.awareness.setState(7, at(bob))
+          provider.awareness.setState(8, at(vera))
+        })
+
+        await userEvent.click(presentButton())
+
+        expect(presentButton()).toHaveAttribute('aria-pressed', 'true')
+        expect(local(provider).presenting).toEqual(expect.any(Number))
+        expect(showing()).toHaveTextContent('Вы показываете всем · следуют 0')
+        // The presenter leads and follows nobody.
+        expect(within(screen.getByRole('list', { name: 'Участники' })).queryByRole('button')).toBeNull()
+        act(() => provider.awareness.setState(7, at(bob, { following: 1 })))
+        expect(showing()).toHaveTextContent('Вы показываете всем · следуют 1')
+        act(() => provider.awareness.setState(8, at(vera, { following: 1 })))
+        expect(showing()).toHaveTextContent('Вы показываете всем · следуют 2')
+        act(() => provider.awareness.setState(8, at(vera, { following: null })))
+        expect(showing()).toHaveTextContent('Вы показываете всем · следуют 1')
+
+        await userEvent.click(screen.getByRole('button', { name: 'Закончить показ' }))
+        expect(showing()).toBeNull()
+        expect(local(provider).presenting).toBeNull()
+        expect(presentButton()).toHaveAttribute('aria-pressed', 'false')
+
+        // Pressing the button again ends the presentation too.
+        await userEvent.click(presentButton())
+        expect(showing()).toHaveTextContent('Вы показываете всем')
+        await userEvent.click(presentButton())
+        expect(showing()).toBeNull()
+      })
+
+      it('presents over the pages the presenter opens', async () => {
+        const provider = await openPages()
+        await userEvent.click(presentButton())
+        const since = local(provider).presenting
+
+        await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+        expect(local(provider).presenting).toBe(since)
+        expect(showing()).toHaveTextContent('Вы показываете всем')
+      })
+
+      it('stops presenting when another participant takes it over, and follows them', async () => {
+        const provider = await openPages()
+        await userEvent.click(presentButton())
+        const since = local(provider).presenting as number
+
+        act(() => provider.awareness.setState(7, at(bob, { presenting: since + 1 })))
+
+        expect(local(provider).presenting).toBeNull()
+        expect(presentButton()).toHaveAttribute('aria-pressed', 'false')
+        expect(showing()).toHaveTextContent('Боб показывает всем')
+        expect(screen.getByRole('button', { name: 'Не следовать' })).toBeInTheDocument()
+        await waitFor(() => expect(canvas.editor!.zoomTo).toHaveBeenLastCalledWith(1.5))
+      })
+
+      it('takes over a presentation started on a clock that is ahead, and follows nobody while presenting', async () => {
+        const provider = await openPages()
+        const ahead = Date.now() + 60_000
+        act(() => provider.awareness.setState(7, at(bob, { presenting: ahead })))
+        expect(local(provider).following).toBe(7)
+
+        await userEvent.click(presentButton())
+
+        expect(local(provider).presenting).toBeGreaterThan(ahead)
+        expect(local(provider).following).toBeNull()
+        expect(showing()).toHaveTextContent('Вы показываете всем')
+      })
+
+      it('lets a participant who may only view present, without changing the document', async () => {
+        const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+        initializeDocument(provider.document)
+        act(() => provider.emitSynced())
+        const updates = vi.fn()
+        provider.document.on('update', updates)
+
+        await userEvent.click(presentButton())
+
+        expect(local(provider).presenting).toEqual(expect.any(Number))
+        expect(showing()).toHaveTextContent('Вы показываете всем')
+        expect(updates).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('comments', () => {

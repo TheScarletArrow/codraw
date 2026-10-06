@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -12,10 +12,11 @@ import { useCurrentUser } from '../auth/session.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { PageTabs } from '../board/PageTabs.tsx'
-import { Participants } from '../board/Participants.tsx'
+import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
-import { FollowBanner } from '../board/FollowBanner.tsx'
-import { readRemotePresence, usePresencePublisher, useRemotePresence } from '../board/presence.ts'
+import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
+import { useFollowing } from '../board/following.ts'
+import { usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
 import { VersionPreview } from '../board/VersionPreview.tsx'
@@ -145,61 +146,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (first) selectPage(first)
   }, [document, board.id, selectPage])
 
-  // Going to another participant: switch to their page, then centre their cursor once that page is shown.
-  const following = useRef<number | null>(null)
-  const centreOn = useCallback(
-    (editor: DiagramEditor, clientId: number) => {
-      const target = awareness && readRemotePresence(awareness).find((participant) => participant.clientId === clientId)
-      // Waiting for the canvas of the participant's page.
-      if (target && target.page !== editor.pageId) return false
-      if (target?.cursor) editor.centerOn(target.cursor)
-      return true
-    },
-    [awareness],
-  )
-  // Following another participant: their page, the middle of their view and their scale, until the viewer moves on
-  // their own. A participant who has left is followed no more.
-  const presence = useRemotePresence(awareness)
-  const [leaderId, setLeaderId] = useState<number | null>(null)
-  const leader = (leaderId !== null && presence.find((participant) => participant.clientId === leaderId)) || null
-  const stopFollowing = useCallback(() => setLeaderId(null), [])
-  useEffect(() => {
-    if (!leader?.viewport) return
-    if (leader.page !== currentPage?.id) {
-      if (pages.some((page) => page.id === leader.page)) selectPage(leader.page)
-      return
-    }
-    // Waiting for the canvas of the leader's page.
-    if (!editor || editor.pageId !== leader.page) return
-    editor.zoomTo(leader.viewport.scale)
-    editor.centerOn(leader.viewport)
-  }, [leader, editor, currentPage, pages, selectPage])
-  useEffect(() => {
-    if (!leader) return
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') stopFollowing()
-    }
-    window.document.addEventListener('keydown', handleKey)
-    return () => window.document.removeEventListener('keydown', handleKey)
-  }, [leader, stopFollowing])
-  const follow = (clientId: number) => {
-    const target = participants.find((participant) => participant.clientId === clientId)
-    if (!target) return
-    if (presence.find((participant) => participant.clientId === clientId)?.viewport) {
-      setLeaderId(clientId)
-      return
-    }
-    // A client that publishes no view: to its page and its cursor, once.
-    if (editor && target.page === editor.pageId) {
-      centreOn(editor, clientId)
-    } else if (pages.some((page) => page.id === target.page)) {
-      following.current = clientId
-      selectPage(target.page)
-    }
+  // Following another participant and presenting to everybody.
+  const following = useFollowing({ awareness, editor, pages, currentPageId: currentPage?.id ?? null, selectPage })
+  const { leader } = following
+  // Moving the canvas on one's own ends following; the buttons of the banner over it are not the canvas.
+  const stopFollowing = (event: SyntheticEvent) => {
+    if (!(event.target instanceof Element && event.target.closest(BANNER_SELECTOR))) following.stop()
   }
-  useEffect(() => {
-    if (editor && following.current !== null && centreOn(editor, following.current)) following.current = null
-  }, [editor, centreOn])
 
   // Going to a thread: switch to its page, then show its element once that page is shown.
   const revealing = useRef<{ pageId: string; cellId: string } | null>(null)
@@ -277,9 +230,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           participants={participants}
           pages={pages}
           currentPageId={currentPage?.id ?? null}
-          onFollow={follow}
+          // The presenter leads and follows nobody.
+          onFollow={following.presenting ? undefined : following.follow}
           followingClientId={leader?.clientId ?? null}
           className="ml-auto shrink-0"
+        />
+        <PresentButton
+          presenting={following.presenting}
+          disabled={!awareness}
+          onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
         />
         <CommentsButton
           threads={threads.data}
@@ -324,12 +283,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <div className="flex min-w-0 flex-1 flex-col">
             <div
               className="relative min-h-0 flex-1"
-              // Moving the canvas on one's own ends following.
               onPointerDownCapture={leader ? stopFollowing : undefined}
               onWheelCapture={leader ? stopFollowing : undefined}
               style={leader ? { outline: `2px solid ${leader.color}`, outlineOffset: -2 } : undefined}
             >
-              {leader && <FollowBanner leader={leader} onStop={stopFollowing} />}
+              <FollowingBanner following={following} color={identity.color} />
               {document && currentPage ? (
                 <>
                   <DiagramCanvas
@@ -356,7 +314,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                 currentPageId={currentPage?.id ?? null}
                 visitors={participants.filter((participant) => !participant.isSelf)}
                 onSelect={(id) => {
-                  stopFollowing()
+                  following.stop()
                   selectPage(id)
                 }}
                 onAdd={() => selectPage(addPage(document, currentPage?.id))}

@@ -103,6 +103,29 @@ export async function twoParticipants(browser: Browser) {
   return { alice, bob, close: () => Promise.all([alice.context().close(), bob.context().close()]) }
 }
 
+/** The page, the middle of the view and the scale of the canvas of a participant. */
+export function view(page: Page) {
+  return page.evaluate(() => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const editor = container.__codrawEditor
+    const center = editor.viewportCenter()
+    return { page: editor.pageId as string, x: Math.round(center.x), y: Math.round(center.y), scale: editor.graph.getView().scale as number }
+  })
+}
+
+/** Whether the canvas of one participant shows the page, the middle of the view and the scale of another's. */
+export async function sameView(viewer: Page, leader: Page) {
+  const [a, b] = [await view(viewer), await view(leader)]
+  return a.page === b.page && Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2 && a.scale === b.scale
+}
+
+/** Turns the mouse wheel over the middle of the canvas. */
+export async function wheelCanvas(page: Page, deltaY: number) {
+  const canvas = (await page.getByTestId('diagram-canvas').boundingBox())!
+  await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2)
+  await page.mouse.wheel(0, deltaY)
+}
+
 export interface CellInfo {
   id: string
   kind: 'vertex' | 'edge'

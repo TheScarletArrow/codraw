@@ -18,6 +18,10 @@ export interface RemotePresence extends ParticipantIdentity {
   viewport: Viewport | null
   /** The cell whose label the participant edits in place; `null` when they edit none, and for old clients. */
   editing: string | null
+  /** When the participant started presenting to everybody (ms); `null` when they do not, and for old clients. */
+  presenting: number | null
+  /** The client id of the participant they follow; `null` when they follow nobody, and for old clients. */
+  following: number | null
 }
 
 /** What a participant sees: the middle of their visible area in diagram coordinates and the scale. */
@@ -116,6 +120,60 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
   }, [editor, awareness])
 }
 
+/**
+ * Publishes when the participant started presenting to everybody and whom they follow. Unlike the fields of the canvas,
+ * both outlive the editor of a page: the presenter and their followers go from page to page.
+ */
+export function useFollowingPublisher(
+  awareness: Awareness | null,
+  presenting: number | null,
+  following: number | null,
+) {
+  useEffect(() => {
+    awareness?.setLocalStateField('presenting', presenting)
+  }, [awareness, presenting])
+  useEffect(() => {
+    awareness?.setLocalStateField('following', following)
+  }, [awareness, following])
+  // Leaving the board ends the presentation and the following, also for a provider that outlives the page.
+  useEffect(
+    () => () => {
+      awareness?.setLocalStateField('presenting', null)
+      awareness?.setLocalStateField('following', null)
+    },
+    [awareness],
+  )
+}
+
+/** A presentation to everybody: who presents and since when. */
+export interface Presentation {
+  clientId: number
+  since: number
+}
+
+/**
+ * The presentation that everybody follows: the one started last and, of two started at once, the one of the larger
+ * client id. Every client sees the same states and picks the same one without telling the others.
+ */
+export function currentPresentation(presence: RemotePresence[], own: Presentation | null): Presentation | null {
+  let winner = own
+  for (const { clientId, presenting: since } of presence) {
+    if (since === null) continue
+    if (!winner || since > winner.since || (since === winner.since && clientId > winner.clientId)) {
+      winner = { clientId, since }
+    }
+  }
+  return winner
+}
+
+/**
+ * When a presentation that starts now begins: now, but after every presentation of the others. Their clocks may be
+ * ahead, and a presentation started later must take over anyway.
+ */
+export function presentationStart(presence: RemotePresence[], now = Date.now()): number {
+  return presence.reduce((start, participant) => Math.max(start, (participant.presenting ?? 0) + 1), now)
+}
+
 /** Presence of the other participants; re-renders when it changes. */
 export function useRemotePresence(awareness: Awareness | null): RemotePresence[] {
   const snapshot = useRef<RemotePresence[]>([])
@@ -154,6 +212,8 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
     const selection = state.selection as unknown
     const viewport = state.viewport as Viewport | null | undefined
     const editing = state.editing as unknown
+    const presenting = state.presenting as unknown
+    const following = state.following as unknown
     result.push({
       clientId,
       name: user.name,
@@ -165,6 +225,8 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
       viewport:
         viewport && [viewport.x, viewport.y, viewport.scale].every(Number.isFinite) && viewport.scale > 0 ? viewport : null,
       editing: typeof editing === 'string' && editing !== '' ? editing : null,
+      presenting: typeof presenting === 'number' && Number.isFinite(presenting) && presenting > 0 ? presenting : null,
+      following: Number.isInteger(following) ? (following as number) : null,
     })
   })
   return result

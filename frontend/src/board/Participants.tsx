@@ -1,3 +1,5 @@
+import { Presentation } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { PageInfo } from '../diagram/pages.ts'
 import type { Participant } from './useBoardConnection.ts'
@@ -69,5 +71,32 @@ export function Participants({
         )
       })}
     </ul>
+  )
+}
+
+/** Starts presenting to everybody: the other participants follow. Pressed while presenting; pressing it ends that. */
+export function PresentButton({
+  presenting,
+  disabled = false,
+  onToggle,
+}: {
+  presenting: boolean
+  disabled?: boolean
+  onToggle: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Показать всем"
+      aria-pressed={presenting}
+      title={presenting ? 'Закончить показ' : 'Показать всем: участники будут следовать за вами'}
+      disabled={disabled}
+      className="aria-pressed:bg-accent"
+      onClick={onToggle}
+    >
+      <Presentation />
+    </Button>
   )
 }
