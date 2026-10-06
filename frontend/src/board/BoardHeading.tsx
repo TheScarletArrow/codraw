@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { canManageVersions, deleteBoard, renameBoard, type Board } from '../api/boards.ts'
+import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { BoardActions } from './BoardActions.tsx'
 import { TitleInput } from './TitleInput.tsx'
 
@@ -36,7 +37,11 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
       onChanged()
       await navigate('/', { replace: true })
       queryClient.removeQueries({ queryKey: ['boards', board.id], exact: true })
-      await queryClient.invalidateQueries({ queryKey: ['boards'], exact: true })
+      // Once the page has closed its local copy: a deleted board does not stay in the browser.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['boards'], exact: true }),
+        deleteLocalCopiesOfBoard(board.id),
+      ])
     },
   })
 

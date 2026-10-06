@@ -29,6 +29,13 @@ interface VersionPreviewProps {
   onCompareChange: (comparing: boolean) => void
   /** The id of the user who looks: who changed the selected element last says «(вы)» for their own changes. */
   participantId?: string
+  /**
+   * The board is synced with collab over a connection that may edit it. Restoring a page or the version keeps the
+   * current state of the board as a version first and changes the board for everybody, which needs the state of the
+   * board: without a connection, or while a board shown from its local copy has not synced yet, the document lacks what
+   * others changed meanwhile.
+   */
+  synced: boolean
   /** The board, or its page `pageId`, has the content of the version now. */
   onRestored: (pageId?: string) => void
   /** Cells of the version are to come back: the board page restores them on the canvas of their page. */
@@ -39,8 +46,8 @@ interface VersionPreviewProps {
 /**
  * A version of the board in place of the board, for viewing only, or compared with the board (see {@link VersionView}).
  * The selected cells of the version, a removed or changed element of the comparison, a page or the whole version can be
- * brought back. Restoring a page or the version keeps the current state as a version first; restoring cells is an
- * ordinary change, which whoever restores undoes.
+ * brought back. Restoring a page or the version keeps the current state as a version first, so it waits for the board
+ * to be synced; restoring cells is an ordinary change, which whoever restores undoes, also without a connection.
  */
 export function VersionPreview({
   boardId,
@@ -49,6 +56,7 @@ export function VersionPreview({
   comparing,
   onCompareChange,
   participantId,
+  synced,
   onRestored,
   onRestoreCells,
   onClose,
@@ -73,6 +81,7 @@ export function VersionPreview({
   const page = versionPages.find((item) => item.id === pageId) ?? null
   const onBoard = boardPages.some((item) => item.id === pageId)
   const offBoardHint = useId()
+  const unsyncedHint = useId()
 
   const queryClient = useQueryClient()
   // The whole version, or one of its pages.
@@ -136,12 +145,18 @@ export function VersionPreview({
             </Button>
           </>
         )}
+        {!synced && (
+          <span id={unsyncedHint} className="text-muted-foreground">
+            Версию и страницу можно восстановить после синхронизации
+          </span>
+        )}
         {versionDocument && page && (
           <ConfirmedRestore
             label="Восстановить страницу"
             title="Восстановление страницы"
             variant="outline"
-            disabled={restore.isPending}
+            disabled={!synced || restore.isPending}
+            describedBy={synced ? undefined : unsyncedHint}
             onConfirm={() => restore.mutate({ target: versionDocument, pageId: page.id })}
           >
             {onBoard
@@ -153,7 +168,8 @@ export function VersionPreview({
         <ConfirmedRestore
           label="Восстановить эту версию"
           title="Восстановление версии"
-          disabled={!versionDocument || restore.isPending}
+          disabled={!versionDocument || !synced || restore.isPending}
+          describedBy={synced ? undefined : unsyncedHint}
           onConfirm={() => versionDocument && restore.mutate({ target: versionDocument })}
         >
           Доска станет такой, как в версии от {time}, у всех участников. Текущее состояние сохранится в истории.
@@ -188,18 +204,28 @@ interface ConfirmedRestoreProps {
   title: string
   variant?: 'default' | 'outline'
   disabled: boolean
+  /** The id of what tells why the restore is not available. */
+  describedBy?: string
   onConfirm: () => void
   /** What the restore does. */
   children: ReactNode
 }
 
 /** A button of a restore that changes the board for everybody once the user confirms it. */
-function ConfirmedRestore({ label, title, variant = 'default', disabled, onConfirm, children }: ConfirmedRestoreProps) {
+function ConfirmedRestore({
+  label,
+  title,
+  variant = 'default',
+  disabled,
+  describedBy,
+  onConfirm,
+  children,
+}: ConfirmedRestoreProps) {
   const [confirming, setConfirming] = useState(false)
   return (
     <Popover open={confirming} onOpenChange={setConfirming}>
       <PopoverTrigger asChild>
-        <Button type="button" variant={variant} size="sm" disabled={disabled}>
+        <Button type="button" variant={variant} size="sm" disabled={disabled} aria-describedby={describedBy}>
           {label}
         </Button>
       </PopoverTrigger>

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { AccessRequestForm } from './AccessRequestForm.tsx'
 import { useOwnAccessRequest } from './accessRequests.ts'
@@ -6,8 +7,9 @@ import { ROLE_LABELS } from './members.ts'
 /**
  * «Нет доступа» on the page of a board that the user may not open, where they ask its owner for access. The page asks
  * for the board from time to time and opens it once the owner gives access; this screen tells a declined request.
+ * `children` come under the message, e.g. the edits of the local copy that did not reach the board.
  */
-export function NoAccess({ boardId }: { boardId: string }) {
+export function NoAccess({ boardId, children }: { boardId: string; children?: ReactNode }) {
   const { request, failed, declined, send, cancel } = useOwnAccessRequest(boardId, null)
 
   return (
@@ -15,6 +17,7 @@ export function NoAccess({ boardId }: { boardId: string }) {
       <p role="alert" className="text-destructive">
         Нет доступа: владелец закрыл доступ к доске по ссылке
       </p>
+      {children}
       {request ? (
         <section aria-labelledby="access-request-sent" className="flex flex-col gap-2">
           <h2 id="access-request-sent" className="font-medium">

@@ -38,7 +38,7 @@ describe('legal pages', () => {
     expect(await screen.findByRole('heading', { name: 'Политика конфиденциальности', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText(/Оператор сервиса — ООО «Пример»/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'privacy@example.com' })).toHaveAttribute('href', 'mailto:privacy@example.com')
-    for (const section of ['Какие данные мы обрабатываем', 'Cookie', 'Сколько хранятся данные', 'Ваши права']) {
+    for (const section of ['Какие данные мы обрабатываем', 'Cookie', 'Копии досок в браузере', 'Сколько хранятся данные', 'Ваши права']) {
       expect(screen.getByRole('region', { name: section })).toBeInTheDocument()
     }
     const retention = screen.getByRole('region', { name: 'Сколько хранятся данные' })
@@ -86,6 +86,10 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов не видит никто, кроме самого пользователя',
     )
+    const copies = screen.getByRole('region', { name: 'Копии досок в браузере' })
+    expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')
+    expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')
+    expect(copies).toHaveTextContent('очисткой данных этого сайта')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 

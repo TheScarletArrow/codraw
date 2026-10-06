@@ -1,11 +1,22 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as Y from 'yjs'
 import { Layout } from './Layout.tsx'
+import { findLocalCopy, openLocalCopy } from './offline/localCopies.ts'
 import { BoardsPage } from './pages/BoardsPage.tsx'
 import { ALICE, mockFetch, renderRoutes } from './test/render.tsx'
 
 const unreadCount = { 'GET /api/notifications/unread-count': { body: { count: 0 } } }
+
+/** Keeps a copy of a board for the user in the browser, as the page of the board does. */
+async function storeCopy(userId: string, boardId: string) {
+  const persistence = openLocalCopy(userId, boardId, 'Доска', new Y.Doc())!
+  await persistence.whenSynced
+  await persistence.destroy()
+}
+
+const boardId = '0199a000-0000-7000-8000-000000000001'
 
 const routes = [
   { path: '/login', element: <p>Страница входа</p> },
@@ -100,6 +111,37 @@ describe('Layout', () => {
     expect(router.state.location.pathname).toBe('/login')
     const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
     expect(init!.headers).toMatchObject({ 'X-XSRF-TOKEN': 'csrf-1' })
+  })
+
+  it('removes the local copies of the boards of the user when they sign out', async () => {
+    await storeCopy(ALICE.id, boardId)
+    mockFetch({
+      'GET /api/me': { body: ALICE },
+      'GET /api/boards': { body: [] },
+      'POST /api/logout': { status: 204 },
+      ...unreadCount,
+    })
+    renderRoutes(routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Выйти' }))
+
+    expect(await screen.findByText('Страница входа')).toBeInTheDocument()
+    await waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+    expect(findLocalCopy(ALICE.id, boardId)).toBeNull()
+  })
+
+  it('removes the local copies that another user of the browser left', async () => {
+    await storeCopy('guest-1', boardId)
+    await storeCopy(ALICE.id, boardId)
+    mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] }, ...unreadCount })
+
+    renderRoutes(routes)
+
+    await waitFor(async () =>
+      expect((await indexedDB.databases()).map((database) => database.name)).toEqual([`codraw:${ALICE.id}:${boardId}`]),
+    )
+    expect(findLocalCopy('guest-1', boardId)).toBeNull()
+    expect(findLocalCopy(ALICE.id, boardId)).not.toBeNull()
   })
 
   it('opens the login page when the session ends while the user works', async () => {

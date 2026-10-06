@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { logout, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 import { NotificationBell } from './notifications/NotificationBell.tsx'
+import { deleteLocalCopiesOf, keepLocalCopiesOf } from './offline/localCopies.ts'
 
 /**
  * Pages of a signed-in user, with their notifications in the header; without a session it opens the login page, which
@@ -13,6 +15,12 @@ import { NotificationBell } from './notifications/NotificationBell.tsx'
 export function Layout() {
   const user = useCurrentUser()
   const location = useLocation()
+  // Another user signed in in this browser, or a guest signed in through a provider: the local copies of the boards of
+  // the previous user go.
+  const userId = user.data?.id
+  useEffect(() => {
+    if (userId) void keepLocalCopiesOf(userId)
+  }, [userId])
 
   if (isUnauthorized(user.error)) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
@@ -51,8 +59,9 @@ function UserMenu({ user }: { user: CurrentUser }) {
     mutationFn: logout,
     onSuccess: async () => {
       await navigate('/login', { replace: true })
-      // Nothing of the previous user stays in the cache.
+      // Nothing of the previous user stays in the cache, nor in the browser.
       queryClient.clear()
+      await deleteLocalCopiesOf(user.id)
     },
   })
 

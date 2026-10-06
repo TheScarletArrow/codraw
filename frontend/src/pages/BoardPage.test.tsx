@@ -18,10 +18,12 @@ import {
   type CellData,
 } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
+import { restoreDocument } from '../diagram/restore.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
 import { setPendingImport } from '../drawio/files.ts'
 import { parseDrawio } from '../drawio/parse.ts'
+import { findLocalCopy, loadLocalCopy, openLocalCopy, setUnsentEdits } from '../offline/localCopies.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
@@ -357,7 +359,8 @@ describe('BoardPage', () => {
     })
 
     it('asks for the board without access again from time to time', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true })
+      // IndexedDB answers on immediate tasks, which the local copy of a board of an earlier test may still wait for.
+      vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
       try {
         const fetchMock = mockFetch(apiResponses({ [`GET ${boardUrl}`]: { status: 403 } }))
         renderRoutes(routes, `/boards/${boardId}`)
@@ -580,10 +583,12 @@ describe('BoardPage', () => {
 
     async function openHistory(responses: Record<string, MockResponse | MockResponse[]> = {}) {
       const provider = await openBoard({ [`GET ${versionsUrl}`]: { body: [version('v2', 'manual'), version('v1', 'auto')] }, ...responses })
-      act(() => provider.emitSynced())
+      act(() => provider.emitConnected())
+      // The document of the page, which the canvas of the board shows and the local copy keeps.
+      const live = canvas.document!
       await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
       await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
-      return provider
+      return Object.assign(provider, { live })
     }
 
     it('lists the versions of the board for its owner', async () => {
@@ -666,6 +671,28 @@ describe('BoardPage', () => {
       expect(Y.encodeStateVector(provider.document)).toEqual(before)
     })
 
+    it('restores a version or its page only while the board is synced, not from a board behind collab', async () => {
+      const provider = await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: comparedState() } })
+      act(() => provider.emitStatus('disconnected'))
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+      await within(preview).findByTestId('diagram-canvas')
+
+      const hint = 'Версию и страницу можно восстановить после синхронизации'
+      for (const name of ['Восстановить эту версию', 'Восстановить страницу']) {
+        expect(within(preview).getByRole('button', { name })).toBeDisabled()
+        expect(within(preview).getByRole('button', { name })).toHaveAccessibleDescription(hint)
+      }
+      // Restoring cells is an ordinary change, which a participant may make without a connection too.
+      act(() => canvas.editor!.select(['cache']))
+      expect(within(preview).getByRole('button', { name: 'Восстановить выделенное' })).toBeEnabled()
+
+      act(() => provider.emitConnected())
+      expect(within(preview).getByRole('button', { name: 'Восстановить эту версию' })).toBeEnabled()
+      expect(within(preview).getByRole('button', { name: 'Восстановить страницу' })).toBeEnabled()
+      expect(within(preview).queryByText(hint)).toBeNull()
+    })
+
     /** A version with «Сервис» and «Кэш» on the first page and a second page «Черновик» with «Набросок». */
     function comparedState() {
       const doc = new Y.Doc()
@@ -720,7 +747,7 @@ describe('BoardPage', () => {
           'Удалено: Кэш Прямоугольник',
           'Удалено: Набросок Прямоугольник',
         ])
-        expect(canvas.document).toBe(provider.document)
+        expect(canvas.document).toBe(provider.live)
         expect(within(preview).getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
         // The board has the second page since the version, and the version had «Черновик», which the board has not.
         expect(within(preview).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual([
@@ -757,13 +784,13 @@ describe('BoardPage', () => {
 
       it('changes nothing in the board', async () => {
         const { provider } = await openComparison()
-        const before = Y.encodeStateVector(provider.document)
+        const before = Y.encodeStateVector(provider.live)
 
         await screen.findByRole('complementary', { name: 'Изменения' })
         await userEvent.click(screen.getByRole('button', { name: /Изменено: Шлюз/ }))
         await userEvent.click(screen.getByRole('tab', { name: 'Черновик' }))
 
-        expect(Y.encodeStateVector(provider.document)).toEqual(before)
+        expect(Y.encodeStateVector(provider.live)).toEqual(before)
       })
 
       it('shows a changed element on the canvas, and centres the canvas on the ghost of a removed one', async () => {
@@ -787,7 +814,7 @@ describe('BoardPage', () => {
         await userEvent.click(within(list).getByRole('button', { name: /Удалено: Набросок/ }))
 
         await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'draft'))
-        expect(canvas.document).not.toBe(provider.document)
+        expect(canvas.document).not.toBe(provider.live)
         expect(screen.getByRole('tab', { name: 'Черновик' })).toHaveAttribute('aria-selected', 'true')
         await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('sketch'))
       })
@@ -810,7 +837,7 @@ describe('BoardPage', () => {
         expect(within(preview).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'false')
         expect(screen.queryByRole('complementary', { name: 'Изменения' })).toBeNull()
         expect(screen.queryAllByTestId('change-mark')).toEqual([])
-        expect(canvas.document).not.toBe(provider.document)
+        expect(canvas.document).not.toBe(provider.live)
         expect(within(preview).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(['Страница 1', 'Черновик'])
       })
 
@@ -838,7 +865,7 @@ describe('BoardPage', () => {
         await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
         const board = screen.getByTestId('diagram-canvas')
         expect(board).toHaveAttribute('data-read-only', 'false')
-        expect(canvas.document).toBe(provider.document)
+        expect(canvas.document).toBe(provider.live)
         expect(canvas.editor!.restoreCells).toHaveBeenCalledTimes(1)
         const [cells, ids] = vi.mocked(canvas.editor!.restoreCells).mock.calls[0]!
         expect(ids).toEqual(['cache'])
@@ -889,7 +916,7 @@ describe('BoardPage', () => {
 
         await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
         expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', DEFAULT_PAGE_ID)
-        expect(canvas.document).toBe(provider.document)
+        expect(canvas.document).toBe(provider.live)
         expect(canvas.editor!.restoreCells).toHaveBeenCalledTimes(1)
         const [cells, ids] = vi.mocked(canvas.editor!.restoreCells).mock.calls[0]!
         expect(ids).toEqual(['cache'])
@@ -1029,7 +1056,8 @@ describe('BoardPage', () => {
         writeCell(getCells(provider.document), shape('kept', 'a0', 'Сервис'))
         writeCell(getCells(provider.document), shape('queue', 'a1', 'Очередь'))
       })
-      return provider
+      // The document of the page, which the canvas of the board shows and the local copy keeps.
+      return Object.assign(provider, { live: canvas.document! })
     }
 
     it('tells who changed the board since the last visit and shows the changes in place of the board', async () => {
@@ -1044,7 +1072,7 @@ describe('BoardPage', () => {
       const list = await within(view).findByRole('complementary', { name: 'Изменения' })
       expect(within(list).getByText('Добавлено 1 · Изменено 0 · Удалено 0')).toBeInTheDocument()
       expect(within(list).getByRole('button', { name: /Добавлено: Очередь/ })).toBeInTheDocument()
-      expect(canvas.document).toBe(provider.document)
+      expect(canvas.document).toBe(provider.live)
       expect(within(view).getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
       expect(banner()).toBeNull()
       expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
@@ -1167,6 +1195,8 @@ describe('BoardPage', () => {
       expect(requests(provider.fetchMock, 'DELETE', boardUrl)).toHaveLength(1)
       expect(provider.sentStateless).toEqual([BOARD_CHANGED])
       expect(provider.destroyed).toBe(true)
+      // Nor does the deleted board stay in the browser.
+      await waitFor(() => expect(findLocalCopy(ALICE.id, boardId)).toBeNull())
     })
 
     it('shows a participant who does not own the board its title only', async () => {
@@ -1324,7 +1354,7 @@ describe('BoardPage', () => {
   describe('pages', () => {
     async function openPages(search = '') {
       const provider = await openBoard({}, search)
-      act(() => provider.emitSynced())
+      act(() => provider.emitConnected())
       return provider
     }
     const tabs = () => within(screen.getByRole('tablist', { name: 'Страницы' })).getAllByRole('tab')
@@ -1953,6 +1983,62 @@ describe('BoardPage', () => {
       expect(provider.router.state.location.search).toBe('?page=page-2')
     })
 
+    it('opens the thread of a link once the board is synced, not on a local copy that may lack its element', async () => {
+      // An earlier visit left a copy of the board from before the element of the thread was added.
+      const stored = new Y.Doc()
+      const persistence = openLocalCopy(ALICE.id, boardId, board.title, stored)!
+      await persistence.whenSynced
+      initializeDocument(stored)
+      await persistence.destroy()
+      const provider = await openBoard({ [`GET ${threadsUrl}`]: { body: [thread('far', { cellId: 'db' })] } }, '?thread=far')
+
+      // IndexedDB answers asynchronously, slower when the tests run in parallel.
+      expect(await screen.findByTestId('diagram-canvas', undefined, { timeout: 5_000 })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'Комментарии (1)' })).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Комментарии' })).toBeNull()
+      expect(canvas.editor!.revealCell).not.toHaveBeenCalled()
+      expect(provider.router.state.location.search).toContain('thread=far')
+
+      act(() => provider.emitConnected())
+
+      expect(await within(await screen.findByRole('complementary', { name: 'Комментарии' })).findByRole('article')).toHaveAttribute(
+        'aria-current',
+        'true',
+      )
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('db'))
+      expect(provider.router.state.location.search).toBe(`?page=${DEFAULT_PAGE_ID}`)
+    })
+
+    it('opens the thread at a point of a link, e.g. an assigned one, once the board is synced with the page the copy lacks', async () => {
+      // An earlier visit left a copy of the board from before the page of the thread was added.
+      const stored = new Y.Doc()
+      const persistence = openLocalCopy(ALICE.id, boardId, board.title, stored)!
+      await persistence.whenSynced
+      initializeDocument(stored)
+      await persistence.destroy()
+      const provider = await openBoard(
+        { [`GET ${threadsUrl}`]: { body: [thread('far', { pageId: 'page-2', cellId: null, point: { x: 640, y: 480 } })] } },
+        '?thread=far',
+      )
+
+      // IndexedDB answers asynchronously, slower when the tests run in parallel.
+      expect(await screen.findByTestId('diagram-canvas', undefined, { timeout: 5_000 })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'Комментарии (1)' })).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Комментарии' })).toBeNull()
+      expect(provider.router.state.location.search).toContain('thread=far')
+
+      act(() => {
+        provider.document.transact(() => writePage(provider.document, 'page-2', { name: 'Данные', order: 'a5' }))
+        provider.emitConnected()
+      })
+
+      const card = await within(await screen.findByRole('region', { name: 'Данные' })).findByRole('article')
+      expect(card).toHaveAttribute('aria-current', 'true')
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.centerOn).toHaveBeenCalledWith({ x: 640, y: 480 }))
+      expect(provider.router.state.location.search).toBe('?page=page-2')
+    })
+
     it('opens the comments without a thread when the thread of a link is gone', async () => {
       const provider = await openBoard({ [`GET ${threadsUrl}`]: { body: [thread('near')] } }, '?thread=gone')
       act(() => provider.emitSynced())
@@ -1979,7 +2065,7 @@ describe('BoardPage', () => {
   describe('draw.io files', () => {
     async function openSynced() {
       const provider = await openBoard()
-      act(() => provider.emitSynced())
+      act(() => provider.emitConnected())
       return provider
     }
     const tabNames = () => within(screen.getByRole('tablist', { name: 'Страницы' })).getAllByRole('tab').map((tab) => tab.textContent)
@@ -2039,6 +2125,329 @@ describe('BoardPage', () => {
       expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
       const imported = readAttribution(getCells(provider.document, 'ctx-page').get('db'))
       expect(imported).toMatchObject({ by: ALICE.id, name: ALICE.name })
+    })
+  })
+
+  describe('local copy', () => {
+    /** Keeps a copy of the board for Алиса in the browser, as an earlier tab of hers left it. */
+    async function storeCopy(build: (document: Y.Doc) => void, { pending = false } = {}) {
+      const document = new Y.Doc()
+      const persistence = openLocalCopy(ALICE.id, boardId, board.title, document)!
+      await persistence.whenSynced
+      build(document)
+      await persistence.destroy()
+      if (pending) setUnsentEdits(ALICE.id, boardId, true)
+    }
+    /** A board with one page named `name`. */
+    const onePage = (name: string) => (document: Y.Doc) => {
+      initializeDocument(document)
+      renamePage(document, DEFAULT_PAGE_ID, name)
+    }
+    const tabNames = () => within(screen.getByRole('tablist', { name: 'Страницы' })).getAllByRole('tab').map((tab) => tab.textContent)
+    const documentOf = (provider: FakeHocuspocusProvider) => (provider.configuration as { document: Y.Doc }).document
+    const pending = () => findLocalCopy(ALICE.id, boardId)?.pending
+    /** Stubs the download of a file and returns the files the page saves. */
+    function captureDownloads() {
+      const files: { name: string; blob: Blob }[] = []
+      let blob: Blob | null = null
+      vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn((created: Blob) => ((blob = created), 'blob:test')), revokeObjectURL: vi.fn() }))
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        files.push({ name: this.download, blob: blob! })
+      })
+      return files
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('shows the board from the copy at once, before collab has synced it', async () => {
+      await storeCopy(onePage('Из копии'))
+
+      await openBoard()
+
+      // IndexedDB answers asynchronously, slower when the tests run in parallel.
+      expect(await screen.findByTestId('diagram-canvas', undefined, { timeout: 5_000 })).toBeInTheDocument()
+      expect(tabNames()).toEqual(['Из копии'])
+      expect(screen.getByRole('status')).toHaveTextContent('Подключение')
+    })
+
+    it('keeps the edits made without a connection on the device and sends them once a connection that may edit syncs', async () => {
+      const provider = await openBoard()
+      // The page sets up the board, and collab confirms it.
+      act(() => provider.emitConnected())
+      act(() => provider.emitUnsyncedChanges(0))
+      expect(pending()).toBe(false)
+      act(() => provider.emitStatus('disconnected'))
+      expect(screen.getByRole('status')).toHaveTextContent('Нет связи')
+      expect(screen.getByRole('note')).toHaveTextContent(/^Нет связи — правки сохраняются на этом устройстве$/)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+      expect(screen.getByRole('note')).toHaveTextContent(
+        /^Нет связи — правки сохраняются на этом устройстве · Не отправлено: есть правки$/,
+      )
+      expect(listPages(provider.document)).toHaveLength(1)
+      expect(pending()).toBe(true)
+      expect(listPages(await loadLocalCopy(ALICE.id, boardId))).toHaveLength(2)
+
+      // The edits wait for the state of the board, and then for collab to confirm them.
+      act(() => {
+        provider.emitStatus('connected')
+        provider.emitUnsyncedChanges(1)
+        provider.emitAuthenticated()
+      })
+      expect(listPages(provider.document)).toHaveLength(1)
+      act(() => provider.emitSynced())
+      expect(listPages(provider.document)).toHaveLength(2)
+      expect(pending()).toBe(true)
+      act(() => provider.emitUnsyncedChanges(0))
+      expect(pending()).toBe(false)
+      expect(screen.getByRole('status')).toHaveTextContent('Синхронизировано')
+      expect(screen.queryByRole('note')).toBeNull()
+    })
+
+    it('puts the edits made without a connection on top of a version that the owner restored meanwhile', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitConnected())
+      act(() => provider.emitUnsyncedChanges(0))
+      const version = new Y.Doc()
+      Y.applyUpdate(version, Y.encodeStateAsUpdate(provider.document))
+      act(() => {
+        getCells(provider.document).set('later', new Y.Map<unknown>(Object.entries({ kind: 'vertex', parent: '1', order: 'a1' })))
+      })
+      act(() => provider.emitStatus('disconnected'))
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+      act(() => restoreDocument(provider.document, version))
+      act(() => provider.emitConnected())
+
+      expect(getCells(provider.document).has('later')).toBe(false)
+      expect(listPages(provider.document)).toHaveLength(2)
+      expect(tabNames()).toEqual(['Страница 1', 'Страница 2'])
+    })
+
+    it('sends the edits that an earlier tab kept on the device once the board is opened again', async () => {
+      await storeCopy(onePage('Без связи'), { pending: true })
+
+      const provider = await openBoard()
+
+      await waitFor(() => expect(tabNames()).toEqual(['Без связи']))
+      expect(screen.getByRole('status')).toHaveTextContent('Подключение')
+      expect(screen.getByRole('note')).toHaveTextContent(/^Не отправлено: есть правки$/)
+      act(() => {
+        provider.emitUnsyncedChanges(1)
+        provider.emitConnected()
+      })
+      expect(listPages(provider.document).map((page) => page.name)).toEqual(['Без связи'])
+      act(() => provider.emitUnsyncedChanges(0))
+      expect(pending()).toBe(false)
+    })
+
+    it('closes the socket when the browser loses the network and connects at once when it is back', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitConnected())
+
+      act(() => {
+        window.dispatchEvent(new Event('offline'))
+      })
+      expect(provider.socketClosed).toBe(1)
+      act(() => provider.emitStatus('disconnected'))
+      expect(screen.getByRole('status')).toHaveTextContent('Нет связи')
+      expect(screen.getByRole('note')).toHaveTextContent('Нет связи — правки сохраняются на этом устройстве')
+
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+      expect(provider.connects).toBe(1)
+    })
+
+    it('does not connect again when the network is back for a board that is gone', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitClose('board-not-found'))
+
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+
+      expect(provider.connects).toBe(0)
+      expect(provider.disconnected).toBe(true)
+    })
+
+    it('keeps the board of a participant who may only view for reading, and sends nothing from it', async () => {
+      await storeCopy(onePage('Из копии'))
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      const updates = vi.fn()
+      provider.document.on('update', updates)
+
+      await waitFor(() => expect(tabNames()).toEqual(['Из копии']))
+      act(() => provider.emitConnected('readonly'))
+      act(() => provider.emitStatus('disconnected'))
+
+      expect(updates).not.toHaveBeenCalled()
+      expect(screen.getByRole('status')).toHaveTextContent('Нет связи')
+      // Nothing is kept for later: a participant who may only view edits nothing.
+      expect(screen.queryByRole('note')).toBeNull()
+    })
+
+    it('shows a participant who may now only view the board without the unsent edits of their copy, to download or delete', async () => {
+      await storeCopy(onePage('Без связи'), { pending: true })
+      const files = captureDownloads()
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      act(() => {
+        initializeDocument(provider.document)
+        provider.emitConnected('readonly')
+      })
+
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent('Правки, сделанные без связи, не отправлены: у вас больше нет права правки')
+      expect(tabNames()).toEqual(['Страница 1'])
+
+      await userEvent.click(within(alert).getByRole('button', { name: 'Скачать копию (.drawio)' }))
+      await waitFor(() => expect(files).toHaveLength(1))
+      expect(files[0]!.name).toBe('Архитектура.drawio')
+      expect(await files[0]!.blob.text()).toContain('name="Без связи"')
+
+      await userEvent.click(within(alert).getByRole('button', { name: 'Удалить копию с устройства' }))
+      await userEvent.click(within(alert).getByRole('button', { name: 'Удалить' }))
+
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+      // The page keeps the board in a new copy, for reading.
+      const next = FakeHocuspocusProvider.latest()
+      expect(next).not.toBe(provider)
+      expect(findLocalCopy(ALICE.id, boardId)).toMatchObject({ pending: false })
+    })
+
+    it('sets the copy aside without sending its edits when the connection turns out to be read-only', async () => {
+      await storeCopy(onePage('Без связи'), { pending: true })
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }] })
+      await waitFor(() => expect(tabNames()).toEqual(['Без связи']))
+      const updates = vi.fn()
+      provider.document.on('update', updates)
+
+      act(() => provider.emitConnected('readonly'))
+
+      expect(updates).not.toHaveBeenCalled()
+      const next = FakeHocuspocusProvider.latest()
+      expect(next).not.toBe(provider)
+      expect(provider.destroyed).toBe(true)
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Правки, сделанные без связи, не отправлены: у вас больше нет права правки',
+      )
+      act(() => {
+        initializeDocument(documentOf(next))
+        next.emitConnected('readonly')
+      })
+      expect(tabNames()).toEqual(['Страница 1'])
+      expect(await screen.findByText('Только просмотр')).toBeInTheDocument()
+      expect(pending()).toBe(true)
+    })
+
+    it('sends the set-aside copy once the role gives editing again, e.g. when the owner answers a request for it', async () => {
+      await storeCopy(onePage('Без связи'), { pending: true })
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardToView }, { body: boardOfAnother }] })
+      act(() => {
+        initializeDocument(provider.document)
+        provider.emitConnected('readonly')
+      })
+      expect(screen.getByRole('alert')).toHaveTextContent('Правки, сделанные без связи, не отправлены: у вас больше нет права правки')
+
+      // The owner gave editing: collab closes the connection, which comes back with it, and the page fetches the role.
+      act(() => provider.emitClose('access-changed'))
+      act(() => provider.emitConnected())
+
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+      expect(screen.queryByText('Только просмотр')).toBeNull()
+      const next = FakeHocuspocusProvider.latest()
+      expect(next).not.toBe(provider)
+      expect(provider.destroyed).toBe(true)
+      await waitFor(() => expect(tabNames()).toEqual(['Без связи']))
+      act(() => next.emitConnected())
+      expect(listPages(documentOf(next)).map((page) => page.name)).toEqual(['Без связи'])
+      act(() => next.emitUnsyncedChanges(0))
+      expect(pending()).toBe(false)
+    })
+
+    it('offers the unsent edits of the copy when the board gives no access any more, and deletes a copy without them', async () => {
+      await storeCopy(onePage('Без связи'), { pending: true })
+      mockFetch({ 'GET /api/me': { body: ALICE }, [`GET ${boardUrl}`]: { status: 403 } })
+      const first = renderRoutes(routes, `/boards/${boardId}`)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(screen.getByText('Правки, сделанные без связи, не отправлены: у вас больше нет права правки')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Скачать копию (.drawio)' })).toBeInTheDocument()
+      first.unmount()
+
+      setUnsentEdits(ALICE.id, boardId, false)
+      renderRoutes(routes, `/boards/${boardId}`)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      await waitFor(() => expect(findLocalCopy(ALICE.id, boardId)).toBeNull())
+      expect(screen.queryByRole('button', { name: 'Скачать копию (.drawio)' })).toBeNull()
+    })
+
+    it('offers the unsent edits of the copy when collab rejects a participant whom the board no longer gives access', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
+      act(() => provider.emitConnected())
+      act(() => provider.emitStatus('disconnected'))
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+      act(() => provider.emitAuthenticationFailed('no-access'))
+
+      expect(await screen.findByText('Правки, сделанные без связи, не отправлены: у вас больше нет права правки')).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(listPages(provider.document)).toHaveLength(1)
+    })
+
+    it('offers the unsent edits of the copy of a deleted board, and deletes a copy without them', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitConnected())
+      act(() => provider.emitStatus('disconnected'))
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+      act(() => provider.emitClose('board-not-found'))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Доска не найдена')
+      const notice = await screen.findByText('Неотправленные правки остались в копии доски на этом устройстве')
+      await userEvent.click(screen.getByRole('button', { name: 'Удалить копию с устройства' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+      await waitFor(() => expect(notice).not.toBeInTheDocument())
+      expect(findLocalCopy(ALICE.id, boardId)).toBeNull()
+    })
+
+    it('deletes the copy without unsent edits of a board that collab no longer has', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitConnected())
+      act(() => provider.emitUnsyncedChanges(0))
+
+      act(() => provider.emitClose('board-not-found'))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Доска не найдена')
+      await waitFor(() => expect(findLocalCopy(ALICE.id, boardId)).toBeNull())
+    })
+
+    it('keeps the copy with a change too large for the board on the device, and offers it with the warning', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitConnected())
+      await userEvent.click(screen.getByRole('button', { name: 'Добавить страницу' }))
+
+      act(() => provider.emitClose('document-too-large'))
+
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent('Доска достигла предельного размера, последнее изменение не сохранено')
+      expect(alert).toHaveTextContent('Неотправленные правки остались в копии доски на этом устройстве')
+      const next = FakeHocuspocusProvider.latest()
+      expect(next).not.toBe(provider)
+      act(() => next.emitConnected())
+      expect(tabNames()).toEqual(['Страница 1'])
+      expect(listPages(await loadLocalCopy(ALICE.id, boardId))).toHaveLength(2)
+
+      await userEvent.click(within(alert).getByRole('button', { name: 'Удалить копию с устройства' }))
+      await userEvent.click(within(alert).getByRole('button', { name: 'Удалить' }))
+
+      await waitFor(() => expect(within(alert).queryByText(/Неотправленные правки/)).toBeNull())
+      expect(alert).toHaveTextContent('Доска достигла предельного размера')
+      expect(FakeHocuspocusProvider.latest()).not.toBe(next)
     })
   })
 })
