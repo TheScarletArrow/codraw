@@ -194,6 +194,9 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
                 noneLabel="Без заливки"
                 value={colors.fill}
                 onChange={(color) => editor?.setColor('fill', color)}
+                opacity={colors.fillOpacity}
+                opacityName="Прозрачность заливки"
+                onOpacityChange={(opacity) => editor?.setFillOpacity(opacity)}
               />
             )}
             <ColorPicker

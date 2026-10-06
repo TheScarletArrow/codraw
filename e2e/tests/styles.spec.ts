@@ -126,3 +126,20 @@ test('a label with text wrap is drawn on lines that fit the shape for the other 
   await expect.poll(async () => (await drawnLabel(bob, shape)).lines.length).toBe(1)
   await close()
 })
+
+test('the transparency of a fill reaches the other participant', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const shape = await addShape(alice, 'Прямоугольник')
+  await select(alice, shape)
+
+  await alice.getByRole('button', { name: 'Цвет заливки' }).click()
+  const field = alice.getByRole('spinbutton', { name: 'Прозрачность заливки, %' })
+  await field.fill('60')
+  await field.press('Enter')
+
+  await expect.poll(async () => (await styleOf(bob, shape))?.fillOpacity).toBe(40)
+  await field.fill('0')
+  await field.press('Enter')
+  await expect.poll(async () => (await styleOf(bob, shape))?.fillOpacity).toBeUndefined()
+  await close()
+})

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { PALETTE } from './colors.ts'
+import { NumberField } from './NumberField.tsx'
 
 
 const NONE = 'none'
@@ -17,10 +18,18 @@ interface ColorPickerProps {
   /** Caption of the option without color, e.g. «Без заливки»; without it there is no such option. */
   noneLabel?: string
   onChange: (color: string) => void
+  /**
+   * Opacity of the color, 0–100, shown as its transparency; `null` when the objects have different ones. Without
+   * `onOpacityChange` there is no transparency.
+   */
+  opacity?: number | null
+  /** Accessible name of the transparency, e.g. «Прозрачность заливки». */
+  opacityName?: string
+  onOpacityChange?: (opacity: number) => void
 }
 
 /** A toolbar button that shows the current color and opens the palette. */
-export function ColorPicker({ label, name, value, noneLabel, onChange }: ColorPickerProps) {
+export function ColorPicker({ label, name, value, noneLabel, onChange, opacity = null, opacityName = 'Прозрачность', onOpacityChange }: ColorPickerProps) {
   const [open, setOpen] = useState(false)
   const pick = (color: string) => {
     onChange(color)
@@ -60,6 +69,13 @@ export function ColorPicker({ label, name, value, noneLabel, onChange }: ColorPi
           </Button>
         )}
         <CustomColor value={value} onPick={pick} />
+        {onOpacityChange && (
+          <Transparency
+            name={opacityName}
+            transparency={opacity === null ? null : 100 - opacity}
+            onCommit={(transparency) => onOpacityChange(100 - transparency)}
+          />
+        )}
       </PopoverContent>
     </Popover>
   )
@@ -90,6 +106,65 @@ function CustomColor({ value, onPick }: { value: string | null; onPick: (color: 
         className="h-8 w-12 cursor-pointer rounded border bg-background"
       />
     </label>
+  )
+}
+
+/**
+ * Transparency of the color in percent: a slider, applied when it is released, and a field for an exact value; each
+ * applied value is a step of undo. Empty when the objects have different transparency.
+ */
+function Transparency({
+  name,
+  transparency,
+  onCommit,
+}: {
+  name: string
+  transparency: number | null
+  onCommit: (transparency: number) => void
+}) {
+  const slider = useRef<HTMLInputElement>(null)
+  // Where the participant is dragging the slider; `null` while it shows the current transparency.
+  const [dragged, setDragged] = useState<number | null>(null)
+
+  useEffect(() => {
+    const element = slider.current!
+    const handleChange = () => {
+      setDragged(null)
+      const next = Number(element.value)
+      if (next !== transparency) onCommit(next)
+    }
+    element.addEventListener('change', handleChange)
+    return () => element.removeEventListener('change', handleChange)
+  }, [transparency, onCommit])
+
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        Прозрачность
+        <span className="flex items-center gap-1">
+          <NumberField
+            label={`${name}, %`}
+            value={dragged ?? transparency}
+            min={0}
+            max={100}
+            className="w-14"
+            onCommit={onCommit}
+          />
+          <span aria-hidden>%</span>
+        </span>
+      </div>
+      <input
+        ref={slider}
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        aria-label={name}
+        value={dragged ?? transparency ?? 0}
+        onChange={(event) => setDragged(Number(event.target.value))}
+        className="w-full accent-primary"
+      />
+    </div>
   )
 }
 
