@@ -371,7 +371,7 @@ describe('EditorToolbar', () => {
   })
 
   it('opens the size and the position of the selected shapes and changes them', async () => {
-    act(() => editor.setState({ geometry: { x: 40, y: 60, width: 120, height: null, canSetHeight: true } }))
+    act(() => editor.setState({ geometry: { x: 40, y: 60, width: 120, height: null, canSetHeight: true, rotation: 0, canRotate: true } }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Размер' }))
     const dialog = screen.getByRole('dialog', { name: 'Размер и положение' })
@@ -388,13 +388,44 @@ describe('EditorToolbar', () => {
     expect(vi.mocked(editor.setGeometry).mock.calls).toEqual([[{ width: 200 }], [{ height: 10 }], [{ y: -30 }]])
   })
 
-  it('does not let the height of tables be changed', async () => {
-    act(() => editor.setState({ geometry: { x: 0, y: 0, width: 180, height: 56, canSetHeight: false } }))
+  it('does not let the height of tables be changed, nor tables be turned', async () => {
+    act(() => editor.setState({ geometry: { x: 0, y: 0, width: 180, height: 56, canSetHeight: false, rotation: null, canRotate: false } }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Размер' }))
 
     expect(screen.getByRole('spinbutton', { name: 'Высота' })).toBeDisabled()
     expect(screen.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
+    expect(screen.getByRole('spinbutton', { name: 'Поворот' })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: 'Поворот' })).toHaveAttribute('title', 'Таблицы и группы не поворачиваются')
+  })
+
+  it('shows the rotation of the selected shapes and passes the typed angle to the editor as it is', async () => {
+    act(() => editor.setState({ geometry: { x: 40, y: 60, width: 120, height: 60, canSetHeight: true, rotation: 30, canRotate: true } }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Размер' }))
+    const rotation = within(screen.getByRole('dialog', { name: 'Размер и положение' })).getByRole('spinbutton', { name: 'Поворот' })
+    expect(rotation).toHaveValue(30)
+    expect(rotation).toBeEnabled()
+
+    await userEvent.clear(rotation)
+    await userEvent.type(rotation, '45{Enter}')
+    await userEvent.clear(rotation)
+    // The editor brings the angle within 0–359; the field does not cut it to its limits.
+    await userEvent.type(rotation, '-90{Enter}')
+    await userEvent.clear(rotation)
+    await userEvent.type(rotation, '360')
+    await userEvent.tab()
+
+    expect(vi.mocked(editor.setRotation).mock.calls).toEqual([[45], [-90], [360]])
+    expect(editor.setGeometry).not.toHaveBeenCalled()
+  })
+
+  it('shows no rotation when the selected shapes are turned differently', async () => {
+    act(() => editor.setState({ geometry: { x: 40, y: 60, width: 120, height: 60, canSetHeight: true, rotation: null, canRotate: true } }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Размер' }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Поворот' })).toHaveValue(null)
   })
 
   it('turns the laser pointer on and shows it pressed while it is on', async () => {
@@ -446,7 +477,7 @@ describe('EditorToolbar', () => {
         tableSelected: true,
         colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
-        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
+        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true, rotation: 0, canRotate: true },
         arrange: 2,
         hasCells: true,
       }),
@@ -482,7 +513,7 @@ describe('EditorToolbar', () => {
         edgeMarkers: { start: 'none', end: 'classic' },
         colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
-        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
+        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true, rotation: 0, canRotate: true },
         lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },
       }),
     )

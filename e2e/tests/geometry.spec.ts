@@ -1,5 +1,6 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, cellBox, center, drag, twoParticipants, vertices, type Box } from './helpers.ts'
+import { addShape, cellBox, center, drag, twoParticipants, userPage, vertices, type Box } from './helpers.ts'
 
 interface CellView {
   value: string
@@ -254,4 +255,84 @@ test('the size and the position of shapes are typed in numbers', async ({ browse
   await expect(size.getByRole('spinbutton', { name: 'Ширина' })).toBeEnabled()
 
   await close()
+})
+
+/** The rotation the canvas draws a shape with, as the transform of its SVG has it; `null` for a shape not turned. */
+function drawnRotation(page: Page, id: string): Promise<number | null> {
+  return page.evaluate((id) => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const { graph } = container.__codrawEditor
+    const node = graph.getView().getState(graph.getDataModel().getCell(id))?.shape?.node as SVGElement | undefined
+    const turned = node?.querySelector('[transform*="rotate("]')?.getAttribute('transform')
+    return turned ? Number(/rotate\((-?[\d.]+)/.exec(turned)![1]) : null
+  }, id)
+}
+
+/** The point at `angle` degrees clockwise from straight up around the centre of `box`, as far from it as `from` is. */
+function around(box: Box, from: { x: number; y: number }, angle: number) {
+  const { x, y } = center(box)
+  const radius = Math.hypot(from.x - x, from.y - y)
+  const radians = Math.atan2(from.x - x, y - from.y) + (angle * Math.PI) / 180
+  return { x: x + radius * Math.sin(radians), y: y - radius * Math.cos(radians) }
+}
+
+test('a shape is turned by a number and by its handle for every participant, and goes through .drawio', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const shape = await addShape(alice, 'Прямоугольник')
+  const rotationOf = async (page: Page) => (await vertices(page)).find((cell) => cell.id === shape)?.style.rotation
+
+  await toolbar(alice).getByRole('button', { name: 'Размер', exact: true }).click()
+  const rotation = alice.getByRole('dialog', { name: 'Размер и положение' }).getByRole('spinbutton', { name: 'Поворот' })
+  await expect(rotation).toHaveValue('0')
+  await rotation.fill('45')
+  await rotation.press('Enter')
+  await expect.poll(() => rotationOf(bob)).toBe(45)
+  await expect.poll(() => drawnRotation(bob, shape)).toBe(45)
+  // The geometry stays that of the shape before it turned.
+  expect((await vertices(bob)).find((cell) => cell.id === shape)).toMatchObject({ width: 120, height: 60 })
+
+  // −90 is 270; Ctrl+Z on the canvas takes the turns back one by one.
+  await rotation.fill('-90')
+  await rotation.press('Enter')
+  await expect(rotation).toHaveValue('270')
+  await expect.poll(() => rotationOf(bob)).toBe(270)
+  await alice.keyboard.press('Escape')
+  await click(alice, await cellBox(alice, shape))
+  await alice.keyboard.press('ControlOrMeta+Z')
+  await expect.poll(() => rotationOf(bob)).toBe(45)
+  await alice.keyboard.press('ControlOrMeta+Z')
+  await expect.poll(() => rotationOf(bob)).toBeUndefined()
+  await expect.poll(() => drawnRotation(bob, shape)).toBeNull()
+
+  // The handle out of the top-left corner turns the shape in steps of 15°, released as one undo step.
+  const box = await cellBox(alice, shape)
+  const handle = { x: box.x - 12, y: box.y - 12 }
+  await drag(alice, handle, around(box, handle, 50))
+  await expect.poll(() => rotationOf(bob)).toBe(45)
+  await expect.poll(() => drawnRotation(bob, shape)).toBe(45)
+
+  // Alt held while the handle is dragged turns it by whole degrees; Alt at the press would start the selection frame.
+  const turned = around(box, handle, 45)
+  await alice.mouse.move(turned.x, turned.y)
+  await alice.mouse.down()
+  await alice.keyboard.down('Alt')
+  await alice.mouse.move(around(box, handle, 55).x, around(box, handle, 55).y, { steps: 5 })
+  await alice.mouse.move(around(box, handle, 62).x, around(box, handle, 62).y, { steps: 5 })
+  await alice.mouse.up()
+  await alice.keyboard.up('Alt')
+  await expect.poll(() => rotationOf(bob)).toBe(62)
+  await alice.keyboard.press('ControlOrMeta+Z')
+  await expect.poll(() => rotationOf(bob)).toBe(45)
+
+  const download = alice.waitForEvent('download')
+  await alice.getByRole('button', { name: 'Экспорт в .drawio' }).click()
+  const xml = await readFile((await (await download).path())!, 'utf8')
+  expect(xml).toContain('rotation=45;')
+  const carol = await userPage(browser, 'Ева')
+  await carol.goto('/')
+  await carol.getByLabel('Файл draw.io').setInputFiles({ name: 'turned.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
+  await expect(carol.getByRole('status')).toHaveText('Синхронизировано')
+  await expect.poll(async () => (await vertices(carol)).map((cell) => cell.style.rotation)).toEqual([45])
+
+  await Promise.all([close(), carol.context().close()])
 })

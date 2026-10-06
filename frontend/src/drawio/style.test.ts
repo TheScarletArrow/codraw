@@ -139,3 +139,12 @@ describe('fill opacity in files of draw.io', () => {
     expect(parseStyle(formatStyle({ fillOpacity: 35 }, 'vertex'), 'vertex').fillOpacity).toBe(35)
   })
 })
+
+describe('rotation in files of draw.io', () => {
+  it('keeps the rotation of a shape both ways', () => {
+    expect(parseStyle('rounded=0;rotation=45;', 'vertex').rotation).toBe(45)
+    expect(parseStyle('rotation=-30.5;', 'vertex').rotation).toBe(-30.5)
+    expect(formatStyle({ rotation: 270 }, 'vertex')).toContain('rotation=270;')
+    expect(parseStyle(formatStyle({ rotation: 270 }, 'vertex'), 'vertex').rotation).toBe(270)
+  })
+})

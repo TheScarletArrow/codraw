@@ -1,5 +1,6 @@
 import { EdgeStyleRegistry, InternalEvent, Point, type AbstractGraph, type CellState, type EdgeStyleFunction } from '@maxgraph/core'
 import type { RoutePoint, Routes } from './routeEdges.ts'
+import { rotatedBounds, rotationOf } from '../rotation.ts'
 import { routingInput, type RoutingBox, type RoutingInput } from './routingInput.ts'
 
 export interface RoutingRequest {
@@ -116,13 +117,14 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
     }
   }
 
-  /** Where a shape is drawn, in coordinates of the page. */
+  /** Where a shape is drawn, in coordinates of the page; a turned shape by the box around it, as edges go around it. */
   const drawnBox = (id: string): RoutingBox | null => {
     const cell = model.getCell(id)
     const state = cell && view.getState(cell)
     if (!state) return null
     const { scale, translate } = view
-    return { x: state.x / scale - translate.x, y: state.y / scale - translate.y, width: state.width / scale, height: state.height / scale }
+    const box = { x: state.x / scale - translate.x, y: state.y / scale - translate.y, width: state.width / scale, height: state.height / scale }
+    return rotatedBounds(box, rotationOf(state.style))
   }
   const at = (id: string, box: RoutingBox) => {
     const drawn = drawnBox(id)
