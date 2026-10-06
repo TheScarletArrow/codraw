@@ -45,7 +45,7 @@ describe('image export', () => {
     expect(image.width - 300 - 2 * IMAGE_BORDER).toBeOneOf([0, 1, 2])
     expect(image.height - 160 - 2 * IMAGE_BORDER).toBeOneOf([0, 1, 2])
     expect(image.cellIds).toBeNull()
-    expect(image.svg).toContain(`<rect width="100%" height="100%" fill="${IMAGE_BACKGROUND}"/>`)
+    expect(image.svg).toMatch(new RegExp(`<svg[^>]*><rect width="${image.width}" height="${image.height}" fill="${IMAGE_BACKGROUND}"/>`))
     expect(image.svg).toContain('Сервис')
     expect(image.svg).toContain('База')
   })
@@ -54,7 +54,7 @@ describe('image export', () => {
     const { editor } = open()
     shape(editor, 0, 0, 'Сервис')
 
-    expect(editor.exportSvg({ transparent: true })!.svg).not.toContain('<rect width="100%"')
+    expect(editor.exportSvg({ transparent: true })!.svg).toMatch(/<svg[^>]*><g>/)
   })
 
   it('has no image of an empty page', () => {
@@ -91,6 +91,21 @@ describe('image export', () => {
     editor.graph.setSelectionCells([table.getChildAt(0), a])
 
     expect(editor.exportSvg({ selectionOnly: true })!.cellIds).toEqual([table.getId(), group.getId()])
+  })
+
+  it('clips the fields of a table with clips of the image itself', () => {
+    const { editor } = open()
+    editor.addShape('table', { x: 100, y: 100 })
+
+    const { svg } = editor.exportSvg()!
+
+    const clips = [...svg.matchAll(/clip-path="([^"]*)"/g)].map(([, reference]) => reference)
+    expect(clips.length).toBeGreaterThan(0)
+    for (const reference of clips) {
+      const id = /^url\(#([^)]+)\)$/.exec(reference!)?.[1]
+      expect(id).toBeDefined()
+      expect(svg).toContain(`<clipPath id="${id}"`)
+    }
   })
 
   it('has nothing of a selection without shapes', () => {

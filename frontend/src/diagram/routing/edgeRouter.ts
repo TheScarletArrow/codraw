@@ -28,6 +28,17 @@ type RouteOf = (state: CellState) => Route | null
 
 const routers = new WeakMap<AbstractGraph, RouteOf>()
 
+/** Promises of the routes of the graphs that are routed, see {@link edgesRouted}. */
+const routedPromises = new WeakMap<AbstractGraph, () => Promise<void>>()
+
+/**
+ * Resolves once the edges of the graph have their routes for the model as it is now, e.g. before a page drawn out of
+ * sight is saved; at once when nothing routes them: no workers, or the router stopped or failed to load.
+ */
+export function edgesRouted(graph: AbstractGraph): Promise<void> {
+  return routedPromises.get(graph)?.() ?? Promise.resolve()
+}
+
 function startWorker(): RoutingWorker | null {
   if (typeof Worker === 'undefined') return null
   return new Worker(new URL('./routing.worker.ts', import.meta.url), { type: 'module' })
@@ -54,6 +65,12 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
   /** The request the worker is routing, and the newest input that waits for it. */
   let routing: RoutingRequest | null = null
   let waiting: RoutingInput | null = null
+  /** Who waits for the routes of the model as it is now. */
+  const routedWaiters: (() => void)[] = []
+  const isRouted = () => stopped || (!scheduled && routing === null)
+  const settle = () => {
+    if (isRouted()) routedWaiters.splice(0).forEach((resolve) => resolve())
+  }
 
   const send = (input: RoutingInput) => {
     routing = { id: ++requests, input }
@@ -64,10 +81,12 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
     if (stopped) return
     const input = routingInput(graph.getDefaultParent())
     const key = JSON.stringify(input)
-    if (key === sent) return
-    sent = key
-    if (routing) waiting = input
-    else send(input)
+    if (key !== sent) {
+      sent = key
+      if (routing) waiting = input
+      else send(input)
+    }
+    settle()
   }
   const schedule = () => {
     if (scheduled || stopped) return
@@ -114,6 +133,7 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
       waiting = null
       send(input)
     }
+    settle()
   }
 
   /** Where a shape is drawn, in coordinates of the page. */
@@ -141,6 +161,7 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
     if (edge.getTerminal(true)?.getId() !== route.source || edge.getTerminal(false)?.getId() !== route.target) return null
     return at(route.sourceShape.id, route.sourceShape.box) && at(route.targetShape.id, route.targetShape.box) ? route : null
   })
+  routedPromises.set(graph, () => (isRouted() ? Promise.resolve() : new Promise((resolve) => routedWaiters.push(resolve))))
 
   model.addListener(InternalEvent.CHANGE, schedule)
   schedule()
@@ -152,6 +173,8 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
     const routed = [...routes.keys()]
     routes = new Map()
     routers.delete(graph)
+    routedPromises.delete(graph)
+    settle()
     for (const id of routed) {
       const edge = model.getCell(id)
       if (edge) view.invalidate(edge, false, false)

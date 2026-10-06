@@ -4,7 +4,7 @@ import * as Y from 'yjs'
 import { DiagramBuilder } from '../../templates/builder.ts'
 import { createDiagramEditor, type DiagramEditor } from '../editor.ts'
 import { initializeDocument } from '../model.ts'
-import { startEdgeRouting, type RoutingRequest, type RoutingWorker } from './edgeRouter.ts'
+import { edgesRouted, startEdgeRouting, type RoutingRequest, type RoutingWorker } from './edgeRouter.ts'
 import type { Routes } from './routeEdges.ts'
 
 describe('routing of edges in the editor', () => {
@@ -35,7 +35,15 @@ describe('routing of edges in the editor', () => {
     const requests = () => postMessage.mock.calls.map(([request]) => request)
     const answer = (request: RoutingRequest, routes: Routes) => worker.onmessage!({ data: { id: request.id, routes } } as MessageEvent)
     await vi.waitFor(() => expect(requests()).toHaveLength(1))
-    return { editor, worker, cell, requests, answer }
+    return { editor, worker, cell, requests, answer, stop: stops.at(-1)! }
+  }
+
+  /** Whether a promise has resolved by the time the tasks queued before have run. */
+  const resolved = async (promise: Promise<void>) => {
+    let done = false
+    void promise.then(() => (done = true))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    return done
   }
 
   /** The drawn points of an edge in coordinates of the page. */
@@ -101,6 +109,36 @@ describe('routing of edges in the editor', () => {
 
     expect(requests()).toHaveLength(2)
     expect(requests()[1]!.input.shapes.find((shape) => shape.id === cell('b').getId())!.x).toBe(320)
+  })
+
+  it('tells when the edges are routed for the model as it is now', async () => {
+    const { editor, cell, requests, answer } = await open()
+    const first = edgesRouted(editor.graph)
+    expect(await resolved(first)).toBe(false)
+
+    answer(requests()[0]!, { [cell('ab').getId()!]: ROUTE })
+
+    expect(await resolved(first)).toBe(true)
+    expect(drawn(editor, cell('ab'))).toEqual(ROUTE)
+    expect(await resolved(edgesRouted(editor.graph))).toBe(true)
+
+    editor.graph.setSelectionCell(cell('b'))
+    editor.moveSelection(0, 40)
+    const second = edgesRouted(editor.graph)
+    await vi.waitFor(() => expect(requests()).toHaveLength(2))
+    expect(await resolved(second)).toBe(false)
+    answer(requests()[1]!, {})
+    expect(await resolved(second)).toBe(true)
+  })
+
+  it('does not keep waiting for the routes when routing stops or there is no router', async () => {
+    const { editor, stop } = await open()
+    const routes = edgesRouted(editor.graph)
+
+    stop()
+
+    expect(await resolved(routes)).toBe(true)
+    expect(await resolved(edgesRouted(editor.graph))).toBe(true)
   })
 
   it('stops routing when the router fails to load', async () => {

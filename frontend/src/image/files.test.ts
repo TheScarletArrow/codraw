@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fileName } from '../lib/download.ts'
-import { imageFileName, MAX_PNG_SIDE, pngSize } from './files.ts'
+import { imageFileName, MAX_PNG_SIDE, pdfFileName, pngSize } from './files.ts'
 
 describe('image files', () => {
   it('draws a PNG with the chosen density', () => {
@@ -16,6 +16,13 @@ describe('image files', () => {
   it('names the image after the board, and after the page on a board of several pages', () => {
     expect(imageFileName('Архитектура', 'Страница 1', 1, 'png')).toBe('Архитектура.png')
     expect(imageFileName('Архитектура', 'Контейнеры', 3, 'svg')).toBe('Архитектура — Контейнеры.svg')
+  })
+
+  it('names the PDF of a page as its image, and the PDF of all pages after the board', () => {
+    expect(pdfFileName('Архитектура', 'Страница 1', 1, 'current')).toBe('Архитектура.pdf')
+    expect(pdfFileName('Архитектура', 'Контейнеры', 3, 'current')).toBe('Архитектура — Контейнеры.pdf')
+    expect(pdfFileName('Архитектура', 'Контейнеры', 3, 'all')).toBe('Архитектура.pdf')
+    expect(pdfFileName('A/B', 'Контейнеры', 3, 'all')).toBe('A_B.pdf')
   })
 
   it('replaces characters that file systems do not allow', () => {

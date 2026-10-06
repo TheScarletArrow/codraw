@@ -14,6 +14,11 @@ export default defineConfig({
         find: /^libavoid-js\/libavoid\.wasm(?=\?|$)/,
         replacement: fileURLToPath(new URL('./node_modules/libavoid-js/dist/libavoid.wasm', import.meta.url)),
       },
+      // Optional dependencies of jsPDF that pnpm leaves out (pnpm-workspace.yaml): CoDraw never calls what loads them.
+      {
+        find: /^(canvg|dompurify|html2canvas)$/,
+        replacement: fileURLToPath(new URL('./src/image/jspdfOptional.ts', import.meta.url)),
+      },
     ],
   },
   build: {
@@ -40,5 +45,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    alias: [
+      // Node gets the UMD build of the package, which does not find jsPDF there; the browser gets this ES module.
+      {
+        find: /^svg2pdf\.js$/,
+        replacement: fileURLToPath(new URL('./node_modules/svg2pdf.js/dist/svg2pdf.es.js', import.meta.url)),
+      },
+    ],
   },
 })

@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { publishEmbedImage, type Embed } from '../api/embed.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument } from '../diagram/model.ts'
-import { renderPageSvg } from './renderPage.ts'
+import { renderPageSvg } from '../diagram/renderPage.ts'
 import { PUBLISH_INTERVAL, PUBLISH_QUIET, useEmbedPublisher } from './useEmbedPublisher.ts'
 
-vi.mock('./renderPage.ts', () => ({ renderPageSvg: vi.fn(() => '<svg/>') }))
+vi.mock('../diagram/renderPage.ts', () => ({ renderPageSvg: vi.fn(() => '<svg/>') }))
 vi.mock('../api/embed.ts', () => ({ publishEmbedImage: vi.fn(async () => {}) }))
 
 const embed: Embed = { path: '/api/embeds/AAAAAAAAAAAAAAAAAAAAAA.svg', pageId: DEFAULT_PAGE_ID, updatedAt: null }

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import * as Y from 'yjs'
 import { publishEmbedImage, type Embed } from '../api/embed.ts'
 import { getCells } from '../diagram/model.ts'
-import { renderPageSvg } from './renderPage.ts'
+import { renderPageSvg } from '../diagram/renderPage.ts'
 
 /** Quiet time after the last change before the picture is drawn, in milliseconds. */
 export const PUBLISH_QUIET = 3_000
