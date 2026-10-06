@@ -10,6 +10,8 @@ import {
   mentionsIn,
   openThreadsByCell,
   suggestPeople,
+  threadsAtPoints,
+  threadTarget,
 } from './threads.ts'
 
 const alice: Person = { id: 'alice', name: 'Алиса', avatarUrl: null }
@@ -30,6 +32,7 @@ const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread
   id,
   pageId: 'page-1',
   cellId: 'cell-1',
+  point: null,
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,
@@ -74,6 +77,28 @@ describe('threads', () => {
     )
 
     expect([...counts]).toEqual([['cell-1', 2]])
+  })
+
+  it('takes the threads of the page at points, the resolved ones on request', () => {
+    const point = { x: 1, y: 2 }
+    const open = thread('open', { cellId: null, point })
+    const resolved = thread('resolved', { cellId: null, point, resolvedAt: '2026-10-05T11:00:00Z' })
+    const other = thread('other', { pageId: 'page-2', cellId: null, point })
+    const threads = [open, resolved, thread('cell'), thread('page', { cellId: null }), other]
+
+    expect(threadsAtPoints(threads, 'page-1', false)).toEqual([open])
+    expect(threadsAtPoints(threads, 'page-1', true)).toEqual([open, resolved])
+    expect(openThreadsByCell(threads, 'page-1')).toEqual(new Map([['cell-1', 1]]))
+  })
+
+  it('says what a thread is about: an element, a deleted one, a point or the page', () => {
+    expect(threadTarget({ cellId: 'api', point: null }, { kind: 'vertex', label: 'API' })).toEqual({
+      label: '«API»',
+      deleted: false,
+    })
+    expect(threadTarget({ cellId: 'api', point: null }, null)).toEqual({ label: 'Элемент удалён', deleted: true })
+    expect(threadTarget({ cellId: null, point: { x: 1, y: 2 } }, null)).toEqual({ label: 'Место на холсте', deleted: false })
+    expect(threadTarget({ cellId: null, point: null }, null)).toEqual({ label: 'Вся страница', deleted: false })
   })
 
   it('names an element by the first line of its label, without markup', () => {

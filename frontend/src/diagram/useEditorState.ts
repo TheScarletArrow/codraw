@@ -24,6 +24,7 @@ const NO_EDITOR: EditorState = {
   canCopy: false,
   layoutSelection: false,
   laser: false,
+  commentTool: false,
   lock: null,
   attribution: null,
 }

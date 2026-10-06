@@ -64,6 +64,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: 'Совместная работа',
     entries: [
       { keys: ['K'], action: 'Указка' },
+      { keys: ['C'], action: 'Комментарий' },
       { keys: ['/'], action: 'Сообщение у курсора' },
     ],
   },

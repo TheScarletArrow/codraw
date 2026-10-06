@@ -16,6 +16,7 @@ describe('ShortcutsHelp', () => {
     expect(within(view).getByText('Показать всё').nextElementSibling).toHaveTextContent('Ctrl+Shift+H')
     const together = within(help).getByRole('region', { name: 'Совместная работа' })
     expect(within(together).getByText('Указка').nextElementSibling).toHaveTextContent('K')
+    expect(within(together).getByText('Комментарий').nextElementSibling).toHaveTextContent('C')
     expect(within(together).getByText('Сообщение у курсора').nextElementSibling).toHaveTextContent('/')
   })
 
@@ -48,6 +49,7 @@ describe('ShortcutsHelp', () => {
     const help = screen.getByRole('dialog', { name: 'Горячие клавиши' })
     expect(within(help).getByText('Копировать')).toBeInTheDocument()
     expect(within(help).getByText('Указка')).toBeInTheDocument()
+    expect(within(help).getByText('Комментарий')).toBeInTheDocument()
     expect(within(help).queryByText('Удалить')).toBeNull()
   })
 })

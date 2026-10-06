@@ -35,11 +35,22 @@ class CommentService(
     fun people(board: Board): List<Person> =
         comments.people(board.boardId, board.ownerId, board.linkOpen, PEOPLE_LIMIT)
 
-    /** Starts a thread about the cell [cellId] of the page [pageId], or about the page, with the first comment. */
+    /**
+     * Starts a thread about the cell [cellId] of the page [pageId], at the [point] of it, or about the page, with the
+     * first comment. The caller checks that the thread is not about a cell and a point at once.
+     */
     @Transactional
-    fun start(board: Board, authorId: UUID, pageId: String, cellId: String?, body: String, mentions: Collection<UUID>): CommentThread {
+    fun start(
+        board: Board,
+        authorId: UUID,
+        pageId: String,
+        cellId: String?,
+        point: ThreadPoint?,
+        body: String,
+        mentions: Collection<UUID>,
+    ): CommentThread {
         checkLimit(board)
-        val threadId = comments.addThread(board.boardId, pageId, cellId, now())
+        val threadId = comments.addThread(board.boardId, pageId, cellId, point, now())
         add(board, threadId, authorId, body, mentions, answered = emptySet())
         return thread(board, threadId)
     }
@@ -85,11 +96,26 @@ class CommentService(
         return thread(board, threadId)
     }
 
-    /** Marks the thread resolved by the user [userId], or open again; any participant may. */
+    /**
+     * Marks the thread resolved by the user [userId], or open again, when [resolved] is set; any participant may. Moves
+     * the thread to the [point] when it is set; only the author of the thread, who wrote its first comment, or the
+     * owner of the board may, and only a thread that stands at a point.
+     */
     @Transactional
-    fun resolve(board: Board, threadId: UUID, userId: UUID, resolved: Boolean): CommentThread {
-        if (!comments.threadExists(board.boardId, threadId)) throw CommentNotFoundException()
-        if (resolved) comments.resolve(threadId, userId, now()) else comments.resolve(threadId, null, null)
+    fun change(board: Board, threadId: UUID, userId: UUID, resolved: Boolean?, point: ThreadPoint?): CommentThread {
+        val thread = comments.storedThread(board.boardId, threadId) ?: throw CommentNotFoundException()
+        if (point != null) {
+            if (!thread.atPoint) throw ThreadNotAtPointException()
+            if (thread.authorId != userId && board.ownerId != userId) {
+                throw CommentForbiddenException("Only the author of the thread or the owner of the board can move it")
+            }
+            comments.move(threadId, point)
+        }
+        when (resolved) {
+            true -> comments.resolve(threadId, userId, now())
+            false -> comments.resolve(threadId, null, null)
+            null -> Unit
+        }
         return thread(board, threadId)
     }
 
@@ -137,6 +163,9 @@ class CommentNotFoundException : RuntimeException("Comment not found")
 
 /** The user may not do this with the comment. */
 class CommentForbiddenException(message: String) : RuntimeException(message)
+
+/** The thread is about an element or about a page, so it has no point to move. */
+class ThreadNotAtPointException : RuntimeException("The thread does not stand at a point")
 
 /** The board has as many comments as the [limit] allows. */
 class CommentLimitReachedException(val limit: Int) : RuntimeException("The board has $limit comments, the most allowed")

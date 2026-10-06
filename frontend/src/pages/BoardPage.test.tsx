@@ -1309,6 +1309,7 @@ describe('BoardPage', () => {
       id,
       pageId: DEFAULT_PAGE_ID,
       cellId: 'api',
+      point: null,
       createdAt: '2026-10-05T10:00:00Z',
       resolvedAt: null,
       resolvedBy: null,
@@ -1360,10 +1361,95 @@ describe('BoardPage', () => {
       expect(JSON.parse(init!.body as string)).toEqual({
         pageId: DEFAULT_PAGE_ID,
         cellId: 'api',
+        point: null,
         body: 'Почему без кэша?',
         mentions: [],
       })
       expect(await screen.findByRole('button', { name: 'Комментарии (1)' })).toBeInTheDocument()
+    })
+
+    it('lets a viewer start a thread at the point of a click with the comment tool, and moves it with the next click', async () => {
+      const created = thread('new', { cellId: null, point: { x: 300, y: 90 } })
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: { body: boardToView },
+        [`GET ${threadsUrl}`]: [{ body: [] }, { body: [created] }],
+        [`POST ${threadsUrl}`]: { status: 201, body: created },
+      })
+      initializeDocument(provider.document)
+      act(() => provider.emitSynced())
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true'))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Комментарий' }))
+      expect(canvas.editor!.setCommentTool).toHaveBeenCalledWith(true)
+      act(() => canvas.editor!.placeComment({ x: 120.4, y: 80.6 }))
+      const draft = within(panel()).getByRole('group', { name: 'Новая ветка' })
+      expect(draft).toHaveTextContent('Новая ветка: Место на холсте')
+      expect(screen.getByRole('img', { name: 'Новая ветка здесь' }).style.left).toBe('120px')
+      await userEvent.type(within(draft).getByRole('combobox', { name: 'Новый комментарий' }), 'Сюда нужен кэш')
+      act(() => canvas.editor!.placeComment({ x: 300, y: 90 }))
+      expect(screen.getByRole('img', { name: 'Новая ветка здесь' }).style.left).toBe('300px')
+      await userEvent.type(within(panel()).getByRole('combobox', { name: 'Новый комментарий' }), '{Enter}')
+
+      await waitFor(() => expect(provider.sentStateless).toEqual([COMMENTS_CHANGED]))
+      const [[, init]] = requests(provider.fetchMock, 'POST', threadsUrl)
+      expect(JSON.parse(init!.body as string)).toEqual({
+        pageId: DEFAULT_PAGE_ID,
+        cellId: null,
+        point: { x: 300, y: 90 },
+        body: 'Сюда нужен кэш',
+        mentions: [],
+      })
+      expect(await screen.findByRole('button', { name: 'Комментарии в точке: 1' })).toBeInTheDocument()
+      expect(screen.queryByRole('img', { name: 'Новая ветка здесь' })).toBeNull()
+      expect(canvas.editor!.getState().commentTool).toBe(true)
+    })
+
+    it('starts a thread at the point of a right click on the empty canvas', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      await waitFor(() => expect(canvas.editor).not.toBeNull())
+
+      act(() => canvas.editor!.rightClick({ x: 10, y: 10, point: { x: 40, y: 50 }, target: 'canvas', cellId: null }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать здесь' }))
+
+      expect(within(panel()).getByRole('group', { name: 'Новая ветка' })).toHaveTextContent('Место на холсте')
+      expect(screen.getByRole('img', { name: 'Новая ветка здесь' }).style.left).toBe('40px')
+    })
+
+    it('opens a thread at a point from its mark, and marks the resolved ones while the panel shows them', async () => {
+      const resolved = thread('done', { cellId: null, point: { x: 10, y: 20 }, resolvedAt: '2026-10-05T11:00:00Z' })
+      const provider = await openBoard({
+        [`GET ${threadsUrl}`]: { body: [thread('a'), thread('here', { cellId: null, point: { x: 100, y: 80 } }), resolved] },
+      })
+      act(() => provider.emitSynced())
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Комментарии в точке: 1' }))
+
+      expect(within(panel()).getByRole('article', { name: 'Ветка: Место на холсте', current: true })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Комментарии в точке: 1' })).toHaveAttribute('aria-current', 'true')
+      expect(screen.queryByRole('button', { name: 'Комментарии в точке (решено): 1' })).toBeNull()
+      await userEvent.click(within(panel()).getByRole('button', { name: 'Решённые' }))
+      expect(screen.getByRole('button', { name: 'Комментарии в точке (решено): 1' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Закрыть комментарии' }))
+      expect(screen.queryByRole('button', { name: 'Комментарии в точке (решено): 1' })).toBeNull()
+    })
+
+    it('goes to the page of a thread at a point and brings its point to the middle of the canvas', async () => {
+      const provider = await openBoard({
+        [`GET ${threadsUrl}`]: { body: [thread('far', { pageId: 'page-2', cellId: null, point: { x: 640, y: 480 } })] },
+      })
+      act(() => {
+        provider.emitSynced()
+        provider.document.transact(() => writePage(provider.document, 'page-2', { name: 'Данные', order: 'a5' }))
+      })
+      await userEvent.click(screen.getByRole('button', { name: 'Комментарии (1)' }))
+
+      const card = within(within(panel()).getByRole('region', { name: 'Данные' })).getByRole('article')
+      await userEvent.click(within(card).getByRole('button', { name: 'Место на холсте' }))
+
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.centerOn).toHaveBeenCalledWith({ x: 640, y: 480 }))
+      expect(canvas.editor!.revealCell).not.toHaveBeenCalled()
     })
 
     it('fetches the comments again when another participant changed them', async () => {

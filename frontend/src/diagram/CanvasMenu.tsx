@@ -5,11 +5,17 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { menuItems, shortcutLabel, type MenuCommand } from './canvasMenu.ts'
 import { readSystemClipboard } from './clipboard.ts'
-import type { ContextMenuRequest, DiagramEditor } from './editor.ts'
+import type { ContextMenuRequest, DiagramEditor, Point } from './editor.ts'
 import { lockLabel } from './locks.ts'
 import { useEditorState } from './useEditorState.ts'
 
-const COMMANDS: Record<Exclude<MenuCommand, 'comment'>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
+/** What a new thread of comments is about: an element, or a point of the page in diagram coordinates. */
+export type CommentTarget = { cellId: string } | { point: Point }
+
+/** The items that start a thread, which the page does rather than the editor. */
+type CommentCommand = 'comment' | 'commentHere'
+
+const COMMANDS: Record<Exclude<MenuCommand, CommentCommand>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
   paste: (editor, { point }) => void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html)),
   selectAll: (editor) => editor.selectAll(),
@@ -33,14 +39,15 @@ const COMMANDS: Record<Exclude<MenuCommand, 'comment'>, (editor: DiagramEditor, 
 
 /**
  * The menu of a right click on the canvas, with the actions that fit what was clicked. With `onComment`, a single
- * element gets «Комментировать», for viewers too. The menu of locked elements says who locked them.
+ * element gets «Комментировать» and the empty canvas «Комментировать здесь», at the point of the click, for viewers
+ * too. The menu of locked elements says who locked them.
  */
 export function CanvasMenu({
   editor,
   onComment,
 }: {
   editor: DiagramEditor | null
-  onComment?: (cellId: string) => void
+  onComment?: (target: CommentTarget) => void
 }) {
   const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
@@ -74,12 +81,14 @@ export function CanvasMenu({
   }
   const run = (command: MenuCommand) => {
     close()
-    if (command !== 'comment') {
+    if (command !== 'comment' && command !== 'commentHere') {
       COMMANDS[command](editor, request)
-    } else if (request.cellId) {
-      focusTaken.current = true
-      onComment?.(request.cellId)
+      return
     }
+    const target = command === 'commentHere' ? { point: request.point } : request.cellId && { cellId: request.cellId }
+    if (!target) return
+    focusTaken.current = true
+    onComment?.(target)
   }
 
   // Viewers do not lock, but a locked element is as unchangeable for them as everything else.

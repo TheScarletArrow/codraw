@@ -21,6 +21,7 @@ export type MenuCommand =
   | 'unlock'
   | 'delete'
   | 'comment'
+  | 'commentHere'
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
 export type Shortcut =
@@ -53,7 +54,7 @@ export interface MenuAvailability {
   canGroup?: boolean
   /** The participant may only view the board: the menu has only the items that change nothing. */
   readOnly?: boolean
-  /** The page comments on single elements, which viewers do too. */
+  /** The page comments on single elements and on points of the canvas, which viewers do too. */
   canComment?: boolean
   /** A selected element is not locked yet: «Закрепить» is offered. */
   canLock?: boolean
@@ -64,7 +65,7 @@ export interface MenuAvailability {
 }
 
 /** Items of a participant who may only view the board. */
-const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll', 'comment'])
+const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll', 'comment', 'commentHere'])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
 const CHANGING_COMMANDS = new Set<MenuCommand>([
@@ -110,6 +111,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
       ['undo', 'Отменить', 'Mod+Z'],
       ['redo', 'Повторить', 'Mod+Shift+Z'],
     ],
+    [['commentHere', 'Комментировать здесь']],
   ],
   shape: [[EDIT_LABEL], CLIPBOARD, ORDER, LOCK, COMMENT, [DELETE]],
   table: [
@@ -166,7 +168,12 @@ export function menuItems(
     redo: !canRedo,
     group: !canGroup,
   }
-  const offered: Partial<Record<MenuCommand, boolean>> = { comment: canComment, lock: canLock, unlock: canUnlock }
+  const offered: Partial<Record<MenuCommand, boolean>> = {
+    comment: canComment,
+    commentHere: canComment,
+    lock: canLock,
+    unlock: canUnlock,
+  }
   const groups = MENUS[target]
     .map((group) =>
       group.filter(([command]) => (!readOnly || VIEWING_COMMANDS.has(command)) && (offered[command] ?? true)),

@@ -52,7 +52,17 @@ class CommentController(private val boards: BoardService, private val comments: 
         val board = participatedBoard(id, principal)
         checkCellId("pageId", request.pageId)
         request.cellId?.let { checkCellId("cellId", it) }
-        val thread = comments.start(board, principal.userId, request.pageId, request.cellId, text(request.body), mentions(request.mentions))
+        request.point?.let(::checkPoint)
+        if (request.cellId != null && request.point != null) badRequest("A thread is about an element or at a point, not both")
+        val thread = comments.start(
+            board,
+            principal.userId,
+            request.pageId,
+            request.cellId,
+            request.point,
+            text(request.body),
+            mentions(request.mentions),
+        )
         return ResponseEntity.created(URI.create("/api/boards/${board.id}/threads/${thread.id}")).body(thread)
     }
 
@@ -69,14 +79,19 @@ class CommentController(private val boards: BoardService, private val comments: 
         return ResponseEntity.status(HttpStatus.CREATED).body(thread)
     }
 
-    /** Marks the thread resolved or open again. */
+    /** Marks the thread resolved or open again, or moves a thread that stands at a point; returns the whole thread. */
     @PatchMapping("/threads/{threadId}")
-    fun resolve(
+    fun change(
         @PathVariable id: String,
         @PathVariable threadId: String,
-        @RequestBody request: ResolveThreadRequest,
+        @RequestBody request: ChangeThreadRequest,
         @AuthenticationPrincipal principal: OAuth2User,
-    ): CommentThread = comments.resolve(participatedBoard(id, principal), parse(threadId), principal.userId, request.resolved)
+    ): CommentThread {
+        val board = participatedBoard(id, principal)
+        if (request.resolved == null && request.point == null) badRequest("Nothing to change: no resolved and no point")
+        request.point?.let(::checkPoint)
+        return comments.change(board, parse(threadId), principal.userId, request.resolved, request.point)
+    }
 
     @PatchMapping("/threads/{threadId}/comments/{commentId}")
     fun edit(
@@ -116,6 +131,10 @@ class CommentController(private val boards: BoardService, private val comments: 
         ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.message)
 
     @ExceptionHandler
+    fun notAtPoint(exception: ThreadNotAtPointException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.message)
+
+    @ExceptionHandler
     fun limitReached(exception: CommentLimitReachedException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.message).apply {
             title = "Comment limit reached"
@@ -129,6 +148,13 @@ class CommentController(private val boards: BoardService, private val comments: 
 
     private fun checkCellId(name: String, value: String) {
         if (value.length !in 1..ID_MAX_LENGTH) badRequest("$name must have 1 to $ID_MAX_LENGTH characters")
+    }
+
+    /** A point on the page, as far as the schema keeps it; NaN and the infinities are out of range too. */
+    private fun checkPoint(point: ThreadPoint) {
+        if (point.x !in -POINT_MAX..POINT_MAX || point.y !in -POINT_MAX..POINT_MAX) {
+            badRequest("A point has coordinates from ${-POINT_MAX} to $POINT_MAX")
+        }
     }
 
     /** The text without the blanks around it. */
@@ -149,13 +175,16 @@ class CommentController(private val boards: BoardService, private val comments: 
         const val ID_MAX_LENGTH = 100
         const val BODY_MAX_LENGTH = 4000
         const val MENTIONS_MAX = 50
+        const val POINT_MAX = 1_000_000.0
     }
 }
 
 data class StartThreadRequest(
     val pageId: String,
-    /** The element the thread is about; none for a thread about the page. */
+    /** The element the thread is about; none for a thread at a point or about the page. */
     val cellId: String? = null,
+    /** The point of the page the thread stands at; none for a thread about an element or about the page. */
+    val point: ThreadPoint? = null,
     val body: String,
     /** Users the comment mentions; those who cannot open the board are dropped. */
     val mentions: List<UUID> = emptyList(),
@@ -166,4 +195,8 @@ data class CommentRequest(
     val mentions: List<UUID> = emptyList(),
 )
 
-data class ResolveThreadRequest(val resolved: Boolean)
+/** What changes in a thread: whether it is resolved, where it stands; what is not set stays. */
+data class ChangeThreadRequest(
+    val resolved: Boolean? = null,
+    val point: ThreadPoint? = null,
+)

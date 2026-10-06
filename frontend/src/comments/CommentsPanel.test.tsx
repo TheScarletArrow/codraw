@@ -34,6 +34,7 @@ const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread
   id,
   pageId: 'page-1',
   cellId: 'api',
+  point: null,
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,
@@ -67,11 +68,22 @@ interface Setup {
   userId?: string
   isOwner?: boolean
   draft?: ThreadDraft | null
+  /** A draft that the button «Другой черновик» puts in place of the current one, as the page of the board does. */
+  nextDraft?: ThreadDraft
   focus?: ThreadFocus | null
   document?: Y.Doc
 }
 
-function renderPanel({ threads, responses = {}, userId = 'alice', isOwner = true, draft = null, focus = null, document = boardDocument() }: Setup) {
+function renderPanel({
+  threads,
+  responses = {},
+  userId = 'alice',
+  isOwner = true,
+  draft = null,
+  nextDraft,
+  focus = null,
+  document = boardDocument(),
+}: Setup) {
   const fetchMock = mockFetch({
     [`GET ${threadsUrl}`]: threads.some((entry) => !('id' in entry)) ? (threads as MockResponse[]) : { body: threads },
     [`GET /api/boards/${boardId}/people`]: { body: [alice, bob] },
@@ -80,26 +92,35 @@ function renderPanel({ threads, responses = {}, userId = 'alice', isOwner = true
   const onShow = vi.fn()
   const onChanged = vi.fn()
   const onClose = vi.fn()
+  const onFilterChange = vi.fn()
   function Panel() {
     const threads = useThreads(boardId)
     const [current, setDraft] = useState(draft)
     return (
-      <CommentsPanel
-        boardId={boardId}
-        userId={userId}
-        isOwner={isOwner}
-        threads={threads.data}
-        failed={threads.isError}
-        pages={pages}
-        currentPageId="page-1"
-        document={document}
-        draft={current}
-        onDraftChange={setDraft}
-        focus={focus}
-        onShow={onShow}
-        onChanged={onChanged}
-        onClose={onClose}
-      />
+      <>
+        {nextDraft && (
+          <button type="button" onClick={() => setDraft(nextDraft)}>
+            Другой черновик
+          </button>
+        )}
+        <CommentsPanel
+          boardId={boardId}
+          userId={userId}
+          isOwner={isOwner}
+          threads={threads.data}
+          failed={threads.isError}
+          pages={pages}
+          currentPageId="page-1"
+          document={document}
+          draft={current}
+          onDraftChange={setDraft}
+          focus={focus}
+          onFilterChange={onFilterChange}
+          onShow={onShow}
+          onChanged={onChanged}
+          onClose={onClose}
+        />
+      </>
     )
   }
   const queryClient = createQueryClient()
@@ -109,7 +130,7 @@ function renderPanel({ threads, responses = {}, userId = 'alice', isOwner = true
       <Panel />
     </QueryClientProvider>,
   )
-  return { fetchMock, onShow, onChanged, onClose, document }
+  return { fetchMock, onShow, onChanged, onClose, onFilterChange, document }
 }
 
 const requestsOf = (fetchMock: ReturnType<typeof mockFetch>, method: string, url: string) =>
@@ -183,7 +204,7 @@ describe('CommentsPanel', () => {
     const created = thread('new', { comments: [comment('n', alice, 'Новая')] })
     const { fetchMock, onChanged } = renderPanel({
       threads: [{ body: [] }, { body: [created] }],
-      draft: { pageId: 'page-1', cellId: 'api' },
+      draft: { pageId: 'page-1', cellId: 'api', point: null },
       responses: { [`POST ${threadsUrl}`]: { status: 201, body: created } },
     })
     const draft = await screen.findByRole('group', { name: 'Новая ветка' })
@@ -194,9 +215,50 @@ describe('CommentsPanel', () => {
     await userEvent.type(field, 'Новая{Enter}')
 
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Новая ветка' })).toBeNull())
-    expect(bodyOf(fetchMock, 'POST', threadsUrl)).toEqual({ pageId: 'page-1', cellId: 'api', body: 'Новая', mentions: [] })
+    expect(bodyOf(fetchMock, 'POST', threadsUrl)).toEqual({
+      pageId: 'page-1',
+      cellId: 'api',
+      point: null,
+      body: 'Новая',
+      mentions: [],
+    })
     expect(onChanged).toHaveBeenCalled()
     expect(await screen.findByRole('article', { name: 'Ветка: «API»' })).toHaveTextContent('Новая')
+  })
+
+  it('starts a thread at a point, keeping what was typed when the point moves', async () => {
+    const created = thread('new', { cellId: null, point: { x: 40, y: 50 }, comments: [comment('n', alice, 'Сюда кэш')] })
+    const { fetchMock } = renderPanel({
+      threads: [{ body: [] }, { body: [created] }],
+      draft: { pageId: 'page-1', cellId: null, point: { x: 10, y: 20 } },
+      nextDraft: { pageId: 'page-1', cellId: null, point: { x: 40, y: 50 } },
+      responses: { [`POST ${threadsUrl}`]: { status: 201, body: created } },
+    })
+    const draft = await screen.findByRole('group', { name: 'Новая ветка' })
+    expect(draft).toHaveTextContent('Новая ветка: Место на холсте')
+    await userEvent.type(within(draft).getByRole('combobox', { name: 'Новый комментарий' }), 'Сюда кэш')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Другой черновик' }))
+    await userEvent.type(screen.getByRole('combobox', { name: 'Новый комментарий' }), '{Enter}')
+
+    await waitFor(() => expect(requestsOf(fetchMock, 'POST', threadsUrl)).toHaveLength(1))
+    expect(bodyOf(fetchMock, 'POST', threadsUrl)).toEqual({
+      pageId: 'page-1',
+      cellId: null,
+      point: { x: 40, y: 50 },
+      body: 'Сюда кэш',
+      mentions: [],
+    })
+    expect(await screen.findByRole('article', { name: 'Ветка: Место на холсте' })).toHaveTextContent('Сюда кэш')
+  })
+
+  it('tells the page which threads it shows', async () => {
+    const { onFilterChange } = renderPanel({ threads: [] })
+    await waitFor(() => expect(onFilterChange).toHaveBeenLastCalledWith('open'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Решённые' }))
+
+    expect(onFilterChange).toHaveBeenLastCalledWith('resolved')
   })
 
   it('starts a thread about the current page', async () => {

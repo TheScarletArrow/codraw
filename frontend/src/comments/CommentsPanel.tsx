@@ -12,6 +12,7 @@ import {
   type Comment,
   type CommentText,
   type CommentThread,
+  type ThreadPoint,
 } from '../api/comments.ts'
 import { CommentComposer } from './CommentComposer.tsx'
 import { ThreadCard, type ThreadActions } from './ThreadCard.tsx'
@@ -26,11 +27,19 @@ import {
 } from './threads.ts'
 import { useCellInfo, useCommentChange, usePeople } from './useComments.ts'
 
-/** What a new thread will be about: an element of a page, or the page when `cellId` is `null`. */
+/** What a new thread will be about: an element of a page, a point of it, or the page when neither is set. */
 export interface ThreadDraft {
   pageId: string
   cellId: string | null
+  point: ThreadPoint | null
 }
+
+/**
+ * The field of a new thread stays while the draft keeps its page and its element, or stands at a point anywhere: a new
+ * point moves the draft and keeps what was typed.
+ */
+const draftKey = ({ pageId, cellId, point }: ThreadDraft) =>
+  `${pageId}:${cellId !== null ? `cell:${cellId}` : point ? 'point' : 'page'}`
 
 const FILTERS: [ThreadFilter, string][] = [
   ['open', 'Открытые'],
@@ -39,7 +48,7 @@ const FILTERS: [ThreadFilter, string][] = [
 ]
 
 const EMPTY: Record<ThreadFilter, string> = {
-  open: 'Открытых веток нет. Щёлкните правой кнопкой по элементу и выберите «Комментировать».',
+  open: 'Открытых веток нет. Щёлкните правой кнопкой по элементу или по пустому месту и выберите «Комментировать».',
   resolved: 'Решённых веток нет.',
   mentions: 'Вас пока никто не упомянул.',
 }
@@ -58,7 +67,9 @@ interface CommentsPanelProps {
   draft: ThreadDraft | null
   onDraftChange: (draft: ThreadDraft | null) => void
   focus: ThreadFocus | null
-  /** Goes to the page of the thread and to its element. */
+  /** Learns which threads the panel shows, e.g. to show the marks of resolved threads on the canvas with them. */
+  onFilterChange?: (filter: ThreadFilter) => void
+  /** Goes to the page of the thread and to its element or its point. */
   onShow: (thread: CommentThread) => void
   /** Tells the other participants that the comments changed. */
   onChanged: () => void
@@ -81,11 +92,13 @@ export function CommentsPanel({
   draft,
   onDraftChange,
   focus,
+  onFilterChange,
   onShow,
   onChanged,
   onClose,
 }: CommentsPanelProps) {
   const [filter, setFilter] = useState<ThreadFilter>('open')
+  useEffect(() => onFilterChange?.(filter), [filter, onFilterChange])
   // A new thread and the threads of an element from its badge come into view among the open ones, a thread from a
   // notification among those it belongs to, once the threads are known.
   const loaded = threads !== undefined
@@ -165,7 +178,7 @@ export function CommentsPanel({
               Новая ветка: <span className="font-medium text-foreground">{draftTarget.label}</span>
             </p>
             <CommentComposer
-              key={`${draft.pageId}:${draft.cellId}`}
+              key={draftKey(draft)}
               people={people}
               label="Новый комментарий"
               placeholder="Комментарий… @ — упомянуть"
@@ -183,7 +196,7 @@ export function CommentsPanel({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => onDraftChange({ pageId: currentPageId, cellId: null })}
+              onClick={() => onDraftChange({ pageId: currentPageId, cellId: null, point: null })}
             >
               <MessageSquarePlus />
               Комментарий к странице

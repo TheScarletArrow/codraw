@@ -98,6 +98,108 @@ class CommentApiTest(
     }
 
     @Test
+    fun `a thread stands at a point of its page, also one a viewer starts`() {
+        setLinkAccess(board, "view")
+        open(board, bob)
+
+        val thread = start(board, bob, cellId = null, point = 300.5 to -120.0, body = "Сюда нужен кэш")
+
+        threads(board, alice).andExpect {
+            jsonPath("$[0].id") { value(thread) }
+            jsonPath("$[0].cellId") { value(nullValue()) }
+            jsonPath("$[0].point.x") { value(300.5) }
+            jsonPath("$[0].point.y") { value(-120.0) }
+        }
+    }
+
+    @Test
+    fun `threads about elements and pages have no point`() {
+        start(board, alice, cellId = "a")
+        start(board, alice, cellId = null)
+
+        threads(board, alice).andExpect { jsonPath("$[*].point") { value(contains(nullValue(), nullValue())) } }
+    }
+
+    @Test
+    fun `a thread is about an element or at a point, not both, and the point is a point of a page`() {
+        val thread = { body: String -> post("/api/boards/$board/threads", alice, body) }
+
+        thread("""{"pageId": "page-1", "cellId": "cell-1", "point": {"x": 1, "y": 2}, "body": "Текст"}""")
+            .andExpect { status { isBadRequest() } }
+        thread("""{"pageId": "page-1", "point": {"x": 1}, "body": "Текст"}""").andExpect { status { isBadRequest() } }
+        thread("""{"pageId": "page-1", "point": {"x": 1000001, "y": 0}, "body": "Текст"}""")
+            .andExpect { status { isBadRequest() } }
+        thread("""{"pageId": "page-1", "point": {"x": 0, "y": -1e9}, "body": "Текст"}""").andExpect { status { isBadRequest() } }
+
+        threads(board, alice).andExpect { jsonPath("$") { value(empty<Any>()) } }
+    }
+
+    @Test
+    fun `the author of a thread and the owner of the board move its point, nobody else`() {
+        open(board, bob)
+        open(board, carol)
+        val thread = start(board, bob, cellId = null, point = 10.0 to 20.0)
+        replyId(board, thread, carol, "Ответ Кэрол")
+
+        move(board, thread, carol, """{"x": 0, "y": 0}""").andExpect { status { isForbidden() } }
+        move(board, thread, bob, """{"x": 40.25, "y": 60}""").andExpect {
+            status { isOk() }
+            jsonPath("$.point.x") { value(40.25) }
+            jsonPath("$.point.y") { value(60.0) }
+            jsonPath("$.comments") { value(hasSize<Any>(2)) }
+        }
+        move(board, thread, alice, """{"x": -5, "y": 7}""").andExpect { status { isOk() } }
+
+        threads(board, carol).andExpect {
+            jsonPath("$[0].point.x") { value(-5.0) }
+            jsonPath("$[0].point.y") { value(7.0) }
+        }
+    }
+
+    @Test
+    fun `a thread about an element or a page has no point to move`() {
+        val aboutElement = start(board, alice, cellId = "cell-1")
+        val aboutPage = start(board, alice, cellId = null)
+
+        move(board, aboutElement, alice, """{"x": 1, "y": 2}""").andExpect { status { isConflict() } }
+        move(board, aboutPage, alice, """{"x": 1, "y": 2}""").andExpect { status { isConflict() } }
+
+        threads(board, alice).andExpect { jsonPath("$[*].point") { value(contains(nullValue(), nullValue())) } }
+    }
+
+    @Test
+    fun `a change of a thread needs something to change and a point of a page`() {
+        val thread = start(board, alice, cellId = null, point = 1.0 to 2.0)
+
+        change(board, thread, alice, "{}").andExpect { status { isBadRequest() } }
+        move(board, thread, alice, """{"x": 1, "y": 2000000}""").andExpect { status { isBadRequest() } }
+
+        threads(board, alice).andExpect { jsonPath("$[0].point.y") { value(2.0) } }
+    }
+
+    @Test
+    fun `a thread is resolved and moved in one change`() {
+        val thread = start(board, alice, cellId = null, point = 1.0 to 2.0)
+
+        change(board, thread, alice, """{"resolved": true, "point": {"x": 3, "y": 4}}""").andExpect {
+            status { isOk() }
+            jsonPath("$.resolvedBy.name") { value("Alice") }
+            jsonPath("$.point.x") { value(3.0) }
+        }
+    }
+
+    @Test
+    fun `a guest who signs in moves the threads they started`() {
+        val guest = users.createGuest()
+        open(board, guest)
+        val thread = start(board, guest, cellId = null, point = 1.0 to 2.0)
+
+        val dave = users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Dave", "Dave", null), guest.id)
+
+        move(board, thread, dave, """{"x": 5, "y": 6}""").andExpect { status { isOk() } }
+    }
+
+    @Test
     fun `a viewer comments, since comments do not change the diagram`() {
         setLinkAccess(board, "view")
         open(board, bob)
@@ -369,10 +471,17 @@ class CommentApiTest(
         user: User,
         pageId: String = "page-1",
         cellId: String? = "cell-1",
+        point: Pair<Double, Double>? = null,
         body: String = "Комментарий",
         mentions: List<User> = emptyList(),
     ): String {
-        val request = mapOf("pageId" to pageId, "cellId" to cellId, "body" to body, "mentions" to mentions.map { it.id })
+        val request = mapOf(
+            "pageId" to pageId,
+            "cellId" to cellId,
+            "point" to point?.let { (x, y) -> mapOf("x" to x, "y" to y) },
+            "body" to body,
+            "mentions" to mentions.map { it.id },
+        )
         val response = post("/api/boards/$board/threads", user, json.writeValueAsString(request))
             .andExpect { status { isCreated() } }
             .andReturn().response
@@ -408,11 +517,16 @@ class CommentApiTest(
         }
 
     private fun resolve(board: String, thread: String, user: User, resolved: Boolean) =
+        change(board, thread, user, """{"resolved": $resolved}""")
+
+    private fun move(board: String, thread: String, user: User, point: String) = change(board, thread, user, """{"point": $point}""")
+
+    private fun change(board: String, thread: String, user: User, body: String) =
         mockMvc.patch("/api/boards/$board/threads/$thread") {
             with(user.session())
             with(csrf())
             contentType = MediaType.APPLICATION_JSON
-            content = """{"resolved": $resolved}"""
+            content = body
         }
 
     private fun threads(board: String, user: User): ResultActionsDsl = mockMvc.get("/api/boards/$board/threads") { with(user.session()) }

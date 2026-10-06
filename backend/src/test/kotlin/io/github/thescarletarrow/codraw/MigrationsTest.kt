@@ -31,6 +31,7 @@ class MigrationsTest {
         private val membersTables = embedTables + setOf("board_members", "board_invites")
         private val accessRequestsTables = membersTables + "board_access_requests"
         private val notificationsTables = accessRequestsTables + "notifications"
+        private val threadColumns = setOf("id", "board_id", "page_id", "cell_id", "resolved_at", "resolved_by", "created_at")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -42,10 +43,14 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V10 create tables on an empty database and U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(10, flyway().migrate().migrationsExecuted)
+    fun `V1 to V11 create tables on an empty database and U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(11, flyway().migrate().migrationsExecuted)
         assertEquals(notificationsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+        assertEquals(threadColumns + setOf("x", "y"), columns("comment_threads"))
+
+        revert("U11__claude_epic_lovelace_pwi6v4_point_comments.sql")
+        assertEquals(threadColumns, columns("comment_threads"))
 
         revert("U10__claude_epic_lovelace_pwi6v4_notifications.sql")
         assertEquals(accessRequestsTables, appTables())
@@ -78,8 +83,9 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(10, flyway().migrate().migrationsExecuted)
+        assertEquals(11, flyway().migrate().migrationsExecuted)
         assertEquals(notificationsTables, appTables())
+        assertEquals(threadColumns + setOf("x", "y"), columns("comment_threads"))
     }
 
     @Test
@@ -351,6 +357,38 @@ class MigrationsTest {
     }
 
     @Test
+    fun `V11 keeps the threads of a database and gives a thread a whole point within range or none, never with an element`() {
+        flyway("10").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO comment_threads (id, board_id, page_id, cell_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-000000000001', 'page-1', 'cell-1', now()),
+                   ('0199a000-0000-7000-8000-000000000102', '0199a000-0000-7000-8000-000000000001', 'page-1', NULL, now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("11").migrate().migrationsExecuted)
+
+        assertEquals(2, jdbcClient.sql("SELECT count(*) FROM comment_threads WHERE x IS NULL AND y IS NULL").query(Int::class.java).single())
+        // SQL literals: NULL, NaN and the infinities as PostgreSQL reads them.
+        val point = { x: String, y: String ->
+            jdbcClient.sql("UPDATE comment_threads SET x = $x, y = $y WHERE id = '0199a000-0000-7000-8000-000000000102'").update()
+        }
+        point("-1000000", "1000000")
+        assertFailsWith<DataIntegrityViolationException> { point("10", "NULL") }
+        assertFailsWith<DataIntegrityViolationException> { point("1000000.5", "0") }
+        assertFailsWith<DataIntegrityViolationException> { point("'NaN'", "0") }
+        assertFailsWith<DataIntegrityViolationException> { point("0", "'-Infinity'") }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE comment_threads SET x = 1, y = 2 WHERE id = '0199a000-0000-7000-8000-000000000101'").update()
+        }
+    }
+
+    @Test
     fun `V4 keeps existing boards editable through their links and accepts only known link access`() {
         flyway("3").migrate()
         jdbcClient.sql(
@@ -386,6 +424,10 @@ class MigrationsTest {
     private fun boardColumns(): Set<String> = jdbcClient.sql(
         "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'boards'",
     ).query(String::class.java).list().filterNotNull().toSet()
+
+    private fun columns(table: String): Set<String> = jdbcClient.sql(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :table",
+    ).param("table", table).query(String::class.java).list().filterNotNull().toSet()
 
     private fun appTables(): Set<String> = jdbcClient.sql(
         "SELECT table_name FROM information_schema.tables " +

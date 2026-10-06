@@ -174,6 +174,7 @@ describe('shortcutLabel', () => {
     const viewing = { ...all, readOnly: true }
 
     expect(labels('canvas', viewing)).toEqual(['Выделить всё'])
+    expect(labels('canvas', { ...viewing, canComment: true })).toEqual(['Выделить всё', 'Комментировать здесь'])
     expect(labels('shape', viewing)).toEqual(['Копировать'])
     expect(labels('table', viewing)).toEqual(['Копировать'])
     expect(labels('selection', viewing)).toEqual(['Копировать'])
@@ -194,6 +195,17 @@ describe('shortcutLabel', () => {
     expect(labels('canvas', commenting)).not.toContain('Комментировать')
     expect(labels('selection', commenting)).not.toContain('Комментировать')
     expect(labels('shape', all)).not.toContain('Комментировать')
+  })
+
+  it('offers commenting on the point of the click at the end of the menu of the empty canvas, when the page takes comments', () => {
+    const items = menuItems('canvas', { ...all, canComment: true })
+
+    expect(items.map((item) => item.label)).toEqual(['Вставить', 'Выделить всё', 'Отменить', 'Повторить', 'Комментировать здесь'])
+    expect(items.at(-1)).toMatchObject({ command: 'commentHere', separatorBefore: true, disabled: false })
+    expect(labels('canvas', all)).not.toContain('Комментировать здесь')
+    for (const target of ['shape', 'table', 'field', 'index', 'edge', 'group', 'selection'] as const) {
+      expect(labels(target, { ...all, canComment: true })).not.toContain('Комментировать здесь')
+    }
   })
 
   it('lets a participant who may only view comment, also on a field or an edge', () => {

@@ -317,6 +317,8 @@ export interface EditorState {
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
   laser: boolean
+  /** The comment tool is on: a click on the canvas places a comment instead of selecting anything. */
+  commentTool: boolean
   /** How the selection is locked, or `null` when nothing is selected. */
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
@@ -485,12 +487,21 @@ export interface DiagramEditor {
   onPointerMove(listener: (point: Point | null) => void): () => void
   /**
    * Turns the laser pointer on or off. While it is on, dragging with the main button selects, moves, connects and edits
-   * nothing and is reported by {@link onLaser}; the right button and the wheel work as before. A participant who may
-   * only view has it too: it changes nothing.
+   * nothing and is reported by {@link onLaser}; the right button and the wheel work as before. Turning it on turns the
+   * comment tool off. A participant who may only view has it too: it changes nothing.
    */
   setLaser(on: boolean): void
   /** Reports the points of a drag with the laser pointer in diagram coordinates, and `null` when it is released. */
   onLaser(listener: (point: Point | null) => void): () => void
+  /**
+   * Turns the comment tool on or off. While it is on, a click with the main button selects, moves, connects and edits
+   * nothing and is reported by {@link onCommentPoint}; the right button and the wheel work as before. The laser pointer
+   * and the comment tool take the main button in turns: turning one on turns the other off. A participant who may only
+   * view has it too: comments do not change the page.
+   */
+  setCommentTool(on: boolean): void
+  /** Reports the point of each click with the comment tool, where the button was released, in diagram coordinates. */
+  onCommentPoint(listener: (point: Point) => void): () => void
   /** Reports the ids of the selected cells whenever the selection changes. */
   onSelectionChange(listener: (ids: string[]) => void): () => void
   /** Reports that the picture on the screen moved: scrolling, zooming or changed cells. */
@@ -597,8 +608,9 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Mod+A', editing: false, run: (editor) => editor.selectAll() },
   // The scale is the participant's own, so a participant who may only view fits the page too.
   { keys: 'Mod+Shift+H', editing: false, run: (editor) => editor.zoomToFit() },
-  // The laser pointer changes nothing either.
+  // The laser pointer changes nothing either, and participants who may only view comment too.
   { keys: 'K', editing: false, run: (editor) => editor.setLaser(!editor.getState().laser) },
+  { keys: 'C', editing: false, run: (editor) => editor.setCommentTool(!editor.getState().commentTool) },
   { keys: 'Delete', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Backspace', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Mod+Z', editing: true, run: (editor) => editor.undo() },
@@ -636,11 +648,14 @@ function bindKey(keyHandler: KeyHandler, { keys, run }: KeyBinding, editor: () =
   else keyHandler.bindKey(code, action)
 }
 
-/** Class of the canvas while the laser pointer is on: its pointer is a crosshair over everything. */
-const LASER_CLASS = 'laser-pointer'
+/** A tool of the canvas that takes the main button from maxGraph: the laser pointer or the comment tool. */
+type CanvasTool = 'laser' | 'comment'
 
-/** Events of the canvas that the laser pointer keeps from maxGraph, besides the press that starts its stroke. */
-const LASER_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
+/** Classes of the canvas while a tool is on: its pointer is a crosshair over everything. */
+const TOOL_CLASSES: Record<CanvasTool, string> = { laser: 'laser-pointer', comment: 'comment-tool' }
+
+/** Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes. */
+const TOOL_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
 
 /** Bit of the right button in `MouseEvent.buttons`. */
 const RIGHT_BUTTON_BIT = 2
@@ -1176,8 +1191,8 @@ export function createDiagramEditor(
   }
   model.addListener(InternalEvent.END_EDIT, syncBases)
 
-  /** The laser pointer is on; see the listeners of the laser pointer below. */
-  let laser = false
+  /** The tool that takes the main button, or `null` for selecting and editing; see the listeners of the tools below. */
+  let tool: CanvasTool | null = null
   const readState = (): EditorState => {
     const edges = selectedEdges()
     return {
@@ -1194,8 +1209,8 @@ export function createDiagramEditor(
       line: selectionLine(),
       text: selectionText(),
       geometry: selectionGeometry(),
-      // A press next to a shape with the laser pointer must not add a connected shape.
-      quickConnect: readOnly || laser ? null : quickConnect(),
+      // A press next to a shape with a tool must not add a connected shape.
+      quickConnect: readOnly || tool ? null : quickConnect(),
       canPaste: !readOnly && (clipboard.read() !== null || canReadSystemClipboard()),
       arrange: geometryCells().length,
       canGroup: !readOnly && canGroup(),
@@ -1203,7 +1218,8 @@ export function createDiagramEditor(
       hasCells: graph.getDefaultParent().getChildCount() > 0,
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex()),
       layoutSelection: selectedLayoutCells().length >= 2,
-      laser,
+      laser: tool === 'laser',
+      commentTool: tool === 'comment',
       lock: selectionLock(),
       attribution: selectionAttribution(),
     }
@@ -1243,7 +1259,7 @@ export function createDiagramEditor(
     tooltips.getTooltip = ({ cell }) => {
       const id = cell.getId()
       const onlySelected = graph.getSelectionCount() === 1 && graph.isCellSelected(cell)
-      const attribution = id && !laser && !onlySelected ? readAttribution(cells.get(id)) : null
+      const attribution = id && !tool && !onlySelected ? readAttribution(cells.get(id)) : null
       if (!attribution) return null
       const tip = container.ownerDocument.createElement('span')
       tip.textContent = attributionLabel(attribution, Date.now(), isMine(attribution))
@@ -1364,11 +1380,11 @@ export function createDiagramEditor(
   container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
 
-  // The laser pointer. While it is on, the main button draws a trail, and its presses, releases and double clicks never
-  // reach maxGraph, which listens to pointer events, or to mouse events on macOS: nothing is selected, moved, connected
-  // or edited. Moves do not reach it either, so that it shows no connection points under the pointer; the listener of
-  // the cursor above comes first and still gets them. The right button still pans and opens the menu, and the wheel
-  // still scrolls and zooms.
+  // The tools. While the laser pointer or the comment tool is on, the main button draws a trail or places a comment, and
+  // its presses, releases and double clicks never reach maxGraph, which listens to pointer events, or to mouse events
+  // on macOS: nothing is selected, moved, connected or edited. Moves do not reach it either, so that it shows no
+  // connection points under the pointer; the listener of the cursor above comes first and still gets them. The right
+  // button still pans and opens the menu, and the wheel still scrolls and zooms.
   const laserListeners = new Set<(point: Point | null) => void>()
   let drawingLaser = false
   const drawLaser = (event: PointerEvent) => {
@@ -1384,10 +1400,6 @@ export function createDiagramEditor(
     laserListeners.forEach((listener) => listener(null))
   }
   const startLaserStroke = (event: PointerEvent) => {
-    if (!laser || event.button !== 0) return
-    // Cancelling the press also keeps the browser from firing the mouse events of the press and from selecting text.
-    event.stopImmediatePropagation()
-    event.preventDefault()
     endLaserStroke()
     drawingLaser = true
     // The stroke goes on beyond the canvas until the button is released anywhere.
@@ -1396,20 +1408,52 @@ export function createDiagramEditor(
     page.addEventListener('pointercancel', endLaserStroke, true)
     drawLaser(event)
   }
-  const stopForLaser = (event: MouseEvent) => {
-    if (!laser) return
+  const commentListeners = new Set<(point: Point) => void>()
+  /** The main button was pressed on the canvas with the comment tool: its release places a comment. */
+  let pressedForComment = false
+  const pressWithTool = (event: PointerEvent) => {
+    if (!tool || event.button !== 0) return
+    // Cancelling the press also keeps the browser from firing the mouse events of the press and from selecting text.
+    event.stopImmediatePropagation()
+    event.preventDefault()
+    if (tool === 'laser') startLaserStroke(event)
+    else pressedForComment = true
+  }
+  // The release, not the press: the canvas takes the keyboard on the press, and the field of the new comment that the
+  // page shows then keeps it, as no event of the click comes after the release to take it back.
+  const placeComment = (event: PointerEvent) => {
+    if (tool !== 'comment' || event.button !== 0 || !pressedForComment) return
+    pressedForComment = false
+    const point = toDiagramPoint(event.clientX, event.clientY)
+    commentListeners.forEach((listener) => listener(point))
+  }
+  const stopForTool = (event: MouseEvent) => {
+    if (!tool) return
     const move = event.type === 'pointermove' || event.type === 'mousemove'
     // Panning needs the moves with the right button, and the menu its press and release.
     if (move ? (event.buttons & RIGHT_BUTTON_BIT) !== 0 : event.button !== 0) return
     event.stopImmediatePropagation()
   }
-  container.addEventListener('pointerdown', startLaserStroke, true)
-  for (const type of LASER_STOPPED_EVENTS) container.addEventListener(type, stopForLaser, true)
-  // After the button of the toolbar the keyboard is with that button, where the key handler of maxGraph does not look.
-  const handleLaserKey = (event: KeyboardEvent) => {
-    if (laser && event.key === 'Escape') editor.setLaser(false)
+  container.addEventListener('pointerdown', pressWithTool, true)
+  // Before the listeners that keep the release from maxGraph, which stop it for the others.
+  container.addEventListener('pointerup', placeComment, true)
+  for (const type of TOOL_STOPPED_EVENTS) container.addEventListener(type, stopForTool, true)
+  /** Turns a tool on, which turns the other one off, or turns the tools off with `null`. */
+  const setTool = (next: CanvasTool | null) => {
+    if (next === tool) return
+    if (tool === 'laser') endLaserStroke()
+    pressedForComment = false
+    tool = next
+    for (const [name, className] of Object.entries(TOOL_CLASSES)) container.classList.toggle(className, name === next)
+    // A tool takes the pointer: who changed an element is not told over the canvas meanwhile.
+    if (next) tooltips?.hide()
+    notify()
   }
-  page.addEventListener('keydown', handleLaserKey)
+  // After a button of the toolbar the keyboard is with that button, where the key handler of maxGraph does not look.
+  const handleToolKey = (event: KeyboardEvent) => {
+    if (tool && event.key === 'Escape') setTool(null)
+  }
+  page.addEventListener('keydown', handleToolKey)
 
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const menuTarget = (): MenuTarget => {
@@ -2200,14 +2244,15 @@ export function createDiagramEditor(
     },
     onPointerMove: (listener) => listen(pointerListeners, listener),
     setLaser(on) {
-      if (on === laser) return
-      laser = on
-      if (!on) endLaserStroke()
-      container.classList.toggle(LASER_CLASS, on)
-      tooltips?.hide()
-      notify()
+      if (on) setTool('laser')
+      else if (tool === 'laser') setTool(null)
     },
     onLaser: (listener) => listen(laserListeners, listener),
+    setCommentTool(on) {
+      if (on) setTool('comment')
+      else if (tool === 'comment') setTool(null)
+    },
+    onCommentPoint: (listener) => listen(commentListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -2239,9 +2284,10 @@ export function createDiagramEditor(
       container.removeEventListener('pointermove', handlePointerMove, true)
       container.removeEventListener('pointerleave', handlePointerLeave)
       endLaserStroke()
-      container.removeEventListener('pointerdown', startLaserStroke, true)
-      for (const type of LASER_STOPPED_EVENTS) container.removeEventListener(type, stopForLaser, true)
-      page.removeEventListener('keydown', handleLaserKey)
+      container.removeEventListener('pointerdown', pressWithTool, true)
+      container.removeEventListener('pointerup', placeComment, true)
+      for (const type of TOOL_STOPPED_EVENTS) container.removeEventListener(type, stopForTool, true)
+      page.removeEventListener('keydown', handleToolKey)
       container.removeEventListener('scroll', notifyView)
       page.removeEventListener('copy', handleCopy)
       page.removeEventListener('cut', handleCut)
@@ -2264,6 +2310,7 @@ export function createDiagramEditor(
       listeners.clear()
       pointerListeners.clear()
       laserListeners.clear()
+      commentListeners.clear()
       selectionListeners.clear()
       menuListeners.clear()
       viewListeners.clear()
