@@ -20,6 +20,12 @@ interface VersionViewProps {
   unchanged?: string
   /** The id of the user who looks: who changed the selected element last says «(вы)» for their own changes. */
   participantId?: string
+  /** Reports the page the canvas shows, `null` without pages. */
+  onPageChange?: (pageId: string | null) => void
+  /** Reports the ids of the cells selected on the canvas, an empty list when the canvas changes. */
+  onSelectionChange?: (ids: string[]) => void
+  /** Brings an element of the list of changes back as the version has it; without it the list offers none. */
+  onRevert?: (target: ChangeTarget) => void
 }
 
 /** An element chosen in the list of changes, with the middle of its ghost when it was removed. */
@@ -36,7 +42,15 @@ interface Revealed extends ChangeTarget {
  * it. Nothing is written to either document. Under the canvas, as on the board, is who changed the selected element
  * last.
  */
-export function VersionView({ version, board, unchanged, participantId }: VersionViewProps) {
+export function VersionView({
+  version,
+  board,
+  unchanged,
+  participantId,
+  onPageChange,
+  onSelectionChange,
+  onRevert,
+}: VersionViewProps) {
   const versionPages = usePages(version, false)
   const boardPages = usePages(board, false)
   const diff = useBoardDiff(version, board)
@@ -54,6 +68,12 @@ export function VersionView({ version, board, unchanged, participantId }: Versio
     [diff],
   )
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
+  const shownPageId = currentPage?.id ?? null
+  useEffect(() => onPageChange?.(shownPageId), [onPageChange, shownPageId])
+  useEffect(() => {
+    onSelectionChange?.([])
+    return editor && onSelectionChange ? editor.onSelectionChange(onSelectionChange) : undefined
+  }, [editor, onSelectionChange])
 
   // Going to a change: switch to its page, then show its element once that page is shown.
   const [selected, setSelected] = useState<ChangeTarget | null>(null)
@@ -87,6 +107,7 @@ export function VersionView({ version, board, unchanged, participantId }: Versio
             currentPageId={currentPage?.id ?? null}
             selected={selected}
             onSelect={showChange}
+            onRevert={onRevert}
             unchanged={unchanged}
           />
         )}

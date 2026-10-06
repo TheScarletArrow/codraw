@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
+import { readAttribution, writeAttribution } from './attribution.ts'
+import { LOCKED_KEY } from './locks.ts'
 import {
+  DEFAULT_PAGE_ID,
   getCells,
   getMeta,
   getPages,
@@ -11,9 +14,10 @@ import {
   writeCell,
   type CellData,
 } from './model.ts'
+import { snapshotPage, type CellSnapshot } from './diff.ts'
 import { addPage, deletePage, listPages, renamePage } from './pages.ts'
-import { restoreDocument, RESTORE_ORIGIN } from './restore.ts'
-import { connect } from './testing.ts'
+import { cellsToRestore, restoreDocument, restorePage, RESTORE_ORIGIN, writeRestoredFields } from './restore.ts'
+import { boardWith, connect, edgeData, laterState, shapeData } from './testing.ts'
 
 const shape = (id: string, overrides: Partial<CellData> = {}): CellData => ({
   id,
@@ -129,5 +133,233 @@ describe('restoreDocument', () => {
     expect(getPages(live).has(extra)).toBe(false)
     expect(getCells(live, extra).size).toBe(0)
     expect(getMeta(live).get('schemaVersion')).toBe(getMeta(version).get('schemaVersion'))
+  })
+})
+
+describe('restorePage', () => {
+  /** A board with three pages, each with a shape, as it was saved in a version. */
+  function threePages() {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    writeCell(getCells(doc), shape('a'))
+    const schema = addPage(doc, undefined, 'Схема БД')
+    writeCell(getCells(doc, schema), shape('table'))
+    const notes = addPage(doc, undefined, 'Заметки')
+    writeCell(getCells(doc, notes), shape('note'))
+    return { doc, first: listPages(doc)[0]!.id, schema, notes }
+  }
+
+  it('makes the content of a page as the version has it and keeps its name, its place and the other pages', () => {
+    const { doc: live, first, schema } = threePages()
+    const version = copyOf(live)
+    live.transact(() => {
+      getCells(live, first).delete('a')
+      writeCell(getCells(live, first), shape('b'))
+      writeCell(getCells(live, schema), shape('added'))
+    })
+    renamePage(live, first, 'Новое имя')
+    const origins: unknown[] = []
+    live.on('afterTransaction', (transaction: Y.Transaction) => origins.push(transaction.origin))
+
+    expect(restorePage(live, version, first)).toBe(true)
+
+    expect(getCells(live, first).toJSON()).toEqual(getCells(version, first).toJSON())
+    expect(listPages(live).map((page) => page.name)).toEqual(['Новое имя', 'Схема БД', 'Заметки'])
+    expect(getCells(live, schema).has('added')).toBe(true)
+    expect(origins).toEqual([RESTORE_ORIGIN])
+  })
+
+  it('brings back the locks of the version and who changed its cells, as restoring a version does', () => {
+    const version = boardWith(shape('a'))
+    writeAttribution(getCells(version).get('a')!, { id: 'alice', name: 'Алиса' }, 1)
+    const live = laterState(version, (doc) => {
+      const entry = getCells(doc).get('a')!
+      entry.set('value', 'Redis')
+      ;(entry.get('style') as Y.Map<unknown>).set(LOCKED_KEY, true)
+      writeAttribution(entry, { id: 'bob', name: 'Боб' }, 2)
+    })
+
+    restorePage(live, version, DEFAULT_PAGE_ID)
+
+    const entry = getCells(live).get('a')!
+    expect(entry.get('value')).toBe('a')
+    expect((entry.get('style') as Y.Map<unknown>).has(LOCKED_KEY)).toBe(false)
+    expect(readAttribution(entry)).toEqual({ by: 'alice', name: 'Алиса', at: 1 })
+  })
+
+  it('brings back a deleted page with its name and in its place among the pages', () => {
+    const { doc: live, schema } = threePages()
+    const version = copyOf(live)
+    deletePage(live, schema)
+
+    restorePage(live, version, schema)
+
+    expect(listPages(live).map((page) => page.name)).toEqual(['Страница 1', 'Схема БД', 'Заметки'])
+    expect(getCells(live, schema).toJSON()).toEqual(getCells(version, schema).toJSON())
+    expect(getPages(live).get(schema)).toBeInstanceOf(Y.Map)
+  })
+
+  it('changes nothing for a page that the version does not have', () => {
+    const { doc: live } = threePages()
+    const version = copyOf(live)
+    const added = addPage(live, undefined, 'Новая')
+    const before = Y.encodeStateVector(live)
+
+    expect(restorePage(live, version, added)).toBe(false)
+
+    expect(Y.encodeStateVector(live)).toEqual(before)
+  })
+})
+
+describe('cellsToRestore', () => {
+  /** The cells of the default page of a board with these cells, as a version has them. */
+  const versionOf = (...cells: CellData[]) => snapshotPage(boardWith(...cells), DEFAULT_PAGE_ID)!.cells
+  const on = (...ids: string[]) => {
+    const page = new Set(ids)
+    return (id: string) => page.has(id)
+  }
+  const ids = (cells: CellSnapshot[]) => cells.map((cell) => cell.id)
+
+  /** A group at (100, 50) with a shape at (10, 20) inside it and an edge from the shape with a bend. */
+  const group = () => [
+    shapeData('group', 'a0', { geometry: { x: 100, y: 50, width: 300, height: 200 }, style: { fillColor: 'none', strokeColor: 'none' } }),
+    shapeData('inner', 'a0', { parent: 'group', geometry: { x: 10, y: 20, width: 120, height: 60 } }),
+    edgeData('loose', 'a1', 'inner', null, {
+      parent: 'group',
+      geometry: { x: 0, y: 0, width: 0, height: 0, relative: true, points: [{ x: 200, y: 50 }], targetPoint: { x: 250, y: 50 } },
+    }),
+  ]
+
+  it('brings back a cell with its descendants, parents before their children', () => {
+    const cells = versionOf(
+      shapeData('table', 'a0'),
+      shapeData('field-2', 'a1', { parent: 'table' }),
+      shapeData('field-1', 'a0', { parent: 'table' }),
+      shapeData('other', 'a1'),
+    )
+
+    const restored = cellsToRestore(cells, ['table'], on())
+
+    expect(ids(restored)).toEqual(['table', 'field-1', 'field-2'])
+    expect(restored[0]).toEqual(cells.get('table'))
+  })
+
+  it('brings the edges of the restored cells whose other end is on the page or restored, and no others', () => {
+    const cells = versionOf(
+      shapeData('a', 'a0'),
+      shapeData('b', 'a1'),
+      shapeData('c', 'a2'),
+      edgeData('a-b', 'a3', 'a', 'b'),
+      edgeData('a-c', 'a4', 'a', 'c'),
+      edgeData('b-c', 'a5', 'b', 'c'),
+    )
+
+    expect(ids(cellsToRestore(cells, ['a'], on('b')))).toEqual(['a', 'a-b'])
+    expect(ids(cellsToRestore(cells, ['a', 'c'], on('b')))).toEqual(['a', 'c', 'a-b', 'a-c', 'b-c'])
+    // A selected edge whose end is gone stays away, and so does its label.
+    const label = shapeData('label', 'a0', { parent: 'a-c', geometry: { x: 0, y: 0, width: 0, height: 0, relative: true } })
+    const labelled = versionOf(...cells.values(), label)
+    expect(ids(cellsToRestore(labelled, ['a-c', 'label'], on('a')))).toEqual([])
+  })
+
+  it('brings an edge with a loose end and the edges that end at a restored edge', () => {
+    const cells = versionOf(
+      shapeData('a', 'a0'),
+      edgeData('free', 'a1', 'a', null, { geometry: { x: 0, y: 0, width: 0, height: 0, relative: true, targetPoint: { x: 400, y: 0 } } }),
+      shapeData('b', 'a2'),
+      edgeData('to-edge', 'a3', 'b', 'free'),
+    )
+
+    expect(ids(cellsToRestore(cells, ['free'], on('a', 'b')))).toEqual(['free', 'to-edge'])
+    // Without its shape the edge goes, and so does the edge that ends at it.
+    expect(ids(cellsToRestore(cells, ['free', 'b'], on()))).toEqual(['b'])
+  })
+
+  it('keeps the parent of a cell when the page has it', () => {
+    const cells = versionOf(...group())
+
+    const [inner] = cellsToRestore(cells, ['inner'], on('group'))
+
+    expect(inner).toEqual(cells.get('inner'))
+  })
+
+  it('puts a cell whose parent is gone on the page, where the version had it', () => {
+    const cells = versionOf(...group())
+
+    const restored = cellsToRestore(cells, ['inner', 'loose'], on())
+
+    expect(restored.map((cell) => [cell.id, cell.parent])).toEqual([
+      ['inner', '1'],
+      ['loose', '1'],
+    ])
+    expect(restored[0]!.geometry).toEqual({ x: 110, y: 70, width: 120, height: 60 })
+    expect(restored[1]!.geometry).toMatchObject({ points: [{ x: 300, y: 100 }], targetPoint: { x: 350, y: 100 }, relative: true })
+  })
+
+  it('leaves out the label of an edge without its edge', () => {
+    const cells = versionOf(
+      shapeData('a', 'a0'),
+      shapeData('b', 'a1'),
+      edgeData('edge', 'a2', 'a', 'b'),
+      shapeData('label', 'a0', { parent: 'edge', value: 'FK', geometry: { x: -0.5, y: 0, width: 0, height: 0, relative: true } }),
+    )
+
+    expect(ids(cellsToRestore(cells, ['label'], on('a', 'b')))).toEqual([])
+    expect(ids(cellsToRestore(cells, ['label'], on('a', 'b', 'edge')))).toEqual(['label'])
+  })
+
+  it('ignores cells that the version does not have', () => {
+    expect(cellsToRestore(versionOf(shapeData('a', 'a0')), ['b', '1'], on())).toEqual([])
+  })
+
+  it('leaves what the page holds locked as it is, with what it holds, but brings the edges that end at it', () => {
+    const cells = versionOf(
+      shapeData('table', 'a0'),
+      shapeData('field-1', 'a0', { parent: 'table' }),
+      shapeData('field-2', 'a1', { parent: 'table' }),
+      shapeData('other', 'a1'),
+      edgeData('fk', 'a2', 'other', 'field-1'),
+      edgeData('table-edge', 'a3', 'table', 'b'),
+      shapeData('b', 'a4'),
+    )
+    const locked = on('table', 'field-1')
+
+    // A locked table stays as it is, its fields too, and so do its own edges.
+    expect(ids(cellsToRestore(cells, ['table'], on('table', 'field-1', 'b'), locked))).toEqual([])
+    // A field does not go back into a locked table.
+    expect(ids(cellsToRestore(cells, ['field-2'], on('table', 'field-1'), locked))).toEqual([])
+    // A shape comes back with its edge to the locked table.
+    expect(ids(cellsToRestore(cells, ['other'], on('table', 'field-1'), locked))).toEqual(['other', 'fk'])
+  })
+})
+
+describe('writeRestoredFields', () => {
+  it('writes the properties and the unknown fields of the version, leaving who changed the cell last', () => {
+    const doc = boardWith(shape('a'))
+    const entry = getCells(doc).get('a')!
+    writeAttrs(entry, { owner: 'billing', stale: 'yes' })
+    entry.set('note', 'later')
+    entry.set('modifiedBy', 'bob')
+    const version = snapshotPage(boardWith(shape('a')), DEFAULT_PAGE_ID)!.cells.get('a')!
+
+    doc.transact(() => writeRestoredFields(entry, { ...version, attrs: { owner: 'payments' }, extra: { layer: 'data', modifiedBy: 'alice' } }))
+
+    expect(entry.get('attrs')).toBeInstanceOf(Y.Map)
+    expect(readCell('a', entry).value).toBe('a')
+    expect((entry.get('attrs') as Y.Map<string>).toJSON()).toEqual({ owner: 'payments' })
+    expect(entry.get('layer')).toBe('data')
+    expect(entry.has('note')).toBe(false)
+    expect(entry.get('modifiedBy')).toBe('bob')
+  })
+
+  it('removes the properties that the version did not have', () => {
+    const doc = boardWith(shape('a'))
+    const entry = getCells(doc).get('a')!
+    writeAttrs(entry, { owner: 'billing' })
+    const version = snapshotPage(boardWith(shape('a')), DEFAULT_PAGE_ID)!.cells.get('a')!
+
+    doc.transact(() => writeRestoredFields(entry, version))
+
+    expect(entry.has('attrs')).toBe(false)
   })
 })

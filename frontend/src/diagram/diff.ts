@@ -104,15 +104,23 @@ export interface BoardDiff {
 /** Reads the pages and cells of a board document into plain data. */
 export function snapshotDocument(doc: Y.Doc): BoardSnapshot {
   const pages: BoardSnapshot = new Map()
-  getPages(doc).forEach((entry, id) => {
-    const cells = new Map<string, CellSnapshot>()
-    getCells(doc, id).forEach((cell, cellId) => {
-      if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID || !(cell instanceof Y.Map)) return
-      cells.set(cellId, snapshotCell(cellId, cell.toJSON() as Record<string, unknown>))
-    })
-    pages.set(id, { id, ...readPage(entry), cells })
-  })
+  getPages(doc).forEach((entry, id) => pages.set(id, { id, ...readPage(entry), cells: snapshotCells(doc, id) }))
   return pages
+}
+
+/** Reads one page of a board document into plain data; `null` when the document has no such page. */
+export function snapshotPage(doc: Y.Doc, pageId: string): PageSnapshot | null {
+  const entry = getPages(doc).get(pageId)
+  return entry ? { id: pageId, ...readPage(entry), cells: snapshotCells(doc, pageId) } : null
+}
+
+function snapshotCells(doc: Y.Doc, pageId: string): Map<string, CellSnapshot> {
+  const cells = new Map<string, CellSnapshot>()
+  getCells(doc, pageId).forEach((cell, cellId) => {
+    if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID || !(cell instanceof Y.Map)) return
+    cells.set(cellId, snapshotCell(cellId, cell.toJSON() as Record<string, unknown>))
+  })
+  return cells
 }
 
 function snapshotCell(id: string, data: Record<string, unknown>): CellSnapshot {
@@ -323,6 +331,26 @@ export function heaviestIncreasing(places: number[], weights: number[]): Set<num
   for (let index = best.index; index >= 0; index = previous[index]!) kept.add(index)
   return kept
 }
+
+/**
+ * The point that the geometry of a cell is relative to: the position of its parent shape on the page, or the top left
+ * corner of the page for a cell of the layer. `null` inside an edge and in a loop of parents.
+ */
+export function cellOrigin(cells: Map<string, CellSnapshot>, cell: CellSnapshot): PointData | null {
+  const origin = { x: 0, y: 0 }
+  const seen = new Set([cell.id])
+  for (let parent = parentOf(cells, cell); parent; parent = parentOf(cells, parent)) {
+    const geometry = parent.geometry
+    if (seen.has(parent.id) || parent.kind !== 'vertex' || !geometry || geometry.relative) return null
+    seen.add(parent.id)
+    origin.x += geometry.x
+    origin.y += geometry.y
+  }
+  return origin
+}
+
+const parentOf = (cells: Map<string, CellSnapshot>, cell: CellSnapshot) =>
+  cell.parent === null ? undefined : cells.get(cell.parent)
 
 /** Ids of the cells in the order of the page: parents before their children, siblings by order. */
 export function treeOrder(cells: Map<string, CellSnapshot>): string[] {

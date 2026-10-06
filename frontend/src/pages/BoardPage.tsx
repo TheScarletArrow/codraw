@@ -23,7 +23,7 @@ import { NoAccess } from '../board/NoAccess.tsx'
 import { useLaserPublisher, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
-import { VersionPreview } from '../board/VersionPreview.tsx'
+import { VersionPreview, type CellsRestore } from '../board/VersionPreview.tsx'
 import { useBoardVisit } from '../board/visit.ts'
 import { VisitBanner } from '../board/VisitBanner.tsx'
 import { VisitChanges } from '../board/VisitChanges.tsx'
@@ -222,6 +222,21 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     reveal(editor, thread)
     revealing.current = null
   }, [editor])
+  // Restoring cells of a version: close the version and switch to their page, then restore them on its canvas, so that
+  // the restore is a change of the user, laid out like any other and undone with the history of the page.
+  const restoring = useRef<CellsRestore | null>(null)
+  const restoreCells = (request: CellsRestore) => {
+    following.stop()
+    restoring.current = request
+    setPreviewed(null)
+    selectPage(request.pageId)
+  }
+  useEffect(() => {
+    const request = restoring.current
+    if (!editor || !request || editor.pageId !== request.pageId) return
+    restoring.current = null
+    editor.restoreCells(request.cells, request.ids)
+  }, [editor])
   /** Starts a new thread about an element of the current page or at a point of it, in the panel. */
   const commentOn = useCallback(
     (target: CommentTarget) => {
@@ -411,7 +426,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             comparing={comparing}
             onCompareChange={setComparing}
             participantId={author.id}
-            onRestored={() => setPreviewed(null)}
+            onRestored={(pageId) => {
+              setPreviewed(null)
+              if (pageId) selectPage(pageId)
+            }}
+            onRestoreCells={restoreCells}
             onClose={() => setPreviewed(null)}
           />
         ) : visitChanges && document ? (

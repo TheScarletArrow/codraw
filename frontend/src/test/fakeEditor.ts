@@ -102,6 +102,7 @@ export function createFakeEditor({
     paste: vi.fn(),
     duplicate: vi.fn(),
     insertCells: vi.fn(),
+    restoreCells: vi.fn(),
     bringToFront: vi.fn(),
     sendToBack: vi.fn(),
     selectAll: vi.fn(),

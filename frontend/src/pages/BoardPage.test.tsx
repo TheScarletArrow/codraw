@@ -666,32 +666,32 @@ describe('BoardPage', () => {
       expect(Y.encodeStateVector(provider.document)).toEqual(before)
     })
 
-    describe('comparing a version with the board', () => {
-      /** A version with «Сервис» and «Кэш» on the first page and a second page «Черновик» with «Набросок». */
-      function comparedState() {
-        const doc = new Y.Doc()
-        initializeDocument(doc)
-        doc.transact(() => {
-          writeCell(getCells(doc), shape('kept', 'a0', 'Сервис', { x: 100, y: 100 }))
-          writeCell(getCells(doc), shape('cache', 'a1', 'Кэш', { x: 400, y: 300 }))
-          writePage(doc, 'draft', { name: 'Черновик', order: 'a1' })
-          writeCell(getCells(doc, 'draft'), shape('sketch', 'a0', 'Набросок', { x: 0, y: 0 }))
-        })
-        return Y.encodeStateAsUpdate(doc)
-      }
-
-      const shape = (id: string, order: string, value: string, { x, y }: { x: number; y: number }): CellData => ({
-        id,
-        kind: 'vertex',
-        parent: '1',
-        order,
-        value,
-        geometry: { x, y, width: 120, height: 60 },
-        source: null,
-        target: null,
-        style: {},
+    /** A version with «Сервис» and «Кэш» on the first page and a second page «Черновик» with «Набросок». */
+    function comparedState() {
+      const doc = new Y.Doc()
+      initializeDocument(doc)
+      doc.transact(() => {
+        writeCell(getCells(doc), shape('kept', 'a0', 'Сервис', { x: 100, y: 100 }))
+        writeCell(getCells(doc), shape('cache', 'a1', 'Кэш', { x: 400, y: 300 }))
+        writePage(doc, 'draft', { name: 'Черновик', order: 'a1' })
+        writeCell(getCells(doc, 'draft'), shape('sketch', 'a0', 'Набросок', { x: 0, y: 0 }))
       })
+      return Y.encodeStateAsUpdate(doc)
+    }
 
+    const shape = (id: string, order: string, value: string, { x, y }: { x: number; y: number }): CellData => ({
+      id,
+      kind: 'vertex',
+      parent: '1',
+      order,
+      value,
+      geometry: { x, y, width: 120, height: 60 },
+      source: null,
+      target: null,
+      style: {},
+    })
+
+    describe('comparing a version with the board', () => {
       /** The owner opens the version and turns comparing on; the board has «Сервис» renamed, «Кэш» removed, «Очередь» added. */
       async function openComparison(responses: Record<string, MockResponse | MockResponse[]> = {}) {
         const provider = await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: comparedState() }, ...responses })
@@ -713,7 +713,8 @@ describe('BoardPage', () => {
         expect(within(preview).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'true')
         const list = await within(preview).findByRole('complementary', { name: 'Изменения' })
         expect(within(list).getByText('Добавлено 1 · Изменено 1 · Удалено 2')).toBeInTheDocument()
-        expect(within(list).getAllByRole('button').map((item) => item.textContent!.replace(/\s+/g, ' ').trim())).toEqual([
+        const items = within(list).getAllByRole('button', { pressed: false })
+        expect(items.map((item) => item.textContent!.replace(/\s+/g, ' ').trim())).toEqual([
           'Добавлено: Очередь Прямоугольник',
           'Изменено: Шлюз Прямоугольник · подпись было «Сервис»',
           'Удалено: Кэш Прямоугольник',
@@ -824,6 +825,32 @@ describe('BoardPage', () => {
         expect(await within(other).findByRole('complementary', { name: 'Изменения' })).toBeInTheDocument()
       })
 
+      it('brings back a removed or changed element of a page the board has, and offers nothing for the others', async () => {
+        const { provider } = await openComparison()
+        const list = await screen.findByRole('complementary', { name: 'Изменения' })
+        expect(within(list).getAllByRole('button', { name: /^Вернуть/ }).map((button) => button.getAttribute('aria-label'))).toEqual([
+          'Вернуть «Шлюз»',
+          'Вернуть «Кэш»',
+        ])
+
+        await userEvent.click(within(list).getByRole('button', { name: 'Вернуть «Кэш»' }))
+
+        await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
+        const board = screen.getByTestId('diagram-canvas')
+        expect(board).toHaveAttribute('data-read-only', 'false')
+        expect(canvas.document).toBe(provider.document)
+        expect(canvas.editor!.restoreCells).toHaveBeenCalledTimes(1)
+        const [cells, ids] = vi.mocked(canvas.editor!.restoreCells).mock.calls[0]!
+        expect(ids).toEqual(['cache'])
+        expect(cells.get('cache')).toMatchObject({ value: 'Кэш', geometry: { x: 400, y: 300 } })
+        // A restore of cells is an ordinary change, without a version before it.
+        expect(requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=restore`)).toEqual([])
+        // Comparing stays on while the history is open.
+        await userEvent.click(within(screen.getByRole('complementary', { name: 'История версий' })).getByRole('button', { name: /Автоматически/ }))
+        const again = await screen.findByRole('region', { name: /^Версия от / })
+        expect(within(again).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'true')
+      })
+
       it('turns off when the history closes', async () => {
         await openComparison()
 
@@ -835,6 +862,93 @@ describe('BoardPage', () => {
 
         const again = await screen.findByRole('region', { name: /^Версия от / })
         expect(within(again).getByRole('button', { name: 'Сравнить с текущей' })).toHaveAttribute('aria-pressed', 'false')
+      })
+    })
+
+    describe('restoring part of a version', () => {
+      /** The owner opens the version of {@link comparedState}; the board has lost «Кэш» and the page «Черновик». */
+      async function openVersion(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+        const provider = await openHistory({
+          [`GET ${versionsUrl}/v1`]: { bytes: comparedState() },
+          [`POST ${versionsUrl}?reason=restore`]: { status: 201, body: version('v3', 'restore') },
+          ...responses,
+        })
+        act(() => writeCell(getCells(provider.document), shape('kept', 'a0', 'Шлюз', { x: 100, y: 100 })))
+        await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+        const preview = await screen.findByRole('region', { name: /^Версия от / })
+        await within(preview).findByTestId('diagram-canvas')
+        return { provider, preview }
+      }
+
+      it('restores the cells selected in the version on the canvas of their page, as a change of the user', async () => {
+        const { provider, preview } = await openVersion()
+        expect(within(preview).queryByRole('button', { name: 'Восстановить выделенное' })).toBeNull()
+
+        act(() => canvas.editor!.select(['cache']))
+        await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить выделенное' }))
+
+        await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
+        expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', DEFAULT_PAGE_ID)
+        expect(canvas.document).toBe(provider.document)
+        expect(canvas.editor!.restoreCells).toHaveBeenCalledTimes(1)
+        const [cells, ids] = vi.mocked(canvas.editor!.restoreCells).mock.calls[0]!
+        expect(ids).toEqual(['cache'])
+        expect([...cells.keys()].sort()).toEqual(['cache', 'kept'])
+        expect(cells.get('kept')).toMatchObject({ value: 'Сервис' })
+        expect(requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=restore`)).toEqual([])
+        expect(screen.getByRole('complementary', { name: 'История версий' })).toBeInTheDocument()
+      })
+
+      it('offers no restore of the selection on a page the board has not, and brings the page back after confirmation', async () => {
+        const { provider, preview } = await openVersion()
+        await userEvent.click(within(preview).getByRole('tab', { name: 'Черновик' }))
+        await waitFor(() => expect(within(preview).getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'draft'))
+
+        act(() => canvas.editor!.select(['sketch']))
+        expect(within(preview).getByRole('button', { name: 'Восстановить выделенное' })).toBeDisabled()
+        expect(within(preview).getByRole('button', { name: 'Восстановить выделенное' })).toHaveAccessibleDescription('Страницы нет на доске')
+        await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить страницу' }))
+        const confirmation = screen.getByRole('alertdialog', { name: 'Восстановление страницы' })
+        expect(confirmation).toHaveTextContent('Страница «Черновик» вернётся на доску')
+        await userEvent.click(within(confirmation).getByRole('button', { name: 'Восстановить' }))
+
+        await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
+        expect(requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=restore`)).toHaveLength(1)
+        expect(listPages(provider.document).map((page) => page.name)).toEqual(['Страница 1', 'Черновик'])
+        expect(getCells(provider.document, 'draft').get('sketch')?.get('value')).toBe('Набросок')
+        // The rest of the board stays as it is.
+        expect(getCells(provider.document).get('kept')?.get('value')).toBe('Шлюз')
+        expect(getCells(provider.document).has('cache')).toBe(false)
+        await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'draft'))
+      })
+
+      it('brings a page of the board to the content of the version, keeping the current state as a version first', async () => {
+        const { provider, preview } = await openVersion()
+
+        await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить страницу' }))
+        const confirmation = screen.getByRole('alertdialog', { name: 'Восстановление страницы' })
+        expect(confirmation).toHaveTextContent('Страница «Страница 1» станет такой, как в версии')
+        await userEvent.click(within(confirmation).getByRole('button', { name: 'Восстановить' }))
+
+        await waitFor(() => expect(screen.queryByRole('region', { name: /^Версия от / })).toBeNull())
+        const [[, init]] = requests(provider.fetchMock, 'POST', `${versionsUrl}?reason=restore`)
+        const kept = new Y.Doc()
+        Y.applyUpdate(kept, init!.body as Uint8Array)
+        expect(getCells(kept).get('kept')?.get('value')).toBe('Шлюз')
+        expect(getCells(provider.document).get('kept')?.get('value')).toBe('Сервис')
+        expect(getCells(provider.document).get('cache')?.get('value')).toBe('Кэш')
+        expect(listPages(provider.document).map((page) => page.name)).toEqual(['Страница 1'])
+      })
+
+      it('leaves the page as it is when the current state cannot be kept', async () => {
+        const { provider, preview } = await openVersion({ [`POST ${versionsUrl}?reason=restore`]: { status: 500 } })
+        const before = Y.encodeStateVector(provider.document)
+
+        await userEvent.click(within(preview).getByRole('button', { name: 'Восстановить страницу' }))
+        await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Восстановление страницы' })).getByRole('button', { name: 'Восстановить' }))
+
+        expect(await within(preview).findByRole('alert')).toHaveTextContent('Не удалось восстановить страницу')
+        expect(Y.encodeStateVector(provider.document)).toEqual(before)
       })
     })
 
@@ -943,13 +1057,15 @@ describe('BoardPage', () => {
       expect(requests(provider.fetchMock, 'POST', visitUrl)).toHaveLength(1)
     })
 
-    it('shows the changes to a participant who may only view the board', async () => {
-      await openChanged({ [`GET ${boardUrl}`]: { body: boardToView } })
+    it('shows the changes to a participant who may only view the board, without bringing any back', async () => {
+      const provider = await openChanged({ [`GET ${boardUrl}`]: { body: boardToView } })
+      act(() => writeCell(getCells(provider.document), shape('kept', 'a0', 'Шлюз')))
 
       await userEvent.click(await screen.findByRole('button', { name: 'Показать изменения' }))
 
       const view = await screen.findByRole('region', { name: 'Изменения с прошлого визита' })
-      expect(await within(view).findByText('Добавлено 1 · Изменено 0 · Удалено 0')).toBeInTheDocument()
+      expect(await within(view).findByText('Добавлено 1 · Изменено 1 · Удалено 0')).toBeInTheDocument()
+      expect(within(view).queryByRole('button', { name: /^Вернуть/ })).toBeNull()
     })
 
     it('tells that the changes could not be loaded', async () => {
