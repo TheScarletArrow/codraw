@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { menuItems, shortcutLabel, type MenuTarget } from './canvasMenu.ts'
+import { menuItems, shortcutLabel, type MenuAvailability, type MenuTarget } from './canvasMenu.ts'
 
 const all = { canPaste: true, canUndo: true, canRedo: true }
-const labels = (target: MenuTarget, availability = all) => menuItems(target, availability).map((item) => item.label)
+const labels = (target: MenuTarget, availability: MenuAvailability = all) => menuItems(target, availability).map((item) => item.label)
 
 describe('menuItems', () => {
   it('offers paste, select all, undo and redo on the empty canvas', () => {
@@ -89,6 +89,54 @@ describe('menuItems', () => {
     const items = menuItems('canvas', { canPaste: false, canUndo: false, canRedo: true })
 
     expect(items.filter((item) => item.disabled).map((item) => item.label)).toEqual(['Вставить', 'Отменить'])
+  })
+
+  it('offers locking after the order, and after reversing for an edge, but not for a field or an index', () => {
+    const lockable = { ...all, canLock: true }
+
+    expect(labels('shape', lockable)).toEqual([
+      'Изменить подпись',
+      'Вырезать',
+      'Копировать',
+      'Дублировать',
+      'На передний план',
+      'На задний план',
+      'Закрепить',
+      'Удалить',
+    ])
+    expect(menuItems('shape', lockable).find((item) => item.command === 'lock')).toMatchObject({ separatorBefore: true })
+    expect(labels('edge', lockable)).toEqual(['Изменить подпись', 'Развернуть направление', 'Закрепить', 'Удалить'])
+    for (const target of ['table', 'group', 'selection'] as const) expect(labels(target, lockable)).toContain('Закрепить')
+    expect(labels('field', lockable)).not.toContain('Закрепить')
+    expect(labels('index', lockable)).not.toContain('Закрепить')
+  })
+
+  it('offers unlocking with locked elements, and locking too while some are not locked', () => {
+    expect(labels('selection', { ...all, canLock: true, canUnlock: true })).toEqual(
+      expect.arrayContaining(['Закрепить', 'Открепить']),
+    )
+    expect(labels('shape', { ...all, canUnlock: true, locked: true })).toContain('Открепить')
+    expect(labels('shape', { ...all, canUnlock: true, locked: true })).not.toContain('Закрепить')
+  })
+
+  it('disables what would change locked elements, and keeps copying, commenting and unlocking', () => {
+    const locked = { ...all, canUnlock: true, locked: true, canComment: true, canGroup: true }
+    const enabled = (target: MenuTarget) =>
+      menuItems(target, locked)
+        .filter((item) => !item.disabled)
+        .map((item) => item.label)
+
+    expect(enabled('shape')).toEqual(['Копировать', 'Дублировать', 'Открепить', 'Комментировать'])
+    expect(enabled('table')).toEqual(['Копировать', 'Дублировать', 'Открепить', 'Комментировать'])
+    expect(enabled('field')).toEqual(['Комментировать'])
+    expect(enabled('index')).toEqual(['Комментировать'])
+    expect(enabled('edge')).toEqual(['Открепить', 'Комментировать'])
+    expect(enabled('group')).toEqual(['Копировать', 'Дублировать', 'Открепить', 'Комментировать'])
+    expect(enabled('selection')).toEqual(['Копировать', 'Дублировать', 'Открепить'])
+  })
+
+  it('offers a participant who may only view neither locking nor unlocking', () => {
+    expect(labels('shape', { ...all, readOnly: true, canLock: true, canUnlock: true })).toEqual(['Копировать'])
   })
 
   it('maps items to the commands of the editor with their shortcuts', () => {

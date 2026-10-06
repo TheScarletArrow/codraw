@@ -384,6 +384,54 @@ describe('EditorToolbar', () => {
     expect(editor.setLaser).toHaveBeenLastCalledWith(false)
   })
 
+  it('locks the selection', async () => {
+    act(() =>
+      editor.setState({
+        lock: { all: false, canLock: true, locks: [] },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+      }),
+    )
+
+    expect(screen.queryByRole('button', { name: 'Открепить' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Цвет заливки' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Закрепить' }))
+
+    expect(editor.setLocked).toHaveBeenCalledWith(true)
+  })
+
+  it('shows who locked the selection, disables the tools that would change it and unlocks it', async () => {
+    act(() =>
+      editor.setState({
+        lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },
+        tableSelected: true,
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+        text: { ...plainText, fontSize: 12, autoWidth: false },
+        geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
+        arrange: 2,
+        hasCells: true,
+      }),
+    )
+    const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
+
+    expect(within(toolbar).getByText('Закреплено: Алиса')).toBeInTheDocument()
+    for (const name of ['Цвет заливки', 'Жирный', 'Размер', 'Выравнивание', 'Добавить поле']) {
+      expect(within(toolbar).getByRole('button', { name })).toBeDisabled()
+    }
+    expect(within(toolbar).getByRole('spinbutton', { name: 'Размер текста' })).toBeDisabled()
+    expect(within(toolbar).getByRole('combobox', { name: 'СУБД таблицы' })).toBeDisabled()
+    expect(within(toolbar).getByRole('button', { name: 'Автораскладка' })).toBeEnabled()
+    expect(within(toolbar).queryByRole('button', { name: 'Закрепить' })).toBeNull()
+    await userEvent.click(within(toolbar).getByRole('button', { name: 'Открепить' }))
+
+    expect(editor.setLocked).toHaveBeenCalledWith(false)
+  })
+
+  it('says just that a lock from a file of draw.io is locked', () => {
+    act(() => editor.setState({ lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: null }] } }))
+
+    expect(screen.getByText('Закреплено')).toBeInTheDocument()
+  })
+
   it('offers a participant who may only view the scale and the laser pointer only', () => {
     document.body.innerHTML = ''
     render(<EditorToolbar editor={editor} readOnly />)
@@ -395,6 +443,7 @@ describe('EditorToolbar', () => {
         colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
         geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
+        lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },
       }),
     )
 

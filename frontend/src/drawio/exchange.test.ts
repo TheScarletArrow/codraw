@@ -156,6 +156,19 @@ describe('exportDrawio', () => {
     expect(xml).toContain('connectable=0;')
     expect(xml).toContain('style="endArrow=none;dashed=1;edgeStyle=none;labelBackgroundColor=#ffffff;"')
   })
+
+  it('keeps locks through a file of draw.io without the name of who locked', async () => {
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('api', { style: { locked: true, codrawLockedBy: 'Алиса' } })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain('style="locked=1;fontSize=13;"')
+    expect(xml).not.toContain('Алиса')
+    expect(pageCells(copy, DEFAULT_PAGE_ID).api!.style).toEqual({ locked: true, fontSize: 13 })
+  })
 })
 
 describe('importPages', () => {

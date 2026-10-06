@@ -43,6 +43,9 @@ describe('legal pages', () => {
     expect(retention).toHaveTextContent('когда с ними 14 дней никто не работал')
     expect(retention).toHaveTextContent('не больше 100 последних версий')
     expect(screen.getByRole('region', { name: 'Cookie' })).toHaveTextContent('SESSION')
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'имя участника, который закрепил элемент доски',
+    )
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 

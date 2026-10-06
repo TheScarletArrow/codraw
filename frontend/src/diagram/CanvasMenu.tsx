@@ -1,10 +1,12 @@
 import { Client } from '@maxgraph/core'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Lock } from 'lucide-react'
+import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { menuItems, shortcutLabel, type MenuCommand } from './canvasMenu.ts'
 import { readSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor } from './editor.ts'
+import { lockLabel } from './locks.ts'
 import { useEditorState } from './useEditorState.ts'
 
 const COMMANDS: Record<Exclude<MenuCommand, 'comment'>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
@@ -24,12 +26,14 @@ const COMMANDS: Record<Exclude<MenuCommand, 'comment'>, (editor: DiagramEditor, 
   reverseEdge: (editor) => editor.reverseEdge(),
   group: (editor) => editor.group(),
   ungroup: (editor) => editor.ungroup(),
+  lock: (editor) => editor.setLocked(true),
+  unlock: (editor) => editor.setLocked(false),
   delete: (editor) => editor.deleteSelection(),
 }
 
 /**
  * The menu of a right click on the canvas, with the actions that fit what was clicked. With `onComment`, a single
- * element gets «Комментировать», for viewers too.
+ * element gets «Комментировать», for viewers too. The menu of locked elements says who locked them.
  */
 export function CanvasMenu({
   editor,
@@ -44,7 +48,8 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup } = useEditorState(editor)
+  const { canPaste, canUndo, canRedo, canGroup, lock } = useEditorState(editor)
+  const lockId = useId()
 
   useEffect(
     () =>
@@ -77,6 +82,9 @@ export function CanvasMenu({
     }
   }
 
+  // Viewers do not lock, but a locked element is as unchangeable for them as everything else.
+  const locked = !editor.readOnly && (lock?.all ?? false)
+
   return (
     <Popover open onOpenChange={(open) => !open && close()}>
       <PopoverAnchor asChild>
@@ -100,32 +108,46 @@ export function CanvasMenu({
           focusTaken.current = false
         }}
       >
-        <div role="menu" aria-label="Действия" className="flex flex-col">
-          {menuItems(request.target, { canPaste, canUndo, canRedo, canGroup, readOnly: editor.readOnly, canComment }).map(
-            (item) => (
-              <Fragment key={item.command}>
-                {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
-                <Button
-                  type="button"
-                  role="menuitem"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={item.label}
-                  aria-keyshortcuts={item.shortcut?.replace('Mod', Client.IS_MAC ? 'Meta' : 'Control')}
-                  className="justify-between font-normal"
-                  disabled={item.disabled}
-                  onClick={() => run(item.command)}
-                >
-                  {item.label}
-                  {item.shortcut && (
-                    <kbd aria-hidden className="font-sans text-xs text-muted-foreground">
-                      {shortcutLabel(item.shortcut, Client.IS_MAC)}
-                    </kbd>
-                  )}
-                </Button>
-              </Fragment>
-            ),
-          )}
+        {locked && (
+          <p id={lockId} className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
+            <Lock aria-hidden className="size-3.5" />
+            {lockLabel(lock!.locks.map((holder) => holder.lockedBy))}
+          </p>
+        )}
+        <div role="menu" aria-label="Действия" aria-describedby={locked ? lockId : undefined} className="flex flex-col">
+          {menuItems(request.target, {
+            canPaste,
+            canUndo,
+            canRedo,
+            canGroup,
+            readOnly: editor.readOnly,
+            canComment,
+            canLock: lock?.canLock,
+            canUnlock: (lock?.locks.length ?? 0) > 0,
+            locked,
+          }).map((item) => (
+            <Fragment key={item.command}>
+              {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                aria-label={item.label}
+                aria-keyshortcuts={item.shortcut?.replace('Mod', Client.IS_MAC ? 'Meta' : 'Control')}
+                className="justify-between font-normal"
+                disabled={item.disabled}
+                onClick={() => run(item.command)}
+              >
+                {item.label}
+                {item.shortcut && (
+                  <kbd aria-hidden className="font-sans text-xs text-muted-foreground">
+                    {shortcutLabel(item.shortcut, Client.IS_MAC)}
+                  </kbd>
+                )}
+              </Button>
+            </Fragment>
+          ))}
         </div>
       </PopoverContent>
     </Popover>

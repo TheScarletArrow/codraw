@@ -1,5 +1,7 @@
+import { Lock } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import type { DiagramEditor } from './editor.ts'
+import { lockLabel } from './locks.ts'
 import { FieldProps, IndexProps } from './TableTools.tsx'
 import { useEditorState } from './useEditorState.ts'
 
@@ -11,10 +13,10 @@ export const FIELD_POPOVER_WIDTH = 400
 /**
  * The type, nullability and keys of the selected field, or the columns of the selected index, in a panel next to its
  * table, at the height of the row: to the right of the table, or to the left when the visible part of the canvas has no
- * room there.
+ * room there. In a locked table they are disabled, and a lock says who locked it.
  */
 export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
-  const { field, index, tableVendor } = useEditorState(editor)
+  const { field, index, tableVendor, lock } = useEditorState(editor)
   // Positions depend on scrolling, zoom and cell geometry: re-render whenever the view changes.
   useSyncExternalStore(editor?.onViewChange ?? noSubscription, () => editor?.getViewVersion() ?? 0)
 
@@ -23,6 +25,8 @@ export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
   const fieldBounds = editor && row ? editor.cellBounds(row.cellId) : null
   const tableBounds = editor && row ? editor.cellBounds(row.tableId) : null
   if (!editor || !row || !fieldBounds || !tableBounds) return null
+  // The table is locked: the properties of the row are shown, but not changed.
+  const locked = lock?.all ? lockLabel(lock.locks.map((holder) => holder.lockedBy)) : null
   const right = tableBounds.x + tableBounds.width + GAP
   const fitsRight = right + FIELD_POPOVER_WIDTH <= editor.viewportSize().width
   const top = fieldBounds.y + fieldBounds.height / 2
@@ -40,7 +44,18 @@ export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
             : { left: tableBounds.x - GAP, top, transform: 'translate(-100%, -50%)' }
         }
       >
-        {index ? <IndexProps editor={editor} index={index} /> : <FieldProps editor={editor} vendor={tableVendor} field={field!} />}
+        {locked && (
+          <span role="img" aria-label={locked} title={locked} className="px-1.5 text-muted-foreground">
+            <Lock aria-hidden className="size-4" />
+          </span>
+        )}
+        <fieldset disabled={locked !== null} className="flex items-center gap-1">
+          {index ? (
+            <IndexProps editor={editor} index={index} />
+          ) : (
+            <FieldProps editor={editor} vendor={tableVendor} field={field!} />
+          )}
+        </fieldset>
       </div>
     </div>
   )

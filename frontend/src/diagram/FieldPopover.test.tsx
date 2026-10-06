@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
@@ -31,6 +31,21 @@ describe('FieldPopover', () => {
     await userEvent.click(screen.getByRole('button', { name: 'NOT NULL' }))
 
     expect(editor.setFieldProps).toHaveBeenCalledWith({ notNull: true })
+  })
+
+  it('shows the properties of a field of a locked table disabled, with who locked it', () => {
+    act(() =>
+      editor.setState({
+        field: FIELD,
+        tableVendor: 'mysql',
+        lock: { all: true, canLock: false, locks: [{ cellId: 'table', lockedBy: 'Алиса' }] },
+      }),
+    )
+    const panel = screen.getByRole('group', { name: 'Свойства поля' })
+
+    expect(within(panel).getByRole('img', { name: 'Закреплено: Алиса' })).toHaveAttribute('title', 'Закреплено: Алиса')
+    expect(within(panel).getByRole('combobox', { name: 'Тип поля' })).toBeDisabled()
+    expect(within(panel).getByRole('button', { name: 'PK' })).toBeDisabled()
   })
 
   it('is not shown for an inherited field, which is edited in its base table', () => {

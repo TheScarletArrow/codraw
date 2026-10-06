@@ -17,6 +17,7 @@ import {
   SelectionHandler,
   Point as GraphPoint,
   RubberBandHandler,
+  SelectionCellsHandler,
   StackLayout,
   StyleDefaultsConfig,
   ValueChange,
@@ -61,7 +62,16 @@ import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import { registerDiagramExtensions } from './extensions.ts'
-import { layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
+import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
+import {
+  hasLockedDescendant,
+  LOCKED_BY_KEY,
+  LOCKED_KEY,
+  lockedByOf,
+  lockHolder,
+  lockHolders,
+  unlockCopy,
+} from './locks.ts'
 import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
@@ -224,6 +234,26 @@ export interface TableBase {
   options: { id: string; name: string }[]
 }
 
+/** A lock that holds selected elements: the element that has it, the selected one or a group or table above it. */
+export interface CellLock {
+  cellId: string
+  /** The name of the participant who locked it, or `null`, e.g. for an element locked in draw.io. */
+  lockedBy: string | null
+}
+
+/** How the selected elements are locked against changes. */
+export interface SelectionLock {
+  /** Every selected element is locked: the commands change none of them. */
+  all: boolean
+  /**
+   * A selected element, or the table of a selected field or index, is not locked, so {@link DiagramEditor.setLocked}
+   * locks it.
+   */
+  canLock: boolean
+  /** The locks that hold selected elements, each once; empty when none is locked. */
+  locks: CellLock[]
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -272,6 +302,8 @@ export interface EditorState {
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
   laser: boolean
+  /** How the selection is locked, or `null` when nothing is selected. */
+  lock: SelectionLock | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -362,6 +394,11 @@ export interface DiagramEditor {
   group(): Cell | null
   /** Moves the shapes of the selected groups back to the page in their places and selects them. */
   ungroup(): void
+  /**
+   * Locks the selected elements against changes, a field or an index with its table, in the name of the participant; or
+   * unlocks them together with the groups and tables whose locks hold them. One undo step.
+   */
+  setLocked(locked: boolean): void
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
@@ -616,6 +653,8 @@ export interface DiagramEditorOptions {
    * edit or delete anything, and nothing they do is written to the document.
    */
   readOnly?: boolean
+  /** The name of the participant, which the elements they lock keep as who locked them. */
+  participantName?: string
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -639,6 +678,7 @@ const CHANGING_COMMANDS = [
   'distributeShapes',
   'group',
   'ungroup',
+  'setLocked',
   'editLabel',
   'deleteSelection',
   'setEdgeMarker',
@@ -662,7 +702,12 @@ const CHANGING_COMMANDS = [
 export function createDiagramEditor(
   container: HTMLElement,
   document: Y.Doc,
-  { pageId = DEFAULT_PAGE_ID, undoManager: sharedUndoManager, readOnly = false }: DiagramEditorOptions = {},
+  {
+    pageId = DEFAULT_PAGE_ID,
+    undoManager: sharedUndoManager,
+    readOnly = false,
+    participantName,
+  }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
   const cells = getCells(document, pageId)
@@ -687,6 +732,7 @@ export function createDiagramEditor(
   configureTextWrap(graph)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
+  const unwatchLocks = configureLocks(graph)
   configureSelection(graph)
   configureRegionSelection(graph)
   // Resizing a group scales what it holds, as in draw.io; tables lay their fields out themselves.
@@ -780,6 +826,12 @@ export function createDiagramEditor(
   model.addListener(InternalEvent.CHANGE, handleRemoteLabel)
 
   const selectedEdges = () => graph.getSelectionCells().filter((cell) => cell.isEdge())
+  /** The cell can change: neither it nor a group or a table above it is locked. */
+  const isUnlocked = (cell: Cell) => lockHolder(cell) === null
+  /** The cells that the commands change: those that can. */
+  const unlocked = (cells: Cell[]) => cells.filter(isUnlocked)
+  /** What locking a cell locks: a field or an index with its table, any other cell itself. */
+  const lockTarget = (cell: Cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)
   const selectedTable = (): Cell | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
     if (!cell || isTable(cell)) return cell
@@ -820,10 +872,13 @@ export function createDiagramEditor(
       options: baseOptions(table, tables).map((base) => ({ id: base.getId()!, name: plainText(String(base.getValue() ?? '')) })),
     }
   }
-  /** The single selected shape with a group; a table field is part of its table, not a shape of its own. */
+  /**
+   * The single selected shape with a group; a table field is part of its table, not a shape of its own, and a locked
+   * shape gets no new edges.
+   */
   const quickConnectSource = (): { cell: Cell; group: ShapeGroup } | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
-    if (!cell?.isVertex() || isTable(cell.getParent())) return null
+    if (!cell?.isVertex() || isTable(cell.getParent()) || lockHolder(cell)) return null
     const group = shapeGroupOf(cell.getStyle() as ShapeStyle)
     return group ? { cell, group } : null
   }
@@ -888,7 +943,25 @@ export function createDiagramEditor(
     if (!parent) return []
     return cells.filter((cell) => cell.getParent() === parent).sort((a, b) => parent.getIndex(a) - parent.getIndex(b))
   }
-  const canGroup = () => groupableCells().filter((cell) => cell.isVertex()).length >= 2
+  /** A group would become the parent of a locked cell, so none is made with one. */
+  const canGroup = () => {
+    const cells = groupableCells()
+    return cells.filter((cell) => cell.isVertex()).length >= 2 && cells.every(isUnlocked)
+  }
+  /** Selected groups that can be ungrouped: neither they nor the shapes they hold are locked. */
+  const ungroupableCells = () =>
+    graph.getSelectionCells().filter((cell) => isGroup(cell) && isUnlocked(cell) && !hasLockedDescendant(cell))
+  /** The lock of the selection; see {@link SelectionLock}. */
+  const selectionLock = (): SelectionLock | null => {
+    const cells = graph.getSelectionCells()
+    if (cells.length === 0) return null
+    const holders = new Set(cells.flatMap((cell) => lockHolder(cell) ?? []))
+    return {
+      all: cells.every((cell) => !isUnlocked(cell)),
+      canLock: !readOnly && cells.some((cell) => isUnlocked(lockTarget(cell))),
+      locks: [...holders].map((holder) => ({ cellId: holder.getId()!, lockedBy: lockedByOf(holder) })),
+    }
+  }
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1084,11 +1157,12 @@ export function createDiagramEditor(
       canPaste: !readOnly && (clipboard.read() !== null || canReadSystemClipboard()),
       arrange: geometryCells().length,
       canGroup: !readOnly && canGroup(),
-      canUngroup: !readOnly && graph.getSelectionCells().some(isGroup),
+      canUngroup: !readOnly && ungroupableCells().length > 0,
       hasCells: graph.getDefaultParent().getChildCount() > 0,
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex()),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser,
+      lock: selectionLock(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1503,7 +1577,7 @@ export function createDiagramEditor(
     },
     addTableField() {
       const table = selectedTable()
-      if (!table) return null
+      if (!table || !isUnlocked(table)) return null
       const selected = graph.getSelectionCell()
       // Fields go before the indexes of the table.
       const fields = table.getChildren().filter((child) => !isIndexRow(child))
@@ -1512,7 +1586,7 @@ export function createDiagramEditor(
     },
     addTableIndex() {
       const table = selectedTable()
-      if (!table) return null
+      if (!table || !isUnlocked(table)) return null
       const selected = graph.getSelectionCell()
       const after = isIndexRow(selected) ? selected : (table.getChildren().at(-1) ?? null)
       return addTableRow(table, after, { [TABLE_INDEX_KEY]: true })
@@ -1520,7 +1594,7 @@ export function createDiagramEditor(
     setIndexProps(props) {
       const row = selectedIndexRow()
       const parts = row && indexPartsOf(String(row.getValue() ?? ''))
-      if (!row || !parts) return
+      if (!row || !parts || !isUnlocked(row)) return
       const next = { ...parts, ...props }
       if (props.columns !== undefined) next.columns = props.columns.trim()
       const text = indexText(next)
@@ -1533,7 +1607,7 @@ export function createDiagramEditor(
     setFieldProps(props) {
       const field = selectedField()
       const parts = field && splitField(String(field.getValue() ?? ''))
-      if (!field || !parts || inheritedFieldId(field) !== null) return
+      if (!field || !parts || inheritedFieldId(field) !== null || !isUnlocked(field)) return
       const next = { ...parts, ...props }
       // What is typed after the type, e.g. `NOT NULL`, is not a part of it.
       if (props.type !== undefined) next.type = splitField(`field ${props.type}`)?.type ?? ''
@@ -1547,7 +1621,7 @@ export function createDiagramEditor(
     },
     setBaseTable(enabled) {
       const table = selectedTable()
-      if (!table || isBaseTable(table) === enabled) return
+      if (!table || !isUnlocked(table) || isBaseTable(table) === enabled) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleValue([table], BASE_KEY, enabled ? true : undefined)
@@ -1557,7 +1631,7 @@ export function createDiagramEditor(
     },
     setDefaultBase(enabled) {
       const table = selectedTable()
-      if (!table || !isBaseTable(table) || isDefaultBase(table) === enabled) return
+      if (!table || !isUnlocked(table) || !isBaseTable(table) || isDefaultBase(table) === enabled) return
       model.batchUpdate(() => {
         const others = [...pageTables(graph).values()].filter((other) => other !== table)
         if (enabled) setStyleValue(others, DEFAULT_BASE_KEY, undefined)
@@ -1566,7 +1640,7 @@ export function createDiagramEditor(
     },
     setTableBase(baseId) {
       const table = selectedTable()
-      if (!table || baseTableId(table) === baseId) return
+      if (!table || !isUnlocked(table) || baseTableId(table) === baseId) return
       if (baseId !== null && !baseOptions(table, pageTables(graph)).some((base) => base.getId() === baseId)) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
@@ -1578,7 +1652,7 @@ export function createDiagramEditor(
     },
     setTableVendor(vendor) {
       const table = selectedTable()
-      if (!table || vendorOf(table.getStyle())?.id === vendor) return
+      if (!table || !isUnlocked(table) || vendorOf(table.getStyle())?.id === vendor) return
       model.batchUpdate(() => {
         setStyleValue([table], VENDOR_KEY, vendor)
         fitAutoWidth([table])
@@ -1664,11 +1738,11 @@ export function createDiagramEditor(
       editor.zoomToFit()
     },
     bringToFront() {
-      const cells = selectedShapesAndEdges()
+      const cells = unlocked(selectedShapesAndEdges())
       if (cells.length > 0) graph.orderCells(false, cells)
     },
     sendToBack() {
-      const cells = selectedShapesAndEdges()
+      const cells = unlocked(selectedShapesAndEdges())
       if (cells.length > 0) graph.orderCells(true, cells)
     },
     selectAll() {
@@ -1685,31 +1759,53 @@ export function createDiagramEditor(
     },
     alignShapes(align) {
       const cells = geometryCells()
-      if (cells.length < 2) return
+      const view = graph.getView()
+      // The line is that of the area of all the selected shapes: locked ones stay where they are, the others move to it.
+      const area = cells.length >= 2 ? view.getBounds(cells) : null
+      const movable = graph.getMovableCells(cells)
+      if (!area || movable.length === 0) return
+      const line = alignedLine(area, align)
       graph.stopEditing(false)
-      graph.alignCells(align, cells)
+      model.batchUpdate(() => {
+        for (const cell of movable) {
+          const state = view.getState(cell)
+          const delta = state ? (line - alignedLine(state, align)) / view.scale : 0
+          if (delta === 0) continue
+          const moved = cell.getGeometry()!.clone()
+          if (HORIZONTAL_ALIGNS.has(align)) moved.x += delta
+          else moved.y += delta
+          model.setGeometry(cell, moved)
+        }
+      })
     },
     async autoLayout(direction) {
       if (readOnly || layingOut) return
       const parent = graph.getDefaultParent()
       const selected = selectedLayoutCells()
       const cells = selected.length >= 2 ? selected : parent.getChildren().filter((cell) => cell.isVertex())
-      if (cells.length === 0) return
-      graph.stopEditing(false)
-      const ids = new Set(cells.map((cell) => cell.getId()))
-      const shapes: LayoutShape[] = cells.map((cell) => {
+      const candidates: LayoutShape[] = cells.map((cell) => {
         const { x, y, width, height } = cell.getGeometry()!
         const frame = !isGroup(cell) && (cell.getStyle() as ShapeStyle).pointerEvents === false
         return { id: cell.getId()!, x, y, width, height, frame }
       })
-      // An edge of a field connects its table; the bends of edges between laid out shapes would not fit any more.
+      // Locked shapes stay where they are, and so do the shapes in a locked frame, which could not move around them.
+      const frames = frameParents(candidates)
+      const lockedIds = new Set(cells.filter((cell) => !isUnlocked(cell)).map((cell) => cell.getId()))
+      const pinned = (id: string | null): boolean =>
+        id !== null && (lockedIds.has(id) || pinned(frames.get(id) ?? null))
+      const shapes = candidates.filter((shape) => !pinned(shape.id))
+      if (shapes.length === 0) return
+      graph.stopEditing(false)
+      const ids = new Set(shapes.map((shape) => shape.id))
+      // An edge of a field connects its table; the bends of edges between laid out shapes would not fit any more,
+      // unless the edge is locked.
       const edges: LayoutEdge[] = []
       const rerouted: Cell[] = []
       for (const edge of pageEdges()) {
         const [source, target] = [edge.getTerminal(true), edge.getTerminal(false)].map((end) => end && pageCell(end))
-        if (!source || !target || !ids.has(source.getId()) || !ids.has(target.getId())) continue
+        if (!source || !target || !ids.has(source.getId()!) || !ids.has(target.getId()!)) continue
         edges.push({ id: edge.getId()!, source: source.getId()!, target: target.getId()! })
-        rerouted.push(edge)
+        if (isUnlocked(edge)) rerouted.push(edge)
       }
       layingOut = true
       try {
@@ -1767,10 +1863,13 @@ export function createDiagramEditor(
       model.batchUpdate(() => {
         let position = start(first) + size(first) + gap
         for (const cell of sorted.slice(1, -1)) {
-          const moved = cell.getGeometry()!.clone()
-          if (horizontal) moved.x = position - offset(cell)
-          else moved.y = position - offset(cell)
-          model.setGeometry(cell, moved)
+          // A locked shape keeps its place, which the others leave for it.
+          if (graph.isCellMovable(cell)) {
+            const moved = cell.getGeometry()!.clone()
+            if (horizontal) moved.x = position - offset(cell)
+            else moved.y = position - offset(cell)
+            model.setGeometry(cell, moved)
+          }
           position += size(cell) + gap
         }
       })
@@ -1788,15 +1887,27 @@ export function createDiagramEditor(
       return group
     },
     ungroup() {
-      const groups = graph.getSelectionCells().filter(isGroup)
+      const groups = ungroupableCells()
       if (groups.length === 0) return
       graph.stopEditing(false)
       graph.setSelectionCells(graph.ungroupCells(groups))
       container.focus({ preventScroll: true })
     },
+    setLocked(locked) {
+      const cells = graph.getSelectionCells()
+      const targets = locked
+        ? [...new Set(cells.map(lockTarget))].filter(isUnlocked)
+        : [...new Set(cells.flatMap(lockHolders))]
+      if (targets.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue(targets, LOCKED_KEY, locked ? true : undefined)
+        setStyleValue(targets, LOCKED_BY_KEY, locked && participantName ? participantName : undefined)
+      })
+    },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
-      if (!edge?.isEdge()) return
+      if (!edge?.isEdge() || !isUnlocked(edge)) return
       graph.stopEditing(false)
       const source = edge.getTerminal(true)
       const target = edge.getTerminal(false)
@@ -1829,7 +1940,8 @@ export function createDiagramEditor(
     },
     editLabel() {
       const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
-      if (cell) graph.startEditingAtCell(cell)
+      // maxGraph starts editing any cell it is given; a double click asks first, and so does this.
+      if (cell && graph.isCellEditable(cell)) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
     exportSvg({ selectionOnly = false, ...options } = {}) {
@@ -1848,25 +1960,25 @@ export function createDiagramEditor(
     },
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker(end, marker) {
-      const edges = selectedEdges()
+      const edges = unlocked(selectedEdges())
       if (edges.length === 0) return
       graph.stopEditing(false)
       graph.setCellStyles(end === 'start' ? 'startArrow' : 'endArrow', marker as StyleArrowValue, edges)
     },
     setColor(target, color) {
-      const cells = graph.getSelectionCells().filter((cell) => target !== 'fill' || cell.isVertex())
+      const cells = unlocked(graph.getSelectionCells()).filter((cell) => target !== 'fill' || cell.isVertex())
       if (cells.length === 0) return
       graph.stopEditing(false)
       graph.setCellStyles(COLOR_KEYS[target], color, cells)
     },
     setFontSize(size) {
-      applyFontSizes(textCells(), () => clampFontSize(size))
+      applyFontSizes(unlocked(textCells()), () => clampFontSize(size))
     },
     stepFontSize(direction) {
-      applyFontSizes(textCells(), (cell) => nextFontSize(fontSizeOf(cell), direction))
+      applyFontSizes(unlocked(textCells()), (cell) => nextFontSize(fontSizeOf(cell), direction))
     },
     toggleFontStyle(flag) {
-      const cells = textCells()
+      const cells = unlocked(textCells())
       if (cells.length === 0) return
       const bit = FONT_STYLE_BITS[flag]
       const on = !hasFontStyle(cells, flag)
@@ -1881,7 +1993,7 @@ export function createDiagramEditor(
       })
     },
     setFontFamily(family) {
-      const cells = textCells()
+      const cells = unlocked(textCells())
       if (cells.length === 0) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
@@ -1891,14 +2003,14 @@ export function createDiagramEditor(
       })
     },
     setTextAlign(align) {
-      const cells = textCells()
+      const cells = unlocked(textCells())
       if (cells.length === 0) return
       graph.stopEditing(false)
       // Centred is the default of shapes and edges; fields of tables store their left alignment.
       setStyleValue(cells, 'align', align === 'center' ? undefined : align)
     },
     setLineStyle({ width, dash, edgeShape }) {
-      const cells = graph.getSelectionCells()
+      const cells = unlocked(graph.getSelectionCells())
       if (cells.length === 0) return
       graph.stopEditing(false)
       // Default values are kept by removing their keys, as draw.io does.
@@ -1920,7 +2032,7 @@ export function createDiagramEditor(
       })
     },
     setAutoWidth(enabled) {
-      const cells = autoWidthCells()
+      const cells = unlocked(autoWidthCells())
       if (cells.length === 0) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
@@ -1930,7 +2042,7 @@ export function createDiagramEditor(
       })
     },
     setTextWrap(enabled) {
-      const cells = textWrapCells()
+      const cells = unlocked(textWrapCells())
       if (cells.length === 0) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
@@ -2069,6 +2181,7 @@ export function createDiagramEditor(
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
       unwatchTableRows()
+      unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
       model.removeListener(notify)
@@ -2127,6 +2240,27 @@ const END_STYLE_KEYS = [
   ['exitDy', 'entryDy'],
   ['exitPerimeter', 'entryPerimeter'],
 ] as const
+
+/** Alignments along a vertical line, which move shapes horizontally. */
+const HORIZONTAL_ALIGNS: ReadonlySet<ShapeAlign> = new Set(['left', 'center', 'right'])
+
+/** The side or the centre line of a box that {@link DiagramEditor.alignShapes} lines shapes up on. */
+function alignedLine({ x, y, width, height }: Box, align: ShapeAlign): number {
+  switch (align) {
+    case 'left':
+      return x
+    case 'center':
+      return x + width / 2
+    case 'right':
+      return x + width
+    case 'top':
+      return y
+    case 'middle':
+      return y + height / 2
+    case 'bottom':
+      return y + height
+  }
+}
 
 /** The value shared by all items, or `null` when they differ. */
 function same<T>(values: T[]): T | null {
@@ -2268,6 +2402,61 @@ function configureConnections(graph: Graph) {
     const bounds = icon.bounds!
     return new GraphPoint(state.x + state.width, state.getCenterY() - bounds.height / 2)
   }
+}
+
+/**
+ * Locked cells, and the cells inside them, cannot change: maxGraph asks {@link Graph.isCellLocked} before it moves,
+ * resizes, bends, disconnects or edits a cell and before it shows its connection points. Deleting, rotating and
+ * connecting new edges ask hooks of their own. Copies are not locked. Returns a function that stops watching the
+ * selection.
+ */
+function configureLocks(graph: Graph): () => void {
+  const locked = (cell: Cell) => lockHolder(cell) !== null
+  const isCellLocked = graph.isCellLocked.bind(graph)
+  graph.isCellLocked = (cell) => isCellLocked(cell) || locked(cell)
+  // Removing a group removes what it holds.
+  const isCellDeletable = graph.isCellDeletable.bind(graph)
+  graph.isCellDeletable = (cell) => isCellDeletable(cell) && !locked(cell) && !hasLockedDescendant(cell)
+  const isCellRotatable = graph.isCellRotatable.bind(graph)
+  graph.isCellRotatable = (cell) => isCellRotatable(cell) && !locked(cell)
+  // New edges neither start nor end at a locked cell, and an end of an edge is not moved onto one. The validity of
+  // connections stays as it is: maxGraph checks the end that does not move as well.
+  const connections = graph.getPlugin<ConnectionHandler>('ConnectionHandler')
+  if (connections) connections.isConnectableCell = (cell) => !locked(cell)
+  const createEdgeHandler = graph.createEdgeHandler.bind(graph)
+  graph.createEdgeHandler = (state, edgeStyle) => {
+    const handler = createEdgeHandler(state, edgeStyle)
+    handler.isConnectableCell = (cell) => !locked(cell)
+    return handler
+  }
+  const cloneCells = graph.cloneCells.bind(graph)
+  graph.cloneCells = (...args) => {
+    const clones = cloneCells(...args)
+    // maxGraph leaves no clone of an edge that would be invalid without its ends.
+    clones.forEach((clone) => clone && unlockCopy(clone))
+    return clones
+  }
+  // The handles of a selected cell are made with it, when it is selected: a cell locked or unlocked since, by the
+  // participant or by another one, gets new handles, unless they are being dragged.
+  const handledLocks = new WeakMap<object, boolean>()
+  const createHandler = graph.createHandler.bind(graph)
+  graph.createHandler = (state) => {
+    const handler = createHandler(state)
+    handledLocks.set(handler, graph.isCellLocked(state.cell))
+    return handler
+  }
+  const refreshHandlers = () => {
+    const handlers = graph.getPlugin<SelectionCellsHandler>('SelectionCellsHandler')
+    if (!handlers) return
+    for (const cell of graph.getSelectionCells()) {
+      const handler = handlers.getHandler(cell)
+      const state = graph.getView().getState(cell)
+      if (!handler || !state || handlers.isHandlerActive(handler)) continue
+      if (handledLocks.get(handler) !== graph.isCellLocked(cell)) handlers.updateHandler(state)
+    }
+  }
+  graph.getDataModel().addListener(InternalEvent.CHANGE, refreshHandlers)
+  return () => graph.getDataModel().removeListener(refreshHandlers)
 }
 
 /**
