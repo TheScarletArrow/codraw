@@ -30,8 +30,13 @@ export interface NotificationText {
   detail: string | null
 }
 
+/**
+ * Says what a notification tells. A kind this page does not know, e.g. one added by a later version of the backend while
+ * the tab stayed open, is told in general words rather than breaking the list.
+ */
 export function describeNotification(notification: UserNotification): NotificationText {
-  if (!notification.access) return { actor: null, action: KIND_LABELS[notification.kind], detail: 'Доска недоступна' }
+  const label = KIND_LABELS[notification.kind] ?? 'Уведомление'
+  if (!notification.access) return { actor: null, action: label, detail: 'Доска недоступна' }
   const actor = notification.actor?.name ?? 'Удалённый пользователь'
   const board = `«${notification.boardTitle}»`
   const editing = notification.role === 'editor'
@@ -52,6 +57,8 @@ export function describeNotification(notification: UserNotification): Notificati
       }
     case 'ownership':
       return { actor, action: `передача владения ${board}`, detail: 'Теперь вы владелец доски' }
+    default:
+      return { actor, action: `событие на ${board}`, detail: notification.snippet }
   }
 }
 

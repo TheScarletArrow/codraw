@@ -59,6 +59,13 @@ describe('notifications', () => {
     )
   })
 
+  it('tells a kind it does not know in general words and leads to the board', () => {
+    const unknown = notification({ kind: 'from-a-newer-backend' as UserNotification['kind'], ...access })
+    expect(notificationTitle(describeNotification(unknown))).toBe('Аня: событие на «Схема БД»')
+    expect(describeNotification({ ...unknown, access: false }).action).toBe('Уведомление')
+    expect(notificationLink(unknown)).toBe(`/boards/${boardId}`)
+  })
+
   it('leads to the thread on its page, to the requests for access, or to the board', () => {
     expect(notificationLink(notification())).toBe(`/boards/${boardId}?page=page-2&thread=thread-1`)
     expect(notificationLink(notification({ kind: 'reply', pageId: 'страница 1' }))).toBe(
