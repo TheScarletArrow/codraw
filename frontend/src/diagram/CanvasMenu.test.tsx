@@ -141,6 +141,24 @@ describe('CanvasMenu', () => {
     expect(editor.ungroup).toHaveBeenCalled()
   })
 
+  it('locks the selection, and unlocks it with the name of who locked it over the disabled items', async () => {
+    act(() => editor.setState({ lock: { all: false, canLock: true, locks: [] } }))
+    rightClick('shape')
+    expect(screen.queryByRole('menuitem', { name: 'Открепить' })).toBeNull()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Закрепить' }))
+    expect(editor.setLocked).toHaveBeenCalledWith(true)
+
+    act(() => editor.setState({ lock: { all: true, canLock: false, locks: [{ cellId: 'cell-1', lockedBy: 'Алиса' }] } }))
+    rightClick('shape')
+    expect(screen.getByRole('menu')).toHaveAccessibleDescription('Закреплено: Алиса')
+    expect(screen.getByRole('menuitem', { name: 'Удалить' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Изменить подпись' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Копировать' })).toBeEnabled()
+    expect(screen.queryByRole('menuitem', { name: 'Закрепить' })).toBeNull()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Открепить' }))
+    expect(editor.setLocked).toHaveBeenCalledWith(false)
+  })
+
   describe('with comments', () => {
     const onComment = vi.fn()
 
@@ -190,6 +208,14 @@ describe('CanvasMenu', () => {
       expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
       await userEvent.click(screen.getByRole('menuitem', { name: 'Копировать' }))
       expect(editor.copy).toHaveBeenCalled()
+    })
+
+    it('offers neither locking nor unlocking', () => {
+      act(() => editor.setState({ lock: { all: true, canLock: false, locks: [{ cellId: 'cell-1', lockedBy: 'Алиса' }] } }))
+      rightClick('shape')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
+      expect(screen.getByRole('menu')).not.toHaveAccessibleDescription()
     })
 
     it('does not open for an edge, which they cannot do anything with', () => {

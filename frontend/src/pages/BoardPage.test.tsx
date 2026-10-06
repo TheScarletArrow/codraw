@@ -31,10 +31,12 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
     DiagramCanvas: ({
       pageId,
       readOnly = false,
+      participantName,
       onEditor,
     }: {
       pageId: string
       readOnly?: boolean
+      participantName?: string
       onEditor: (editor: FakeEditor | null) => void
     }) => {
       useEffect(() => {
@@ -44,7 +46,9 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
         onEditor(canvas.editor)
         return () => onEditor(null)
       }, [pageId, readOnly, onEditor])
-      return <div data-testid="diagram-canvas" data-page={pageId} data-read-only={readOnly} />
+      return (
+        <div data-testid="diagram-canvas" data-page={pageId} data-read-only={readOnly} data-participant={participantName} />
+      )
     },
   }
 })
@@ -133,6 +137,19 @@ describe('BoardPage', () => {
     act(() => provider.emitSynced())
 
     expect(screen.getByTestId('diagram-canvas')).toBeInTheDocument()
+  })
+
+  it('gives the canvas the name of the participant for the locks, and shows the locks of the selection', async () => {
+    const provider = await openBoard()
+    act(() => provider.emitSynced())
+    const editor = canvas.editor!
+    editor.placeCell('api', { x: 100, y: 50, width: 120, height: 60 })
+
+    act(() => editor.setState({ lock: { all: true, canLock: false, locks: [{ cellId: 'api', lockedBy: 'Боб' }] } }))
+
+    expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-participant', ALICE.name)
+    expect(screen.getByRole('img', { name: 'Закреплено: Боб' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Открепить' })).toBeEnabled()
   })
 
   it('shows "Нет связи" after losing the connection and recovers after resync', async () => {

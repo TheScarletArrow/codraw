@@ -36,6 +36,7 @@ import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
+import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
@@ -299,11 +300,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     pageId={currentPage.id}
                     histories={histories}
                     readOnly={readOnly}
+                    participantName={identity.name}
                     onEditor={setEditor}
                   />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
+                  <LockBadges editor={editor} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}
                   <CanvasMenu editor={editor} onComment={commentOn} />

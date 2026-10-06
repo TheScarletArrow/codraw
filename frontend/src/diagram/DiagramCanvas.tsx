@@ -12,6 +12,8 @@ interface DiagramCanvasProps {
   histories?: PageHistories | null
   /** The participant may only view the board; a new canvas is created when it changes. */
   readOnly?: boolean
+  /** The name of the participant, which the elements they lock keep; a new canvas is created when it changes. */
+  participantName?: string
   /**
    * Receives the editor once the canvas is created and `null` when it is destroyed.
    * Must be stable (e.g. a state setter): a new function recreates the canvas.
@@ -20,7 +22,14 @@ interface DiagramCanvasProps {
 }
 
 /** maxGraph canvas bound to one page of the board document. The graph is created once per page. */
-export function DiagramCanvas({ document, pageId, histories, readOnly = false, onEditor }: DiagramCanvasProps) {
+export function DiagramCanvas({
+  document,
+  pageId,
+  histories,
+  readOnly = false,
+  participantName,
+  onEditor,
+}: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<DiagramEditor | null>(null)
 
@@ -29,6 +38,7 @@ export function DiagramCanvas({ document, pageId, histories, readOnly = false, o
       pageId,
       undoManager: histories?.get(pageId),
       readOnly,
+      participantName,
     })
     editorRef.current = editor
     onEditor(editor)
@@ -37,7 +47,7 @@ export function DiagramCanvas({ document, pageId, histories, readOnly = false, o
       editorRef.current = null
       editor.destroy()
     }
-  }, [document, pageId, histories, readOnly, onEditor])
+  }, [document, pageId, histories, readOnly, participantName, onEditor])
 
   const handleDragOver = (event: DragEvent) => {
     if (!readOnly && event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {

@@ -17,6 +17,8 @@ export type MenuCommand =
   | 'reverseEdge'
   | 'group'
   | 'ungroup'
+  | 'lock'
+  | 'unlock'
   | 'delete'
   | 'comment'
 
@@ -53,10 +55,30 @@ export interface MenuAvailability {
   readOnly?: boolean
   /** The page comments on single elements, which viewers do too. */
   canComment?: boolean
+  /** A selected element is not locked yet: «Закрепить» is offered. */
+  canLock?: boolean
+  /** A selected element is locked: «Открепить» is offered. */
+  canUnlock?: boolean
+  /** Every selected element is locked: the items that would change them are disabled. */
+  locked?: boolean
 }
 
 /** Items of a participant who may only view the board. */
 const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'selectAll', 'comment'])
+
+/** Items that change the selected elements, which a lock keeps from changing. */
+const CHANGING_COMMANDS = new Set<MenuCommand>([
+  'editLabel',
+  'addField',
+  'addIndex',
+  'cut',
+  'bringToFront',
+  'sendToBack',
+  'reverseEdge',
+  'group',
+  'ungroup',
+  'delete',
+])
 
 type Entry = [MenuCommand, string, Shortcut?]
 
@@ -72,6 +94,10 @@ const ORDER: Entry[] = [
 const DELETE: Entry = ['delete', 'Удалить', 'Delete']
 const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
 const COMMENT: Entry[] = [['comment', 'Комментировать']]
+const LOCK: Entry[] = [
+  ['lock', 'Закрепить'],
+  ['unlock', 'Открепить'],
+]
 
 /** Groups of the menu of each target, in the order of the menu. */
 const MENUS: Record<MenuTarget, Entry[][]> = {
@@ -85,8 +111,15 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
       ['redo', 'Повторить', 'Mod+Shift+Z'],
     ],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, ORDER, COMMENT, [DELETE]],
-  table: [[EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']], CLIPBOARD, ORDER, COMMENT, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, ORDER, LOCK, COMMENT, [DELETE]],
+  table: [
+    [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
+    CLIPBOARD,
+    ORDER,
+    LOCK,
+    COMMENT,
+    [DELETE],
+  ],
   field: [
     [
       ['editLabel', 'Изменить', 'F2'],
@@ -103,18 +136,29 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], COMMENT, [DELETE]],
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, COMMENT, [DELETE]],
-  selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, ORDER, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], LOCK, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, LOCK, COMMENT, [DELETE]],
+  selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, ORDER, LOCK, [DELETE]],
 }
 
 /**
- * Items of the context menu for a target; the ones that cannot be done now are disabled. A participant who may only
- * view gets only copying, selecting and commenting, so their menu may be empty.
+ * Items of the context menu for a target; the ones that cannot be done now are disabled, and so are those that would
+ * change locked elements. A participant who may only view gets only copying, selecting and commenting, so their menu may
+ * be empty.
  */
 export function menuItems(
   target: MenuTarget,
-  { canPaste, canUndo, canRedo, canGroup = false, readOnly = false, canComment = false }: MenuAvailability,
+  {
+    canPaste,
+    canUndo,
+    canRedo,
+    canGroup = false,
+    readOnly = false,
+    canComment = false,
+    canLock = false,
+    canUnlock = false,
+    locked = false,
+  }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
     paste: !canPaste,
@@ -122,11 +166,10 @@ export function menuItems(
     redo: !canRedo,
     group: !canGroup,
   }
+  const offered: Partial<Record<MenuCommand, boolean>> = { comment: canComment, lock: canLock, unlock: canUnlock }
   const groups = MENUS[target]
     .map((group) =>
-      group.filter(
-        ([command]) => (!readOnly || VIEWING_COMMANDS.has(command)) && (canComment || command !== 'comment'),
-      ),
+      group.filter(([command]) => (!readOnly || VIEWING_COMMANDS.has(command)) && (offered[command] ?? true)),
     )
     .filter((group) => group.length > 0)
   return groups.flatMap((group, groupIndex) =>
@@ -134,7 +177,7 @@ export function menuItems(
       command,
       label,
       shortcut,
-      disabled: unavailable[command] ?? false,
+      disabled: (unavailable[command] ?? false) || (locked && CHANGING_COMMANDS.has(command)),
       separatorBefore: groupIndex > 0 && index === 0,
     })),
   )

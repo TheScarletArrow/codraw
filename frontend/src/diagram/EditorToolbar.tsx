@@ -6,6 +6,8 @@ import {
   AlignRight,
   Bold,
   Italic,
+  Lock,
+  LockOpen,
   Maximize,
   Redo2,
   TextWrap,
@@ -22,11 +24,12 @@ import { cn } from '@/lib/utils'
 import { ArrangePicker } from './ArrangePicker.tsx'
 import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
-import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionText, TextAlign } from './editor.ts'
+import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionLock, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
 import { FONT_FAMILIES } from './fonts.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
+import { lockLabel } from './locks.ts'
 import { NumberField } from './NumberField.tsx'
 import { TableTools } from './TableTools.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
@@ -134,57 +137,117 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
   )
 }
 
-/** Tools that change the selected objects. */
+/**
+ * The lock of the selection, then the tools that change the selected objects; while every selected object is locked,
+ * the tools are disabled, and the lock says who locked them.
+ */
 function EditingTools({ editor }: { editor: DiagramEditor | null }) {
-  const { tableSelected, tableVendor, field, index, tableBase, edgeMarkers, colors, line, text, geometry, arrange } =
-    useEditorState(editor)
+  const {
+    tableSelected,
+    tableVendor,
+    field,
+    index,
+    tableBase,
+    edgeMarkers,
+    colors,
+    line,
+    text,
+    geometry,
+    arrange,
+    lock,
+  } = useEditorState(editor)
 
   return (
     <>
-      {tableSelected && <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />}
-      {colors && (
-        <>
-          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-          {colors.hasShapes && (
+      {lock && <LockTools editor={editor} lock={lock} />}
+      <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
+        {tableSelected && (
+          <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />
+        )}
+        {colors && (
+          <>
+            <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+            {colors.hasShapes && (
+              <ColorPicker
+                label="Заливка"
+                name="Цвет заливки"
+                noneLabel="Без заливки"
+                value={colors.fill}
+                onChange={(color) => editor?.setColor('fill', color)}
+              />
+            )}
             <ColorPicker
-              label="Заливка"
-              name="Цвет заливки"
-              noneLabel="Без заливки"
-              value={colors.fill}
-              onChange={(color) => editor?.setColor('fill', color)}
+              label="Линия"
+              name="Цвет линии"
+              noneLabel="Без линии"
+              value={colors.stroke}
+              onChange={(color) => editor?.setColor('stroke', color)}
             />
-          )}
-          <ColorPicker
-            label="Линия"
-            name="Цвет линии"
-            noneLabel="Без линии"
-            value={colors.stroke}
-            onChange={(color) => editor?.setColor('stroke', color)}
+            <ColorPicker
+              label="Текст"
+              name="Цвет текста"
+              value={colors.font}
+              onChange={(color) => editor?.setColor('font', color)}
+            />
+          </>
+        )}
+        {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
+        {text && <TextTools text={text} editor={editor} />}
+        {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
+        {arrange >= 2 && (
+          <ArrangePicker
+            count={arrange}
+            onAlign={(align) => editor?.alignShapes(align)}
+            onDistribute={(direction) => editor?.distributeShapes(direction)}
           />
-          <ColorPicker
-            label="Текст"
-            name="Цвет текста"
-            value={colors.font}
-            onChange={(color) => editor?.setColor('font', color)}
-          />
-        </>
+        )}
+        {edgeMarkers && (
+          <>
+            <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+            <MarkerSelect label="Начало" end="start" value={edgeMarkers.start} editor={editor} />
+            <MarkerSelect label="Конец" end="end" value={edgeMarkers.end} editor={editor} />
+          </>
+        )}
+      </fieldset>
+    </>
+  )
+}
+
+/**
+ * «Закрепить», which locks what is not locked yet, or, when all of the selection is locked, «Открепить» and who locked
+ * it. A mixed selection is unlocked from the menu. The button comes first: the toolbar may have no room for the rest.
+ */
+function LockTools({ editor, lock }: { editor: DiagramEditor | null; lock: SelectionLock }) {
+  return (
+    <>
+      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      {lock.canLock ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Закрепить"
+          title="Закрепить: выделенное нельзя будет случайно сдвинуть, изменить или удалить"
+          onClick={() => editor?.setLocked(true)}
+        >
+          <Lock />
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Открепить"
+          title="Открепить: выделенное снова можно двигать, менять и удалять"
+          onClick={() => editor?.setLocked(false)}
+        >
+          <LockOpen />
+        </Button>
       )}
-      {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
-      {text && <TextTools text={text} editor={editor} />}
-      {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
-      {arrange >= 2 && (
-        <ArrangePicker
-          count={arrange}
-          onAlign={(align) => editor?.alignShapes(align)}
-          onDistribute={(direction) => editor?.distributeShapes(direction)}
-        />
-      )}
-      {edgeMarkers && (
-        <>
-          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-          <MarkerSelect label="Начало" end="start" value={edgeMarkers.start} editor={editor} />
-          <MarkerSelect label="Конец" end="end" value={edgeMarkers.end} editor={editor} />
-        </>
+      {lock.all && (
+        <span className="shrink-0 pr-1 text-sm whitespace-nowrap text-muted-foreground">
+          {lockLabel(lock.locks.map((holder) => holder.lockedBy))}
+        </span>
       )}
     </>
   )

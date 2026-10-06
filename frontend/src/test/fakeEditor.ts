@@ -54,6 +54,7 @@ export function createFakeEditor({
     canCopy: false,
     layoutSelection: false,
     laser: false,
+    lock: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -103,6 +104,7 @@ export function createFakeEditor({
     autoLayout: vi.fn(async () => {}),
     group: vi.fn(() => null),
     ungroup: vi.fn(),
+    setLocked: vi.fn(),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),

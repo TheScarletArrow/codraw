@@ -1,3 +1,4 @@
+import { LOCKED_BY_KEY } from '../diagram/locks.ts'
 import type { StyleValue } from '../diagram/model.ts'
 
 export type Style = Record<string, StyleValue>
@@ -31,6 +32,7 @@ const BOOLEAN_KEYS = new Set([
   'horizontal',
   'ignoreDefaultStyle',
   'imageAspect',
+  'locked',
   'movable',
   'noEdgeStyle',
   'noLabel',
@@ -150,6 +152,12 @@ const DEFAULT_COLORS: Record<string, string> = {
 /** Keys that draw.io uses and CoDraw does not keep: labels are plain text in CoDraw. */
 const DROPPED_KEYS = new Set(['html'])
 
+/**
+ * Keys of CoDraw that stay on the board: who locked a cell is the name of a participant, which neither a file nor the
+ * clipboard carries, and which a file cannot claim either.
+ */
+const BOARD_KEYS = new Set([LOCKED_BY_KEY])
+
 /** draw.io writes `data:image/png,<base64>`: a `;` would end the style value. */
 const DATA_IMAGE = /^data:image\/([a-z0-9.+-]+),([A-Za-z0-9+/=]+)$/i
 const BASE64_DATA_IMAGE = /^data:image\/([a-z0-9.+-]+);base64,/i
@@ -191,7 +199,7 @@ export function parseStyle(text: string, kind: CellKind): Style {
       continue
     }
     const key = entry.slice(0, separator)
-    if (DROPPED_KEYS.has(key)) continue
+    if (DROPPED_KEYS.has(key) || BOARD_KEYS.has(key)) continue
     own[key] = readValue(key, entry.slice(separator + 1))
   }
   Object.assign(style, own)
@@ -226,6 +234,7 @@ export function formatStyle(style: Style, kind: CellKind): string {
   }
   const names = Array.isArray(full.baseStyleNames) ? full.baseStyleNames : []
   delete full.baseStyleNames
+  BOARD_KEYS.forEach((key) => delete full[key])
   const parts = [...names, ...Object.entries(full).map(([key, value]) => `${key}=${writeValue(key, value)}`)]
   return parts.length > 0 ? `${parts.join(';')};` : ''
 }

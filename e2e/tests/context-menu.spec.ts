@@ -86,6 +86,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'Дублировать',
     'На передний план',
     'На задний план',
+    'Закрепить',
     'Комментировать',
     'Удалить',
   ])
@@ -271,7 +272,13 @@ test('reversing an edge swaps its ends', async ({ browser }) => {
   const [start, next] = [points[0]!, points[1]!]
 
   await rightClick(page, { x: canvas.x + (start.x + next.x) / 2, y: canvas.y + (start.y + next.y) / 2 })
-  expect(await menuLabels(page)).toEqual(['Изменить подпись', 'Развернуть направление', 'Комментировать', 'Удалить'])
+  expect(await menuLabels(page)).toEqual([
+    'Изменить подпись',
+    'Развернуть направление',
+    'Закрепить',
+    'Комментировать',
+    'Удалить',
+  ])
   await item(page, 'Развернуть направление').click()
 
   await expect.poll(async () => (await edges(page))[0]).toMatchObject({ id: edge!.id, source: database, target: service })

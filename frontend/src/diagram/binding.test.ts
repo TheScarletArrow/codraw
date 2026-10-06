@@ -1,4 +1,4 @@
-import { Cell, Geometry, GraphDataModel } from '@maxgraph/core'
+import { Cell, Geometry, GraphDataModel, type CellStyle } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { DiagramBinding } from './binding.ts'
@@ -183,6 +183,21 @@ describe('maxGraph → Yjs (local changes)', () => {
     expect(copy.getGeometry()).toMatchObject({ x: 300, y: 200, width: 150, height: 80 })
     expect(copy.getStyle()).toEqual({ fillColor: '#f8cecc' })
     expect(copy.getValue()).toBe('База данных')
+  })
+
+  it('propagates a lock and who locked as one transaction, and its removal', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const cell = addVertex(alice.model, 'API', { fillColor: '#f8cecc' })
+    const writes = alice.localWrites()
+
+    alice.model.setStyle(cell, { fillColor: '#f8cecc', locked: true, codrawLockedBy: 'Алиса' } as CellStyle)
+    expect(alice.localWrites()).toBe(writes + 1)
+    expect(bob.model.getCell(cell.getId()!)!.getStyle()).toEqual({ fillColor: '#f8cecc', locked: true, codrawLockedBy: 'Алиса' })
+
+    alice.model.setStyle(cell, { fillColor: '#f8cecc' })
+    expect(bob.model.getCell(cell.getId()!)!.getStyle()).toEqual({ fillColor: '#f8cecc' })
   })
 
   it('propagates edges and reconnected terminals', () => {

@@ -24,6 +24,7 @@ const NO_EDITOR: EditorState = {
   canCopy: false,
   layoutSelection: false,
   laser: false,
+  lock: null,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

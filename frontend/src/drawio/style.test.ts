@@ -117,3 +117,18 @@ describe('base tables in files of draw.io', () => {
     expect(parseStyle(formatStyle({ codrawInherited: 'field' }, 'vertex'), 'vertex')).toMatchObject({ codrawInherited: 'field' })
   })
 })
+
+describe('locks in files of draw.io', () => {
+  it('keeps the lock both ways without the name of who locked', () => {
+    expect(parseStyle('rounded=1;locked=1;', 'vertex')).toMatchObject({ locked: true })
+    expect(parseStyle('locked=0;', 'vertex')).toMatchObject({ locked: false })
+    const written = formatStyle({ locked: true, codrawLockedBy: 'Алиса' }, 'vertex')
+    expect(written).toContain('locked=1;')
+    expect(written).not.toContain('Алиса')
+    expect(written).not.toContain('codrawLockedBy')
+  })
+
+  it('takes no name of who locked from a file', () => {
+    expect(parseStyle('locked=1;codrawLockedBy=Мэллори;', 'vertex')).not.toHaveProperty('codrawLockedBy')
+  })
+})
