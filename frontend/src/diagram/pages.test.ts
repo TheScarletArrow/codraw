@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
+import { readAttribution, writeAttribution } from './attribution.ts'
 import {
   DEFAULT_PAGE_ID,
   getCells,
@@ -141,6 +142,26 @@ describe('pages', () => {
     const copiedA = copied.get(byValue.get('a')!.id)!
     doc.transact(() => (copiedA.get('style') as Y.Map<unknown>).set('fillColor', '#f8cecc'))
     expect(readCell('a', cells.get('a')!).style.fillColor).toBe('#dae8fc')
+  })
+
+  it('names the participant who duplicates a page in the copies, and the original keeps who changed it', () => {
+    const doc = board()
+    const cells = getCells(doc)
+    doc.transact(() => {
+      writeCell(cells, cell('a'))
+      writeAttribution(cells.get('a')!, { id: 'alice', name: 'Алиса' }, 1000)
+      writeCell(cells, cell('b'))
+    })
+
+    const copy = duplicatePage(doc, DEFAULT_PAGE_ID, { id: 'bob', name: 'Боб' })!
+
+    const copied = Array.from(getCells(doc, copy).entries()).filter(
+      ([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID,
+    )
+    expect(copied).toHaveLength(2)
+    for (const [, map] of copied) expect(readAttribution(map)).toMatchObject({ by: 'bob', name: 'Боб' })
+    expect(readAttribution(cells.get('a'))).toEqual({ by: 'alice', name: 'Алиса', at: 1000 })
+    expect(readAttribution(cells.get('b'))).toBeNull()
   })
 
   it('deletes a page with its cells but never the last page', () => {

@@ -31,11 +31,13 @@ import { fetchEmbed } from '../api/embed.ts'
 import { embedKey } from '../embed/links.ts'
 import { useEmbedPublisher } from '../embed/useEmbedPublisher.ts'
 import { PageHistories } from '../diagram/binding.ts'
+import type { Author } from '../diagram/attribution.ts'
 import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
+import { LastChange } from '../diagram/LastChange.tsx'
 import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { initializeDocument } from '../diagram/model.ts'
@@ -79,6 +81,8 @@ export function BoardPage() {
 
 function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const identity = useMemo(() => participantIdentity(user), [user])
+  // Who the elements this participant adds and changes name as who changed them last.
+  const author = useMemo<Author>(() => ({ id: user.id, name: user.name }), [user.id, user.name])
   const viewer = !canEdit(board)
   const connection = useBoardConnection(board.id, identity, viewer)
   const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged } = connection
@@ -147,9 +151,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   useEffect(() => {
     const pending = document && takePendingImport(board.id)
     if (!pending) return
-    const [first] = importPages(document, pending)
+    const [first] = importPages(document, pending, author)
     if (first) selectPage(first)
-  }, [document, board.id, selectPage])
+  }, [document, board.id, selectPage, author])
 
   // Following another participant and presenting to everybody.
   const following = useFollowing({ awareness, editor, pages, currentPageId: currentPage?.id ?? null, selectPage })
@@ -212,7 +216,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             Только просмотр
           </span>
         )}
-        <DrawioActions document={document} title={board.title} onImported={selectPage} readOnly={readOnly} />
+        <DrawioActions
+          document={document}
+          title={board.title}
+          onImported={selectPage}
+          readOnly={readOnly}
+          author={author}
+        />
         <ImageExportMenu
           editor={editor}
           document={document}
@@ -300,7 +310,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     pageId={currentPage.id}
                     histories={histories}
                     readOnly={readOnly}
-                    participantName={identity.name}
+                    participantName={author.name}
+                    participantId={author.id}
                     onEditor={setEditor}
                   />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
@@ -328,13 +339,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                 onAdd={() => selectPage(addPage(document, currentPage?.id))}
                 onRename={(id, name) => renamePage(document, id, name)}
                 onDuplicate={(id) => {
-                  const copy = duplicatePage(document, id)
+                  const copy = duplicatePage(document, id, author)
                   if (copy) selectPage(copy)
                 }}
                 onDelete={(id) => deletePage(document, id)}
                 onMove={(id, index) => movePage(document, id, index)}
                 readOnly={readOnly}
-              />
+              >
+                <LastChange editor={editor} />
+              </PageTabs>
             )}
           </div>
         )}

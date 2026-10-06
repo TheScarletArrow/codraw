@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { writeAttribution, type Author } from './attribution.ts'
 import { newId } from './ids.ts'
 import {
   compareCells,
@@ -74,9 +75,10 @@ export function movePage(doc: Y.Doc, id: string, index: number) {
 
 /**
  * Copies a page with all its cells right after it and returns the id of the copy. Cells get new ids, so the
- * copy is independent of the original.
+ * copy is independent of the original. With an `author`, the copies keep them as who changed them last, as pasted
+ * copies do.
  */
-export function duplicatePage(doc: Y.Doc, id: string): string | null {
+export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = null): string | null {
   const pages = listPages(doc)
   const index = pages.findIndex((page) => page.id === id)
   if (index < 0) return null
@@ -89,12 +91,16 @@ export function duplicatePage(doc: Y.Doc, id: string): string | null {
   const remap = (value: unknown) => (typeof value === 'string' ? (ids.get(value) ?? value) : value)
 
   const copyId = newId()
+  const at = Date.now()
   doc.transact(() => {
     writePage(doc, copyId, { name: `${pages[index]!.name} (копия)`, order: orderAfter(pages[index], pages[index + 1]) })
     const target = getCells(doc, copyId)
     source.forEach((cell, cellId) => {
       if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID) return
-      target.set(ids.get(cellId)!, copyMap(cell, (key, value) => (REFERENCES.has(key) ? remap(value) : value)))
+      const copy = copyMap(cell, (key, value) => (REFERENCES.has(key) ? remap(value) : value))
+      // Written into the copy before it is added, so that the document keeps one value of each key.
+      if (author) writeAttribution(copy, author, at)
+      target.set(ids.get(cellId)!, copy)
     })
   }, PAGES_ORIGIN)
   return copyId

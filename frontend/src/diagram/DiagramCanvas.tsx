@@ -15,6 +15,11 @@ interface DiagramCanvasProps {
   /** The name of the participant, which the elements they lock keep; a new canvas is created when it changes. */
   participantName?: string
   /**
+   * The id of the participant, which the elements they change keep with the name as who changed them last; a new canvas
+   * is created when it changes.
+   */
+  participantId?: string
+  /**
    * Receives the editor once the canvas is created and `null` when it is destroyed.
    * Must be stable (e.g. a state setter): a new function recreates the canvas.
    */
@@ -28,6 +33,7 @@ export function DiagramCanvas({
   histories,
   readOnly = false,
   participantName,
+  participantId,
   onEditor,
 }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -39,6 +45,7 @@ export function DiagramCanvas({
       undoManager: histories?.get(pageId),
       readOnly,
       participantName,
+      participantId,
     })
     editorRef.current = editor
     onEditor(editor)
@@ -47,7 +54,7 @@ export function DiagramCanvas({
       editorRef.current = null
       editor.destroy()
     }
-  }, [document, pageId, histories, readOnly, participantName, onEditor])
+  }, [document, pageId, histories, readOnly, participantName, participantId, onEditor])
 
   const handleDragOver = (event: DragEvent) => {
     if (!readOnly && event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {

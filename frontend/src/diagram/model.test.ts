@@ -164,6 +164,17 @@ describe('cells', () => {
     expect(changed).toEqual(['fillColor'])
   })
 
+  it('tells what it wrote: a new cell, the fields and the keys of the style that changed, or nothing', () => {
+    const doc = new Y.Doc()
+    const cells = getCells(doc)
+
+    expect(writeCell(cells, vertex('box'))).toMatchObject({ created: true })
+    expect(writeCell(cells, vertex('box'))).toEqual({ created: false, fields: [], style: [] })
+    expect(
+      writeCell(cells, vertex('box', { value: 'Сервис', geometry: null, style: { fillColor: '#000', dashed: true } })),
+    ).toEqual({ created: false, fields: ['value', 'geometry'], style: ['fillColor', 'dashed', 'rounded'] })
+  })
+
   it('removes style keys that are no longer set', () => {
     const doc = new Y.Doc()
     const cells = getCells(doc)

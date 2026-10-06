@@ -1,9 +1,19 @@
 import { Cell, Geometry, GraphDataModel, type CellStyle } from '@maxgraph/core'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
-import { DiagramBinding } from './binding.ts'
+import { readAttribution } from './attribution.ts'
+import { createUndoManager, DiagramBinding } from './binding.ts'
 import { getCells, initializeDocument, LAYER_CELL_ID, orderBetween, readCell, writeCell, type CellData } from './model.ts'
-import { addEdge, addVertex, childIds, connect, createClient, layer, REMOTE_ORIGIN } from './testing.ts'
+import {
+  addEdge,
+  addVertex,
+  childIds,
+  connect,
+  createClient,
+  layer,
+  REMOTE_ORIGIN,
+  type TestClient,
+} from './testing.ts'
 
 const vertexData = (id: string, overrides: Partial<CellData> = {}): CellData => ({
   id,
@@ -298,5 +308,140 @@ describe('maxGraph → Yjs (local changes)', () => {
 
     expect(model.getCell('box')).toBeFalsy()
     expect(getCells(doc).size).toBe(3)
+  })
+})
+
+describe('who changed a cell', () => {
+  const ALICE = { id: '0199a000-0000-7000-8000-00000000000a', name: 'Алиса' }
+  const BOB = { id: '0199a000-0000-7000-8000-00000000000b', name: 'Боб' }
+  const T0 = Date.UTC(2026, 9, 6, 9, 0, 0)
+
+  afterEach(() => vi.restoreAllMocks())
+
+  /** Changes of the participants from now on happen at `time`. */
+  const at = (time: number) => vi.spyOn(Date, 'now').mockReturnValue(time)
+  const attributionOf = (client: TestClient, cell: Cell) => readAttribution(getCells(client.doc).get(cell.getId()!))
+
+  /** Alice and Bob on one board, each with their own undo history. */
+  function participants() {
+    const alice = createClient(new Y.Doc(), ALICE)
+    const bob = createClient(new Y.Doc(), BOB)
+    connect(alice.doc, bob.doc)
+    return { alice, bob, bobHistory: createUndoManager(getCells(bob.doc)) }
+  }
+
+  it('keeps who changed a cell and when in the transaction of the change, and the others get it as it is', () => {
+    const { alice, bob } = participants()
+    at(T0)
+
+    const cell = addVertex(alice.model, 'API')
+
+    expect(alice.localWrites()).toBe(1)
+    expect(attributionOf(bob, cell)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 })
+    expect(bob.localWrites()).toBe(0)
+
+    at(T0 + 60_000)
+    bob.model.setValue(bob.model.getCell(cell.getId()!)!, 'Gateway')
+
+    expect(bob.localWrites()).toBe(1)
+    expect(attributionOf(alice, cell)).toEqual({ by: BOB.id, name: 'Боб', at: T0 + 60_000 })
+    expect(alice.localWrites()).toBe(1)
+  })
+
+  it('names the author only in the cells the change changed', () => {
+    const { alice, bob } = participants()
+    at(T0)
+    const api = addVertex(alice.model, 'API')
+    const db = addVertex(alice.model, 'DB')
+    const [theirApi, theirDb] = [api, db].map((cell) => bob.model.getCell(cell.getId()!)!)
+
+    at(T0 + 60_000)
+    bob.model.beginUpdate()
+    bob.model.setGeometry(theirApi!, new Geometry(300, 200, 120, 60))
+    // maxGraph reports a change of the value even when it is the same.
+    bob.model.setValue(theirDb!, 'DB')
+    bob.model.endUpdate()
+
+    expect(attributionOf(alice, api)).toEqual({ by: BOB.id, name: 'Боб', at: T0 + 60_000 })
+    expect(attributionOf(alice, db)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 })
+  })
+
+  it('does not name anybody in changes that come from other participants or in a binding without an author', () => {
+    const client = createClient()
+    const bob = createClient(new Y.Doc(), BOB)
+    connect(client.doc, bob.doc)
+
+    remote(bob.doc, (cells) => writeCell(cells, vertexData('box')))
+    const cell = addVertex(client.model, 'Без автора')
+
+    expect(readAttribution(getCells(bob.doc).get('box'))).toBeNull()
+    expect(attributionOf(bob, cell)).toBeNull()
+    expect(bob.localWrites()).toBe(0)
+  })
+
+  it('keeps who changed a cell when it is only locked or unlocked', () => {
+    const { alice, bob } = participants()
+    at(T0)
+    const cell = addVertex(alice.model, 'API', { fillColor: '#dae8fc' })
+    const theirs = bob.model.getCell(cell.getId()!)!
+
+    at(T0 + 60_000)
+    bob.model.setStyle(theirs, { fillColor: '#dae8fc', locked: true, codrawLockedBy: 'Боб' } as CellStyle)
+    expect(attributionOf(alice, cell)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 })
+    bob.model.setStyle(theirs, { fillColor: '#dae8fc' })
+    expect(attributionOf(alice, cell)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 })
+
+    bob.model.setStyle(theirs, { fillColor: '#f8cecc', locked: true, codrawLockedBy: 'Боб' } as CellStyle)
+    expect(attributionOf(alice, cell)).toEqual({ by: BOB.id, name: 'Боб', at: T0 + 60_000 })
+  })
+
+  it('undoes who changed a cell with the change, and redoes it with the change', () => {
+    const { alice, bob, bobHistory } = participants()
+    at(T0)
+    const cell = addVertex(alice.model, 'API')
+    at(T0 + 60_000)
+    bob.model.setValue(bob.model.getCell(cell.getId()!)!, 'Gateway')
+    at(T0 + 120_000)
+    bob.model.setGeometry(bob.model.getCell(cell.getId()!)!, new Geometry(300, 200, 120, 60))
+
+    bobHistory.undo()
+    expect(attributionOf(alice, cell)).toEqual({ by: BOB.id, name: 'Боб', at: T0 + 60_000 })
+    bobHistory.undo()
+    expect(cell.getValue()).toBe('API')
+    expect(attributionOf(alice, cell)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 })
+
+    bobHistory.redo()
+    expect(cell.getValue()).toBe('Gateway')
+    expect(attributionOf(alice, cell)).toEqual({ by: BOB.id, name: 'Боб', at: T0 + 60_000 })
+  })
+
+  it('undoes the first change of a cell that named nobody back to nobody', () => {
+    const bob = createClient(new Y.Doc(), BOB)
+    const history = createUndoManager(getCells(bob.doc))
+    remote(bob.doc, (cells) => writeCell(cells, vertexData('box')))
+
+    bob.model.setValue(bob.model.getCell('box')!, 'Изменено')
+    expect(readAttribution(getCells(bob.doc).get('box'))).toMatchObject({ name: 'Боб' })
+    history.undo()
+
+    expect(readAttribution(getCells(bob.doc).get('box'))).toBeNull()
+  })
+
+  it('keeps who changed a cell after the change being undone, when that was another participant', () => {
+    const { alice, bob, bobHistory } = participants()
+    at(T0)
+    const cell = addVertex(alice.model, 'API')
+    at(T0 + 60_000)
+    bob.model.setValue(bob.model.getCell(cell.getId()!)!, 'Gateway')
+    at(T0 + 120_000)
+    alice.model.setGeometry(cell, new Geometry(300, 200, 120, 60))
+
+    bobHistory.undo()
+
+    expect(cell.getValue()).toBe('API')
+    expect(cell.getGeometry()).toMatchObject({ x: 300, y: 200 })
+    for (const client of [alice, bob]) {
+      expect(attributionOf(client, cell)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 + 120_000 })
+    }
   })
 })

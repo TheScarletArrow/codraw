@@ -6,7 +6,8 @@ import { participantColor } from '../board/identity.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { BOARD_CHANGED, COMMENTS_CHANGED } from '../board/messages.ts'
 import * as Y from 'yjs'
-import { DEFAULT_PAGE_ID, getCells, initializeDocument, writePage } from '../diagram/model.ts'
+import { readAttribution } from '../diagram/attribution.ts'
+import { DEFAULT_PAGE_ID, getCells, initializeDocument, LAYER_CELL_ID, writeCell, writePage } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
@@ -32,11 +33,13 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       pageId,
       readOnly = false,
       participantName,
+      participantId,
       onEditor,
     }: {
       pageId: string
       readOnly?: boolean
       participantName?: string
+      participantId?: string
       onEditor: (editor: FakeEditor | null) => void
     }) => {
       useEffect(() => {
@@ -47,7 +50,13 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
         return () => onEditor(null)
       }, [pageId, readOnly, onEditor])
       return (
-        <div data-testid="diagram-canvas" data-page={pageId} data-read-only={readOnly} data-participant={participantName} />
+        <div
+          data-testid="diagram-canvas"
+          data-page={pageId}
+          data-read-only={readOnly}
+          data-participant={participantName}
+          data-participant-id={participantId}
+        />
       )
     },
   }
@@ -150,6 +159,21 @@ describe('BoardPage', () => {
     expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-participant', ALICE.name)
     expect(screen.getByRole('img', { name: 'Закреплено: Боб' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Открепить' })).toBeEnabled()
+  })
+
+  it('gives the canvas the participant whom their changes name, and shows who changed the selected element', async () => {
+    const provider = await openBoard()
+    act(() => provider.emitSynced())
+    const editor = canvas.editor!
+
+    act(() => editor.setState({ attribution: { by: 'bob', name: 'Боб', at: Date.now(), mine: false } }))
+
+    expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-participant-id', ALICE.id)
+    expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-participant', ALICE.name)
+    expect(screen.getByTestId('last-change')).toHaveTextContent('Изменено: Боб, только что')
+    expect(screen.getByRole('tablist', { name: 'Страницы' }).parentElement).toContainElement(
+      screen.getByTestId('last-change'),
+    )
   })
 
   it('shows "Нет связи" after losing the connection and recovers after resync', async () => {
@@ -826,6 +850,33 @@ describe('BoardPage', () => {
       expect(getCells(document, DEFAULT_PAGE_ID).size).toBe(2)
     })
 
+    it('names the participant who duplicates a page in the copies of its elements', async () => {
+      const { document } = await openPages()
+      act(() => {
+        document.transact(() =>
+          writeCell(getCells(document), {
+            id: 'api',
+            kind: 'vertex',
+            parent: LAYER_CELL_ID,
+            order: 'a0',
+            value: 'API',
+            geometry: { x: 0, y: 0, width: 120, height: 60 },
+            source: null,
+            target: null,
+            style: {},
+          }),
+        )
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню страницы «Страница 1»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Дублировать' }))
+
+      const copy = listPages(document)[1]!
+      const [copied] = [...getCells(document, copy.id).values()].filter((cell) => cell.get('value') === 'API')
+      expect(readAttribution(copied)).toMatchObject({ by: ALICE.id, name: ALICE.name })
+      expect(readAttribution(getCells(document).get('api'))).toBeNull()
+    })
+
     it('names the page of a participant who is on another page and shows them on its tab', async () => {
       const provider = await openPages()
       let second = ''
@@ -1275,6 +1326,8 @@ describe('BoardPage', () => {
       await waitFor(() => expect(tabNames()).toEqual(['Страница 1', 'Контекст', 'Слои']))
       // The tabs follow the document at once; the address, and with it the canvas, switch to the page a moment later.
       await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page'))
+      const imported = readAttribution(getCells(provider.document, 'ctx-page').get('api'))
+      expect(imported).toMatchObject({ by: ALICE.id, name: ALICE.name })
     })
 
     it('reports a file that is not a draw.io diagram and leaves the board as it is', async () => {
@@ -1309,10 +1362,12 @@ describe('BoardPage', () => {
     it('fills a board created from a file once its document is synced', async () => {
       setPendingImport(boardId, await parseDrawio(SAMPLE_DRAWIO))
 
-      await openSynced()
+      const provider = await openSynced()
 
       expect(tabNames()).toEqual(['Контекст', 'Слои'])
       expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
+      const imported = readAttribution(getCells(provider.document, 'ctx-page').get('db'))
+      expect(imported).toMatchObject({ by: ALICE.id, name: ALICE.name })
     })
   })
 })

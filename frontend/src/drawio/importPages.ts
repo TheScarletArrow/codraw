@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { writeAttribution, type Author } from '../diagram/attribution.ts'
 import { newId } from '../diagram/ids.ts'
 import { getCells, getPages, orderBetween, writeAttrs, writeCell, writePage } from '../diagram/model.ts'
 import { deletePage, isPageEmpty, listPages } from '../diagram/pages.ts'
@@ -9,9 +10,10 @@ export const IMPORT_ORIGIN = 'codraw:import'
 
 /**
  * Adds the pages of a draw.io file after the pages of the board in one transaction and returns their ids. A board
- * that has a single page without shapes gets exactly the pages of the file: the empty page is deleted.
+ * that has a single page without shapes gets exactly the pages of the file: the empty page is deleted. With an
+ * `author`, the imported cells keep them as who changed them last.
  */
-export function importPages(doc: Y.Doc, pages: DrawioPage[]): string[] {
+export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | null = null): string[] {
   const existing = listPages(doc)
   const replaced = existing.length === 1 && isPageEmpty(doc, existing[0]!.id) ? existing[0]!.id : null
   const taken = new Set(getPages(doc).keys())
@@ -19,6 +21,7 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[]): string[] {
   const ids: string[] = []
 
   doc.transact(() => {
+    const at = Date.now()
     for (const [index, page] of pages.entries()) {
       // The id of the diagram is kept when it is free, so that links to it keep working.
       const id = page.id && !taken.has(page.id) && getCells(doc, page.id).size === 0 ? page.id : newId()
@@ -29,6 +32,7 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[]): string[] {
       for (const { attrs, ...cell } of page.cells) {
         writeCell(cells, cell)
         if (attrs) writeAttrs(cells.get(cell.id)!, attrs)
+        if (author) writeAttribution(cells.get(cell.id)!, author, at)
       }
       ids.push(id)
     }

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
+import { readAttribution, writeAttribution } from '../diagram/attribution.ts'
 import {
   DEFAULT_PAGE_ID,
   getCells,
@@ -169,9 +170,45 @@ describe('exportDrawio', () => {
     expect(xml).not.toContain('Алиса')
     expect(pageCells(copy, DEFAULT_PAGE_ID).api!.style).toEqual({ locked: true, fontSize: 13 })
   })
+
+  it('writes no file with who changed the elements, and reads none from a file', async () => {
+    const doc = board()
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('api'))
+      writeAttribution(getCells(doc).get('api')!, { id: '0199a000-0000-7000-8000-00000000000a', name: 'Алиса' }, 1)
+    })
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).not.toContain('Алиса')
+    expect(xml).not.toContain('0199a000-0000-7000-8000-00000000000a')
+    expect(xml).not.toContain('modified')
+    expect(readAttribution(getCells(copy).get('api'))).toBeNull()
+  })
 })
 
 describe('importPages', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('names the participant who imports in every imported element', async () => {
+    const doc = board()
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 6, 9, 0, 0))
+
+    const ids = importPages(doc, await parseDrawio(SAMPLE_DRAWIO), { id: 'bob', name: 'Боб' })
+
+    for (const id of ids) {
+      const imported = Array.from(getCells(doc, id).entries()).filter(
+        ([cellId]) => cellId !== ROOT_CELL_ID && cellId !== LAYER_CELL_ID,
+      )
+      expect(imported.length).toBeGreaterThan(0)
+      for (const [, map] of imported) {
+        expect(readAttribution(map)).toEqual({ by: 'bob', name: 'Боб', at: Date.UTC(2026, 9, 6, 9, 0, 0) })
+      }
+    }
+  })
+
   it('adds the pages of the file after the pages of a board with shapes and keeps free page ids', async () => {
     const doc = board()
     doc.transact(() => writeCell(getCells(doc), cell('own')))

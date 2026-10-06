@@ -167,4 +167,13 @@ describe('PageTabs', () => {
     expect(screen.queryByRole('button', { name: 'Меню страницы «Контекст»' })).toBeNull()
     expect(tab('Контекст')).toHaveAttribute('draggable', 'false')
   })
+
+  it('shows what it is given at the end of the bar, after the tabs and the plus button', () => {
+    renderTabs({ children: <p>Изменено: Боб, только что</p> })
+
+    const status = screen.getByText('Изменено: Боб, только что')
+    const add = screen.getByRole('button', { name: 'Добавить страницу' })
+    expect(add.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('tablist', { name: 'Страницы' })).not.toContainElement(status)
+  })
 })
