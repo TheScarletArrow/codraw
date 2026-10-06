@@ -11,6 +11,8 @@ export type FakeEditor = DiagramEditor & {
   rightClick(request: ContextMenuRequest): void
   /** Sets where a cell is shown; `cellBounds` returns it. */
   placeCell(id: string, bounds: Box | null): void
+  /** Sets the points of the line of an edge (canvas points before scrolling); `edgePoints` returns them. */
+  placeEdge(id: string, points: Point[] | null): void
   /** Simulates scrolling: canvas points are diagram points shifted by this offset. */
   scrollTo(offset: Point): void
   /** Simulates a label edited in place, its change by another participant meanwhile, or the end of editing (`null`). */
@@ -64,6 +66,7 @@ export function createFakeEditor({
   let viewVersion = 0
   let editing: LabelEditing | null = null
   const cells = new Map<string, Box | null>()
+  const edges = new Map<string, Point[] | null>()
   const listeners = new Set<() => void>()
   const pointerListeners = new Set<(point: Point | null) => void>()
   const selectionListeners = new Set<(ids: string[]) => void>()
@@ -135,6 +138,7 @@ export function createFakeEditor({
       const box = cells.get(id)
       return box ? { ...box, x: box.x - offset.x, y: box.y - offset.y } : null
     },
+    edgePoints: (id) => edges.get(id)?.map((point) => ({ x: point.x - offset.x, y: point.y - offset.y })) ?? null,
     viewportSize: () => viewport,
     // Scrolls so that the point is in the middle of the viewport.
     centerOn: vi.fn(({ x, y }: Point) => {
@@ -142,6 +146,7 @@ export function createFakeEditor({
       changeView()
     }),
     revealCell: vi.fn((id: string) => cells.get(id) != null),
+    clearSelection: vi.fn(),
     viewportCenter: () => ({ x: offset.x + viewport.width / 2, y: offset.y + viewport.height / 2 }),
     zoomTo: vi.fn((scale: number) => {
       state = { ...state, scale }
@@ -189,6 +194,10 @@ export function createFakeEditor({
     },
     placeCell(id, bounds) {
       cells.set(id, bounds)
+      changeView()
+    },
+    placeEdge(id, points) {
+      edges.set(id, points)
       changeView()
     },
     scrollTo(next) {

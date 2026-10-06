@@ -176,4 +176,29 @@ describe('PageTabs', () => {
     expect(add.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole('tablist', { name: 'Страницы' })).not.toContainElement(status)
   })
+
+  it('marks the pages added, changed and removed since a version, with a sign and a description', () => {
+    renderTabs({
+      readOnly: true,
+      changes: new Map([
+        ['p2', 'added'],
+        ['p3', 'removed'],
+        ['p1', 'changed'],
+      ]),
+    })
+
+    expect(tab('Контейнеры')).toHaveAccessibleDescription('Страница добавлена')
+    expect(tab('Контекст')).toHaveAccessibleDescription('Страница изменена')
+    expect(tab('Схема БД')).toHaveAccessibleDescription('Страница удалена')
+    expect(tab('Схема БД')).toHaveAttribute('title', 'Схема БД — страница удалена')
+    expect(within(tab('Схема БД')).getByText('Схема БД')).toHaveClass('line-through')
+    expect(tab('Контейнеры').querySelector('[data-change-icon]')).toHaveAttribute('data-change-icon', 'added')
+  })
+
+  it('marks no page without a comparison', () => {
+    renderTabs()
+
+    expect(tab('Контекст')).not.toHaveAttribute('aria-describedby')
+    expect(tab('Контекст').querySelector('[data-change-icon]')).toBeNull()
+  })
 })
