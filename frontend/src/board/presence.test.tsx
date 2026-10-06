@@ -4,7 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeAwareness } from '../test/fakeProvider.ts'
 import { PresenceLayer } from './PresenceLayer.tsx'
-import { CURSOR_INTERVAL_MS, readRemotePresence, usePresencePublisher, VIEW_INTERVAL_MS, type Awareness } from './presence.ts'
+import {
+  currentPresentation,
+  CURSOR_INTERVAL_MS,
+  presentationStart,
+  readRemotePresence,
+  useFollowingPublisher,
+  usePresencePublisher,
+  VIEW_INTERVAL_MS,
+  type Awareness,
+  type RemotePresence,
+} from './presence.ts'
 
 const asAwareness = (awareness: FakeAwareness) => awareness as unknown as Awareness
 const bob = { name: 'Боб', color: '#dc2626', avatarUrl: 'https://avatars.example.com/bob.png' }
@@ -172,6 +182,71 @@ describe('usePresencePublisher', () => {
       null,
       null,
     ])
+  })
+})
+
+describe('presenting and following', () => {
+  const local = (awareness: FakeAwareness) => awareness.getStates().get(awareness.clientID) ?? {}
+  const presenting = (clientId: number, since: number | null) => ({ clientId, presenting: since }) as RemotePresence
+
+  it('publishes when the participant started presenting and whom they follow, and clears both on leaving', () => {
+    const awareness = new FakeAwareness(1)
+    const { rerender, unmount } = renderHook(
+      ({ since, leader }: { since: number | null; leader: number | null }) =>
+        useFollowingPublisher(asAwareness(awareness), since, leader),
+      { initialProps: { since: null as number | null, leader: 7 as number | null } },
+    )
+    expect(local(awareness)).toMatchObject({ presenting: null, following: 7 })
+
+    rerender({ since: 1_000, leader: null })
+    expect(local(awareness)).toMatchObject({ presenting: 1_000, following: null })
+
+    rerender({ since: 1_000, leader: 8 })
+    unmount()
+    expect(local(awareness)).toMatchObject({ presenting: null, following: null })
+  })
+
+  it('publishes the presentation again over a new connection', () => {
+    const first = new FakeAwareness(1)
+    const second = new FakeAwareness(2)
+    const { rerender } = renderHook(({ awareness }) => useFollowingPublisher(asAwareness(awareness), 1_000, null), {
+      initialProps: { awareness: first },
+    })
+
+    rerender({ awareness: second })
+
+    expect(local(second)).toMatchObject({ presenting: 1_000 })
+    expect(local(first)).toMatchObject({ presenting: null })
+  })
+
+  it('reads whom others follow and since when they present, and ignores what is neither', () => {
+    const others = new FakeAwareness(1)
+    others.setState(2, { user: bob, presenting: 1_700_000_000_000, following: 1 })
+    others.setState(3, { user: { ...bob, name: 'Вера' }, presenting: 'now', following: '1' })
+    others.setState(4, { user: { ...bob, name: 'Гена' }, presenting: -5, following: 1.5 })
+    others.setState(5, { user: { ...bob, name: 'Старый' } })
+
+    expect(
+      readRemotePresence(asAwareness(others)).map(({ presenting, following }) => ({ presenting, following })),
+    ).toEqual([
+      { presenting: 1_700_000_000_000, following: 1 },
+      { presenting: null, following: null },
+      { presenting: null, following: null },
+      { presenting: null, following: null },
+    ])
+  })
+
+  it('picks the presentation started last, and of two started at once the one of the larger client id', () => {
+    expect(currentPresentation([presenting(2, null), presenting(3, null)], null)).toBeNull()
+    expect(currentPresentation([presenting(2, 200), presenting(3, 100)], null)).toEqual({ clientId: 2, since: 200 })
+    expect(currentPresentation([presenting(5, 100), presenting(3, 100)], null)).toEqual({ clientId: 5, since: 100 })
+    expect(currentPresentation([presenting(2, 100)], { clientId: 1, since: 150 })).toEqual({ clientId: 1, since: 150 })
+    expect(currentPresentation([presenting(2, 150)], { clientId: 1, since: 150 })).toEqual({ clientId: 2, since: 150 })
+  })
+
+  it('starts a presentation now, or after the presentations of others whose clocks are ahead', () => {
+    expect(presentationStart([presenting(2, null), presenting(3, 500)], 1_000)).toBe(1_000)
+    expect(presentationStart([presenting(2, 5_000), presenting(3, 500)], 1_000)).toBe(5_001)
   })
 })
 

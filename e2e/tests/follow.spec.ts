@@ -1,15 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { addShape, twoParticipants } from './helpers.ts'
-
-/** The page, the middle of the view and the scale of the canvas of a participant. */
-function view(page: Page) {
-  return page.evaluate(() => {
-    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
-    const editor = container.__codrawEditor
-    const center = editor.viewportCenter()
-    return { page: editor.pageId as string, x: Math.round(center.x), y: Math.round(center.y), scale: editor.graph.getView().scale as number }
-  })
-}
+import { expect, test } from '@playwright/test'
+import { addShape, twoParticipants, view } from './helpers.ts'
 
 test('a participant follows another: their page, scroll and zoom, until they move the canvas on their own', async ({ browser }) => {
   const { alice, bob, close } = await twoParticipants(browser)
