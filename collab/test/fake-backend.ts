@@ -22,7 +22,9 @@ export class FakeBackend {
   readonly documents = new Map<string, Uint8Array>();
   /** Access to the boards; a board without an entry is owned by {@link ALICE} and editable through its link. */
   readonly access = new Map<string, BoardAccess>();
-  readonly requests: { method: string; boardId: string }[] = [];
+  readonly requests: { method: string; boardId: string; editors?: string[] }[] = [];
+  /** How many of the next stores fail with 500, as when the database is down. */
+  failingStores = 0;
   private keys: { kid: string; privateKey: CryptoKey; publicJwk: JWK }[] = [];
   private server?: Server;
 
@@ -63,6 +65,11 @@ export class FakeBackend {
     return this.requests.filter((r) => r.method === "PUT" && r.boardId === boardId).length;
   }
 
+  /** The users that each store of the board named as having changed it, in the order of the stores. */
+  editorsOfStores(boardId: string): string[][] {
+    return this.requests.filter((r) => r.method === "PUT" && r.boardId === boardId).map((r) => r.editors ?? []);
+  }
+
   accessRequestsFor(boardId: string): number {
     return this.requests.filter((r) => r.method === "GET access" && r.boardId === boardId).length;
   }
@@ -82,7 +89,12 @@ export class FakeBackend {
       }
       const boardId = decodeURIComponent(match[1]!);
       const isAccess = match[2] === "access";
-      this.requests.push({ method: `${request.method ?? ""}${isAccess ? " access" : ""}`, boardId });
+      const editors = request.headers["x-editors"];
+      this.requests.push({
+        method: `${request.method ?? ""}${isAccess ? " access" : ""}`,
+        boardId,
+        ...(typeof editors === "string" && { editors: editors.split(",").map((id) => id.trim()) }),
+      });
 
       if (request.headers["x-internal-token"] !== this.token) {
         response.writeHead(401).end();
@@ -109,6 +121,11 @@ export class FakeBackend {
       if (request.method === "PUT") {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(chunk as Buffer);
+        if (this.failingStores > 0) {
+          this.failingStores--;
+          response.writeHead(500).end();
+          return;
+        }
         this.documents.set(boardId, new Uint8Array(Buffer.concat(chunks)));
         response.writeHead(204).end();
         return;

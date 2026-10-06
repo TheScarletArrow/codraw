@@ -549,6 +549,8 @@ describe('BoardPage', () => {
       id,
       reason,
       createdAt,
+      name: null,
+      authors: [],
     })
 
     /** The state of a board with one shape on its first page, as a version keeps it. */

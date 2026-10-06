@@ -21,24 +21,38 @@ enum class VersionReason(@get:JsonValue val value: String) {
     RESTORE("restore"),
 }
 
+/** A participant whose changes a version has since the version before it, as their account shows them now. */
+data class VersionAuthor(
+    val id: UUID,
+    val name: String,
+    val avatarUrl: String?,
+)
+
 /** A saved earlier state of the document of a board. */
 data class BoardVersion(
     val id: UUID,
     val createdAt: Instant,
     val reason: VersionReason,
+    /** The name the owner or an editor gave the version, `null` when it has none. */
+    val name: String?,
+    /** Who changed the board since the version before, in the order of their first change; users who are gone are left out. */
+    val authors: List<VersionAuthor>,
 )
 
-/** Versions of board documents: their states are opaque to the backend, like the documents themselves. */
+/**
+ * Versions of board documents: their states are opaque to the backend, like the documents themselves. A version names
+ * its authors by their ids; their names are read from the users with the versions.
+ */
 @Repository
 class BoardVersions(private val jdbc: JdbcClient) {
 
     /** Versions of the board [boardId], most recent first. */
-    fun list(boardId: UUID): List<BoardVersion> = jdbc.sql(
-        "SELECT id, created_at, reason FROM board_versions WHERE board_id = :boardId ORDER BY created_at DESC, id DESC",
+    fun list(boardId: UUID): List<BoardVersion> = withAuthors(
+        jdbc.sql("SELECT $COLUMNS FROM board_versions WHERE board_id = :boardId ORDER BY created_at DESC, id DESC")
+            .param("boardId", boardId)
+            .query { rs, _ -> rs.toStoredVersion() }
+            .list(),
     )
-        .param("boardId", boardId)
-        .query { rs, _ -> rs.toVersion() }
-        .list()
 
     /** The state of the version [versionId] of the board [boardId], or `null` when the board has no such version. */
     fun state(boardId: UUID, versionId: UUID): ByteArray? = jdbc.sql(
@@ -50,30 +64,48 @@ class BoardVersions(private val jdbc: JdbcClient) {
         .optional()
         .orElse(null)
 
-    fun add(boardId: UUID, state: ByteArray, reason: VersionReason, at: Instant): BoardVersion = jdbc.sql(
-        """
-        INSERT INTO board_versions (board_id, state, reason, created_at) VALUES (:boardId, :state, :reason, :at)
-        RETURNING id, created_at, reason
-        """,
-    )
-        .param("boardId", boardId)
-        .param("state", state)
-        .param("reason", reason.name)
-        .param("at", at.atOffset(ZoneOffset.UTC))
-        .query { rs, _ -> rs.toVersion() }
-        .single()
+    /**
+     * Saves [state] as a version of the board [boardId] at [at]. Its authors are the users who changed the stored document
+     * since the latest version, who are taken from the document: the next version starts with nobody.
+     */
+    fun add(boardId: UUID, state: ByteArray, reason: VersionReason, name: String?, at: Instant): BoardVersion {
+        val version = jdbc.sql(
+            """
+            -- The row of the document stays locked till the end of the transaction: a store at the same time gives
+            -- its users either to this version or to the next one, never to both.
+            WITH taken AS (
+                UPDATE board_documents SET editors = '{}' WHERE board_id = :boardId RETURNING old.editors
+            )
+            INSERT INTO board_versions (board_id, state, reason, name, authors, created_at)
+            VALUES (:boardId, :state, :reason, :name, coalesce((SELECT editors FROM taken), '{}'), :at)
+            RETURNING $COLUMNS
+            """,
+        )
+            .param("boardId", boardId)
+            .param("state", state)
+            .param("reason", reason.name)
+            .param("name", name)
+            .param("at", at.atOffset(ZoneOffset.UTC))
+            .query { rs, _ -> rs.toStoredVersion() }
+            .single()
+        return withAuthors(listOf(version)).single()
+    }
 
     /**
      * Keeps the stored document of the board [boardId] as an [VersionReason.AUTO] version at [at], unless the board has
      * a version made after [since] or no stored document. Returns whether it made a version. The document is copied in
-     * the database, without passing through the backend.
+     * the database, without passing through the backend, and the users who changed it become the authors of the version.
      */
     fun keepStoredDocument(boardId: UUID, since: Instant, at: Instant): Boolean = jdbc.sql(
         """
-        INSERT INTO board_versions (board_id, state, reason, created_at)
-        SELECT board_id, state, 'AUTO', :at FROM board_documents
-        WHERE board_id = :boardId
-          AND NOT EXISTS (SELECT 1 FROM board_versions WHERE board_id = :boardId AND created_at > :since)
+        WITH taken AS (
+            UPDATE board_documents SET editors = '{}'
+            WHERE board_id = :boardId
+              AND NOT EXISTS (SELECT 1 FROM board_versions WHERE board_id = :boardId AND created_at > :since)
+            RETURNING board_id, state, old.editors
+        )
+        INSERT INTO board_versions (board_id, state, reason, authors, created_at)
+        SELECT board_id, state, 'AUTO', editors, :at FROM taken
         """,
     )
         .param("boardId", boardId)
@@ -81,19 +113,37 @@ class BoardVersions(private val jdbc: JdbcClient) {
         .param("at", at.atOffset(ZoneOffset.UTC))
         .update() > 0
 
+    /** Gives the version [versionId] of the board [boardId] the [name], or none; `null` when there is no such version. */
+    fun rename(boardId: UUID, versionId: UUID, name: String?): BoardVersion? = jdbc.sql(
+        "UPDATE board_versions SET name = :name WHERE board_id = :boardId AND id = :versionId RETURNING $COLUMNS",
+    )
+        .param("name", name)
+        .param("boardId", boardId)
+        .param("versionId", versionId)
+        .query { rs, _ -> rs.toStoredVersion() }
+        .optional()
+        .map { withAuthors(listOf(it)).single() }
+        .orElse(null)
+
     /**
-     * Deletes the versions of the board [boardId] beyond the [keep] most recent ones, and the older ones that make the
-     * versions take more than [maxBytes] together. The most recent version stays whatever its size.
+     * Deletes the versions of the board [boardId] that do not fit into [keep] versions and [maxBytes] together. The most
+     * recent version stays whatever its size; the others go in the order versions without a name first, then those with
+     * one, the oldest first in each.
      */
     fun prune(boardId: UUID, keep: Int, maxBytes: Long) {
         jdbc.sql(
             """
             DELETE FROM board_versions WHERE id IN (
                 SELECT id FROM (
-                    -- octet_length of bytea reads the size from the header, without unpacking the state.
-                    SELECT id, row_number() OVER newest AS n, sum(octet_length(state)) OVER newest AS bytes
-                    FROM board_versions WHERE board_id = :boardId
-                    WINDOW newest AS (ORDER BY created_at DESC, id DESC)
+                    SELECT id, row_number() OVER kept AS n, sum(size) OVER kept AS bytes
+                    FROM (
+                        -- octet_length of bytea reads the size from the header, without unpacking the state.
+                        SELECT id, created_at, name IS NOT NULL AS named, octet_length(state) AS size,
+                               row_number() OVER (ORDER BY created_at DESC, id DESC) = 1 AS newest
+                        FROM board_versions WHERE board_id = :boardId
+                    ) sized
+                    -- The order in which versions are kept: the ones at the end go first.
+                    WINDOW kept AS (ORDER BY newest DESC, named DESC, created_at DESC, id DESC)
                 ) versions
                 WHERE n > :keep OR (n > 1 AND bytes > :maxBytes)
             )
@@ -105,9 +155,71 @@ class BoardVersions(private val jdbc: JdbcClient) {
             .update()
     }
 
-    private fun ResultSet.toVersion() = BoardVersion(
+    /** Names the user [toUserId] instead of the user [fromUserId] wherever the latter changed a board. */
+    fun transfer(fromUserId: UUID, toUserId: UUID) {
+        jdbc.sql(
+            """
+            UPDATE board_documents SET editors = array_replace(editors, :fromUserId, :toUserId)
+            WHERE editors @> ARRAY[:fromUserId::uuid]
+            """,
+        )
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+        jdbc.sql(
+            """
+            UPDATE board_versions SET authors = array_replace(authors, :fromUserId, :toUserId)
+            WHERE authors @> ARRAY[:fromUserId::uuid]
+            """,
+        )
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+    }
+
+    /** The authors of the [versions] from the users, read at once; repeated ids show once, users who are gone not at all. */
+    private fun withAuthors(versions: List<StoredVersion>): List<BoardVersion> {
+        val ids = versions.flatMapTo(mutableSetOf()) { it.authorIds }
+        val users = if (ids.isEmpty()) {
+            emptyMap()
+        } else {
+            jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = ANY (:ids::uuid[])")
+                .param("ids", ids.toTypedArray())
+                .query { rs, _ ->
+                    VersionAuthor(rs.getObject("id", UUID::class.java), rs.getString("name"), rs.getString("avatar_url"))
+                }
+                .list()
+                .associateBy { it.id }
+        }
+        return versions.map { version ->
+            BoardVersion(
+                id = version.id,
+                createdAt = version.createdAt,
+                reason = version.reason,
+                name = version.name,
+                authors = version.authorIds.distinct().mapNotNull(users::get),
+            )
+        }
+    }
+
+    /** A version as it is stored, with the ids of its authors. */
+    private class StoredVersion(
+        val id: UUID,
+        val createdAt: Instant,
+        val reason: VersionReason,
+        val name: String?,
+        val authorIds: List<UUID>,
+    )
+
+    private fun ResultSet.toStoredVersion() = StoredVersion(
         id = getObject("id", UUID::class.java),
         createdAt = getObject("created_at", OffsetDateTime::class.java).toInstant(),
         reason = VersionReason.valueOf(getString("reason")),
+        name = getString("name"),
+        authorIds = (getArray("authors").array as Array<*>).map { it as UUID },
     )
+
+    private companion object {
+        const val COLUMNS = "id, created_at, reason, name, authors"
+    }
 }

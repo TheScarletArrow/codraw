@@ -92,8 +92,8 @@ export function changeLinkAccess(id: string, linkAccess: LinkAccess): Promise<Bo
 export const canEdit = (board: Pick<Board, 'role'>) => board.role !== 'viewer'
 
 /**
- * The user sees, saves and restores the versions of the board: whoever edits it may wreck it, so they may bring it back
- * too.
+ * The user sees, saves, names and restores the versions of the board: whoever edits it may wreck it, so they may bring
+ * it back too. The backend checks the same.
  */
 export const canManageVersions = (board: Pick<Board, 'role'>) => canEdit(board)
 

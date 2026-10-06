@@ -27,7 +27,10 @@ fun BoardService.participated(id: String, userId: UUID): Participation {
     return Participation(board, role)
 }
 
-/** The board whose versions the user [userId] sees and saves; 403 when their role does not let them. */
+/**
+ * The board whose versions the user [userId] sees, saves, names and restores, see [BoardRole.managesVersions]; 403 when
+ * their role does not let them.
+ */
 fun BoardService.versionsManagedBy(id: String, userId: UUID): Board {
     val (board, role) = participated(id, userId)
     if (!role.managesVersions) {

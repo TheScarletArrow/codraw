@@ -1,31 +1,54 @@
 package io.github.thescarletarrow.codraw.board
 
-import org.springframework.data.annotation.Id
-import org.springframework.data.jdbc.repository.query.Modifying
-import org.springframework.data.jdbc.repository.query.Query
-import org.springframework.data.relational.core.mapping.Table
-import org.springframework.data.repository.Repository
+import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
-/** Yjs document state of a board. Opaque to the backend: it is stored and returned as is. */
-@Table("board_documents")
-class BoardDocument(
-    @Id val boardId: UUID,
-    val state: ByteArray,
-    val updatedAt: Instant,
-)
+/**
+ * Yjs document states of boards. Opaque to the backend: they are stored and returned as is. Next to the state are the
+ * users whose changes it has since the latest version of the board, whom the next version takes as its authors.
+ *
+ * Plain JDBC rather than Spring Data: the users go to PostgreSQL as one `uuid[]`, like the ids in [BoardVersions].
+ */
+@Repository
+class BoardDocumentRepository(private val jdbc: JdbcClient) {
 
-interface BoardDocumentRepository : Repository<BoardDocument, UUID> {
+    /** The stored state of the document of the board [boardId], or `null` when it has none yet. */
+    fun findState(boardId: UUID): ByteArray? = jdbc.sql("SELECT state FROM board_documents WHERE board_id = :boardId")
+        .param("boardId", boardId)
+        .query(ByteArray::class.java)
+        .optional()
+        .orElse(null)
 
-    fun findByBoardId(boardId: UUID): BoardDocument?
-
-    @Modifying
-    @Query(
-        """
-        INSERT INTO board_documents (board_id, state, updated_at) VALUES (:boardId, :state, :updatedAt)
-        ON CONFLICT (board_id) DO UPDATE SET state = EXCLUDED.state, updated_at = EXCLUDED.updated_at
-        """,
-    )
-    fun upsert(boardId: UUID, state: ByteArray, updatedAt: Instant)
+    /**
+     * Stores the [state] of the document of the board [boardId], which the users [editors] changed: those of them who
+     * did not change the stored document yet join its editors at the end, up to [maxEditors] together.
+     */
+    fun upsert(boardId: UUID, state: ByteArray, editors: List<UUID>, maxEditors: Int, updatedAt: Instant) {
+        jdbc.sql(
+            """
+            INSERT INTO board_documents (board_id, state, editors, updated_at)
+            VALUES (:boardId, :state, :editors::uuid[], :updatedAt)
+            ON CONFLICT (board_id) DO UPDATE SET
+                state = EXCLUDED.state,
+                updated_at = EXCLUDED.updated_at,
+                -- Each user once, at the place of their first change.
+                editors = ARRAY(
+                    SELECT editor
+                    FROM unnest(board_documents.editors || EXCLUDED.editors) WITH ORDINALITY AS merged (editor, n)
+                    GROUP BY editor
+                    ORDER BY min(n)
+                    LIMIT :maxEditors
+                )
+            """,
+        )
+            .param("boardId", boardId)
+            .param("state", state)
+            .param("editors", editors.distinct().take(maxEditors).toTypedArray())
+            .param("maxEditors", maxEditors)
+            .param("updatedAt", updatedAt.atOffset(ZoneOffset.UTC))
+            .update()
+    }
 }

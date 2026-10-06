@@ -1,8 +1,9 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
-import { accessOnConnect, BOARD_DELETED, createAccessChecks } from "./access.js";
+import { accessOnConnect, BOARD_DELETED, createAccessChecks, type ConnectionContext } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
 import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import { createDocumentEditors } from "./editors.js";
 import { log } from "./log.js";
 import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from "./messages.js";
 import { createMetrics, rejectionReasonOf, type Metrics } from "./metrics.js";
@@ -53,6 +54,7 @@ export function createCollabServer({
 }: CollabServerOptions): Server {
   const checkAccess = createAccessChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
+  const editors = createDocumentEditors();
   let accessChecks: NodeJS.Timeout | undefined;
   return new Server({
     port,
@@ -75,10 +77,13 @@ export function createCollabServer({
         },
         async store({ documentName, state, document }) {
           sizes.set(documentName, state.length);
+          // Taken before anything is awaited, right after the state was encoded: their changes are in it, and the
+          // changes in it are theirs.
+          const changedBy = editors.take(documentName);
           const started = performance.now();
           const seconds = () => (performance.now() - started) / 1000;
           try {
-            await backend.storeDocument(documentName, state);
+            await backend.storeDocument(documentName, state, changedBy);
             metrics.stored("stored", seconds());
           } catch (error) {
             if (error instanceof BoardNotFoundError) {
@@ -87,6 +92,8 @@ export function createCollabServer({
               document.getConnections().forEach((connection) => connection.close(BOARD_DELETED));
               return;
             }
+            // The changes are stored with the next store, and so are the users who made them.
+            editors.giveBack(documentName, changedBy);
             metrics.stored("failed", seconds());
             log.error(`Failed to store board ${documentName}`, error, { "codraw.board": documentName });
             throw error;
@@ -124,8 +131,16 @@ export function createCollabServer({
         throw error;
       }
     },
+    // Who changed the document goes to the backend with its next store. Hocuspocus calls this for every change it
+    // applies, before the store that the change schedules; read-only connections change nothing, so viewers are never
+    // among them.
+    async onChange({ documentName, context }) {
+      const user = (context as Partial<ConnectionContext>).user;
+      if (user) editors.add(documentName, user.id);
+    },
     async afterUnloadDocument({ documentName }) {
       sizes.forget(documentName);
+      editors.forget(documentName);
     },
     // A participant changed the board or its comments; the others fetch them again. Only these messages pass, written by
     // collab itself. A change of the board may be of the access to it, so the connections are checked against it too.

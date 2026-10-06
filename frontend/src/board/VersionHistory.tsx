@@ -1,9 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { History, X } from 'lucide-react'
+import { History, Pencil, X } from 'lucide-react'
+import { useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { fetchVersions, saveVersion, type BoardVersion } from '../api/versions.ts'
+import {
+  fetchVersions,
+  renameVersion,
+  saveVersion,
+  VERSION_NAME_MAX_LENGTH,
+  type BoardVersion,
+} from '../api/versions.ts'
+import { TitleInput } from './TitleInput.tsx'
+import { VersionAuthors } from './VersionAuthors.tsx'
 import { REASON_LABELS, versionsKey, versionTimeFormat } from './versions.ts'
 
 interface VersionHistoryProps {
@@ -16,14 +25,28 @@ interface VersionHistoryProps {
 }
 
 /**
- * The versions of a board for whoever edits it: the list, most recent first, and saving the current state as a version.
+ * The versions of a board for whoever edits it: the list, most recent first, with the names and the authors of the
+ * versions, renaming them, and saving the current state as a version with a name if one is given.
  */
 export function VersionHistory({ boardId, document, selectedId, onSelect, onClose }: VersionHistoryProps) {
   const queryClient = useQueryClient()
   const versions = useQuery({ queryKey: versionsKey(boardId), queryFn: () => fetchVersions(boardId) })
+  const [name, setName] = useState('')
   const save = useMutation({
-    mutationFn: (doc: Y.Doc) => saveVersion(boardId, Y.encodeStateAsUpdate(doc), 'manual'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: versionsKey(boardId), exact: true }),
+    mutationFn: ({ doc, name }: { doc: Y.Doc; name: string }) =>
+      saveVersion(boardId, Y.encodeStateAsUpdate(doc), 'manual', name.trim() || undefined),
+    onSuccess: () => {
+      setName('')
+      return queryClient.invalidateQueries({ queryKey: versionsKey(boardId), exact: true })
+    },
+  })
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const rename = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string | null }) => renameVersion(boardId, id, name),
+    onSuccess: (renamed) =>
+      queryClient.setQueryData<BoardVersion[]>(versionsKey(boardId), (list) =>
+        list?.map((version) => (version.id === renamed.id ? renamed : version)),
+      ),
   })
 
   return (
@@ -35,14 +58,22 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
           <X />
         </Button>
       </div>
-      <div className="flex flex-col gap-1 border-b p-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!document || save.isPending}
-          onClick={() => document && save.mutate(document)}
-        >
+      <form
+        className="flex flex-col gap-2 border-b p-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (document) save.mutate({ doc: document, name })
+        }}
+      >
+        <input
+          aria-label="Название версии"
+          placeholder="Название, если нужно"
+          value={name}
+          maxLength={VERSION_NAME_MAX_LENGTH}
+          className="h-8 rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          onChange={(event) => setName(event.target.value)}
+        />
+        <Button type="submit" variant="outline" size="sm" disabled={!document || save.isPending}>
           Сохранить версию
         </Button>
         {save.isError && (
@@ -50,12 +81,17 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
             Не удалось сохранить версию
           </p>
         )}
-      </div>
+      </form>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {versions.isPending && <p className="p-2 text-sm text-muted-foreground">Загрузка…</p>}
         {versions.isError && (
           <p role="alert" className="p-2 text-sm text-destructive">
             Не удалось загрузить версии
+          </p>
+        )}
+        {rename.isError && (
+          <p role="alert" className="p-2 text-sm text-destructive">
+            Не удалось переименовать версию
           </p>
         )}
         {versions.data?.length === 0 && (
@@ -65,24 +101,65 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
         )}
         {versions.data && versions.data.length > 0 && (
           <ul aria-label="Версии" className="flex flex-col">
-            {versions.data.map((version) => (
-              <li key={version.id}>
-                <button
-                  type="button"
-                  aria-pressed={version.id === selectedId}
-                  className={cn(
-                    'flex w-full flex-col rounded-md px-2 py-1.5 text-left hover:bg-accent',
-                    version.id === selectedId && 'bg-accent',
+            {versions.data.map((version) => {
+              const time = versionTimeFormat.format(new Date(version.createdAt))
+              const reason = REASON_LABELS[version.reason]
+              // The name being saved shows at once.
+              const name = rename.isPending && rename.variables.id === version.id ? rename.variables.name : version.name
+              return (
+                <li key={version.id} className="relative">
+                  {renaming === version.id ? (
+                    <div className="flex flex-col gap-0.5 rounded-md bg-accent px-2 py-1.5">
+                      <TitleInput
+                        title={version.name ?? ''}
+                        label="Новое название версии"
+                        placeholder={reason}
+                        maxLength={VERSION_NAME_MAX_LENGTH}
+                        allowEmpty
+                        className="text-sm"
+                        onDone={(next) => {
+                          setRenaming(null)
+                          if (next !== null) rename.mutate({ id: version.id, name: next || null })
+                        }}
+                      />
+                      <time dateTime={version.createdAt} className="text-xs text-muted-foreground">
+                        {time}
+                      </time>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        aria-pressed={version.id === selectedId}
+                        className={cn(
+                          'flex w-full flex-col gap-0.5 rounded-md py-1.5 pr-9 pl-2 text-left hover:bg-accent',
+                          version.id === selectedId && 'bg-accent',
+                        )}
+                        onClick={() => onSelect(version)}
+                      >
+                        <span className="truncate text-sm font-medium">{name ?? reason}</span>
+                        <span className="text-xs text-muted-foreground">
+                          <time dateTime={version.createdAt}>{time}</time>
+                          {name && ` · ${reason}`}
+                        </span>
+                        {version.authors.length > 0 && <VersionAuthors authors={version.authors} />}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Переименовать"
+                        title="Переименовать"
+                        className="absolute top-1 right-1 size-7 text-muted-foreground"
+                        onClick={() => setRenaming(version.id)}
+                      >
+                        <Pencil />
+                      </Button>
+                    </>
                   )}
-                  onClick={() => onSelect(version)}
-                >
-                  <time dateTime={version.createdAt} className="text-sm">
-                    {versionTimeFormat.format(new Date(version.createdAt))}
-                  </time>
-                  <span className="text-xs text-muted-foreground">{REASON_LABELS[version.reason]}</span>
-                </button>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
