@@ -80,6 +80,28 @@ describe('ChangeList', () => {
     expect(screen.getByRole('button', { name: /Удалено: Кэш/ })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('brings back a removed or changed element of a page the board has, when it may', async () => {
+    const onSelect = vi.fn()
+    const onRevert = vi.fn()
+    const diff = changedBoard()
+    const { rerender } = render(
+      <ChangeList diff={diff} pages={pages} currentPageId="page-1" selected={null} onSelect={onSelect} onRevert={onRevert} />,
+    )
+
+    // Nothing to bring back for the new table, and no page to bring «Набросок» back to.
+    expect(screen.getAllByRole('button', { name: /^Вернуть/ }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Вернуть «Шлюз»',
+      'Вернуть «Кэш»',
+    ])
+    expect(within(screen.getByRole('region', { name: 'Страница 1' })).getAllByRole('listitem')[2]).toHaveTextContent(/Кэш.*Вернуть/)
+    await userEvent.click(screen.getByRole('button', { name: 'Вернуть «Кэш»' }))
+
+    expect(onRevert).toHaveBeenCalledWith({ pageId: 'page-1', cellId: 'cache' })
+    expect(onSelect).not.toHaveBeenCalled()
+    rerender(<ChangeList diff={diff} pages={pages} currentPageId="page-1" selected={null} onSelect={onSelect} />)
+    expect(screen.queryByRole('button', { name: /^Вернуть/ })).toBeNull()
+  })
+
   it('says so when the board has not changed since the version', () => {
     const version = boardWith(shapeData('api', 'a0'))
     render(

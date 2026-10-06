@@ -64,12 +64,14 @@ import {
   MODIFIED_BY_KEY,
   MODIFIED_BY_NAME_KEY,
   readAttribution,
+  writeAttribution,
   type Attribution,
 } from './attribution.ts'
-import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
+import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
+import type { CellSnapshot } from './diff.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import {
@@ -81,10 +83,11 @@ import {
   lockHolders,
   unlockCopy,
 } from './locks.ts'
-import { DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
+import { compareCells, DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
+import { cellsToRestore, writeRestoredFields } from './restore.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
@@ -391,6 +394,14 @@ export interface DiagramEditor {
   duplicate(): void
   /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
   insertCells(cells: CellData[]): void
+  /**
+   * Brings back cells of the page as a version has them, `cells` being that page of the version, as one undo step: the
+   * cells `ids` with their descendants and edges (see {@link cellsToRestore}), deleted ones with their ids, existing ones
+   * with the content, the parent and the place among their siblings of the version, marked as changed by the
+   * participant. Locked cells of the page stay as they are, and nothing goes into a locked group or table. Selects those
+   * of `ids` on the page, the locked ones too, and centres the canvas on them.
+   */
+  restoreCells(cells: Map<string, CellSnapshot>, ids: string[]): void
   bringToFront(): void
   sendToBack(): void
   /** Selects all shapes and edges of the page. */
@@ -717,6 +728,7 @@ const CHANGING_COMMANDS = [
   'paste',
   'duplicate',
   'insertCells',
+  'restoreCells',
   'moveSelection',
   'bringToFront',
   'sendToBack',
@@ -1857,6 +1869,81 @@ export function createDiagramEditor(
       cells.forEach((cell) => holder.insert(cell))
       insertCopies(cells, 0, 0)
       editor.zoomToFit()
+    },
+    restoreCells(version, ids) {
+      // What the page holds locked stays as it is, as with any command.
+      const fixed = (id: string) => {
+        const cell = model.getCell(id)
+        return cell != null && !isUnlocked(cell)
+      }
+      const restored = cellsToRestore(version, ids, (id) => model.getCell(id) != null, fixed)
+      const placed = new Set<Cell>()
+      if (restored.length > 0) {
+        graph.stopEditing(false)
+        // Restored siblings are placed by the order keys of the version, which the document gets only when it is written.
+        const orders = new Map(restored.map((data) => [data.id, data.order]))
+        const orderOf = (cell: Cell) => {
+          const id = cell.getId() ?? ''
+          return { id, order: orders.get(id) ?? (cells.get(id)?.get('order') as string | undefined) ?? '' }
+        }
+        // One transaction with what the binding writes, and so one undo step: the cells, the layout of their tables,
+        // the fields of base tables and what the canvas does not hold.
+        document.transact(() => {
+          model.batchUpdate(() => {
+            for (const data of restored) {
+              const existing = model.getCell(data.id) ?? null
+              const holder = (data.parent !== null && model.getCell(data.parent)) || graph.getDefaultParent()
+              // A cell cannot go into one that it holds now, e.g. after groups were nested the other way round.
+              const parent = existing?.isAncestor(holder) ? graph.getDefaultParent() : holder
+              const siblings = parent.getChildren().filter((child) => child !== existing)
+              const after = siblings.findIndex((sibling) => compareCells(data, orderOf(sibling)) < 0)
+              const index = after < 0 ? siblings.length : after
+              if (!existing) {
+                const cell = createCell(data)
+                model.add(parent, cell, index)
+                placed.add(cell)
+                continue
+              }
+              if (existing.getParent() !== parent || parent.getIndex(existing) !== index) {
+                model.add(parent, existing, index)
+              }
+              if ((existing.getValue() ?? '') !== data.value) model.setValue(existing, data.value)
+              const geometry = toGeometry(data.geometry)
+              if (geometry) model.setGeometry(existing, geometry)
+              model.setStyle(existing, { ...data.style } as CellStyle)
+              placed.add(existing)
+            }
+            // Ends once every restored cell is in place: an edge may end at a cell restored after it.
+            for (const data of restored) {
+              if (data.kind !== 'edge') continue
+              const edge = model.getCell(data.id)!
+              model.setTerminal(edge, (data.source !== null && model.getCell(data.source)) || null, true)
+              model.setTerminal(edge, (data.target !== null && model.getCell(data.target)) || null, false)
+            }
+            fitAutoWidth([...placed].filter((cell) => cell.isEdge()).flatMap(tablesShowing))
+          })
+          // The binding marks the cells it wrote as changed by whoever restores; what it does not write is marked here.
+          const at = Date.now()
+          for (const data of restored) {
+            const entry = cells.get(data.id)
+            if (entry && writeRestoredFields(entry, data) && author) writeAttribution(entry, author, at)
+          }
+        }, LOCAL_ORIGIN)
+      }
+
+      // The cells asked for that the page has now: restored, or locked, which shows why they stayed as they are. A copy
+      // of a field of a base table without that field is gone again: the base tables were brought in line.
+      const shown = ids.flatMap((id) => {
+        const cell = model.getCell(id)
+        return cell && (placed.has(cell) || fixed(id)) ? [cell] : []
+      })
+      graph.setSelectionCells(shown)
+      const bounds = shown.length > 0 ? graph.getView().getBounds(shown) : null
+      if (bounds) {
+        const { scale, translate } = graph.getView()
+        editor.centerOn({ x: bounds.getCenterX() / scale - translate.x, y: bounds.getCenterY() / scale - translate.y })
+      }
+      container.focus({ preventScroll: true })
     },
     bringToFront() {
       const cells = unlocked(selectedShapesAndEdges())

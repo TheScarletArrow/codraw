@@ -1,3 +1,5 @@
+import { Undo2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { countChanges, type BoardDiff, type PageDiff } from '../diagram/diff.ts'
 import { ChangeIcon } from './ChangeIcon.tsx'
@@ -17,13 +19,19 @@ interface ChangeListProps {
   selected: ChangeTarget | null
   /** Goes to the page of the element and shows it. */
   onSelect: (target: ChangeTarget) => void
+  /**
+   * Brings a removed or changed element back as the earlier state has it; without it the list offers no «Вернуть», e.g.
+   * to whoever only looks at the changes.
+   */
+  onRevert?: (target: ChangeTarget) => void
   /** What the list says when the board has not changed since the version. */
   unchanged?: string
 }
 
 /**
  * The changes of the board since a version: how many elements were added, changed and removed, and the changes of each
- * page, the current page first. An element added or removed with its parent is part of the item of the parent.
+ * page, the current page first. An element added or removed with its parent is part of the item of the parent. With
+ * `onRevert`, removed and changed elements of the pages the board has can be brought back one by one.
  */
 export function ChangeList({
   diff,
@@ -31,6 +39,7 @@ export function ChangeList({
   currentPageId,
   selected,
   onSelect,
+  onRevert,
   unchanged = 'После этой версии доска не менялась.',
 }: ChangeListProps) {
   const counts = countChanges(diff)
@@ -63,13 +72,15 @@ export function ChangeList({
                 {items.map((item) => {
                   const pressed = selected?.pageId === changes.id && selected.cellId === item.id
                   const about = itemNote(item)
+                  // An added element has nothing to come back to, and an element of a removed page nowhere to go.
+                  const revertible = onRevert && item.type !== 'added' && changes.type !== 'removed'
                   return (
-                    <li key={item.id}>
+                    <li key={item.id} className="flex items-start gap-1">
                       <button
                         type="button"
                         aria-pressed={pressed}
                         className={cn(
-                          'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent',
+                          'flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent',
                           pressed && 'bg-accent',
                         )}
                         onClick={() => onSelect({ pageId: changes.id, cellId: item.id })}
@@ -85,6 +96,20 @@ export function ChangeList({
                           )}
                         </span>
                       </button>
+                      {revertible && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Вернуть «${item.title}»`}
+                          title="Вернуть, как в версии"
+                          className="mt-0.5 h-7 px-2 text-xs"
+                          onClick={() => onRevert({ pageId: changes.id, cellId: item.id })}
+                        >
+                          <Undo2 className="size-3.5" />
+                          Вернуть
+                        </Button>
+                      )}
                     </li>
                   )
                 })}

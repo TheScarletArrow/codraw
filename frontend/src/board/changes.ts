@@ -1,5 +1,13 @@
 import { cellLabel } from '../comments/threads.ts'
-import { groupChanges, isTableRow, type CellDiff, type CellSnapshot, type ChangeType, type PageDiff } from '../diagram/diff.ts'
+import {
+  cellOrigin,
+  groupChanges,
+  isTableRow,
+  type CellDiff,
+  type CellSnapshot,
+  type ChangeType,
+  type PageDiff,
+} from '../diagram/diff.ts'
 import type { Box, Point } from '../diagram/editor.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
@@ -176,29 +184,9 @@ export function absoluteBounds(cells: Map<string, CellSnapshot>, id: string): Bo
   const cell = cells.get(id)
   const geometry = cell?.geometry
   if (!cell || cell.kind !== 'vertex' || !geometry || geometry.relative) return null
-  const origin = originOf(cells, cell)
+  const origin = cellOrigin(cells, cell)
   return origin && { x: origin.x + geometry.x, y: origin.y + geometry.y, width: geometry.width, height: geometry.height }
 }
-
-/**
- * The point that the geometry of a cell is relative to: the position of its parent shape on the page, or the top left
- * corner of the page for a cell of the layer. `null` inside an edge and in a loop of parents.
- */
-function originOf(cells: Map<string, CellSnapshot>, cell: CellSnapshot): Point | null {
-  const origin = { x: 0, y: 0 }
-  const seen = new Set([cell.id])
-  for (let parent = parentOf(cells, cell); parent; parent = parentOf(cells, parent)) {
-    const geometry = parent.geometry
-    if (seen.has(parent.id) || parent.kind !== 'vertex' || !geometry || geometry.relative) return null
-    seen.add(parent.id)
-    origin.x += geometry.x
-    origin.y += geometry.y
-  }
-  return origin
-}
-
-const parentOf = (cells: Map<string, CellSnapshot>, cell: CellSnapshot) =>
-  cell.parent === null ? undefined : cells.get(cell.parent)
 
 /**
  * The line of an edge of a page, in the coordinates of the diagram: from its source through its bends to its target,
@@ -208,7 +196,7 @@ const parentOf = (cells: Map<string, CellSnapshot>, cell: CellSnapshot) =>
 export function edgeLine(cells: Map<string, CellSnapshot>, id: string): Point[] | null {
   const edge = cells.get(id)
   if (!edge || edge.kind !== 'edge') return null
-  const origin = originOf(cells, edge)
+  const origin = cellOrigin(cells, edge)
   if (!origin) return null
   const at = (point: PointData): Point => ({ x: origin.x + point.x, y: origin.y + point.y })
   const bends = (edge.geometry?.points ?? []).map(at)
