@@ -1,11 +1,11 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import type { Board } from '../api/boards.ts'
 import type { Proposal } from '../api/proposals.ts'
 import { PROPOSALS_CHANGED } from '../board/messages.ts'
-import { getPages, initializeDocument } from '../diagram/model.ts'
+import { getCells, getPages, initializeDocument, LAYER_CELL_ID, writePage } from '../diagram/model.ts'
 import type { FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
@@ -152,6 +152,29 @@ describe('ProposalPage', () => {
       `/boards/${boardId}?proposal=${proposalId}`,
     )
     expect(within(note).queryByRole('button', { name: 'Отозвать' })).toBeNull()
+  })
+
+  it('searches the pages of the draft with Ctrl+F and goes to the page of a match', async () => {
+    const provider = await openDraft()
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+    act(() =>
+      provider.document.transact(() => {
+        writePage(provider.document, 'queue-page', { name: 'Очереди', order: 'b0' })
+        getCells(provider.document, 'queue-page').set(
+          'orders-queue',
+          new Y.Map<unknown>(Object.entries({ kind: 'vertex', parent: LAYER_CELL_ID, order: 'a0', value: 'Очередь заказов' })),
+        )
+      }),
+    )
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'f', code: 'KeyF', ctrlKey: true })
+    })
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Найти на доске' }), 'очередь')
+
+    expect(within(screen.getByRole('search', { name: 'Поиск на доске' })).getByText('1 из 1')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'queue-page'))
   })
 
   it('withdraws the proposal and tells the others on the draft', async () => {

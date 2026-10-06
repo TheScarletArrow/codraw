@@ -3,10 +3,10 @@ import { KEY_BINDINGS } from './editor.ts'
 import { formatKeys, SHORTCUT_GROUPS, shortcutGroups } from './shortcuts.ts'
 
 /**
- * Keys of the help that are not keys of the key handler: clipboard events, the mouse, the help itself and the message
- * at the cursor.
+ * Keys of the help that are not keys of the key handler: clipboard events, the mouse, the help itself, the search on
+ * the board and the message at the cursor.
  */
-const NOT_BOUND = /^(Mod\+[CXV]|\?|\/)$|Click|Drag|Wheel/
+const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/)$|Click|Drag|Wheel/
 
 describe('shortcuts', () => {
   it('describes exactly the keys the editor binds, with the same editing flag', () => {
@@ -47,6 +47,8 @@ describe('shortcuts', () => {
     expect(formatKeys('Mod+Wheel', true)).toBe('⌘+колесо')
     expect(formatKeys('Alt+Drag', true)).toBe('⌥+перетаскивание')
     expect(formatKeys('F2', true)).toBe('F2')
+    expect(formatKeys('Mod+F', false)).toBe('Ctrl+F')
+    expect(formatKeys('Mod+F', true)).toBe('⌘F')
   })
 
   it('leaves the editing shortcuts out for a participant who may only view', () => {
@@ -54,6 +56,7 @@ describe('shortcuts', () => {
 
     expect(actions).toContain('Копировать')
     expect(actions).toContain('Показать всё')
+    expect(actions).toContain('Найти на доске')
     expect(actions).toContain('Указка')
     expect(actions).toContain('Комментарий')
     expect(actions).toContain('Сообщение у курсора')
