@@ -27,6 +27,9 @@ data class LimitProperties(
     /** The most invitation links of a board that are not revoked. */
     @field:Positive
     val invitesPerBoard: Int = 20,
+    /** The most requests for access to a board that wait for an answer of its owner. */
+    @field:Positive
+    val accessRequestsPerBoard: Int = 50,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The largest live image of a board, as the browsers of participants publish it. */

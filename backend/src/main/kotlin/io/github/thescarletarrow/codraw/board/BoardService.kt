@@ -17,6 +17,7 @@ class BoardService(
     private val boards: BoardRepository,
     private val visits: BoardVisits,
     private val members: BoardMembers,
+    private val requests: AccessRequests,
     private val users: UserRepository,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
@@ -65,13 +66,38 @@ class BoardService(
         return board.copy(title = title, updatedAt = now)
     }
 
-    /** Sets what the link to the [board] gives to others; this is not a change of the board itself. */
+    /**
+     * Sets what the link to the [board] gives to others; this is not a change of the board itself. Requests for access
+     * that the link satisfies now are dropped.
+     */
+    @Transactional
     fun changeLinkAccess(board: Board, linkAccess: LinkAccess): Board {
+        // Updating the row locks it: a request for access to the board waits for the new link, or the link for it.
         boards.updateLinkAccess(checkNotNull(board.id), linkAccess.name)
-        return board.copy(linkAccess = linkAccess)
+        return board.copy(linkAccess = linkAccess).also(::dropSatisfiedRequests)
     }
 
-    /** Deletes the [board] for good, with its document, its members and the visits of other users. */
+    /**
+     * Drops the requests for access to the [board] that it satisfies: their users have the role they asked for or a
+     * higher one, e.g. since its link gives it or its owner made them members. Every change that may widen the access
+     * calls it, and the role is the one [Board.roleOf] gives.
+     */
+    fun dropSatisfiedRequests(board: Board) {
+        val boardId = checkNotNull(board.id)
+        val wanted = requests.wanted(boardId)
+        if (wanted.isEmpty()) return
+        val memberRoles = members.roles(boardId)
+        val satisfied = wanted.filter { (userId, role) ->
+            val current = board.roleOf(userId, memberRoles[userId])
+            current != null && current >= role.role
+        }
+        requests.deleteAll(boardId, satisfied.keys)
+    }
+
+    /**
+     * Deletes the [board] for good, with its document, its members, the requests for access to it and the visits of
+     * other users.
+     */
     fun delete(board: Board) {
         boards.deleteById(checkNotNull(board.id))
     }
@@ -95,18 +121,22 @@ class BoardService(
         if (!boards.changeOwnerOf(boardId, board.ownerId, newOwnerId)) throw BoardOwnerChangedException()
         members.remove(boardId, newOwnerId)
         members.put(boardId, board.ownerId, MemberRole.EDITOR, now())
-        return board.copy(ownerId = newOwnerId)
+        // The new owner asks for nothing any more.
+        return board.copy(ownerId = newOwnerId).also(::dropSatisfiedRequests)
     }
 
     /**
-     * Passes all boards of the user [fromUserId], the boards they opened through links and their memberships to the
-     * user [toUserId].
+     * Passes all boards of the user [fromUserId], the boards they opened through links, their memberships and their
+     * requests for access to the user [toUserId]. Requests that [toUserId] needs no more, e.g. for a board that has
+     * just become theirs, are dropped.
      */
     @Transactional
     fun transfer(fromUserId: UUID, toUserId: UUID) {
         boards.changeOwner(fromUserId, toUserId)
         visits.transfer(fromUserId, toUserId)
         members.transfer(fromUserId, toUserId)
+        requests.transfer(fromUserId, toUserId)
+        requests.boardsOf(toUserId).forEach { boardId -> find(boardId)?.let(::dropSatisfiedRequests) }
     }
 
     // PostgreSQL stores microseconds, so truncate to return exactly what is persisted.

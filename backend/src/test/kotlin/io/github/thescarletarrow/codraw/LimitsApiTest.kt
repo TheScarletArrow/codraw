@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import java.time.Duration
@@ -33,6 +34,7 @@ import kotlin.test.assertEquals
         "codraw.limits.versions-size-per-board=1KB",
         "codraw.limits.members-per-board=2",
         "codraw.limits.invites-per-board=2",
+        "codraw.limits.access-requests-per-board=2",
     ],
 )
 class LimitsApiTest(
@@ -225,6 +227,74 @@ class LimitsApiTest(
         assertEquals(reached + 1, limitsReached("boards"))
         mockMvc.get("/api/boards/$board") { with(alice.session()) }.andExpect { jsonPath("$.role") { value("owner") } }
     }
+
+    @Test
+    fun `a board has at most as many requests for access as the limit, a replaced one does not count again, and an answer makes room`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        mockMvc.patch("/api/boards/$board") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"linkAccess": "none"}"""
+        }.andExpect { status { isOk() } }
+        val (bob, carol, dave) = listOf("Bob", "Carol", "Dave").map { users.gitHubUser(it) }
+        val first = askForAccess(board, bob, "viewer").andExpect { status { isOk() } }.id()
+        askForAccess(board, carol, "viewer").andExpect { status { isOk() } }
+        val reached = limitsReached("access-requests")
+
+        askForAccess(board, dave, "viewer").andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Access request limit reached") }
+            jsonPath("$.limit") { value(2) }
+        }
+        assertEquals(reached + 1, limitsReached("access-requests"))
+        askForAccess(board, carol, "editor").andExpect { status { isOk() } }
+
+        mockMvc.delete("/api/boards/$board/access-requests/$first") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
+        askForAccess(board, dave, "viewer").andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `the owner gives no access beyond the limit of members`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val (bob, carol, dave) = listOf("Bob", "Carol", "Dave").map { users.gitHubUser(it) }
+        val invitation = invite(board, "viewer").andExpect { status { isCreated() } }.token()
+        accept(invitation, bob).andExpect { status { isOk() } }
+        accept(invitation, carol).andExpect { status { isOk() } }
+        mockMvc.patch("/api/boards/$board") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"linkAccess": "none"}"""
+        }.andExpect { status { isOk() } }
+        val request = askForAccess(board, dave, "viewer").andExpect { status { isOk() } }.id()
+        val reached = limitsReached("members")
+
+        mockMvc.post("/api/boards/$board/access-requests/$request/grant") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"role": "viewer"}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Member limit reached") }
+            jsonPath("$.limit") { value(2) }
+        }
+
+        assertEquals(reached + 1, limitsReached("members"))
+        mockMvc.get("/api/boards/$board/access-requests") { with(alice.session()) }.andExpect { jsonPath("$", hasSize<Any>(1)) }
+    }
+
+    private fun askForAccess(board: String, user: User, role: String): ResultActionsDsl =
+        mockMvc.put("/api/boards/$board/access-request") {
+            with(user.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"role": "$role"}"""
+        }
 
     private fun invite(board: String, role: String): ResultActionsDsl = mockMvc.post("/api/boards/$board/invites") {
         with(alice.session())

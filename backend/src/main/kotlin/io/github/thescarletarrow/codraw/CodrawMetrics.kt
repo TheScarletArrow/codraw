@@ -17,6 +17,7 @@ enum class Limit(val tag: String) {
     EMBED("embed"),
     MEMBERS("members"),
     INVITES("invites"),
+    ACCESS_REQUESTS("access-requests"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
 import { participantColor } from '../board/identity.ts'
 import type { CommentThread } from '../api/comments.ts'
+import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
 import { BOARD_CHANGED, COMMENTS_CHANGED } from '../board/messages.ts'
 import * as Y from 'yjs'
 import { readAttribution } from '../diagram/attribution.ts'
@@ -90,19 +91,24 @@ const toRgb = (hex: string) => {
 const tokenUrl = `POST /api/boards/${boardId}/collab-token`
 const collabToken = (token: string): MockResponse => ({ body: { token, expiresAt: '2026-10-01T10:05:00Z' } })
 
+/** What the API answers the page of the board by default. */
+const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> = {}) => ({
+  'GET /api/me': { body: ALICE },
+  [`GET /api/boards/${boardId}`]: { body: board },
+  [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
+  [`GET ${boardUrl}/threads`]: { body: [] },
+  [`GET ${boardUrl}/people`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null }] },
+  [`GET ${boardUrl}/embed`]: { status: 404 },
+  [`GET ${boardUrl}/members`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null, role: 'owner' }] },
+  [`GET ${boardUrl}/visitors`]: { body: [] },
+  [`GET ${boardUrl}/invites`]: { body: [] },
+  [`GET ${boardUrl}/access-requests`]: { body: [] },
+  [`GET ${boardUrl}/access-request`]: { status: 204 },
+  ...responses,
+})
+
 async function openBoard(responses: Record<string, MockResponse | MockResponse[]> = {}, search = '') {
-  const fetchMock = mockFetch({
-    'GET /api/me': { body: ALICE },
-    [`GET /api/boards/${boardId}`]: { body: board },
-    [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
-    [`GET ${boardUrl}/threads`]: { body: [] },
-    [`GET ${boardUrl}/people`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null }] },
-    [`GET ${boardUrl}/embed`]: { status: 404 },
-    [`GET ${boardUrl}/members`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null, role: 'owner' }] },
-    [`GET ${boardUrl}/visitors`]: { body: [] },
-    [`GET ${boardUrl}/invites`]: { body: [] },
-    ...responses,
-  })
+  const fetchMock = mockFetch(apiResponses(responses))
   const { unmount, router } = renderRoutes(routes, `/boards/${boardId}${search}`)
   await screen.findByRole('heading', { name: 'Архитектура', level: 2 })
   const provider = FakeHocuspocusProvider.latest()
@@ -310,13 +316,70 @@ describe('BoardPage', () => {
   })
 
   describe('access through the link', () => {
-    it('shows "Нет доступа" when the owner closed the link of the board', async () => {
-      mockFetch({ 'GET /api/me': { body: ALICE }, [`GET /api/boards/${boardId}`]: { status: 403 } })
+    it('shows "Нет доступа" when the owner closed the link of the board, at once and with a request for access', async () => {
+      const fetchMock = mockFetch(apiResponses({ [`GET ${boardUrl}`]: { status: 403 } }))
 
       renderRoutes(routes, `/boards/${boardId}`)
 
       expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа: владелец закрыл доступ к доске по ссылке')
+      expect(await screen.findByRole('form', { name: 'Запрос доступа' })).toBeInTheDocument()
       expect(FakeHocuspocusProvider.instances).toEqual([])
+      // Access does not come with a retry: the page asks again from time to time instead.
+      expect(requests(fetchMock, 'GET', boardUrl)).toHaveLength(1)
+    })
+
+    it('opens the board once the owner gives access, asking again when the user returns to the tab', async () => {
+      mockFetch(apiResponses({ [`GET ${boardUrl}`]: [{ status: 403 }, { body: boardOfAnother }] }))
+      renderRoutes(routes, `/boards/${boardId}`)
+      await screen.findByRole('form', { name: 'Запрос доступа' })
+
+      act(() => window.dispatchEvent(new Event('visibilitychange')))
+
+      expect(await screen.findByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
+      expect(FakeHocuspocusProvider.instances).toHaveLength(1)
+    })
+
+    it('asks for the board without access again from time to time', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const fetchMock = mockFetch(apiResponses({ [`GET ${boardUrl}`]: { status: 403 } }))
+        renderRoutes(routes, `/boards/${boardId}`)
+        await screen.findByRole('form', { name: 'Запрос доступа' })
+
+        await act(() => vi.advanceTimersByTimeAsync(ACCESS_POLL_INTERVAL))
+
+        await waitFor(() => expect(requests(fetchMock, 'GET', boardUrl)).toHaveLength(2))
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('opens the board when the user asks for what its link gives already', async () => {
+      mockFetch(
+        apiResponses({
+          [`GET ${boardUrl}`]: [{ status: 403 }, { body: boardToView }],
+          [`PUT ${boardUrl}/access-request`]: { status: 409, body: { title: 'Access already given', role: 'viewer' } },
+        }),
+      )
+      renderRoutes(routes, `/boards/${boardId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Запросить доступ' }))
+
+      expect(await screen.findByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
+      expect(screen.getByText('Только просмотр')).toBeInTheDocument()
+    })
+
+    it('offers a participant who may only view the board to ask for editing, and nobody else', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      act(() => provider.emitSynced())
+
+      expect(await screen.findByRole('button', { name: 'Запросить правку' })).toBeInTheDocument()
+      provider.unmount()
+
+      const ownersProvider = await openBoard()
+      act(() => ownersProvider.emitSynced())
+      expect(screen.queryByRole('button', { name: 'Запросить правку' })).toBeNull()
+      expect(requests(ownersProvider.fetchMock, 'GET', `${boardUrl}/access-request`)).toHaveLength(0)
     })
 
     it('shows "Нет доступа" and stops connecting when no token is issued because the link was closed', async () => {

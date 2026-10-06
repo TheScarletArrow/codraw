@@ -1,14 +1,18 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { fetchAccessRequests } from '../api/accessRequests.ts'
 import { changeLinkAccess, type Board, type LinkAccess } from '../api/boards.ts'
 import type { Embed } from '../api/embed.ts'
 import { EmbedSection } from '../embed/EmbedSection.tsx'
 import type * as Y from 'yjs'
+import { accessRequestsKey, REQUESTS_POLL_INTERVAL } from './accessRequests.ts'
+import { AccessRequestsSection } from './AccessRequestsSection.tsx'
 import { InvitesSection } from './InvitesSection.tsx'
+import { counted } from './members.ts'
 import { MembersSection } from './MembersSection.tsx'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
@@ -47,11 +51,22 @@ interface ShareButtonProps {
 }
 
 /**
- * «Поделиться»: the link to the board with a copy button, for the owner what the link gives to others, the participants
- * of the board, invitation links for the owner, and the live image of a page.
+ * «Поделиться»: the link to the board with a copy button, for the owner what the link gives to others and the requests
+ * for access, which the button counts, the participants of the board, invitation links for the owner, and the live
+ * image of a page.
  */
 export function ShareButton({ board, pageId, onChanged, embed, pages = [], document = null }: ShareButtonProps) {
   const queryClient = useQueryClient()
+  const isOwner = board.role === 'owner'
+  // Requests for access come from users without the board open, so the page of the owner asks for them from time to
+  // time, when the tab is shown again and when the window opens.
+  const requests = useQuery({
+    queryKey: accessRequestsKey(board.id),
+    queryFn: () => fetchAccessRequests(board.id),
+    enabled: isOwner,
+    refetchInterval: REQUESTS_POLL_INTERVAL,
+  })
+  const waiting = isOwner ? (requests.data?.length ?? 0) : 0
   const input = useRef<HTMLInputElement>(null)
   const [copied, setCopied] = useState(false)
   // The choice shows at once, before the request starts, so that the radio button does not jump back.
@@ -84,11 +99,34 @@ export function ShareButton({ board, pageId, onChanged, embed, pages = [], docum
 
   const linkAccess = chosen ?? board.linkAccess
   return (
-    <Popover onOpenChange={(open) => !open && setCopied(false)}>
+    <Popover
+      onOpenChange={(open) => {
+        if (!open) setCopied(false)
+        else if (isOwner) void requests.refetch()
+      }}
+    >
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="shrink-0">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          aria-label={
+            waiting > 0
+              ? `Поделиться (${counted(waiting, ['запрос доступа', 'запроса доступа', 'запросов доступа'])})`
+              : undefined
+          }
+        >
           <Link2 />
           Поделиться
+          {waiting > 0 && (
+            <span
+              aria-hidden
+              className="min-w-4 rounded-full bg-amber-400 px-1 text-xs leading-4 font-semibold text-amber-950"
+            >
+              {waiting}
+            </span>
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex max-h-[80vh] w-96 flex-col gap-3 overflow-y-auto" aria-label="Поделиться доской">
@@ -110,7 +148,7 @@ export function ShareButton({ board, pageId, onChanged, embed, pages = [], docum
             </Button>
           </div>
         </div>
-        {board.role === 'owner' ? (
+        {isOwner ? (
           <fieldset className="flex flex-col gap-1" disabled={change.isPending}>
             <legend className="mb-1 text-sm font-medium">Доступ по ссылке</legend>
             {LINK_ACCESS_OPTIONS.map((option) => (
@@ -150,8 +188,9 @@ export function ShareButton({ board, pageId, onChanged, embed, pages = [], docum
         ) : (
           <p className="text-sm text-muted-foreground">{ACCESS_OF_OTHERS[board.linkAccess]}</p>
         )}
+        {isOwner && <AccessRequestsSection board={board} requests={requests.data} onChanged={onChanged} />}
         <MembersSection board={board} onChanged={onChanged} />
-        {board.role === 'owner' && <InvitesSection board={board} />}
+        {isOwner && <InvitesSection board={board} />}
         <EmbedSection board={board} embed={embed} pages={pages} pageId={pageId} document={document} onChanged={onChanged} />
       </PopoverContent>
     </Popover>
