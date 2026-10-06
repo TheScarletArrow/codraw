@@ -471,4 +471,15 @@ describe('EditorToolbar', () => {
     expect(within(toolbar).queryByRole('combobox')).toBeNull()
     expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
   })
+
+  it('offers neither the laser pointer nor the comment tool on a page without others, e.g. a draft', () => {
+    document.body.innerHTML = ''
+    render(<EditorToolbar editor={editor} collaboration={false} />)
+
+    const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
+    expect(within(toolbar).getByRole('button', { name: 'Показать всё' })).toBeInTheDocument()
+    expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeInTheDocument()
+    expect(within(toolbar).queryByRole('button', { name: 'Указка' })).toBeNull()
+    expect(within(toolbar).queryByRole('button', { name: 'Комментарий' })).toBeNull()
+  })
 })

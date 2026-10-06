@@ -6,6 +6,8 @@ export interface Problem {
   limit?: number
   /** The role on the board that the user has already, when they ask for what they have. */
   role?: string
+  /** Whose things reached the limit, e.g. the open proposals of the board or of the author on it. */
+  scope?: string
 }
 
 export class HttpError extends Error {

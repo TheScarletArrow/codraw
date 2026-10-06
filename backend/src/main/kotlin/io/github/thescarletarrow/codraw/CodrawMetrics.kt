@@ -18,6 +18,8 @@ enum class Limit(val tag: String) {
     MEMBERS("members"),
     INVITES("invites"),
     ACCESS_REQUESTS("access-requests"),
+    PROPOSALS("proposals"),
+    AUTHOR_PROPOSALS("proposals-per-author"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */

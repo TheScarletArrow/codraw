@@ -13,6 +13,8 @@ export interface ShortcutEntry {
 export interface ShortcutGroup {
   title: string
   entries: ShortcutEntry[]
+  /** Shortcuts of working on a board with others: a page without them, e.g. a draft of a proposal, does not have them. */
+  collaboration?: boolean
 }
 
 /** The shortcuts of the editor, as the help shows them; a test keeps them in step with the keys of the editor. */
@@ -62,6 +64,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     title: 'Совместная работа',
+    collaboration: true,
     entries: [
       { keys: ['K'], action: 'Указка' },
       { keys: ['C'], action: 'Комментарий' },
@@ -70,12 +73,17 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
 ]
 
-/** The groups a participant has: without the editing shortcuts for one who may only view. */
-export function shortcutGroups(readOnly: boolean): ShortcutGroup[] {
-  return SHORTCUT_GROUPS.map((group) => ({
-    ...group,
-    entries: group.entries.filter((entry) => !readOnly || !entry.editing),
-  })).filter((group) => group.entries.length > 0)
+/**
+ * The groups a participant has: without the editing shortcuts for one who may only view, and without those of working
+ * with others on a page without them.
+ */
+export function shortcutGroups(readOnly: boolean, collaboration = true): ShortcutGroup[] {
+  return SHORTCUT_GROUPS.filter((group) => collaboration || !group.collaboration)
+    .map((group) => ({
+      ...group,
+      entries: group.entries.filter((entry) => !readOnly || !entry.editing),
+    }))
+    .filter((group) => group.entries.length > 0)
 }
 
 const WORDS: Record<string, string> = {

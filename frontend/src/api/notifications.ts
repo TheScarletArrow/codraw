@@ -10,6 +10,9 @@ export type NotificationKind =
   | 'access-granted'
   | 'access-declined'
   | 'ownership'
+  | 'proposal-created'
+  | 'proposal-accepted'
+  | 'proposal-declined'
 
 /** The user who did what a notification tells. */
 export interface NotificationActor {
@@ -20,7 +23,7 @@ export interface NotificationActor {
 
 /**
  * A notification as its recipient sees it. Without a role on the board now (`access` is `false`) it names neither the
- * board nor the comment nor who did it.
+ * board nor the comment nor the proposal nor who did it.
  */
 export interface UserNotification {
   id: string
@@ -33,7 +36,12 @@ export interface UserNotification {
   pageId: string | null
   threadId: string | null
   commentId: string | null
-  /** The start of the comment of a mention or an answer, or of the first comment of an assigned thread. */
+  /** The proposal of changes that a notification about one is about. */
+  proposalId: string | null
+  /**
+   * The start of the comment of a mention or an answer, of the first comment of an assigned thread, or of the title of a
+   * proposal.
+   */
   snippet: string | null
   /** `null` without access and once the actor is deleted. */
   actor: NotificationActor | null

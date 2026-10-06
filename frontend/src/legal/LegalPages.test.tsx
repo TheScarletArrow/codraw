@@ -19,6 +19,7 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   versionsPerBoard: 100,
   notificationRetentionDays: 60,
   notificationsPerUser: 200,
+  closedProposalsPerBoard: 10,
   ...changes,
 })
 
@@ -85,6 +86,15 @@ describe('legal pages', () => {
     expect(retention).toHaveTextContent('Время визитов доски — пока у пользователя есть доступ к ней')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов не видит никто, кроме самого пользователя',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Предложения изменений. Автор предложения, его название и описание, черновик доски',
+    )
+    expect(retention).toHaveTextContent(
+      'Предложения изменений: открытое — пока его не примут, не отклонят или автор его не отзовёт, а из закрытых у доски хранятся 10 последних',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Предложение изменений с его черновиком видят его автор, владелец и редакторы доски',
     )
     const copies = screen.getByRole('region', { name: 'Копии досок в браузере' })
     expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')

@@ -33,6 +33,15 @@ data class LimitProperties(
     /** The most notifications a user keeps; the oldest go as new ones come. */
     @field:Positive
     val notificationsPerUser: Int = 200,
+    /** The most open proposals of changes of a board. */
+    @field:Positive
+    val proposalsPerBoard: Int = 20,
+    /** The most open proposals of changes of one author on one board. */
+    @field:Positive
+    val proposalsPerAuthor: Int = 3,
+    /** The most closed proposals a board keeps; those closed earliest go as others close. */
+    @field:Positive
+    val closedProposalsPerBoard: Int = 20,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The largest live image of a board, as the browsers of participants publish it. */

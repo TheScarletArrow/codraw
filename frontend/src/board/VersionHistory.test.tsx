@@ -71,6 +71,23 @@ describe('VersionHistory', () => {
     expect(unnamed.textContent).not.toContain('Изменили')
   })
 
+  it('names the reasons of versions without a name, the one kept before a proposal was accepted too', async () => {
+    renderHistory([
+      version('v4', { reason: 'proposal' }),
+      version('v3', { reason: 'restore' }),
+      version('v2', { reason: 'manual' }),
+      version('v1'),
+    ])
+
+    const items = await screen.findAllByRole('listitem')
+    expect(items.map((element) => element.querySelector('span')?.textContent)).toEqual([
+      'Перед принятием предложения',
+      'Перед восстановлением',
+      'Вручную',
+      'Автоматически',
+    ])
+  })
+
   it('shows the first three authors and counts the others', async () => {
     const authors = ['Аня', 'Боб', 'Вера', 'Гена', 'Дима'].map((name, index) => author(`id-${index}`, name))
     renderHistory([version('v1', { authors })])

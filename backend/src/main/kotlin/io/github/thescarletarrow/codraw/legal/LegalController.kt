@@ -38,6 +38,8 @@ data class LegalResponse(
     val notificationRetentionDays: Long,
     /** The most notifications kept of a user. */
     val notificationsPerUser: Int,
+    /** The most closed proposals of changes kept of a board. */
+    val closedProposalsPerBoard: Int,
 )
 
 @RestController
@@ -58,6 +60,7 @@ class LegalController(
         versionsPerBoard = BoardVersionService.LIMIT,
         notificationRetentionDays = notifications.retention.toDays(),
         notificationsPerUser = limits.notificationsPerUser,
+        closedProposalsPerBoard = limits.closedProposalsPerBoard,
     )
 
     companion object {

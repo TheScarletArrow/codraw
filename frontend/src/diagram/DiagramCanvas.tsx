@@ -20,6 +20,11 @@ interface DiagramCanvasProps {
    */
   participantId?: string
   /**
+   * The page works on a board with others: `K` and `C` turn on the laser pointer and the comment tool. A new canvas is
+   * created when it changes.
+   */
+  collaboration?: boolean
+  /**
    * Receives the editor once the canvas is created and `null` when it is destroyed.
    * Must be stable (e.g. a state setter): a new function recreates the canvas.
    */
@@ -34,6 +39,7 @@ export function DiagramCanvas({
   readOnly = false,
   participantName,
   participantId,
+  collaboration = true,
   onEditor,
 }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -46,6 +52,7 @@ export function DiagramCanvas({
       readOnly,
       participantName,
       participantId,
+      collaboration,
     })
     editorRef.current = editor
     onEditor(editor)
@@ -54,7 +61,7 @@ export function DiagramCanvas({
       editorRef.current = null
       editor.destroy()
     }
-  }, [document, pageId, histories, readOnly, participantName, participantId, onEditor])
+  }, [document, pageId, histories, readOnly, participantName, participantId, collaboration, onEditor])
 
   const handleDragOver = (event: DragEvent) => {
     if (!readOnly && event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {

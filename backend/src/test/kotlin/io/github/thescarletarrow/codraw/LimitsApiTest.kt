@@ -37,6 +37,9 @@ import kotlin.test.assertEquals
         "codraw.limits.invites-per-board=2",
         "codraw.limits.access-requests-per-board=2",
         "codraw.limits.notifications-per-user=3",
+        "codraw.limits.proposals-per-board=3",
+        "codraw.limits.proposals-per-author=2",
+        "codraw.limits.closed-proposals-per-board=2",
     ],
 )
 class LimitsApiTest(
@@ -326,6 +329,81 @@ class LimitsApiTest(
             jsonPath("$.notifications[*].snippet") { value(contains("@Bob 3", "@Bob 2", "@Bob 1")) }
         }
         mockMvc.get("/api/notifications/unread-count") { with(bob.session()) }.andExpect { jsonPath("$.count") { value(3) } }
+    }
+
+    @Test
+    fun `a board has at most as many open proposals as the limits allow, per board and per author`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val (bob, carol) = listOf("Bob", "Carol").map { users.gitHubUser(it) }
+        val first = propose(board, bob).andExpect { status { isCreated() } }.id()
+        propose(board, bob).andExpect { status { isCreated() } }
+        val byAuthor = limitsReached("proposals-per-author")
+
+        propose(board, bob).andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Proposal limit reached") }
+            jsonPath("$.limit") { value(2) }
+            jsonPath("$.scope") { value("author") }
+        }
+        assertEquals(byAuthor + 1, limitsReached("proposals-per-author"))
+        propose(board, carol).andExpect { status { isCreated() } }
+        val byBoard = limitsReached("proposals")
+
+        propose(board, alice).andExpect {
+            status { isConflict() }
+            jsonPath("$.limit") { value(3) }
+            jsonPath("$.scope") { value("board") }
+        }
+        assertEquals(byBoard + 1, limitsReached("proposals"))
+
+        // A closed proposal makes room.
+        mockMvc.post("/api/boards/$board/proposals/$first/withdraw") {
+            with(bob.session())
+            with(csrf())
+        }.andExpect { status { isOk() } }
+        propose(board, bob).andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `a board keeps as many closed proposals as the limit, those closed last`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val closed = List(3) {
+            val proposal = propose(board, alice).andExpect { status { isCreated() } }.id()
+            clock.advance(Duration.ofMinutes(1))
+            mockMvc.post("/api/boards/$board/proposals/$proposal/decline") {
+                with(alice.session())
+                with(csrf())
+                contentType = MediaType.APPLICATION_JSON
+                content = "{}"
+            }.andExpect { status { isOk() } }
+            proposal
+        }
+        val open = propose(board, alice).andExpect { status { isCreated() } }.id()
+
+        mockMvc.get("/api/boards/$board/proposals") { with(alice.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(open, closed[2], closed[1])) }
+        }
+    }
+
+    @Test
+    fun `collab cannot store a draft larger than the limit of a board document`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val proposal = propose(board, alice).andExpect { status { isCreated() } }.id()
+        fun store(state: ByteArray) = mockMvc.put("/internal/proposals/$proposal/document") {
+            header(InternalTokenInterceptor.HEADER, IntegrationTest.INTERNAL_TOKEN)
+            contentType = MediaType.APPLICATION_OCTET_STREAM
+            content = state
+        }
+
+        store(ByteArray(2049)).andExpect { status { isPayloadTooLarge() } }
+        store(ByteArray(2048)).andExpect { status { isNoContent() } }
+    }
+
+    private fun propose(board: String, user: User): ResultActionsDsl = mockMvc.post("/api/boards/$board/proposals") {
+        with(user.session())
+        with(csrf())
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"title": "Предложение"}"""
     }
 
     private fun askForAccess(board: String, user: User, role: String): ResultActionsDsl =

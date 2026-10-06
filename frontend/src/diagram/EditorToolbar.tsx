@@ -40,9 +40,11 @@ interface EditorToolbarProps {
   editor: DiagramEditor | null
   /** The participant may only view the board: only the scale, the laser pointer and the comment tool are shown. */
   readOnly?: boolean
+  /** The page works on a board with others: the laser pointer and the comment tool are shown. */
+  collaboration?: boolean
 }
 
-export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) {
+export function EditorToolbar({ editor, readOnly = false, collaboration = true }: EditorToolbarProps) {
   const { canUndo, canRedo, scale, laser, commentTool } = useEditorState(editor)
 
   return (
@@ -119,32 +121,36 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
       >
         <Maximize />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Указка"
-        aria-pressed={laser}
-        title={laser ? 'Выключить указку (K, Esc)' : 'Указка: показать на схеме, ничего не меняя (K)'}
-        disabled={!editor}
-        className="aria-pressed:bg-accent"
-        onClick={() => editor?.setLaser(!laser)}
-      >
-        <Wand />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Комментарий"
-        aria-pressed={commentTool}
-        title={commentTool ? 'Закончить комментировать (C, Esc)' : 'Комментарий: щёлкните по месту на холсте (C)'}
-        disabled={!editor}
-        className="aria-pressed:bg-accent"
-        onClick={() => editor?.setCommentTool(!commentTool)}
-      >
-        <MessageCirclePlus />
-      </Button>
+      {collaboration && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Указка"
+            aria-pressed={laser}
+            title={laser ? 'Выключить указку (K, Esc)' : 'Указка: показать на схеме, ничего не меняя (K)'}
+            disabled={!editor}
+            className="aria-pressed:bg-accent"
+            onClick={() => editor?.setLaser(!laser)}
+          >
+            <Wand />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Комментарий"
+            aria-pressed={commentTool}
+            title={commentTool ? 'Закончить комментировать (C, Esc)' : 'Комментарий: щёлкните по месту на холсте (C)'}
+            disabled={!editor}
+            className="aria-pressed:bg-accent"
+            onClick={() => editor?.setCommentTool(!commentTool)}
+          >
+            <MessageCirclePlus />
+          </Button>
+        </>
+      )}
       {!readOnly && <AutoLayoutPicker editor={editor} />}
       {!readOnly && <EditingTools editor={editor} />}
     </div>

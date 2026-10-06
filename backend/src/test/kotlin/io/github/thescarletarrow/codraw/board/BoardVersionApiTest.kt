@@ -355,7 +355,7 @@ class BoardVersionApiTest(
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["auto", "MANUAL", ""])
+    @ValueSource(strings = ["auto", "proposal", "MANUAL", ""])
     fun `rejects other reasons`(reason: String) {
         val board = createBoard()
 

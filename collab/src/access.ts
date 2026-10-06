@@ -1,13 +1,22 @@
 import type { Document } from "@hocuspocus/server";
 import type { CollabUser } from "./auth.js";
-import { BOARD_NOT_FOUND, BoardNotFoundError, type BackendClient, type BoardAccess } from "./backend-client.js";
+import {
+  BOARD_NOT_FOUND,
+  BoardNotFoundError,
+  PROPOSAL_NOT_FOUND,
+  ProposalNotFoundError,
+  type BackendClient,
+  type BoardAccess,
+  type DraftAccess,
+} from "./backend-client.js";
+import { documentOf, type CollabDocument } from "./documents.js";
 import { log } from "./log.js";
 import type { Metrics } from "./metrics.js";
 
-/** What a user may do with the document of a board: a connection with `view` is read-only. */
+/** What a user may do with a document: a connection with `view` is read-only. */
 export type DocumentAccess = "edit" | "view";
 
-/** What collab keeps about a connection: its user and the access they had to the board when they connected. */
+/** What collab keeps about a connection: its user and the access they had to the document when they connected. */
 export interface ConnectionContext {
   user: CollabUser;
   access: DocumentAccess;
@@ -19,6 +28,9 @@ export const ACCESS_CHANGED = { code: 4403, reason: "access-changed" };
 /** Closes the connections of a deleted board; the client shows that the board does not exist. */
 export const BOARD_DELETED = { code: 4404, reason: BOARD_NOT_FOUND };
 
+/** Closes the connections of the draft of a deleted proposal, e.g. of a deleted board. */
+export const PROPOSAL_DELETED = { code: 4404, reason: PROPOSAL_NOT_FOUND };
+
 /**
  * Reason of rejecting a user whom the board gives no access, e.g. its owner closed the link or removed them after the
  * token was issued.
@@ -29,8 +41,8 @@ export class NoAccessError extends Error {
   /** Sent to the client when Hocuspocus rejects the connection because of this error. */
   readonly reason = NO_ACCESS;
 
-  constructor(boardId: string, userId: string) {
-    super(`User ${userId} has no access to board ${boardId}`);
+  constructor(documentId: string, userId: string) {
+    super(`User ${userId} has no access to document ${documentId}`);
     this.name = "NoAccessError";
   }
 }
@@ -48,45 +60,81 @@ export function accessOf({ ownerId, linkAccess, members }: BoardAccess, userId: 
 }
 
 /**
- * The access the user has to the document of the board when they connect. A token only tells who the user is: the
- * owner may have changed the link or the role of the user since it was issued. Throws {@link NoAccessError} when the
- * user has no access, and {@link BoardNotFoundError} when the board does not exist.
+ * The access the user has to the draft of a proposal now, or `null` when they have none: its author edits it while the
+ * proposal is open and views it once it is closed, as long as the board gives them a role; whoever edits the board, the
+ * owner and the editors who review proposals, views it.
+ */
+export function draftAccessOf({ authorId, open, board }: DraftAccess, userId: string): DocumentAccess | null {
+  const onBoard = accessOf(board, userId);
+  if (userId === authorId && onBoard) return open ? "edit" : "view";
+  return onBoard === "edit" ? "view" : null;
+}
+
+/**
+ * What every user may do with the document now, from one request to the backend. Throws {@link BoardNotFoundError} or
+ * {@link ProposalNotFoundError} when the board or the proposal does not exist.
+ */
+async function accessRule(
+  backend: Pick<BackendClient, "loadAccess" | "loadDraftAccess">,
+  document: CollabDocument,
+): Promise<(userId: string) => DocumentAccess | null> {
+  if (document.kind === "board") {
+    const access = await backend.loadAccess(document.id);
+    return (userId) => accessOf(access, userId);
+  }
+  const access = await backend.loadDraftAccess(document.id);
+  return (userId) => draftAccessOf(access, userId);
+}
+
+/**
+ * The access the user has to the document when they connect. A token only tells who the user is: the owner may have
+ * changed the link or the role of the user, or the proposal may have closed, since it was issued. Throws
+ * {@link NoAccessError} when the user has no access, and {@link BoardNotFoundError} or {@link ProposalNotFoundError}
+ * when the board or the proposal does not exist.
  */
 export async function accessOnConnect(
-  backend: Pick<BackendClient, "loadAccess">,
-  boardId: string,
+  backend: Pick<BackendClient, "loadAccess" | "loadDraftAccess">,
+  document: CollabDocument,
   userId: string,
 ): Promise<DocumentAccess> {
-  const access = accessOf(await backend.loadAccess(boardId), userId);
-  if (!access) throw new NoAccessError(boardId, userId);
+  const access = (await accessRule(backend, document))(userId);
+  if (!access) throw new NoAccessError(document.id, userId);
   return access;
 }
 
 /**
- * Brings the connections of a document in line with the current access to its board: a connection whose access differs
- * from what the board gives its user now is closed, so that its client reconnects with the new access.
+ * Brings the connections of a document in line with the current access to it: a connection whose access differs from
+ * what the board or the proposal gives its user now is closed, so that its client reconnects with the new access.
  *
  * Any participant may ask for a check, so a document has at most one running check; requests that come while it runs
  * make exactly one more.
  */
-export function createAccessChecks(backend: Pick<BackendClient, "loadAccess">, metrics?: Pick<Metrics, "rejected">) {
+export function createAccessChecks(
+  backend: Pick<BackendClient, "loadAccess" | "loadDraftAccess">,
+  metrics?: Pick<Metrics, "rejected">,
+) {
   const running = new Map<string, { again: boolean }>();
 
   const check = async (document: Document) => {
-    let access: BoardAccess;
+    const target = documentOf(document.name);
+    // Collab opens no document with any other name.
+    if (!target) return;
+    let accessOfUser: (userId: string) => DocumentAccess | null;
     try {
-      access = await backend.loadAccess(document.name);
+      accessOfUser = await accessRule(backend, target);
     } catch (error) {
       if (error instanceof BoardNotFoundError) {
         document.getConnections().forEach((connection) => connection.close(BOARD_DELETED));
+      } else if (error instanceof ProposalNotFoundError) {
+        document.getConnections().forEach((connection) => connection.close(PROPOSAL_DELETED));
       } else {
-        log.error(`Failed to check access to board ${document.name}`, error, { "codraw.board": document.name });
+        log.error(`Failed to check access to document ${document.name}`, error, { "codraw.document": document.name });
       }
       return;
     }
     document.getConnections().forEach((connection) => {
       const context = connection.context as ConnectionContext;
-      if (accessOf(access, context.user.id) !== context.access) {
+      if (accessOfUser(context.user.id) !== context.access) {
         // The whole socket: the provider reconnects only after the socket closes, and connects with the new access then.
         connection.webSocket.close(ACCESS_CHANGED.code, ACCESS_CHANGED.reason);
         metrics?.rejected("access-changed");

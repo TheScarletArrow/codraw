@@ -3,6 +3,7 @@ import * as Y from 'yjs'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { ChangeType } from '../diagram/diff.ts'
 import type { DiagramEditor, Point } from '../diagram/editor.ts'
+import type { MergeConflicts } from '../diagram/merge.ts'
 import { LastChange } from '../diagram/LastChange.tsx'
 import { ChangeHighlights } from './ChangeHighlights.tsx'
 import { ChangeList, type ChangeTarget } from './ChangeList.tsx'
@@ -26,6 +27,8 @@ interface VersionViewProps {
   onSelectionChange?: (ids: string[]) => void
   /** Brings an element of the list of changes back as the version has it; without it the list offers none. */
   onRevert?: (target: ChangeTarget) => void
+  /** Elements and pages that changed elsewhere too, e.g. on the board since a proposal: the list says so. */
+  conflicts?: MergeConflicts
 }
 
 /** An element chosen in the list of changes, with the middle of its ghost when it was removed. */
@@ -50,6 +53,7 @@ export function VersionView({
   onPageChange,
   onSelectionChange,
   onRevert,
+  conflicts,
 }: VersionViewProps) {
   const versionPages = usePages(version, false)
   const boardPages = usePages(board, false)
@@ -109,6 +113,7 @@ export function VersionView({
             onSelect={showChange}
             onRevert={onRevert}
             unchanged={unchanged}
+            conflicts={conflicts}
           />
         )}
         <div className="relative min-h-0 min-w-0 flex-1">

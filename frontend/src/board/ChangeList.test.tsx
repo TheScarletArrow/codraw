@@ -111,4 +111,24 @@ describe('ChangeList', () => {
     expect(screen.getByText('Добавлено 0 · Изменено 0 · Удалено 0')).toBeInTheDocument()
     expect(screen.getByText('После этой версии доска не менялась.')).toBeInTheDocument()
   })
+
+  it('marks the elements and the pages that changed elsewhere too, and tells how many there are', () => {
+    const conflicts = { pages: new Set(['page-3']), cells: new Map([['page-1', new Set(['api'])]]) }
+
+    render(
+      <ChangeList diff={changedBoard()} pages={pages} currentPageId="page-1" selected={null} onSelect={vi.fn()} conflicts={conflicts} />,
+    )
+
+    const list = screen.getByRole('complementary', { name: 'Изменения' })
+    expect(within(list).getByText('Изменено и на доске: 2')).toBeInTheDocument()
+    expect(within(list).getByRole('button', { name: /Изменено: Шлюз/ })).toHaveTextContent('Изменено на доске после предложения')
+    expect(within(list).getByRole('button', { name: /Добавлено: Очередь/ })).not.toHaveTextContent('после предложения')
+    expect(within(list).getByRole('heading', { name: 'Черновик удалена, изменена на доске после предложения' })).toBeInTheDocument()
+  })
+
+  it('tells of no conflicts without them', () => {
+    render(<ChangeList diff={changedBoard()} pages={pages} currentPageId="page-1" selected={null} onSelect={vi.fn()} />)
+
+    expect(screen.queryByText(/на доске/)).toBeNull()
+  })
 })

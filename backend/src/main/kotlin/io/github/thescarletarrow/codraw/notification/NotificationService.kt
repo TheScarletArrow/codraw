@@ -82,6 +82,24 @@ class NotificationService(
     fun ownershipGiven(board: Board, newOwnerId: UUID) =
         notify(setOf(newOwnerId), NotificationKind.OWNERSHIP, board.boardId, board.ownerId)
 
+    /** The user [authorId] proposes changes of the [board] in the proposal [proposalId], which the [reviewers] review. */
+    fun proposalCreated(board: Board, proposalId: UUID, authorId: UUID, reviewers: Set<UUID>) =
+        notify(reviewers, NotificationKind.PROPOSAL_CREATED, board.boardId, authorId, proposalId = proposalId)
+
+    /** The author withdrew the proposal [proposalId]: the reviewers have nothing to review. */
+    fun proposalWithdrawn(proposalId: UUID) =
+        notifications.deleteUnreadAbout(proposalId, NotificationKind.PROPOSAL_CREATED)
+
+    /**
+     * The user [deciderId] accepted or declined the proposal [proposalId] of the user [authorId] on the [board], so they
+     * have read about it; its author hears of it.
+     */
+    fun proposalDecided(board: Board, proposalId: UUID, authorId: UUID, deciderId: UUID, accepted: Boolean) {
+        notifications.markReadAbout(deciderId, proposalId, NotificationKind.PROPOSAL_CREATED, now())
+        val kind = if (accepted) NotificationKind.PROPOSAL_ACCEPTED else NotificationKind.PROPOSAL_DECLINED
+        notify(setOf(authorId), kind, board.boardId, deciderId, proposalId = proposalId)
+    }
+
     /**
      * A page of the notifications of the user [userId], newest first, older than the notification [before] when it is
      * given. A notification about a board that the user has no role on now tells only what happened and when.
@@ -119,10 +137,11 @@ class NotificationService(
         commentId: UUID? = null,
         threadId: UUID? = null,
         role: MemberRole? = null,
+        proposalId: UUID? = null,
     ) {
         val recipients = userIds - actorId
         if (recipients.isEmpty()) return
-        notifications.add(recipients, kind, boardId, commentId, threadId, actorId, role, now())
+        notifications.add(recipients, kind, boardId, commentId, threadId, actorId, role, now(), proposalId)
         // Others create the notifications of a user: the oldest go, so that nobody fills the database of another.
         notifications.keepNewest(recipients, limits.notificationsPerUser)
     }
@@ -138,6 +157,7 @@ class NotificationService(
             pageId = pageId.takeIf { access },
             threadId = threadId.takeIf { access },
             commentId = commentId.takeIf { access },
+            proposalId = proposalId.takeIf { access },
             snippet = snippet.takeIf { access },
             actor = actor.takeIf { access },
             role = role.takeIf { access },
@@ -160,7 +180,7 @@ class NotificationService(
 
 /**
  * A notification as its recipient sees it. Without a role on the board now ([access] is `false`) it names neither the
- * board nor the comment nor who did it.
+ * board nor the comment nor the proposal nor who did it.
  */
 data class Notification(
     val id: UUID,
@@ -173,7 +193,12 @@ data class Notification(
     val pageId: String?,
     val threadId: UUID?,
     val commentId: UUID?,
-    /** The start of the comment of a mention or an answer, or of the first comment of an assigned thread. */
+    /** The proposal of changes that a notification about one is about. */
+    val proposalId: UUID?,
+    /**
+     * The start of the comment of a mention or an answer, of the first comment of an assigned thread, or of the title of
+     * a proposal.
+     */
     val snippet: String?,
     /** `null` without access and once the actor is deleted. */
     val actor: Actor?,

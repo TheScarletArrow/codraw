@@ -34,6 +34,15 @@ enum class NotificationKind(@get:JsonValue val value: String) {
 
     /** The recipient became the owner of the board. */
     OWNERSHIP("ownership"),
+
+    /** A user proposes changes of the board, which the recipient reviews. */
+    PROPOSAL_CREATED("proposal-created"),
+
+    /** The owner or an editor accepted the proposal of changes of the recipient. */
+    PROPOSAL_ACCEPTED("proposal-accepted"),
+
+    /** The owner or an editor declined the proposal of changes of the recipient. */
+    PROPOSAL_DECLINED("proposal-declined"),
 }
 
 /** The user who did what a notification tells. */
@@ -53,7 +62,11 @@ data class StoredNotification(
     val commentId: UUID?,
     val threadId: UUID?,
     val pageId: String?,
-    /** The start of the comment, at most [Notifications.SNIPPET_LENGTH] characters. */
+    val proposalId: UUID?,
+    /**
+     * The start of the comment, of the first comment of an assigned thread, or of the title of the proposal, at most
+     * [Notifications.SNIPPET_LENGTH] characters.
+     */
     val snippet: String?,
     /** `null` once the actor is deleted. */
     val actor: Actor?,
@@ -64,8 +77,8 @@ data class StoredNotification(
 )
 
 /**
- * Notifications of users. A row keeps who did what to whom and where; the board, the comment and the actor are read
- * with it.
+ * Notifications of users. A row keeps who did what to whom and where; the board, the comment, the proposal and the actor
+ * are read with it.
  */
 @Repository
 class Notifications(private val jdbc: JdbcClient) {
@@ -83,12 +96,15 @@ class Notifications(private val jdbc: JdbcClient) {
         actorId: UUID,
         role: MemberRole?,
         at: Instant,
+        proposalId: UUID? = null,
     ) {
         if (userIds.isEmpty()) return
         jdbc.sql(
             """
-            INSERT INTO notifications (user_id, kind, board_id, comment_id, thread_id, actor_id, role, created_at)
-            SELECT recipient, :kind, :boardId, :commentId::uuid, :threadId::uuid, :actorId, :role, :at
+            INSERT INTO notifications
+                (user_id, kind, board_id, comment_id, thread_id, proposal_id, actor_id, role, created_at)
+            SELECT recipient, :kind, :boardId, :commentId::uuid, :threadId::uuid, :proposalId::uuid, :actorId, :role,
+                   :at
             FROM unnest(:userIds::uuid[]) AS recipient
             ON CONFLICT DO NOTHING
             """,
@@ -98,6 +114,7 @@ class Notifications(private val jdbc: JdbcClient) {
             .param("boardId", boardId)
             .param("commentId", commentId)
             .param("threadId", threadId)
+            .param("proposalId", proposalId)
             .param("actorId", actorId)
             .param("role", role?.name)
             .param("at", at.atOffset(ZoneOffset.UTC))
@@ -160,17 +177,40 @@ class Notifications(private val jdbc: JdbcClient) {
             .update()
     }
 
+    /** Deletes the unread notifications of the [kind] about the proposal [proposalId], whoever got them. */
+    fun deleteUnreadAbout(proposalId: UUID, kind: NotificationKind) {
+        jdbc.sql("DELETE FROM notifications WHERE proposal_id = :proposalId AND kind = :kind AND read_at IS NULL")
+            .param("proposalId", proposalId)
+            .param("kind", kind.name)
+            .update()
+    }
+
+    /** Marks read the notifications of the [kind] about the proposal [proposalId] of the user [userId]. */
+    fun markReadAbout(userId: UUID, proposalId: UUID, kind: NotificationKind, at: Instant) {
+        jdbc.sql(
+            """
+            UPDATE notifications SET read_at = :at
+            WHERE user_id = :userId AND proposal_id = :proposalId AND kind = :kind AND read_at IS NULL
+            """,
+        )
+            .param("userId", userId)
+            .param("proposalId", proposalId)
+            .param("kind", kind.name)
+            .param("at", at.atOffset(ZoneOffset.UTC))
+            .update()
+    }
+
     /**
      * The notifications of the user [userId], newest first, older than the notification [before] when it is given, at
      * most [limit] of them.
      */
     fun page(userId: UUID, before: UUID?, limit: Int): List<StoredNotification> = jdbc.sql(
         """
-        SELECT n.id, n.kind, n.comment_id, n.role, n.created_at, n.read_at,
+        SELECT n.id, n.kind, n.comment_id, n.proposal_id, n.role, n.created_at, n.read_at,
                b.id AS board_id, b.title, b.owner_id, b.created_at AS board_created_at,
                b.updated_at AS board_updated_at, b.link_access, m.role AS member_role,
                a.id AS actor_id, a.name AS actor_name, a.avatar_url AS actor_avatar_url,
-               t.id AS thread_id, t.page_id, left(coalesce(c.body, f.body), :snippetLength + 1) AS body
+               t.id AS thread_id, t.page_id, left(coalesce(c.body, f.body, p.title), :snippetLength + 1) AS body
         FROM notifications n
         JOIN boards b ON b.id = n.board_id
         LEFT JOIN board_members m ON m.board_id = n.board_id AND m.user_id = n.user_id
@@ -181,6 +221,7 @@ class Notifications(private val jdbc: JdbcClient) {
         LEFT JOIN LATERAL (
             SELECT body FROM comments WHERE thread_id = n.thread_id ORDER BY created_at, id LIMIT 1
         ) f ON true
+        LEFT JOIN proposals p ON p.id = n.proposal_id
         WHERE n.user_id = :userId AND (:before::uuid IS NULL OR n.id < :before::uuid)
         ORDER BY n.id DESC
         LIMIT :limit
@@ -249,7 +290,7 @@ class Notifications(private val jdbc: JdbcClient) {
     /**
      * Passes the notifications of the user [fromUserId], and those that they caused others, to the user [toUserId].
      * Notifications that would tell [toUserId] about themselves are dropped, and so are those of [fromUserId] about a
-     * comment or a thread that [toUserId] has a notification about already.
+     * comment or a thread, or of a kind about a proposal, that [toUserId] has a notification about already.
      */
     fun transfer(fromUserId: UUID, toUserId: UUID) {
         jdbc.sql(
@@ -265,7 +306,8 @@ class Notifications(private val jdbc: JdbcClient) {
             """
             DELETE FROM notifications incoming USING notifications existing
             WHERE incoming.user_id = :fromUserId AND existing.user_id = :toUserId
-              AND (existing.comment_id = incoming.comment_id OR existing.thread_id = incoming.thread_id)
+              AND (existing.comment_id = incoming.comment_id OR existing.thread_id = incoming.thread_id
+                   OR (existing.proposal_id = incoming.proposal_id AND existing.kind = incoming.kind))
             """,
         )
             .param("fromUserId", fromUserId)
@@ -296,6 +338,7 @@ class Notifications(private val jdbc: JdbcClient) {
         commentId = getObject("comment_id", UUID::class.java),
         threadId = getObject("thread_id", UUID::class.java),
         pageId = getString("page_id"),
+        proposalId = getObject("proposal_id", UUID::class.java),
         snippet = getString("body")?.let(::snippetOf),
         actor = getObject("actor_id", UUID::class.java)?.let { id ->
             Actor(id, getString("actor_name"), getString("actor_avatar_url"))

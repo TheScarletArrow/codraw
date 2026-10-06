@@ -26,6 +26,16 @@ describe('shortcuts', () => {
     )
   })
 
+  it('lists the keys of working together, which a page without others does not bind, in their own group', () => {
+    const together = SHORTCUT_GROUPS.filter((group) => group.collaboration)
+      .flatMap((group) => group.entries.flatMap((entry) => entry.keys))
+      .filter((keys) => !NOT_BOUND.test(keys))
+
+    expect(together).toEqual(KEY_BINDINGS.filter((binding) => binding.collaboration).map((binding) => binding.keys))
+    expect(shortcutGroups(false, false).map((group) => group.title)).not.toContain('Совместная работа')
+    expect(shortcutGroups(false).map((group) => group.title)).toContain('Совместная работа')
+  })
+
   it('writes keys with Ctrl, Shift and Alt, or with the symbols of macOS in its order', () => {
     expect(formatKeys('Mod+Shift+Z', false)).toBe('Ctrl+Shift+Z')
     expect(formatKeys('Mod+Shift+Z', true)).toBe('⇧⌘Z')

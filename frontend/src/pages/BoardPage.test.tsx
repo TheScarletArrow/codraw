@@ -5,7 +5,8 @@ import type { Board } from '../api/boards.ts'
 import { participantColor } from '../board/identity.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
-import { BOARD_CHANGED, COMMENTS_CHANGED } from '../board/messages.ts'
+import { BOARD_CHANGED, COMMENTS_CHANGED, PROPOSALS_CHANGED } from '../board/messages.ts'
+import type { Proposal } from '../api/proposals.ts'
 import * as Y from 'yjs'
 import { readAttribution } from '../diagram/attribution.ts'
 import {
@@ -95,6 +96,7 @@ const boardToView: Board = { ...board, role: 'viewer', linkAccess: 'view' }
 const routes = [
   { path: '/', element: <p>Список досок</p> },
   { path: '/boards/:boardId', element: <BoardPage /> },
+  { path: '/boards/:boardId/proposals/:proposalId', element: <p>Черновик предложения</p> },
 ]
 const boardUrl = `/api/boards/${boardId}`
 
@@ -122,6 +124,7 @@ const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> =
   [`POST ${boardUrl}/visit`]: { body: { since: null, authors: [], baseline: null } },
   [`PUT ${boardUrl}/visit`]: { status: 204 },
   [`DELETE ${boardUrl}/visit`]: { status: 204 },
+  [`GET ${boardUrl}/proposals`]: { body: [] },
   ...responses,
 })
 
@@ -2125,6 +2128,240 @@ describe('BoardPage', () => {
       expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
       const imported = readAttribution(getCells(provider.document, 'ctx-page').get('db'))
       expect(imported).toMatchObject({ by: ALICE.id, name: ALICE.name })
+    })
+  })
+
+  describe('proposals', () => {
+    const proposalsUrl = `${boardUrl}/proposals`
+    const proposalId = '0199a000-0000-7000-8000-000000000301'
+    const proposalUrl = `${proposalsUrl}/${proposalId}`
+    const BOB = { id: '0199a000-0000-7000-8000-0000000000b1', name: 'Боб', avatarUrl: null }
+    const proposal = (changes: Partial<Proposal> = {}): Proposal => ({
+      id: proposalId,
+      boardId,
+      title: 'Добавить очередь',
+      description: 'Между API и БД',
+      status: 'open',
+      author: BOB,
+      createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      decidedAt: null,
+      decidedBy: null,
+      comment: null,
+      ...changes,
+    })
+    const cell = (id: string, order: string, value: string): CellData => ({
+      id,
+      kind: 'vertex',
+      parent: LAYER_CELL_ID,
+      order,
+      value,
+      geometry: { x: 100, y: 100, width: 120, height: 60 },
+      source: null,
+      target: null,
+      style: {},
+    })
+    const draftProvider = () =>
+      FakeHocuspocusProvider.instances.findLast((instance) => instance.configuration.name === `proposal:${proposalId}`)!
+
+    /** The board when the proposal was made: «API» and «БД» on its first page. */
+    function baseState() {
+      const doc = new Y.Doc()
+      initializeDocument(doc)
+      doc.transact(() => {
+        writeCell(getCells(doc), cell('api', 'a0', 'API'))
+        writeCell(getCells(doc), cell('db', 'a1', 'БД'))
+      })
+      return Y.encodeStateAsUpdate(doc)
+    }
+
+    /**
+     * Opens the review of the proposal of Боб as its reviewer: the board has «БД» renamed to «Хранилище» since the base,
+     * and the draft adds «Очередь» and renames «БД» to «PostgreSQL».
+     */
+    async function openReview(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+      // One state for the base, the board and the draft: they share its elements, as states of one document do.
+      const base = baseState()
+      const provider = await openBoard(
+        {
+          [`GET ${proposalsUrl}`]: { body: [proposal()] },
+          [`GET ${proposalUrl}`]: { body: proposal() },
+          [`GET ${proposalUrl}/base`]: { bytes: base },
+          ...responses,
+        },
+        `?proposal=${proposalId}`,
+      )
+      Y.applyUpdate(provider.document, base, provider)
+      writeCell(getCells(provider.document), cell('db', 'a1', 'Хранилище'))
+      act(() => provider.emitConnected())
+      const review = await screen.findByRole('region', { name: 'Предложение «Добавить очередь»' })
+      const draft = draftProvider()
+      const draftDocument = (draft.configuration as { document: Y.Doc }).document
+      // Changes that collab sends are not changes of the page.
+      Y.applyUpdate(draftDocument, base, draft)
+      const changed = new Y.Doc()
+      Y.applyUpdate(changed, base)
+      writeCell(getCells(changed), cell('queue', 'a2', 'Очередь'))
+      writeCell(getCells(changed), cell('db', 'a1', 'PostgreSQL'))
+      Y.applyUpdate(draftDocument, Y.encodeStateAsUpdate(changed), draft)
+      act(() => draft.emitConnected('readonly'))
+      return Object.assign(provider, { review, draft })
+    }
+
+    it('shows how many proposals are open and lists them, the open ones first', async () => {
+      await openBoard({
+        [`GET ${proposalsUrl}`]: {
+          body: [proposal(), proposal({ id: 'p0', title: 'Убрать кэш', status: 'declined', decidedAt: '2026-10-01T10:00:00Z' })],
+        },
+      })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Предложения (1)' }))
+
+      const panel = screen.getByRole('complementary', { name: 'Предложения' })
+      expect(within(within(panel).getByRole('region', { name: 'Открытые' })).getByRole('button')).toHaveTextContent(
+        'Добавить очередь Боб · 5 минут назад',
+      )
+      expect(within(within(panel).getByRole('region', { name: 'Закрытые' })).getByRole('button')).toHaveTextContent(
+        /Убрать кэш.*Отклонено/,
+      )
+    })
+
+    it('makes a proposal, tells the others and goes to its draft', async () => {
+      const provider = await openBoard({ [`POST ${proposalsUrl}`]: { status: 201, body: proposal() } })
+      act(() => provider.emitConnected())
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Предложения' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Предложить изменения' }))
+      await userEvent.type(screen.getByRole('textbox', { name: 'Название предложения' }), 'Добавить очередь')
+      await userEvent.type(screen.getByRole('textbox', { name: 'Описание предложения' }), 'Между API и БД')
+      await userEvent.click(screen.getByRole('button', { name: 'Создать' }))
+
+      expect(await screen.findByText('Черновик предложения')).toBeInTheDocument()
+      expect(provider.router.state.location.pathname).toBe(`/boards/${boardId}/proposals/${proposalId}`)
+      const [[, init]] = requests(provider.fetchMock, 'POST', proposalsUrl)
+      expect(JSON.parse(init!.body as string)).toEqual({ title: 'Добавить очередь', description: 'Между API и БД' })
+      expect(provider.sentStateless).toEqual([PROPOSALS_CHANGED])
+    })
+
+    it('tells why no more proposals can be made', async () => {
+      await openBoard({
+        [`POST ${proposalsUrl}`]: { status: 409, body: { title: 'Proposal limit reached', limit: 3, scope: 'author' } },
+      })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Предложения' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Предложить изменения' }))
+      await userEvent.type(screen.getByRole('textbox', { name: 'Название предложения' }), 'Ещё одно')
+      await userEvent.click(screen.getByRole('button', { name: 'Создать' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Больше открытых предложений на этой доске нельзя: у вас их уже 3')
+    })
+
+    it('fetches the proposals again when another participant tells of a change', async () => {
+      const provider = await openBoard()
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', proposalsUrl)).toHaveLength(1))
+
+      act(() => provider.emitStateless(PROPOSALS_CHANGED))
+
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', proposalsUrl)).toHaveLength(2))
+    })
+
+    it('opens the review of a proposal from a link, in place of the board, and takes the request out of the address', async () => {
+      const provider = await openReview()
+
+      expect(provider.router.state.location.search).not.toContain('proposal')
+      expect(screen.getByRole('complementary', { name: 'Предложения' })).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+      expect(provider.draft.configuration.name).toBe(`proposal:${proposalId}`)
+      expect(within(provider.review).getByText('Между API и БД')).toBeInTheDocument()
+    })
+
+    it('shows what the proposal changes on its draft, and what the board changed since the proposal too', async () => {
+      const { review } = await openReview()
+
+      const list = await within(review).findByRole('complementary', { name: 'Изменения' })
+      expect(within(list).getByText('Добавлено 1 · Изменено 1 · Удалено 0')).toBeInTheDocument()
+      expect(within(list).getByText('Изменено и на доске: 1')).toBeInTheDocument()
+      expect(within(list).getByRole('button', { name: /Изменено: PostgreSQL/ })).toHaveTextContent(
+        'Изменено на доске после предложения',
+      )
+      expect(within(list).getByRole('button', { name: /Добавлено: Очередь/ })).not.toHaveTextContent('на доске')
+      expect(within(review).getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(within(review).queryByRole('button', { name: 'Отозвать' })).toBeNull()
+    })
+
+    it('accepts: keeps the board as a version, closes the proposal and merges it into the board for everybody', async () => {
+      const provider = await openReview({
+        [`POST ${proposalUrl}/accept`]: { body: proposal({ status: 'accepted', decidedBy: ALICE, decidedAt: '2026-10-01T10:00:00Z' }) },
+      })
+      const live = canvas.document!
+      await within(provider.review).findByRole('complementary', { name: 'Изменения' })
+
+      await userEvent.click(within(provider.review).getByRole('button', { name: 'Принять' }))
+      const confirmation = screen.getByRole('alertdialog', { name: 'Принятие предложения' })
+      expect(confirmation).toHaveTextContent('Где доску после предложения тоже изменили (1), останется вариант предложения')
+      await userEvent.click(within(confirmation).getByRole('button', { name: 'Принять' }))
+
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Предложение «Добавить очередь»' })).toBeNull())
+      const [[, init]] = requests(provider.fetchMock, 'POST', `${proposalUrl}/accept`)
+      // The version keeps the board as it was before: with the change of the board and without the proposal.
+      const kept = new Y.Doc()
+      Y.applyUpdate(kept, init!.body as Uint8Array)
+      expect(getCells(kept).get('db')!.get('value')).toBe('Хранилище')
+      expect(getCells(kept).has('queue')).toBe(false)
+      const values = Object.fromEntries([...getCells(live).entries()].map(([id, entry]) => [id, entry.get('value')]))
+      expect(values).toMatchObject({ api: 'API', db: 'PostgreSQL', queue: 'Очередь' })
+      expect(provider.sentStateless).toContain(PROPOSALS_CHANGED)
+      expect(provider.draft.sentStateless).toEqual([PROPOSALS_CHANGED])
+    })
+
+    it('accepts only once the board is synced over a connection that may edit it', async () => {
+      const provider = await openReview()
+      act(() => provider.emitStatus('disconnected'))
+
+      expect(within(provider.review).getByRole('button', { name: 'Принять' })).toBeDisabled()
+      expect(within(provider.review).getByRole('button', { name: 'Принять' })).toHaveAccessibleDescription(
+        'Принять можно после синхронизации',
+      )
+    })
+
+    it('declines with a comment to the author, and leaves the board as it is', async () => {
+      const declined = proposal({ status: 'declined', decidedBy: ALICE, decidedAt: new Date().toISOString(), comment: 'Очередь уже есть' })
+      const provider = await openReview({
+        [`GET ${proposalUrl}`]: [{ body: proposal() }, { body: declined }],
+        [`POST ${proposalUrl}/decline`]: { body: declined },
+      })
+      const before = Y.encodeStateVector(canvas.document!)
+
+      await userEvent.click(within(provider.review).getByRole('button', { name: 'Отклонить' }))
+      await userEvent.type(screen.getByRole('textbox', { name: 'Комментарий автору' }), 'Очередь уже есть')
+      await userEvent.click(within(screen.getByRole('form', { name: 'Отклонение предложения' })).getByRole('button', { name: 'Отклонить' }))
+
+      expect(await within(provider.review).findByText('Комментарий: Очередь уже есть')).toBeInTheDocument()
+      expect(within(provider.review).getByText(/Отклонено: Алиса/)).toBeInTheDocument()
+      expect(within(provider.review).queryByRole('button', { name: 'Принять' })).toBeNull()
+      const [[, init]] = requests(provider.fetchMock, 'POST', `${proposalUrl}/decline`)
+      expect(JSON.parse(init!.body as string)).toEqual({ comment: 'Очередь уже есть' })
+      expect(Y.encodeStateVector(canvas.document!)).toEqual(before)
+    })
+
+    it('lets the author of a proposal who views the board edit its draft and withdraw it, but not accept it', async () => {
+      const withdrawn = proposal({ status: 'withdrawn', decidedBy: BOB, decidedAt: new Date().toISOString() })
+      const provider = await openReview({
+        'GET /api/me': { body: { ...ALICE, id: BOB.id, name: BOB.name } },
+        [`GET /api/boards/${boardId}`]: { body: boardToView },
+        [`GET ${proposalUrl}`]: [{ body: proposal() }, { body: withdrawn }],
+        [`POST ${proposalUrl}/withdraw`]: { body: withdrawn },
+      })
+
+      expect(within(provider.review).getByRole('link', { name: 'Править черновик' })).toHaveAttribute(
+        'href',
+        `/boards/${boardId}/proposals/${proposalId}`,
+      )
+      expect(within(provider.review).queryByRole('button', { name: 'Принять' })).toBeNull()
+      await userEvent.click(within(provider.review).getByRole('button', { name: 'Отозвать' }))
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Отзыв предложения' })).getByRole('button', { name: 'Отозвать' }))
+
+      expect(await within(provider.review).findByText(/Отозвано: Боб/)).toBeInTheDocument()
+      expect(within(provider.review).getByRole('link', { name: 'Открыть черновик' })).toBeInTheDocument()
     })
   })
 

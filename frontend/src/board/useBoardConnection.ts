@@ -11,7 +11,8 @@ import { getPages } from '../diagram/model.ts'
 import { embedKey } from '../embed/links.ts'
 import { hasUnsentEdits, localCopiesAvailable, openLocalCopy, setUnsentEdits } from '../offline/localCopies.ts'
 import { membersKey } from './members.ts'
-import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from './messages.ts'
+import { proposalsKey } from '../proposals/proposals.ts'
+import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED, PROPOSALS_CHANGED } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
 /** `forbidden`: the owner closed the link to the board or removed the participant, who has no access to it any more. */
@@ -37,16 +38,16 @@ const BOARD_NOT_FOUND = 'board-not-found'
  * Reason of collab closing the connection after the owner changed the access to the board: the provider reconnects and
  * gets the new access.
  */
-const ACCESS_CHANGED = 'access-changed'
+export const ACCESS_CHANGED = 'access-changed'
 
 /** Reason of collab rejecting a participant whom the board gives no access, e.g. the owner just closed the link. */
-const NO_ACCESS = 'no-access'
+export const NO_ACCESS = 'no-access'
 
 /** Reason of collab closing the connection of a participant whose change would make the board larger than allowed. */
-const DOCUMENT_TOO_LARGE = 'document-too-large'
+export const DOCUMENT_TOO_LARGE = 'document-too-large'
 
 /** WebSocket close code of a message larger than the server takes. */
-const MESSAGE_TOO_BIG = 1009
+export const MESSAGE_TOO_BIG = 1009
 
 /** Origin of the changes that the document of the page and the document of the connection pass to each other. */
 const RELAY = Symbol('relay')
@@ -283,11 +284,12 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
       },
       onUnsyncedChanges: () => checkSent(),
       // Another participant renamed or deleted the board: its title, or its absence, comes from the API. So do the
-      // comments that another participant changed.
+      // comments and the proposals that another participant changed.
       onStateless: ({ payload }) => {
         const change = changeOf(payload)
         if (change === 'board-changed') void refetchBoard()
         else if (change === 'comments-changed') void queryClient.invalidateQueries({ queryKey: threadsKey(boardId) })
+        else if (change === 'proposals-changed') void queryClient.invalidateQueries({ queryKey: proposalsKey(boardId) })
       },
     })
     providerRef.current = provider
@@ -363,6 +365,9 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
   /** Tells the other participants that the comments changed, so that they fetch them again. */
   const notifyCommentsChanged = useCallback(() => providerRef.current?.sendStateless(COMMENTS_CHANGED), [])
 
+  /** Tells the other participants that a proposal was made or decided, so that they fetch the proposals again. */
+  const notifyProposalsChanged = useCallback(() => providerRef.current?.sendStateless(PROPOSALS_CHANGED), [])
+
   const dismissTooLarge = useCallback(() => setTooLarge(false), [])
 
   /** The set-aside copy was deleted: the page connects again and keeps the board in a new copy. */
@@ -386,5 +391,6 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
     awareness: session?.awareness ?? null,
     notifyBoardChanged,
     notifyCommentsChanged,
+    notifyProposalsChanged,
   }
 }

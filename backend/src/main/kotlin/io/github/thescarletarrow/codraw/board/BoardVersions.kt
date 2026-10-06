@@ -19,6 +19,9 @@ enum class VersionReason(@get:JsonValue val value: String) {
 
     /** The owner's page kept the state from before a restore. */
     RESTORE("restore"),
+
+    /** The state from before a proposal of changes was accepted, which the page of whoever accepted it sent. */
+    PROPOSAL("proposal"),
 }
 
 /** A participant whose changes a version has since the version before it, as their account shows them now. */

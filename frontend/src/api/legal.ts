@@ -12,6 +12,8 @@ export interface LegalInfo {
   notificationRetentionDays: number
   /** The most notifications kept of a user. */
   notificationsPerUser: number
+  /** The most closed proposals of changes kept of a board. */
+  closedProposalsPerBoard: number
 }
 
 export function fetchLegal(): Promise<LegalInfo> {

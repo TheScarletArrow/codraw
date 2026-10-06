@@ -1,7 +1,10 @@
 import { request, requestBytes } from './http.ts'
 
-/** Why a version was saved: by the backend before a change, by the owner, or by the owner's page before a restore. */
-export type VersionReason = 'auto' | 'manual' | 'restore'
+/**
+ * Why a version was saved: by the backend before a change, by the owner, by the owner's page before a restore, or before
+ * a proposal of changes was accepted.
+ */
+export type VersionReason = 'auto' | 'manual' | 'restore' | 'proposal'
 
 /** A participant whose changes a version has since the version before it, as their account shows them now. */
 export interface VersionAuthor {
@@ -40,7 +43,7 @@ export function fetchVersionState(boardId: string, versionId: string): Promise<U
 export function saveVersion(
   boardId: string,
   state: Uint8Array,
-  reason: Exclude<VersionReason, 'auto'>,
+  reason: Exclude<VersionReason, 'auto' | 'proposal'>,
   name?: string,
 ): Promise<BoardVersion> {
   // The body is the state, so the name goes in the address.
