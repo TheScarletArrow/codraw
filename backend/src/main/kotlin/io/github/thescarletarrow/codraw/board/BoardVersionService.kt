@@ -21,7 +21,7 @@ class BoardVersionService(
 
     fun state(boardId: UUID, versionId: UUID): ByteArray? = versions.state(boardId, versionId)
 
-    /** Saves [state] as a version of the board that its owner asked for. */
+    /** Saves [state] as a version of the board that an editor of it asked for. */
     @Transactional
     fun save(boardId: UUID, state: ByteArray, reason: VersionReason): BoardVersion =
         versions.add(boardId, state, reason, now()).also { prune(boardId) }

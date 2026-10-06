@@ -34,8 +34,8 @@ class UserService(
 
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
-     * the boards of the guest, the boards the guest opened through links and the comments of the guest pass to the user
-     * signing in.
+     * the boards of the guest, the boards the guest opened through links or is a member of and the comments of the
+     * guest pass to the user signing in.
      */
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {

@@ -3,7 +3,9 @@ package io.github.thescarletarrow.codraw.user
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
 import org.hamcrest.Matchers.contains
+import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.MemberRole
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -28,6 +30,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 
 /** Sign-in through the providers: the provider's user info endpoint is replaced by [providerAttributes]. */
 @IntegrationTest
@@ -38,6 +41,7 @@ class OAuth2LoginTest(
     @Autowired private val registrations: ClientRegistrationRepository,
     @Autowired private val boards: BoardService,
     @Autowired private val clock: MutableClock,
+    @Autowired private val members: BoardMembers,
 ) {
 
     private var providerAttributes: Map<String, Any> = emptyMap()
@@ -138,8 +142,8 @@ class OAuth2LoginTest(
 
         val user = signIn("github", gitHubProfile(name = "Alice"))
 
-        assertEquals(listOf(shared.id), boards.visitedBy(user.userId).map { it.board.id })
-        assertEquals(emptyList(), boards.visitedBy(guest.id))
+        assertEquals(listOf(shared.id), boards.sharedWith(user.userId).map { it.board.id })
+        assertEquals(emptyList(), boards.sharedWith(guest.id))
     }
 
     @Test
@@ -155,9 +159,37 @@ class OAuth2LoginTest(
 
         signIn("github", gitHubProfile(name = "Alice"))
 
-        val visits = boards.visitedBy(alice.userId)
+        val visits = boards.sharedWith(alice.userId)
         assertEquals(1, visits.size)
         assertEquals(clock.instant().truncatedTo(ChronoUnit.MICROS), visits.single().visitedAt)
+    }
+
+    @Test
+    fun `memberships of a guest pass to the user who signs in, keeping the higher role, and none in own boards`() {
+        val owner = users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Owner", "Owner", null))
+        val joined = boards.create("Только гость", owner.id)
+        val both = boards.create("Оба", owner.id)
+        val alice = signIn("github", gitHubProfile(name = "Alice"))
+        val aliceBoard = boards.create("Доска Алисы", alice.userId)
+        val guest = users.createGuest()
+        val guestBoard = boards.create("Доска гостя", guest.id)
+        members.put(joined.id!!, guest.id, MemberRole.VIEWER, clock.instant())
+        members.put(both.id!!, guest.id, MemberRole.EDITOR, clock.instant())
+        members.put(both.id!!, alice.userId, MemberRole.VIEWER, clock.instant())
+        members.put(aliceBoard.id!!, guest.id, MemberRole.EDITOR, clock.instant())
+        members.put(guestBoard.id!!, alice.userId, MemberRole.EDITOR, clock.instant())
+        signedInAs(guest.toPrincipal())
+
+        signIn("github", gitHubProfile(name = "Alice"))
+
+        assertEquals(MemberRole.VIEWER, members.roleOf(joined.id!!, alice.userId))
+        assertEquals(MemberRole.EDITOR, members.roleOf(both.id!!, alice.userId))
+        // The owner is no member of their boards, also of those that just passed from the guest.
+        assertNull(members.roleOf(aliceBoard.id!!, alice.userId))
+        assertNull(members.roleOf(guestBoard.id!!, alice.userId))
+        assertEquals(alice.userId, boards.find(guestBoard.id!!)?.ownerId)
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_members WHERE user_id = :guest").param("guest", guest.id)
+            .query(Int::class.java).single())
     }
 
     @Test

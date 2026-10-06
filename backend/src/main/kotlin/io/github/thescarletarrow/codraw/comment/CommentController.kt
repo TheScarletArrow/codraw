@@ -3,8 +3,7 @@ package io.github.thescarletarrow.codraw.comment
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.BoardIds
 import io.github.thescarletarrow.codraw.board.BoardService
-import io.github.thescarletarrow.codraw.board.existing
-import io.github.thescarletarrow.codraw.board.linkAccessClosed
+import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.user.userId
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -26,7 +25,7 @@ import java.util.UUID
 
 /**
  * Threads of comments on a board. Everybody whose role lets them open the board reads and writes them, viewers too;
- * when the owner closes the link, the others get 403 like for the board itself.
+ * when the owner closes the link, everybody but the members gets 403 like for the board itself.
  */
 @RestController
 @RequestMapping("/api/boards/{id}")
@@ -103,7 +102,7 @@ class CommentController(private val boards: BoardService, private val comments: 
         return ResponseEntity.noContent().build()
     }
 
-    /** Who may be mentioned in comments: the owner first, then those who opened the board through its link. */
+    /** Who may be mentioned in comments: the owner first, then the members and those who opened the board. */
     @GetMapping("/people")
     fun people(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<Person> =
         comments.people(participatedBoard(id, principal))
@@ -124,11 +123,7 @@ class CommentController(private val boards: BoardService, private val comments: 
         }
 
     /** The board, when the user has a role on it. */
-    private fun participatedBoard(id: String, principal: OAuth2User): Board {
-        val board = boards.existing(id)
-        board.roleOf(principal.userId) ?: throw linkAccessClosed()
-        return board
-    }
+    private fun participatedBoard(id: String, principal: OAuth2User): Board = boards.participated(id, principal.userId).board
 
     private fun parse(id: String): UUID = BoardIds.parse(id) ?: throw CommentNotFoundException()
 

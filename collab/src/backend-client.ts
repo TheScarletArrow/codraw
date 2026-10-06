@@ -11,13 +11,21 @@ export class BoardNotFoundError extends Error {
   }
 }
 
-/** What a link to a board gives to users other than its owner. */
+/** What a link to a board gives to users other than its owner and its members. */
 export type LinkAccess = "none" | "view" | "edit";
 
-/** Who may do what with the document of a board now: its owner edits, anybody else gets what its link gives. */
+/** The role that the owner of a board gives a member of it. */
+export type MemberRole = "editor" | "viewer";
+
+/**
+ * Who may do what with the document of a board now: its owner edits, anybody else gets the higher of their role as a
+ * member and what its link gives.
+ */
 export interface BoardAccess {
   ownerId: string;
   linkAccess: LinkAccess;
+  /** The roles of the members by their ids. */
+  members: Record<string, MemberRole>;
 }
 
 /** Client for the backend internal API that stores board documents. */

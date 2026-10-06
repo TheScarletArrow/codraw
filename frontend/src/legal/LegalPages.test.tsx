@@ -49,6 +49,10 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'имя и идентификатор участника, который последним изменил элемент, и время этого изменения',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent('Участие в досках')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'список участников доски с их ролями; владелец видит ещё и тех, кто открывал доску по ссылке',
+    )
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 

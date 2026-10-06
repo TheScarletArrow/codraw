@@ -2,6 +2,8 @@ package io.github.thescarletarrow.codraw.comment
 
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
+import io.github.thescarletarrow.codraw.board.BoardMembers
+import io.github.thescarletarrow.codraw.board.MemberRole
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.session
 import io.github.thescarletarrow.codraw.user.ProviderProfile
@@ -27,6 +29,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
+import java.util.UUID
 import kotlin.test.assertEquals
 
 @IntegrationTest
@@ -36,6 +39,7 @@ class CommentApiTest(
     @Autowired private val clock: MutableClock,
     @Autowired private val users: UserService,
     @Autowired private val json: JsonMapper,
+    @Autowired private val members: BoardMembers,
 ) {
 
     private lateinit var alice: User
@@ -253,6 +257,24 @@ class CommentApiTest(
         people(board, alice).andExpect { jsonPath("$[*].name") { value(contains("Alice")) } }
         start(board, alice, body = "@Bob", mentions = listOf(bob))
         threads(board, alice).andExpect { jsonPath("$[0].comments[0].mentions") { value(empty<Any>()) } }
+    }
+
+    @Test
+    fun `members are offered and kept as mentioned and comment, also once the link is closed`() {
+        open(board, carol)
+        clock.advance(Duration.ofMinutes(1))
+        members.put(UUID.fromString(board), bob.id, MemberRole.VIEWER, clock.instant())
+
+        people(board, alice).andExpect { jsonPath("$[*].name") { value(contains("Alice", "Bob", "Carol")) } }
+
+        setLinkAccess(board, "none")
+        people(board, bob).andExpect { jsonPath("$[*].name") { value(contains("Alice", "Bob")) } }
+        start(board, bob, body = "@Alice @Carol", mentions = listOf(alice, carol))
+        threads(board, alice).andExpect {
+            jsonPath("$[0].comments[0].author.name") { value("Bob") }
+            jsonPath("$[0].comments[0].mentions[*].name") { value(contains("Alice")) }
+        }
+        threads(board, carol).andExpect { status { isForbidden() } }
     }
 
     @ParameterizedTest

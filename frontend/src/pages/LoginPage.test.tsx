@@ -1,6 +1,9 @@
-import { screen, waitFor } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { createQueryClient } from '../queryClient.ts'
 import { mockFetch, renderRoutes } from '../test/render.tsx'
 import { LoginPage } from './LoginPage.tsx'
 
@@ -39,6 +42,23 @@ describe('LoginPage', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
     const [, init] = fetchMock.mock.calls.find(([input]) => input.toString() === '/api/guest')!
     expect(init!.headers).toMatchObject({ 'X-XSRF-TOKEN': 'test-csrf' })
+  })
+
+  it('comes back to the page that sent the visitor to sign in, e.g. an invitation', async () => {
+    mockFetch({ 'POST /api/guest': { status: 204 } })
+    const router = createMemoryRouter([...routes, { path: '/invite/:token', element: <p>Приглашение</p> }], {
+      initialEntries: [{ pathname: '/login', state: { from: '/invite/AAAAAAAAAAAAAAAAAAAAAA' } }],
+    })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Продолжить без входа' }))
+
+    expect(await screen.findByText('Приглашение')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/invite/AAAAAAAAAAAAAAAAAAAAAA')
   })
 
   it('says when continuing without a sign-in failed', async () => {

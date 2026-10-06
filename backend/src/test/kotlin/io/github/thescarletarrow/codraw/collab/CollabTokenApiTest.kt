@@ -5,6 +5,8 @@ import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jwt.SignedJWT
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
+import io.github.thescarletarrow.codraw.board.BoardMembers
+import io.github.thescarletarrow.codraw.board.MemberRole
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.session
 import io.github.thescarletarrow.codraw.user.User
@@ -25,6 +27,7 @@ import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -36,6 +39,7 @@ class CollabTokenApiTest(
     @Autowired private val jdbcClient: JdbcClient,
     @Autowired private val clock: MutableClock,
     @Autowired private val users: UserService,
+    @Autowired private val members: BoardMembers,
 ) {
 
     private val json = JsonMapper()
@@ -122,6 +126,17 @@ class CollabTokenApiTest(
             jsonPath("$.token") { doesNotExist() }
         }
         issueToken(alice, board)
+    }
+
+    @Test
+    fun `issues a token to a member when the link is closed`() {
+        val board = createBoard(alice)
+        changeLinkAccess(board, "none")
+        members.put(UUID.fromString(board), bob.id, MemberRole.VIEWER, clock.instant())
+
+        val claims = SignedJWT.parse(issueToken(bob, board).token).jwtClaimsSet
+
+        assertEquals(bob.id.toString(), claims.subject)
     }
 
     @ParameterizedTest

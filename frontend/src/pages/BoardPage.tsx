@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
-import { canEdit, fetchBoard, type Board } from '../api/boards.ts'
+import { canEdit, canManageVersions, fetchBoard, type Board } from '../api/boards.ts'
 import type { BoardVersion } from '../api/versions.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
@@ -99,13 +99,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])
   const pages = usePages(document, !readOnly)
-  // Versions of the board, which only its owner sees; a selected version shows in place of the board.
+  // Versions of the board, which whoever edits it sees; a selected version shows in place of the board.
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewed, setPreviewed] = useState<BoardVersion | null>(null)
-  const isOwner = board.role === 'owner'
-  const preview = isOwner && previewed && document ? previewed : null
+  const managesVersions = canManageVersions(board)
+  const preview = managesVersions && previewed && document ? previewed : null
   // Comments of the board, which every participant reads and writes, in a panel in place of the history of versions.
   const threads = useThreads(board.id)
+  const isOwner = board.role === 'owner'
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState<ThreadDraft | null>(null)
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
@@ -369,7 +370,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onClose={closeComments}
           />
         )}
-        {isOwner && historyOpen && (
+        {managesVersions && historyOpen && (
           <VersionHistory
             boardId={board.id}
             document={document}

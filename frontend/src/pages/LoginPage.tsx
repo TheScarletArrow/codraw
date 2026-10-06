@@ -1,12 +1,19 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { continueAsGuest, loginUrl } from '../api/auth.ts'
 import { isTooManyRequests } from '../api/http.ts'
 import { ME_QUERY_KEY } from '../auth/session.ts'
 
+/** The page of the app that sent the visitor to sign in, e.g. an invitation, or the list of boards. */
+function returnPathOf(state: unknown): string {
+  const from = (state as { from?: unknown } | null)?.from
+  return typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/'
+}
+
 export function LoginPage() {
   const [params] = useSearchParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const guest = useMutation({
@@ -14,7 +21,7 @@ export function LoginPage() {
     onSuccess: async () => {
       // The profile is loaded again: the visitor now has a session.
       await queryClient.resetQueries({ queryKey: ME_QUERY_KEY })
-      await navigate('/', { replace: true })
+      await navigate(returnPathOf(location.state), { replace: true })
     },
   })
 

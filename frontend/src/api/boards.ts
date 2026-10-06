@@ -1,12 +1,12 @@
 import { HttpError, request } from './http.ts'
 
 /**
- * What the user may do on a board: its owner manages it, anybody else opened it through its link, which lets them edit
- * or only view it.
+ * What the user may do on a board: its owner manages it, anybody else edits it or only views it, by the higher of their
+ * role as a member and what the link of the board gives.
  */
 export type BoardRole = 'owner' | 'editor' | 'viewer'
 
-/** What a link to a board gives to users other than its owner: nothing, viewing or editing. */
+/** What a link to a board gives to users other than its owner and its members: nothing, viewing or editing. */
 export type LinkAccess = 'none' | 'view' | 'edit'
 
 export interface BoardOwner {
@@ -26,11 +26,14 @@ export interface Board {
   role: BoardRole
 }
 
-/** A board of another user that the current user opened through its link. */
+/** A board of another user that the current user is a member of or opened through its link. */
 export interface SharedBoard extends Board {
-  /** When the user last opened it. */
-  openedAt: string
+  /** When the user last opened it; `null` for a board they are a member of and never opened. */
+  openedAt: string | null
 }
+
+/** Query key of the boards of other users that are shared with the user. */
+export const SHARED_BOARDS_QUERY_KEY = ['shared-boards'] as const
 
 /** Short-lived token that lets the user connect to the shared document of one board. */
 export interface CollabToken {
@@ -42,7 +45,7 @@ export function fetchBoards(): Promise<Board[]> {
   return request('/api/boards')
 }
 
-/** Boards of other users that the current user opened through their links, most recently opened first. */
+/** Boards of other users that the current user is a member of or opened, the most recently opened or joined first. */
 export function fetchSharedBoards(): Promise<SharedBoard[]> {
   return request('/api/boards/shared')
 }
@@ -87,6 +90,12 @@ export function changeLinkAccess(id: string, linkAccess: LinkAccess): Promise<Bo
 
 /** The user may change the document of the board. */
 export const canEdit = (board: Pick<Board, 'role'>) => board.role !== 'viewer'
+
+/**
+ * The user sees, saves and restores the versions of the board: whoever edits it may wreck it, so they may bring it back
+ * too.
+ */
+export const canManageVersions = (board: Pick<Board, 'role'>) => canEdit(board)
 
 /** Deletes a board of the current user for good, with its document. */
 export function deleteBoard(id: string): Promise<void> {

@@ -19,7 +19,10 @@ export const ACCESS_CHANGED = { code: 4403, reason: "access-changed" };
 /** Closes the connections of a deleted board; the client shows that the board does not exist. */
 export const BOARD_DELETED = { code: 4404, reason: BOARD_NOT_FOUND };
 
-/** Reason of rejecting a user whom the board gives no access, e.g. its owner closed the link after the token was issued. */
+/**
+ * Reason of rejecting a user whom the board gives no access, e.g. its owner closed the link or removed them after the
+ * token was issued.
+ */
 export const NO_ACCESS = "no-access";
 
 export class NoAccessError extends Error {
@@ -32,16 +35,22 @@ export class NoAccessError extends Error {
   }
 }
 
-/** The access the user has to the document of a board now, or `null` when they have none. */
-export function accessOf({ ownerId, linkAccess }: BoardAccess, userId: string): DocumentAccess | null {
-  if (userId === ownerId) return "edit";
-  return linkAccess === "none" ? null : linkAccess;
+/**
+ * The access the user has to the document of a board now, or `null` when they have none. Like the role on the board
+ * that the backend gives: the owner edits, anybody else gets the higher of their role as a member and what the link
+ * gives.
+ */
+export function accessOf({ ownerId, linkAccess, members }: BoardAccess, userId: string): DocumentAccess | null {
+  const member = members[userId];
+  if (userId === ownerId || member === "editor" || linkAccess === "edit") return "edit";
+  if (member === "viewer" || linkAccess === "view") return "view";
+  return null;
 }
 
 /**
  * The access the user has to the document of the board when they connect. A token only tells who the user is: the
- * owner may have changed the link since it was issued. Throws {@link NoAccessError} when the user has no access, and
- * {@link BoardNotFoundError} when the board does not exist.
+ * owner may have changed the link or the role of the user since it was issued. Throws {@link NoAccessError} when the
+ * user has no access, and {@link BoardNotFoundError} when the board does not exist.
  */
 export async function accessOnConnect(
   backend: Pick<BackendClient, "loadAccess">,

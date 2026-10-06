@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { deleteBoard, renameBoard, type Board } from '../api/boards.ts'
+import { canManageVersions, deleteBoard, renameBoard, type Board } from '../api/boards.ts'
 import { BoardActions } from './BoardActions.tsx'
 import { TitleInput } from './TitleInput.tsx'
 
@@ -13,7 +13,10 @@ interface BoardHeadingProps {
   onOpenHistory?: () => void
 }
 
-/** Title of the board; its owner renames it with a click and deletes it from the menu of the board. */
+/**
+ * Title of the board; its owner renames it with a click and deletes it from the menu of the board, and whoever edits it
+ * opens its versions from that menu.
+ */
 export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -37,7 +40,16 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
     },
   })
 
-  if (board.role !== 'owner') return <h2 className="max-w-64 shrink-0 truncate font-semibold">{board.title}</h2>
+  if (board.role !== 'owner') {
+    const heading = <h2 className="max-w-64 shrink-0 truncate font-semibold">{board.title}</h2>
+    if (!canManageVersions(board) || !onOpenHistory) return heading
+    return (
+      <div className="flex max-w-72 shrink-0 items-center gap-1">
+        {heading}
+        <BoardActions title={board.title} onHistory={onOpenHistory} />
+      </div>
+    )
+  }
 
   const title = rename.isPending ? rename.variables : board.title
   return (

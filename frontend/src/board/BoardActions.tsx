@@ -7,19 +7,23 @@ import { cn } from '@/lib/utils'
 interface BoardActionsProps {
   title: string
   /** Label of the delete item: «Удалить» in the list of boards, «Удалить доску» on the board. */
-  deleteLabel: string
-  onRename: () => void
+  deleteLabel?: string
+  /** Renames the board; without it, as for anybody but the owner, the menu has no such item. */
+  onRename?: () => void
   /** Opens the versions of the board; without it the menu has no such item. */
   onHistory?: () => void
-  /** Called once the user has confirmed the deletion. */
-  onDelete: () => void
+  /** Called once the user has confirmed the deletion; without it, as for anybody but the owner, nothing deletes. */
+  onDelete?: () => void
   disabled?: boolean
 }
 
-/** Menu of a board for its owner; deleting asks for confirmation, as a deleted board cannot be restored. */
+/**
+ * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions. Deleting asks for
+ * confirmation, as a deleted board cannot be restored.
+ */
 export function BoardActions({
   title,
-  deleteLabel,
+  deleteLabel = 'Удалить',
   onRename,
   onHistory,
   onDelete,
@@ -63,7 +67,7 @@ export function BoardActions({
                 className="bg-destructive text-white hover:bg-destructive/90"
                 onClick={() => {
                   setOpen(false)
-                  onDelete()
+                  onDelete?.()
                 }}
               >
                 Удалить
@@ -72,19 +76,21 @@ export function BoardActions({
           </div>
         ) : (
           <div role="menu" aria-label={`Доска «${title}»`} className="flex flex-col">
-            <Button
-              type="button"
-              role="menuitem"
-              variant="ghost"
-              size="sm"
-              className={item}
-              onClick={() => {
-                setOpen(false)
-                onRename()
-              }}
-            >
-              Переименовать
-            </Button>
+            {onRename && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                onClick={() => {
+                  setOpen(false)
+                  onRename()
+                }}
+              >
+                Переименовать
+              </Button>
+            )}
             {onHistory && (
               <Button
                 type="button"
@@ -100,16 +106,18 @@ export function BoardActions({
                 История версий
               </Button>
             )}
-            <Button
-              type="button"
-              role="menuitem"
-              variant="ghost"
-              size="sm"
-              className={cn(item, 'text-destructive hover:text-destructive')}
-              onClick={() => setConfirming(true)}
-            >
-              {deleteLabel}
-            </Button>
+            {onDelete && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={cn(item, 'text-destructive hover:text-destructive')}
+                onClick={() => setConfirming(true)}
+              >
+                {deleteLabel}
+              </Button>
+            )}
           </div>
         )}
       </PopoverContent>

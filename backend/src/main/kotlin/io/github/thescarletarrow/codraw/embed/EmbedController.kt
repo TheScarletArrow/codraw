@@ -3,12 +3,10 @@ package io.github.thescarletarrow.codraw.embed
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
-import io.github.thescarletarrow.codraw.board.Board
-import io.github.thescarletarrow.codraw.board.BoardRole
+import io.github.thescarletarrow.codraw.Tokens
 import io.github.thescarletarrow.codraw.board.BoardService
-import io.github.thescarletarrow.codraw.board.existing
-import io.github.thescarletarrow.codraw.board.linkAccessClosed
 import io.github.thescarletarrow.codraw.board.ownedBy
+import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.readAtMost
 import io.github.thescarletarrow.codraw.user.userId
 import org.springframework.http.CacheControl
@@ -28,12 +26,10 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.context.request.WebRequest
 import org.springframework.web.server.ResponseStatusException
 import java.io.InputStream
-import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
-import java.util.Base64
 import java.util.UUID
 
 /** The live image of a board as its participants see it: where it is and which page it shows. */
@@ -49,11 +45,9 @@ data class EnableEmbedRequest(val pageId: String)
 @Service
 class EmbedService(private val embeds: Embeds, private val clock: Clock) {
 
-    private val random = SecureRandom()
-
     fun find(boardId: UUID): Embed? = embeds.find(boardId)
 
-    fun enable(boardId: UUID, pageId: String): Embed = embeds.enable(boardId, pageId, newToken(), now())
+    fun enable(boardId: UUID, pageId: String): Embed = embeds.enable(boardId, pageId, Tokens.next(), now())
 
     fun disable(boardId: UUID) = embeds.disable(boardId)
 
@@ -62,9 +56,6 @@ class EmbedService(private val embeds: Embeds, private val clock: Clock) {
         embeds.store(boardId, pageId, SvgSanitizer.sanitize(svg).toByteArray(), now())
 
     fun image(token: String): EmbedImage? = embeds.image(token)
-
-    /** 128 random bits: the address of an image cannot be guessed. */
-    private fun newToken(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16).also(random::nextBytes))
 
     // PostgreSQL stores microseconds, so truncate to return exactly what is persisted.
     private fun now(): Instant = clock.instant().truncatedTo(ChronoUnit.MICROS)
@@ -84,7 +75,7 @@ class EmbedController(
 
     @GetMapping("/api/boards/{id}/embed")
     fun get(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): EmbedResponse {
-        val board = participatedBoard(id, principal)
+        val board = boards.participated(id, principal.userId).board
         return embeds.find(checkNotNull(board.id))?.toResponse() ?: throw notEnabled()
     }
 
@@ -115,8 +106,8 @@ class EmbedController(
         body: InputStream,
         @AuthenticationPrincipal principal: OAuth2User,
     ): ResponseEntity<Void> {
-        val board = participatedBoard(id, principal)
-        if (board.roleOf(principal.userId) == BoardRole.VIEWER) {
+        val (board, role) = boards.participated(id, principal.userId)
+        if (!role.edits) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only participants who edit the board publish its image")
         }
         val bytes = body.readAtMost(limits.embedSize)
@@ -146,12 +137,6 @@ class EmbedController(
             .header("X-Content-Type-Options", "nosniff")
         if (request.checkNotModified(tag)) return headers.build()
         return headers.contentType(MediaType("image", "svg+xml", Charsets.UTF_8)).body(image.svg ?: PLACEHOLDER)
-    }
-
-    private fun participatedBoard(id: String, principal: OAuth2User): Board {
-        val board = boards.existing(id)
-        board.roleOf(principal.userId) ?: throw linkAccessClosed()
-        return board
     }
 
     private fun notEnabled() = ResponseStatusException(HttpStatus.NOT_FOUND, "The board has no live image")

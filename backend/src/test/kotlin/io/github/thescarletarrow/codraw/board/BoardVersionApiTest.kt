@@ -20,9 +20,11 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import java.time.Duration
+import java.util.UUID
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
@@ -32,6 +34,7 @@ class BoardVersionApiTest(
     @Autowired private val jdbcClient: JdbcClient,
     @Autowired private val clock: MutableClock,
     @Autowired private val users: UserService,
+    @Autowired private val members: BoardMembers,
 ) {
 
     private lateinit var alice: User
@@ -140,15 +143,35 @@ class BoardVersionApiTest(
     }
 
     @Test
-    fun `only the owner sees and saves versions`() {
+    fun `nobody who only views the board sees or saves versions`() {
         val board = createBoard()
         val version = save(board, byteArrayOf(1), "manual")
+        changeLinkAccess(board, "view")
 
         versions(board, bob).andExpect { status { isForbidden() } }
         mockMvc.get("/api/boards/$board/versions/$version") { with(bob.session()) }
             .andExpect { status { isForbidden() } }
         post(board, bob, byteArrayOf(2), "manual").andExpect { status { isForbidden() } }
         assertEquals(1, versionCount(board))
+    }
+
+    @Test
+    fun `whoever edits the board sees, saves and restores versions, a member when the link is closed too`() {
+        val board = createBoard()
+        val version = save(board, byteArrayOf(1), "manual")
+
+        // Editing through the link.
+        versions(board, bob).andExpect {
+            status { isOk() }
+            jsonPath("$[*].id") { value(hasSize<Any>(1)) }
+        }
+
+        changeLinkAccess(board, "none")
+        versions(board, bob).andExpect { status { isForbidden() } }
+        members.put(UUID.fromString(board), bob.id, MemberRole.EDITOR, clock.instant())
+        mockMvc.get("/api/boards/$board/versions/$version") { with(bob.session()) }.andExpect { status { isOk() } }
+        post(board, bob, byteArrayOf(2), "restore").andExpect { status { isCreated() } }
+        assertEquals(2, versionCount(board))
     }
 
     @Test
@@ -209,6 +232,15 @@ class BoardVersionApiTest(
     private fun save(board: String, state: ByteArray, reason: String): String {
         val response = post(board, alice, state, reason).andExpect { status { isCreated() } }.andReturn().response
         return response.getHeader("Location")!!.substringAfterLast('/')
+    }
+
+    private fun changeLinkAccess(board: String, linkAccess: String) {
+        mockMvc.patch("/api/boards/$board") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"linkAccess": "$linkAccess"}"""
+        }.andExpect { status { isOk() } }
     }
 
     private fun versions(board: String, user: User): ResultActionsDsl =

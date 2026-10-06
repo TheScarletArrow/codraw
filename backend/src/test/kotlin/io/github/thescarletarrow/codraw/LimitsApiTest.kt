@@ -31,6 +31,8 @@ import kotlin.test.assertEquals
         "codraw.limits.guests-per-address-per-hour=2",
         "codraw.limits.document-size=2KB",
         "codraw.limits.versions-size-per-board=1KB",
+        "codraw.limits.members-per-board=2",
+        "codraw.limits.invites-per-board=2",
     ],
 )
 class LimitsApiTest(
@@ -152,6 +154,91 @@ class LimitsApiTest(
         saveVersion(board, ByteArray(1500) { 9 }).andExpect { status { isCreated() } }
 
         assertEquals(listOf<Byte>(9), versionFirstBytes(board))
+    }
+
+    @Test
+    fun `a board has at most as many members as the limit, and a member who gets another role does not count again`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val invitation = invite(board, "viewer").andExpect { status { isCreated() } }.token()
+        val editing = invite(board, "editor").andExpect { status { isCreated() } }.token()
+        val (bob, carol, dave) = listOf("Bob", "Carol", "Dave").map { users.gitHubUser(it) }
+        accept(invitation, bob).andExpect { status { isOk() } }
+        accept(invitation, carol).andExpect { status { isOk() } }
+        val reached = limitsReached("members")
+
+        accept(invitation, dave).andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Member limit reached") }
+            jsonPath("$.limit") { value(2) }
+        }
+        assertEquals(reached + 1, limitsReached("members"))
+        accept(editing, bob).andExpect { jsonPath("$.role") { value("editor") } }
+        // The owner adds nobody beyond the limit either.
+        mockMvc.get("/api/boards/$board") { with(dave.session()) }.andExpect { status { isOk() } }
+        mockMvc.put("/api/boards/$board/members/${dave.id}") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"role": "viewer"}"""
+        }.andExpect { status { isConflict() } }
+    }
+
+    @Test
+    fun `a board has at most as many invitations as the limit, and a revoked one makes room`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val first = invite(board, "editor").andExpect { status { isCreated() } }.id()
+        invite(board, "viewer").andExpect { status { isCreated() } }
+        val reached = limitsReached("invites")
+
+        invite(board, "editor").andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Invitation limit reached") }
+            jsonPath("$.limit") { value(2) }
+        }
+        assertEquals(reached + 1, limitsReached("invites"))
+
+        mockMvc.delete("/api/boards/$board/invites/$first") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
+        invite(board, "editor").andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `a member who owns as many boards as the limit does not become the owner of another`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val bob = users.gitHubUser("Bob")
+        accept(invite(board, "editor").andExpect { status { isCreated() } }.token(), bob).andExpect { status { isOk() } }
+        repeat(3) { createBoard(bob).andExpect { status { isCreated() } } }
+        val reached = limitsReached("boards")
+
+        mockMvc.put("/api/boards/$board/owner") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"userId": "${bob.id}"}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Board limit reached") }
+            jsonPath("$.limit") { value(3) }
+        }
+        assertEquals(reached + 1, limitsReached("boards"))
+        mockMvc.get("/api/boards/$board") { with(alice.session()) }.andExpect { jsonPath("$.role") { value("owner") } }
+    }
+
+    private fun invite(board: String, role: String): ResultActionsDsl = mockMvc.post("/api/boards/$board/invites") {
+        with(alice.session())
+        with(csrf())
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"role": "$role"}"""
+    }
+
+    private fun ResultActionsDsl.token(): String =
+        Regex("\"path\":\"/invite/([^\"]+)\"").find(andReturn().response.contentAsString)!!.groupValues[1]
+
+    private fun accept(token: String, user: User): ResultActionsDsl = mockMvc.post("/api/invites/$token/accept") {
+        with(user.session())
+        with(csrf())
     }
 
     private fun limitsReached(limit: String) = registry.get("codraw.limits.reached").tag("limit", limit).counter().count()

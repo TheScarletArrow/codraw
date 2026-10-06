@@ -1,15 +1,21 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, Navigate, Outlet, useNavigate } from 'react-router'
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { logout, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 
-/** Pages of a signed-in user; without a session it opens the login page. */
+/**
+ * Pages of a signed-in user; without a session it opens the login page, which comes back to the page, e.g. an
+ * invitation, once the visitor continues as a guest.
+ */
 export function Layout() {
   const user = useCurrentUser()
+  const location = useLocation()
 
-  if (isUnauthorized(user.error)) return <Navigate to="/login" replace />
+  if (isUnauthorized(user.error)) {
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+  }
 
   return (
     <div className="flex h-dvh flex-col">

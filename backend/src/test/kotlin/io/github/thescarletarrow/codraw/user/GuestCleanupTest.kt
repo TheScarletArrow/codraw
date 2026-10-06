@@ -3,7 +3,9 @@ package io.github.thescarletarrow.codraw.user
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
 import io.github.thescarletarrow.codraw.board.BoardDocumentService
+import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.MemberRole
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.signedIn
 import io.micrometer.core.instrument.MeterRegistry
@@ -32,6 +34,7 @@ class GuestCleanupTest(
     @Autowired private val clock: MutableClock,
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val registry: MeterRegistry,
+    @Autowired private val members: BoardMembers,
 ) {
 
     @BeforeEach
@@ -81,6 +84,21 @@ class GuestCleanupTest(
         assertEquals(GuestCleanup.Result(boards = 0, guests = 0), cleanup.cleanUp())
         assertNotNull(boards.find(board.id!!))
         assertNotNull(users.find(guest.id))
+    }
+
+    @Test
+    fun `deletes a gone guest who is a member of boards of others, with their memberships`() {
+        val alice = users.gitHubUser("Alice")
+        val board = boards.create("Общая", alice.id)
+        val guest = users.createGuest()
+        members.put(board.id!!, guest.id, MemberRole.EDITOR, clock.instant())
+
+        clock.advance(Duration.ofDays(2))
+
+        assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
+        assertNull(users.find(guest.id))
+        assertNotNull(boards.find(board.id!!))
+        assertEquals(0, count("board_members"))
     }
 
     @Test

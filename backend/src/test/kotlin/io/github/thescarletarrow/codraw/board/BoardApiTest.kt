@@ -10,6 +10,7 @@ import io.github.thescarletarrow.codraw.user.UserService
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.hasSize
 import org.hamcrest.Matchers.matchesPattern
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -36,6 +37,7 @@ class BoardApiTest(
     @Autowired private val clock: MutableClock,
     @Autowired private val users: UserService,
     @Autowired private val boards: BoardService,
+    @Autowired private val members: BoardMembers,
 ) {
 
     private val uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -227,6 +229,29 @@ class BoardApiTest(
             jsonPath("$.linkAccess") { value("none") }
         }
         mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { content { json("[]") } }
+    }
+
+    @Test
+    fun `a member opens a board whose link is closed, with their role of their own`() {
+        val id = createBoard("Доска Алисы", alice)
+        changeLinkAccess(id, alice, "none").andExpect { status { isOk() } }
+        members.put(UUID.fromString(id), bob.id, MemberRole.VIEWER, clock.instant())
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$.role") { value("viewer") }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["none:EDITOR:editor", "view:EDITOR:editor", "edit:VIEWER:editor", "view:VIEWER:viewer"])
+    fun `a member gets the higher of their role and what the link gives`(case: String) {
+        val (linkAccess, memberRole, role) = case.split(':')
+        val id = createBoard("Доска Алисы", alice)
+        changeLinkAccess(id, alice, linkAccess).andExpect { status { isOk() } }
+        members.put(UUID.fromString(id), bob.id, MemberRole.valueOf(memberRole), clock.instant())
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect { jsonPath("$.role") { value(role) } }
     }
 
     @Test
@@ -461,6 +486,45 @@ class BoardApiTest(
             jsonPath("$[*].id") { value(contains(id)) }
             jsonPath("$[0].role") { value("viewer") }
             jsonPath("$[0].linkAccess") { value("view") }
+        }
+    }
+
+    @Test
+    fun `a board of a member is among the shared boards before they open it, and stays when its link is closed`() {
+        val opened = createBoard("Открытая", alice)
+        open(opened, bob)
+        clock.advance(Duration.ofMinutes(1))
+        val joined = createBoard("Общая", alice)
+        members.put(UUID.fromString(joined), bob.id, MemberRole.VIEWER, clock.instant())
+
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(joined, opened)) }
+            jsonPath("$[0].role") { value("editor") }
+            jsonPath("$[0].openedAt") { value(nullValue()) }
+        }
+
+        changeLinkAccess(joined, alice, "none").andExpect { status { isOk() } }
+        changeLinkAccess(opened, alice, "none").andExpect { status { isOk() } }
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(joined)) }
+            jsonPath("$[0].role") { value("viewer") }
+        }
+    }
+
+    @Test
+    fun `a board that a member opens lists once, ordered by the later of joining and opening`() {
+        val joined = createBoard("Общая", alice)
+        members.put(UUID.fromString(joined), bob.id, MemberRole.EDITOR, clock.instant())
+        clock.advance(Duration.ofMinutes(1))
+        val other = createBoard("Другая", alice)
+        open(other, bob)
+        clock.advance(Duration.ofMinutes(1))
+
+        open(joined, bob)
+
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect {
+            jsonPath("$[*].id") { value(contains(joined, other)) }
+            jsonPath("$[0].openedAt") { value(clock.instant().toString()) }
         }
     }
 

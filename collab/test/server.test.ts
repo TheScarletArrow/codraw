@@ -201,7 +201,7 @@ describe("collab server", () => {
     it("relays comments-changed of a viewer to the others without checking the access", async () => {
       const BOB = "0199a000-0000-7000-8000-0000000000b1";
       await startServer();
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
       const owner = await connect(board);
       const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
       const [toOwner, toViewer] = [owner, viewer].map(statelessOf);
@@ -249,7 +249,7 @@ describe("collab server", () => {
     const BOB = "0199a000-0000-7000-8000-0000000000b1";
 
     beforeEach(() => {
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
     });
 
     it("does not apply changes of a participant who may only view, who still gets the changes of others", async () => {
@@ -308,7 +308,7 @@ describe("collab server", () => {
         bob.provider.on("authenticated", ({ scope }: { scope: string }) => scope === "readonly" && resolve()),
       );
 
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
       owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
 
       await expect(bobClosed).resolves.toBe("access-changed");
@@ -321,7 +321,7 @@ describe("collab server", () => {
 
     it("keeps the connections whose access stays the same", async () => {
       await startServer();
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
       const owner = await connect(board);
       const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
       const closed = vi.fn();
@@ -342,10 +342,34 @@ describe("collab server", () => {
       const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
       const bobClosed = closeReasonOf(bob);
 
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {} });
       owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
 
       await expect(bobClosed).resolves.toBe("access-changed");
+    });
+
+    it("closes the connection of a member whose role became viewing, and keeps an editor on a board closed to others", async () => {
+      await startServer();
+      const CAROL = "0199a000-0000-7000-8000-0000000000c1";
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: { [BOB]: "editor", [CAROL]: "editor" } });
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const carol = await connect(board, () => backend.issueToken(board, { subject: CAROL }));
+      const carolClosed = vi.fn();
+      carol.provider.on("close", carolClosed);
+      const bobClosed = closeReasonOf(bob);
+      const bobResynced = new Promise<void>((resolve) =>
+        bob.provider.on("authenticated", ({ scope }: { scope: string }) => scope === "readonly" && resolve()),
+      );
+
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: { [BOB]: "viewer", [CAROL]: "editor" } });
+      owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+
+      await expect(bobClosed).resolves.toBe("access-changed");
+      await bobResynced;
+      expect(carolClosed).not.toHaveBeenCalled();
+      carol.document.getMap("meta").set("title", "By a member");
+      await waitFor(() => title(owner) === "By a member");
     });
 
     it("closes the connections of a deleted board when it is checked", async () => {
@@ -379,7 +403,7 @@ describe("collab server", () => {
       const bobClosed = closeReasonOf(bob);
 
       // E.g. the owner closed the link through the API, without the board open.
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {} });
 
       await expect(bobClosed).resolves.toBe("access-changed");
     });
@@ -392,7 +416,7 @@ describe("collab server", () => {
       await startServer();
       const owner = await connect(board);
       const token = await backend.issueToken(board, { subject: BOB });
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "view" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
 
       const bob = await connect(board, token);
       bob.document.getMap("meta").set("title", "With an old token");
@@ -408,16 +432,31 @@ describe("collab server", () => {
       stored.getMap("meta").set("title", "Secret");
       backend.documents.set(board, Y.encodeStateAsUpdate(stored));
       const token = await backend.issueToken(board, { subject: BOB });
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {} });
 
       await expect(connect(board, token)).rejects.toThrow("no-access");
 
       expect(backend.requests).toEqual([{ method: "GET access", boardId: board }]);
     });
 
+    it("gives a member the higher of their role and what the link gives", async () => {
+      await startServer();
+      const CAROL = "0199a000-0000-7000-8000-0000000000c1";
+      const DAVE = "0199a000-0000-7000-8000-0000000000d1";
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: { [BOB]: "editor", [CAROL]: "viewer" } });
+      const as = (subject: string) => connect(board, () => backend.issueToken(board, { subject }));
+
+      expect((await as(BOB)).provider.authorizedScope).toBe("read-write");
+      expect((await as(CAROL)).provider.authorizedScope).toBe("readonly");
+      await expect(as(DAVE)).rejects.toThrow("no-access");
+
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "edit", members: { [CAROL]: "viewer" } });
+      expect((await as(CAROL)).provider.authorizedScope).toBe("read-write");
+    });
+
     it("lets the owner edit whatever the link gives", async () => {
       await startServer();
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {} });
 
       expect((await connect(board)).provider.authorizedScope).toBe("read-write");
     });
@@ -543,7 +582,7 @@ describe("collab server", () => {
       const BOB = "0199a000-0000-7000-8000-0000000000b1";
       await startServer({ documentSizeLimit: 2_000 });
       await expect(connect(board, "")).rejects.toThrow("permission-denied");
-      backend.access.set(board, { ownerId: ALICE, linkAccess: "none" });
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {} });
       await expect(connect(board, () => backend.issueToken(board, { subject: BOB }))).rejects.toThrow("no-access");
       const writer = await connect(board);
 
