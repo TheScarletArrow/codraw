@@ -105,7 +105,10 @@ class BoardMembers(private val jdbc: JdbcClient) {
         .query(Boolean::class.java)
         .single()
 
-    /** Locks the board till the end of the transaction, so that members and invitations counted per board don't race. */
+    /**
+     * Locks the board till the end of the transaction, so that members, invitations and requests for access counted per
+     * board don't race.
+     */
     fun lockBoard(boardId: UUID) {
         // Unlike FOR UPDATE, this lock lets the board be referenced meanwhile, e.g. by a new version.
         jdbc.sql("SELECT id FROM boards WHERE id = :boardId FOR NO KEY UPDATE").param("boardId", boardId).query().listOfRows()

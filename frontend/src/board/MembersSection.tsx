@@ -184,7 +184,8 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
   )
 }
 
-function Avatar({ person }: { person: { name: string; avatarUrl: string | null } }) {
+/** The picture of the profile of a user, or the first letter of their name. */
+export function Avatar({ person }: { person: { name: string; avatarUrl: string | null } }) {
   return person.avatarUrl ? (
     <img src={person.avatarUrl} alt="" className="size-6 shrink-0 rounded-full" />
   ) : (

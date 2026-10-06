@@ -29,6 +29,7 @@ class MigrationsTest {
         private val commentsTables = boardVersionsTables + setOf("comment_threads", "comments", "comment_mentions")
         private val embedTables = commentsTables + "board_embeds"
         private val membersTables = embedTables + setOf("board_members", "board_invites")
+        private val accessRequestsTables = membersTables + "board_access_requests"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -40,10 +41,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V8 create tables on an empty database and U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(8, flyway().migrate().migrationsExecuted)
-        assertEquals(membersTables, appTables())
+    fun `V1 to V9 create tables on an empty database and U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(9, flyway().migrate().migrationsExecuted)
+        assertEquals(accessRequestsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+
+        revert("U9__claude_epic_lovelace_pwi6v4_access_requests.sql")
+        assertEquals(membersTables, appTables())
 
         revert("U8__claude_epic_lovelace_pwi6v4_board_members.sql")
         assertEquals(embedTables, appTables())
@@ -70,8 +74,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(8, flyway().migrate().migrationsExecuted)
-        assertEquals(membersTables, appTables())
+        assertEquals(9, flyway().migrate().migrationsExecuted)
+        assertEquals(accessRequestsTables, appTables())
     }
 
     @Test
@@ -230,6 +234,48 @@ class MigrationsTest {
         jdbcClient.sql("DELETE FROM boards").update()
         assertEquals(0, count("board_members"))
         assertEquals(0, count("board_invites"))
+    }
+
+    @Test
+    fun `V9 keeps one request for access per user and board, with a known role and a short message, which goes with its board and its user`() {
+        flyway("9").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now()),
+                   ('0199a000-0000-7000-8000-0000000000c1', 'github', '3', 'Carol', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO board_access_requests (board_id, user_id, role, message, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', '0199a000-0000-7000-8000-0000000000b1', 'EDITOR', 'Пусти', now()),
+                   ('0199a000-0000-7000-8000-000000000001', '0199a000-0000-7000-8000-0000000000c1', 'VIEWER', NULL, now())
+            """,
+        ).update()
+
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql(
+                """
+                INSERT INTO board_access_requests (board_id, user_id, role, created_at)
+                VALUES ('0199a000-0000-7000-8000-000000000001', '0199a000-0000-7000-8000-0000000000b1', 'VIEWER', now())
+                """,
+            ).update()
+        }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE board_access_requests SET role = 'OWNER'").update()
+        }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE board_access_requests SET message = ''").update()
+        }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE board_access_requests SET message = repeat('а', 501)").update()
+        }
+
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(1, count("board_access_requests"))
+
+        jdbcClient.sql("DELETE FROM boards").update()
+        assertEquals(0, count("board_access_requests"))
     }
 
     @Test

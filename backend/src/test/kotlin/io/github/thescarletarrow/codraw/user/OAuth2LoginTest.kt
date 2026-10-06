@@ -3,8 +3,10 @@ package io.github.thescarletarrow.codraw.user
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
 import org.hamcrest.Matchers.contains
+import io.github.thescarletarrow.codraw.board.AccessRequests
 import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.LinkAccess
 import io.github.thescarletarrow.codraw.board.MemberRole
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -28,6 +30,7 @@ import org.springframework.test.web.servlet.post
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -42,6 +45,7 @@ class OAuth2LoginTest(
     @Autowired private val boards: BoardService,
     @Autowired private val clock: MutableClock,
     @Autowired private val members: BoardMembers,
+    @Autowired private val requests: AccessRequests,
 ) {
 
     private var providerAttributes: Map<String, Any> = emptyMap()
@@ -189,6 +193,40 @@ class OAuth2LoginTest(
         assertNull(members.roleOf(guestBoard.id!!, alice.userId))
         assertEquals(alice.userId, boards.find(guestBoard.id!!)?.ownerId)
         assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_members WHERE user_id = :guest").param("guest", guest.id)
+            .query(Int::class.java).single())
+    }
+
+    @Test
+    fun `requests for access of a guest pass to the user who signs in, keeping the newer one, and none the user needs no more`() {
+        val owner = users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Owner", "Owner", null))
+        val closed = { title: String, ownerId: UUID -> boards.changeLinkAccess(boards.create(title, ownerId), LinkAccess.NONE) }
+        val both = closed("Оба, гость позже", owner.id)
+        val older = closed("Оба, гость раньше", owner.id)
+        val joined = closed("Только гость", owner.id)
+        val given = closed("Уже участник", owner.id)
+        val alice = signIn("github", gitHubProfile(name = "Alice"))
+        val guest = users.createGuest()
+        val guestBoard = closed("Доска гостя", guest.id)
+        requests.put(both.id!!, alice.userId, MemberRole.VIEWER, null, clock.instant())
+        requests.put(older.id!!, guest.id, MemberRole.VIEWER, "Раньше", clock.instant())
+        requests.put(guestBoard.id!!, alice.userId, MemberRole.EDITOR, null, clock.instant())
+        clock.advance(Duration.ofMinutes(1))
+        requests.put(both.id!!, guest.id, MemberRole.EDITOR, "Позже", clock.instant())
+        requests.put(older.id!!, alice.userId, MemberRole.EDITOR, null, clock.instant())
+        requests.put(joined.id!!, guest.id, MemberRole.VIEWER, null, clock.instant())
+        requests.put(given.id!!, guest.id, MemberRole.VIEWER, null, clock.instant())
+        members.put(given.id!!, alice.userId, MemberRole.EDITOR, clock.instant())
+        signedInAs(guest.toPrincipal())
+
+        signIn("github", gitHubProfile(name = "Alice"))
+
+        assertEquals(MemberRole.EDITOR to "Позже", requests.find(both.id!!, alice.userId)?.let { it.role to it.message })
+        assertEquals(MemberRole.EDITOR to null, requests.find(older.id!!, alice.userId)?.let { it.role to it.message })
+        assertEquals(MemberRole.VIEWER, requests.find(joined.id!!, alice.userId)?.role)
+        // A member with editing and the owner ask for nothing.
+        assertNull(requests.find(given.id!!, alice.userId))
+        assertNull(requests.find(guestBoard.id!!, alice.userId))
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_access_requests WHERE user_id = :guest").param("guest", guest.id)
             .query(Int::class.java).single())
     }
 

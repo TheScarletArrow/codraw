@@ -9,14 +9,17 @@ import type { BoardVersion } from '../api/versions.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
+import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
 import { useFollowing } from '../board/following.ts'
+import { NoAccess } from '../board/NoAccess.tsx'
 import { useLaserPublisher, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
@@ -69,12 +72,17 @@ const STATUS_COLORS: Record<ConnectionStatus, string> = {
 
 export function BoardPage() {
   const { boardId = '' } = useParams()
-  const board = useQuery({ queryKey: ['boards', boardId], queryFn: () => fetchBoard(boardId) })
+  const board = useQuery({
+    queryKey: ['boards', boardId],
+    queryFn: () => fetchBoard(boardId),
+    // Without access the page asks again from time to time and opens the board once the owner gives access.
+    refetchInterval: (query) => (isForbidden(query.state.error) ? ACCESS_POLL_INTERVAL : false),
+  })
   const user = useCurrentUser()
 
   if (board.isPending || user.isPending) return <Message>Загрузка…</Message>
   if (isNotFound(board.error)) return <BoardNotFound />
-  if (isForbidden(board.error)) return <NoAccess />
+  if (isForbidden(board.error)) return <NoAccess boardId={boardId} />
   if (board.isError || user.isError) return <Message alert>Не удалось загрузить доску</Message>
   return <BoardWorkspace board={board.data} user={user.data} />
 }
@@ -194,7 +202,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   }
 
   if (status === 'not-found') return <BoardNotFound />
-  if (status === 'forbidden') return <NoAccess />
+  if (status === 'forbidden') return <NoAccess boardId={board.id} />
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -217,6 +225,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             Только просмотр
           </span>
         )}
+        {viewer && <EditRequestButton boardId={board.id} />}
         <DrawioActions
           document={document}
           title={board.title}
@@ -389,10 +398,6 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
 
 function BoardNotFound() {
   return <Message alert>{STATUS_LABELS['not-found']}</Message>
-}
-
-function NoAccess() {
-  return <Message alert>Нет доступа: владелец закрыл доступ к доске по ссылке</Message>
 }
 
 function Message({ children, alert = false }: { children: string; alert?: boolean }) {

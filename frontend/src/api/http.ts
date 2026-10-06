@@ -4,6 +4,8 @@ export interface Problem {
   detail?: string
   /** The limit that the request ran into, e.g. the most boards a user owns. */
   limit?: number
+  /** The role on the board that the user has already, when they ask for what they have. */
+  role?: string
 }
 
 export class HttpError extends Error {

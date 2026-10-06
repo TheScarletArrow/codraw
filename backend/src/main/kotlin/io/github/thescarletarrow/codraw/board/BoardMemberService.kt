@@ -41,11 +41,26 @@ class BoardMemberService(
         val boardId = board.boardId
         if (userId == board.ownerId) throw MemberNotFoundException()
         members.lockBoard(boardId)
-        if (members.roleOf(boardId, userId) == null) {
-            if (!members.visited(boardId, userId)) throw MemberNotFoundException()
-            checkMemberLimit(boardId)
+        if (members.roleOf(boardId, userId) == null && !members.visited(boardId, userId)) {
+            throw MemberNotFoundException()
         }
+        return give(board, userId, role)
+    }
+
+    /**
+     * Makes the user [userId] a member of the [board] with the [role], or gives a member that role, e.g. as the owner
+     * answers their request for access; the caller checks that the owner may put this user among the members. Throws
+     * [MemberNotFoundException] for the owner and [MemberLimitReachedException] for a new member beyond the limit.
+     * Requests for access that the role satisfies are dropped.
+     */
+    @Transactional
+    fun give(board: Board, userId: UUID, role: MemberRole): Participant {
+        val boardId = board.boardId
+        if (userId == board.ownerId) throw MemberNotFoundException()
+        members.lockBoard(boardId)
+        if (members.roleOf(boardId, userId) == null) checkMemberLimit(boardId)
         members.put(boardId, userId, role, now())
+        boards.dropSatisfiedRequests(board)
         return participants(board).first { it.id == userId }
     }
 
@@ -88,6 +103,7 @@ class BoardMemberService(
         val current = members.roleOf(invite.boardId, userId)
         if (current == null) checkMemberLimit(invite.boardId)
         if (current == null || current < invite.role) members.put(invite.boardId, userId, invite.role, now())
+        boards.dropSatisfiedRequests(board)
         return board
     }
 

@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
+import type { AccessRequest } from '../api/accessRequests.ts'
 import type { Invite, Participant } from '../api/members.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { mockFetch, type MockResponse } from '../test/render.tsx'
@@ -23,12 +24,22 @@ const members: Participant[] = [
   { id: 'bob', name: 'Боб', avatarUrl: 'https://avatars.example.com/bob.png', role: 'editor' },
 ]
 const invite: Invite = { id: 'invite-1', path: '/invite/AAAAAAAAAAAAAAAAAAAAAA', role: 'editor', createdAt: '2026-10-01T10:00:00Z' }
+const request: AccessRequest = {
+  id: 'request-1',
+  userId: 'carol',
+  name: 'Вера',
+  avatarUrl: 'https://avatars.example.com/carol.png',
+  role: 'editor',
+  message: 'Нужно поправить схему БД',
+  createdAt: '2026-10-01T11:00:00Z',
+}
 
 function renderShare(responses: Record<string, MockResponse | MockResponse[]> = {}, shown: Board = board) {
   const fetchMock = mockFetch({
     [`GET ${boardUrl}/members`]: { body: members },
     [`GET ${boardUrl}/visitors`]: { body: [] },
     [`GET ${boardUrl}/invites`]: { body: [] },
+    [`GET ${boardUrl}/access-requests`]: { body: [] },
     ...responses,
   })
   const queryClient = createQueryClient()
@@ -168,6 +179,109 @@ describe('ShareButton', () => {
       expect(screen.queryByRole('region', { name: 'Пригласить по ссылке' })).toBeNull()
       expect(requests(fetchMock, 'GET', `${boardUrl}/visitors`)).toHaveLength(0)
       expect(requests(fetchMock, 'GET', `${boardUrl}/invites`)).toHaveLength(0)
+      expect(requests(fetchMock, 'GET', `${boardUrl}/access-requests`)).toHaveLength(0)
+      expect(screen.queryByRole('region', { name: 'Запросы доступа' })).toBeNull()
+    })
+  })
+
+  describe('requests for access', () => {
+    /** Opens «Поделиться» with one request waiting and returns its item. */
+    async function openRequest() {
+      await userEvent.click(await screen.findByRole('button', { name: 'Поделиться (1 запрос доступа)' }))
+      const section = await screen.findByRole('region', { name: 'Запросы доступа' })
+      return within(section).getByRole('listitem', { name: 'Вера' })
+    }
+
+    it('counts the requests on the button and shows who asks for what, why and when', async () => {
+      renderShare({ [`GET ${boardUrl}/access-requests`]: { body: [request, { ...request, id: 'request-2', userId: 'dan', name: 'Дан', role: 'viewer', message: null }] } })
+
+      expect(await screen.findByRole('button', { name: 'Поделиться (2 запроса доступа)' })).toHaveTextContent('2')
+      await userEvent.click(screen.getByRole('button', { name: 'Поделиться (2 запроса доступа)' }))
+
+      const section = await screen.findByRole('region', { name: 'Запросы доступа' })
+      const [vera, dan] = within(section).getAllByRole('listitem')
+      expect(vera).toHaveAccessibleName('Вера')
+      expect(vera).toHaveTextContent('Просит редактирование')
+      expect(vera).toHaveTextContent('Нужно поправить схему БД')
+      expect(within(vera).getByRole('time')).toHaveAttribute('dateTime', '2026-10-01T11:00:00Z')
+      expect(dan).toHaveTextContent('Просит просмотр')
+    })
+
+    it('fetches the requests again when the window opens', async () => {
+      const { fetchMock } = renderShare()
+      await waitFor(() => expect(requests(fetchMock, 'GET', `${boardUrl}/access-requests`)).toHaveLength(1))
+
+      await openShare()
+
+      await waitFor(() => expect(requests(fetchMock, 'GET', `${boardUrl}/access-requests`)).toHaveLength(2))
+      expect(screen.queryByRole('region', { name: 'Запросы доступа' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Поделиться' })).toBeInTheDocument()
+    })
+
+    it('gives editing, tells the other participants and shows the new member', async () => {
+      const { fetchMock, onChanged } = renderShare({
+        [`GET ${boardUrl}/access-requests`]: [{ body: [request] }, { body: [request] }, { body: [] }],
+        [`GET ${boardUrl}/members`]: [{ body: members }, { body: [...members, { id: 'carol', name: 'Вера', avatarUrl: null, role: 'editor' }] }],
+        [`POST ${boardUrl}/access-requests/request-1/grant`]: { body: { id: 'carol', name: 'Вера', avatarUrl: null, role: 'editor' } },
+      })
+
+      await userEvent.click(within(await openRequest()).getByRole('button', { name: 'Дать редактирование' }))
+
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Запросы доступа' })).toBeNull())
+      expect(bodyOf(fetchMock, 'POST', `${boardUrl}/access-requests/request-1/grant`)).toEqual({ role: 'editor' })
+      expect(onChanged).toHaveBeenCalled()
+      const participants = screen.getByRole('list', { name: 'Участники доски' })
+      expect(await within(participants).findByRole('combobox', { name: 'Роль: Вера' })).toHaveValue('editor')
+      expect(screen.getByRole('button', { name: 'Поделиться' })).toBeInTheDocument()
+    })
+
+    it('gives viewing in place of the editing asked for', async () => {
+      const { fetchMock } = renderShare({
+        [`GET ${boardUrl}/access-requests`]: { body: [request] },
+        [`POST ${boardUrl}/access-requests/request-1/grant`]: { body: { id: 'carol', name: 'Вера', avatarUrl: null, role: 'viewer' } },
+      })
+
+      await userEvent.click(within(await openRequest()).getByRole('button', { name: 'Дать просмотр' }))
+
+      await waitFor(() => expect(requests(fetchMock, 'POST', `${boardUrl}/access-requests/request-1/grant`)).toHaveLength(1))
+      expect(bodyOf(fetchMock, 'POST', `${boardUrl}/access-requests/request-1/grant`)).toEqual({ role: 'viewer' })
+    })
+
+    it('declines without telling the other participants', async () => {
+      const { fetchMock, onChanged } = renderShare({
+        [`GET ${boardUrl}/access-requests`]: [{ body: [request] }, { body: [request] }, { body: [] }],
+        [`DELETE ${boardUrl}/access-requests/request-1`]: { status: 204 },
+      })
+
+      await userEvent.click(within(await openRequest()).getByRole('button', { name: 'Отклонить' }))
+
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Запросы доступа' })).toBeNull())
+      expect(requests(fetchMock, 'DELETE', `${boardUrl}/access-requests/request-1`)).toHaveLength(1)
+      expect(onChanged).not.toHaveBeenCalled()
+    })
+
+    it('says that the request changed meanwhile and shows the requests anew', async () => {
+      const replaced = { ...request, id: 'request-2', role: 'viewer' as const }
+      renderShare({
+        [`GET ${boardUrl}/access-requests`]: [{ body: [request] }, { body: [request] }, { body: [replaced] }],
+        [`POST ${boardUrl}/access-requests/request-1/grant`]: { status: 404 },
+      })
+
+      await userEvent.click(within(await openRequest()).getByRole('button', { name: 'Дать редактирование' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Запрос уже отменён или изменён — посмотрите его ещё раз')
+      expect(await screen.findByText('Просит просмотр')).toBeInTheDocument()
+    })
+
+    it('says that the board has as many members as allowed', async () => {
+      renderShare({
+        [`GET ${boardUrl}/access-requests`]: { body: [request] },
+        [`POST ${boardUrl}/access-requests/request-1/grant`]: { status: 409, body: { title: 'Member limit reached', limit: 100 } },
+      })
+
+      await userEvent.click(within(await openRequest()).getByRole('button', { name: 'Дать редактирование' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('На доске уже 100 участников — больше добавить нельзя')
     })
   })
 

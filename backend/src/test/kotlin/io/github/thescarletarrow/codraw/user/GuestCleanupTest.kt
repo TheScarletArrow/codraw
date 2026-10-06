@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.user
 
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
+import io.github.thescarletarrow.codraw.board.AccessRequests
 import io.github.thescarletarrow.codraw.board.BoardDocumentService
 import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
@@ -35,6 +36,7 @@ class GuestCleanupTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val registry: MeterRegistry,
     @Autowired private val members: BoardMembers,
+    @Autowired private val requests: AccessRequests,
 ) {
 
     @BeforeEach
@@ -87,18 +89,22 @@ class GuestCleanupTest(
     }
 
     @Test
-    fun `deletes a gone guest who is a member of boards of others, with their memberships`() {
+    fun `deletes a gone guest who is a member of boards of others or asks for access to them, with their memberships and requests`() {
         val alice = users.gitHubUser("Alice")
         val board = boards.create("Общая", alice.id)
+        val closed = boards.create("Закрытая", alice.id)
         val guest = users.createGuest()
         members.put(board.id!!, guest.id, MemberRole.EDITOR, clock.instant())
+        requests.put(closed.id!!, guest.id, MemberRole.VIEWER, "Пустите", clock.instant())
 
         clock.advance(Duration.ofDays(2))
 
         assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
         assertNull(users.find(guest.id))
         assertNotNull(boards.find(board.id!!))
+        assertNotNull(boards.find(closed.id!!))
         assertEquals(0, count("board_members"))
+        assertEquals(0, count("board_access_requests"))
     }
 
     @Test
