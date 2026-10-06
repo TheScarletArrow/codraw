@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { Box, ContextMenuRequest, DiagramEditor, EditorState, Point } from '../diagram/editor.ts'
+import type { Box, ContextMenuRequest, DiagramEditor, EditorState, LabelEditing, Point } from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -13,6 +13,8 @@ export type FakeEditor = DiagramEditor & {
   placeCell(id: string, bounds: Box | null): void
   /** Simulates scrolling: canvas points are diagram points shifted by this offset. */
   scrollTo(offset: Point): void
+  /** Simulates a label edited in place, its change by another participant meanwhile, or the end of editing (`null`). */
+  edit(editing: LabelEditing | null): void
 }
 
 export interface FakeEditorOptions {
@@ -52,12 +54,14 @@ export function createFakeEditor({
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
+  let editing: LabelEditing | null = null
   const cells = new Map<string, Box | null>()
   const listeners = new Set<() => void>()
   const pointerListeners = new Set<(point: Point | null) => void>()
   const selectionListeners = new Set<(ids: string[]) => void>()
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const viewListeners = new Set<() => void>()
+  const editingListeners = new Set<(editing: LabelEditing | null) => void>()
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
     return () => {
@@ -137,6 +141,8 @@ export function createFakeEditor({
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
+    getEditing: () => editing,
+    onEditingChange: (listener) => listen(editingListeners, listener),
     undo: vi.fn(),
     redo: vi.fn(),
     zoomIn: vi.fn(),
@@ -166,6 +172,10 @@ export function createFakeEditor({
     scrollTo(next) {
       offset = next
       changeView()
+    },
+    edit(next) {
+      editing = next
+      editingListeners.forEach((listener) => listener(next))
     },
   }
 }

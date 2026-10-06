@@ -19,6 +19,7 @@ import {
   RubberBandHandler,
   StackLayout,
   StyleDefaultsConfig,
+  ValueChange,
   getDefaultPlugins,
   type CellState,
   type CellStyle,
@@ -283,6 +284,14 @@ export interface ContextMenuRequest {
   cellId: string | null
 }
 
+/** A label being edited in place on the canvas. */
+export interface LabelEditing {
+  /** The cell whose label is edited: a shape, an edge, a table, a field or an index. */
+  cellId: string
+  /** Another participant changed the label since the editing started; applying the editing still writes its text. */
+  changedRemotely: boolean
+}
+
 /** Editor of one board page: a maxGraph canvas bound to the Yjs document. */
 export interface DiagramEditor {
   readonly graph: Graph
@@ -424,6 +433,13 @@ export interface DiagramEditor {
   onViewChange(listener: () => void): () => void
   /** Increases with every view change; lets React re-render positions computed from the view. */
   getViewVersion(): number
+  /** The label being edited in place, or `null`. */
+  getEditing(): LabelEditing | null
+  /**
+   * Reports the label being edited in place when the editing starts and when another participant changes that label,
+   * and `null` when it stops: applied, cancelled, losing focus, with its cell removed or with the editor destroyed.
+   */
+  onEditingChange(listener: (editing: LabelEditing | null) => void): () => void
   undo(): void
   redo(): void
   zoomIn(): void
@@ -700,7 +716,22 @@ export function createDiagramEditor(
     redrawField(cell)
   }
   graph.addListener(InternalEvent.EDITING_STARTED, handleEditingStarted)
+  // The label being edited, which other participants see. Every editing starts and stops in the handler: applied,
+  // cancelled, losing focus, or with its cell removed; the events of the graph miss the last two.
+  let editing: LabelEditing | null = null
+  const editingListeners = new Set<(editing: LabelEditing | null) => void>()
+  const setEditing = (next: LabelEditing | null) => {
+    if (next === editing) return
+    editing = next
+    editingListeners.forEach((listener) => listener(next))
+  }
   if (cellEditor) {
+    const startEditing = cellEditor.startEditing.bind(cellEditor)
+    cellEditor.startEditing = (cell: Cell, trigger?: MouseEvent | null) => {
+      startEditing(cell, trigger)
+      const id = cellEditor.getEditingCell()?.getId()
+      if (id) setEditing({ cellId: id, changedRemotely: false })
+    }
     const stopEditing = cellEditor.stopEditing.bind(cellEditor)
     cellEditor.stopEditing = (cancel?: boolean) => {
       const field = namedField
@@ -712,8 +743,20 @@ export function createDiagramEditor(
       }
       stopEditing(cancel)
       if (field) redrawField(field)
+      setEditing(null)
     }
   }
+  // Another participant replaced the label being edited: the participant is told once, and applying their editing
+  // still writes their text. Their own changes, e.g. applying the editing, are not the binding applying the document.
+  const handleRemoteLabel = (_sender: unknown, event: EventObject) => {
+    const cell = cellEditor?.getEditingCell()
+    if (!editing || editing.changedRemotely || !cell || !binding.isApplyingRemote()) return
+    const changes = event.getProperty('changes') as unknown[]
+    if (changes.some((change) => change instanceof ValueChange && change.cell === cell)) {
+      setEditing({ ...editing, changedRemotely: true })
+    }
+  }
+  model.addListener(InternalEvent.CHANGE, handleRemoteLabel)
 
   const selectedEdges = () => graph.getSelectionCells().filter((cell) => cell.isEdge())
   const selectedTable = (): Cell | null => {
@@ -1902,6 +1945,8 @@ export function createDiagramEditor(
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
+    getEditing: () => editing,
+    onEditingChange: (listener) => listen(editingListeners, listener),
     undo() {
       graph.stopEditing(false)
       undoManager.undo()
@@ -1938,6 +1983,7 @@ export function createDiagramEditor(
       graph.removeListener(handleEditingStarted)
       graph.removeListener(handleCellsAdded)
       model.removeListener(redrawTables)
+      model.removeListener(handleRemoteLabel)
       unwatchTableRows()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
@@ -1948,6 +1994,7 @@ export function createDiagramEditor(
       selectionListeners.clear()
       menuListeners.clear()
       viewListeners.clear()
+      editingListeners.clear()
       InternalEvent.removeAllListeners(container)
       keyHandler.onDestroy()
       undoManager.off('stack-item-added', notify)

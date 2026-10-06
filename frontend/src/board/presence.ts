@@ -16,6 +16,8 @@ export interface RemotePresence extends ParticipantIdentity {
   selection: string[]
   /** The middle of the visible area of the participant in diagram coordinates and their scale; `null` for old clients. */
   viewport: Viewport | null
+  /** The cell whose label the participant edits in place; `null` when they edit none, and for old clients. */
+  editing: string | null
 }
 
 /** What a participant sees: the middle of their visible area in diagram coordinates and the scale. */
@@ -29,7 +31,10 @@ export const CURSOR_INTERVAL_MS = 50
 /** Updates of the view are sent at most this often (10 per second). */
 export const VIEW_INTERVAL_MS = 100
 
-/** Publishes the page, the view, the local pointer and the selection of the editor to the other participants. */
+/**
+ * Publishes the page, the view, the local pointer, the selection and the label edited in place of the editor to the
+ * other participants.
+ */
 export function usePresencePublisher(editor: DiagramEditor | null, awareness: Awareness | null) {
   useEffect(() => {
     if (!editor || !awareness) return
@@ -66,6 +71,18 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
     })
     const offSelection = editor.onSelectionChange((ids) => awareness.setLocalStateField('selection', ids))
 
+    // Editing starts and stops rarely, so it is sent as it happens; a participant who may only view edits no label.
+    let editing: string | null = null
+    const publishEditing = (cellId: string | null) => {
+      if (cellId === editing) return
+      editing = cellId
+      awareness.setLocalStateField('editing', cellId)
+    }
+    const offEditing = editor.readOnly
+      ? undefined
+      : editor.onEditingChange((state) => publishEditing(state?.cellId ?? null))
+    if (!editor.readOnly) publishEditing(editor.getEditing()?.cellId ?? null)
+
     const publishView = () => {
       const center = editor.viewportCenter()
       const viewport: Viewport = {
@@ -88,8 +105,10 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
       offPointer()
       offSelection()
       offView()
+      offEditing?.()
       clearTimeout(timer)
       clearTimeout(viewTimer)
+      publishEditing(null)
       awareness.setLocalStateField('viewport', null)
       awareness.setLocalStateField('cursor', null)
       awareness.setLocalStateField('selection', [])
@@ -134,6 +153,7 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
     const cursor = state.cursor as Point | null | undefined
     const selection = state.selection as unknown
     const viewport = state.viewport as Viewport | null | undefined
+    const editing = state.editing as unknown
     result.push({
       clientId,
       name: user.name,
@@ -144,6 +164,7 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
       selection: Array.isArray(selection) ? selection.filter((id): id is string => typeof id === 'string') : [],
       viewport:
         viewport && [viewport.x, viewport.y, viewport.scale].every(Number.isFinite) && viewport.scale > 0 ? viewport : null,
+      editing: typeof editing === 'string' && editing !== '' ? editing : null,
     })
   })
   return result

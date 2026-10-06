@@ -92,14 +92,61 @@ describe('usePresencePublisher', () => {
     expect(local().selection).toEqual(['a', 'b'])
   })
 
-  it('clears cursor, selection and view when the editor goes away', () => {
+  it('clears cursor, selection, view and the label being edited when the editor goes away', () => {
     const { unmount } = renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
     editor.movePointer({ x: 1, y: 1 })
     editor.select(['a'])
+    editor.edit({ cellId: 'a', changedRemotely: false })
 
     unmount()
 
-    expect(local()).toMatchObject({ cursor: null, selection: [], viewport: null })
+    expect(local()).toMatchObject({ cursor: null, selection: [], viewport: null, editing: null })
+  })
+
+  it('publishes the cell whose label is edited in place when editing starts and clears it when it stops', () => {
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+    const updates: unknown[] = []
+    awareness.on('change', () => updates.push(local().editing))
+
+    editor.edit({ cellId: 'box', changedRemotely: false })
+    // Another participant changing the label is the same editing.
+    editor.edit({ cellId: 'box', changedRemotely: true })
+    editor.edit(null)
+
+    expect(updates).toEqual(['box', null])
+  })
+
+  it('publishes the label already being edited when the presence connects', () => {
+    editor.edit({ cellId: 'box', changedRemotely: false })
+
+    renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+
+    expect(local().editing).toBe('box')
+  })
+
+  it('publishes no editing for a participant who may only view the page', () => {
+    editor = createFakeEditor({ readOnly: true })
+    const { unmount } = renderHook(() => usePresencePublisher(editor, asAwareness(awareness)))
+
+    editor.edit({ cellId: 'box', changedRemotely: false })
+    unmount()
+
+    expect(local()).not.toHaveProperty('editing')
+  })
+
+  it('reads the label others edit and ignores what is not the id of a cell', () => {
+    const others = new FakeAwareness(1)
+    others.setState(2, { user: bob, editing: 'box' })
+    others.setState(3, { user: { ...bob, name: 'Вера' }, editing: 42 })
+    others.setState(4, { user: { ...bob, name: 'Гена' }, editing: '' })
+    others.setState(5, { user: { ...bob, name: 'Старый' } })
+
+    expect(readRemotePresence(asAwareness(others)).map((participant) => participant.editing)).toEqual([
+      'box',
+      null,
+      null,
+      null,
+    ])
   })
 
   it('publishes the middle of the visible area and the scale at once and at most once per interval after', () => {
@@ -200,6 +247,123 @@ describe('PresenceLayer', () => {
 
     expect(screen.getAllByTestId('remote-cursor').map((cursor) => cursor.textContent)).toEqual(['Боб'])
     expect(screen.getAllByTestId('remote-selection').map((outline) => outline.dataset.participant)).toEqual(['Боб'])
+  })
+
+  describe('labels being edited', () => {
+    const vera = { name: 'Вера', color: '#16a34a', avatarUrl: null }
+    const tags = () => screen.queryAllByTestId('remote-editing-tag').map((tag) => tag.textContent)
+
+    beforeEach(() => {
+      editor.placeCell('box', { x: 100, y: 200, width: 120, height: 60 })
+    })
+
+    it('outlines a cell whose label another participant edits in their color, with a tag above it', () => {
+      awareness.setState(7, { user: bob, editing: 'box', selection: ['box'] })
+
+      renderLayer()
+
+      const outline = screen.getByTestId('remote-editing')
+      expect(outline).toHaveAttribute('data-participant', 'Боб')
+      expect(outline).toHaveStyle({ left: '97px', top: '197px', width: '126px', height: '66px' })
+      expect(outline.style.borderColor).toBe('rgb(220, 38, 38)')
+      // The outline of the label being edited stands for the selection of the cell.
+      expect(screen.queryByTestId('remote-selection')).toBeNull()
+      const tag = screen.getByTestId('remote-editing-tag')
+      expect(tag).toHaveTextContent('Боб редактирует')
+      expect(tag.parentElement).toHaveStyle({ left: '97px', top: '193px', transform: 'translateY(-100%)' })
+    })
+
+    it('follows the cell when the canvas scrolls and drops the tag when the editing stops', () => {
+      awareness.setState(7, { user: bob, editing: 'box' })
+      renderLayer()
+
+      act(() => editor.scrollTo({ x: 50, y: 30 }))
+      expect(screen.getByTestId('remote-editing')).toHaveStyle({ left: '47px', top: '167px' })
+
+      act(() => awareness.setState(7, { user: bob, editing: null }))
+      expect(screen.queryByTestId('remote-editing')).toBeNull()
+      expect(tags()).toEqual([])
+    })
+
+    it('stacks the tags of several participants who edit one label, and puts them under a cell at the top edge', () => {
+      editor.placeCell('top', { x: 100, y: 10, width: 120, height: 60 })
+      awareness.setState(7, { user: bob, editing: 'box' })
+      awareness.setState(8, { user: vera, editing: 'box' })
+      awareness.setState(9, { user: { ...vera, name: 'Гена' }, editing: 'top' })
+
+      renderLayer()
+
+      const outlines = screen.getAllByTestId('remote-editing')
+      expect(outlines.map((outline) => outline.dataset.participant)).toEqual(['Боб', 'Вера', 'Гена'])
+      expect(outlines[1]).toHaveStyle({ left: '94px', top: '194px', width: '132px', height: '72px' })
+      expect(tags()).toEqual(['Боб редактирует', 'Вера редактирует', 'Гена редактирует'])
+      const [bobTag, , genaTag] = screen.getAllByTestId('remote-editing-tag')
+      expect(bobTag!.parentElement).toBe(screen.getAllByTestId('remote-editing-tag')[1]!.parentElement)
+      expect(genaTag!.parentElement).toHaveStyle({ top: '77px' })
+      expect(genaTag!.parentElement!.style.transform).toBe('')
+    })
+
+    it('shows the labels edited on the same page only, and nothing for clients that do not publish editing', () => {
+      awareness.setState(7, { user: bob, page: 'p2', editing: 'box' })
+      awareness.setState(8, { user: vera })
+
+      renderLayer()
+
+      expect(screen.queryByTestId('remote-editing')).toBeNull()
+      expect(screen.queryByRole('status')).toBeNull()
+    })
+
+    it('warns the participant who edits a label that another participant edits too, in place of their tag', () => {
+      awareness.setState(7, { user: bob, editing: 'box' })
+      renderLayer()
+
+      act(() => editor.edit({ cellId: 'box', changedRemotely: false }))
+
+      const warning = screen.getByRole('status')
+      expect(warning).toHaveTextContent(
+        'Боб тоже редактирует эту подпись: сохранится правка, которую закончат последней',
+      )
+      expect(warning).toHaveStyle({ left: '100px', top: '196px', transform: 'translateY(-100%)' })
+      expect(screen.getByTestId('remote-editing')).toBeInTheDocument()
+      expect(tags()).toEqual([])
+
+      act(() => awareness.setState(8, { user: vera, editing: 'box' }))
+      expect(warning).toHaveTextContent('Боб и Вера тоже редактируют эту подпись')
+
+      act(() => {
+        awareness.setState(7, { user: bob, editing: null })
+        awareness.setState(8, { user: vera, editing: null })
+      })
+      expect(screen.queryByRole('status')).toBeNull()
+    })
+
+    it('warns no one who edits a label alone, and puts the warning under a cell at the top edge', () => {
+      editor.placeCell('top', { x: 100, y: 10, width: 120, height: 60 })
+      awareness.setState(7, { user: bob, editing: 'box' })
+      renderLayer()
+
+      act(() => editor.edit({ cellId: 'top', changedRemotely: false }))
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(tags()).toEqual(['Боб редактирует'])
+
+      act(() => awareness.setState(8, { user: vera, editing: 'top' }))
+      expect(screen.getByRole('status')).toHaveStyle({ top: '74px' })
+      expect(screen.getByRole('status').style.transform).toBe('')
+    })
+
+    it('tells the participant that the label they edit was changed meanwhile', () => {
+      renderLayer()
+      act(() => editor.edit({ cellId: 'box', changedRemotely: false }))
+
+      act(() => editor.edit({ cellId: 'box', changedRemotely: true }))
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Подпись изменили, пока вы её редактировали. Сохранится ваша правка, Esc отменит её',
+      )
+
+      act(() => editor.edit(null))
+      expect(screen.queryByRole('status')).toBeNull()
+    })
   })
 
   it('shows a cursor outside the visible area as a label at the edge that brings it into view', async () => {
