@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import java.time.Duration
+import java.util.UUID
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
@@ -90,6 +91,51 @@ class BoardDocumentApiTest(
         }
     }
 
+    @Test
+    fun `collects who changed the stored document since the latest version, without repeats`() {
+        val board = createBoard("Схема")
+        val (anna, boris, vera) = listOf("Anna", "Boris", "Vera").map { users.gitHubUser(it).id }
+        // The first change after the first store keeps that store as a version; the stores after it collect.
+        putDocument(board, state).andExpect { status { isNoContent() } }
+
+        putDocument(board, state, anna, boris).andExpect { status { isNoContent() } }
+        putDocument(board, state, boris, vera).andExpect { status { isNoContent() } }
+        putDocument(board, state).andExpect { status { isNoContent() } }
+
+        assertEquals(listOf(anna, boris, vera), editors(board))
+    }
+
+    @Test
+    fun `keeps the first 100 who changed the stored document`() {
+        val board = createBoard("Схема")
+        val ids = List(120) { UUID.randomUUID() }
+        putDocument(board, state).andExpect { status { isNoContent() } }
+
+        putDocument(board, state, *ids.take(60).toTypedArray()).andExpect { status { isNoContent() } }
+        putDocument(board, state, *ids.drop(60).toTypedArray()).andExpect { status { isNoContent() } }
+
+        assertEquals(ids.take(100), editors(board))
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["not-a-uuid", "0199a000-0000-7000-8000-0000000000a1, Alice"])
+    fun `rejects a store that names who changed the document by anything but ids`(editors: String) {
+        val board = createBoard("Схема")
+        putDocument(board, byteArrayOf(9)).andExpect { status { isNoContent() } }
+
+        mockMvc.put(documentUrl(board)) {
+            header(TOKEN_HEADER, IntegrationTest.INTERNAL_TOKEN)
+            header(BoardDocumentController.EDITORS_HEADER, editors)
+            contentType = MediaType.APPLICATION_OCTET_STREAM
+            content = state
+        }.andExpect { status { isBadRequest() } }
+
+        val response = mockMvc.get(documentUrl(board)) { header(TOKEN_HEADER, IntegrationTest.INTERNAL_TOKEN) }
+            .andReturn().response
+        assertContentEquals(byteArrayOf(9), response.contentAsByteArray)
+        assertEquals(emptyList(), editors(board))
+    }
+
     @ParameterizedTest
     @ValueSource(strings = ["0199a000-0000-7000-8000-000000000000", "not-a-uuid"])
     fun `returns 404 for an unknown board`(board: String) {
@@ -119,11 +165,20 @@ class BoardDocumentApiTest(
 
     private fun documentUrl(board: String) = "/internal/boards/$board/document"
 
-    private fun putDocument(board: String, bytes: ByteArray) = mockMvc.put(documentUrl(board)) {
+    private fun putDocument(board: String, bytes: ByteArray, vararg editors: UUID) = mockMvc.put(documentUrl(board)) {
         header(TOKEN_HEADER, IntegrationTest.INTERNAL_TOKEN)
+        if (editors.isNotEmpty()) header(BoardDocumentController.EDITORS_HEADER, editors.joinToString(", "))
         contentType = MediaType.APPLICATION_OCTET_STREAM
         content = bytes
     }
+
+    /** Who changed the stored document of the board since its latest version, in the order of their first change. */
+    private fun editors(board: String): List<UUID> = jdbcClient.sql(
+        """
+        SELECT editor FROM board_documents, unnest(editors) WITH ORDINALITY AS e (editor, n)
+        WHERE board_id = :board::uuid ORDER BY n
+        """,
+    ).param("board", board).query(UUID::class.java).list().filterNotNull()
 
     private fun createBoard(title: String): String {
         val response = mockMvc.post("/api/boards") {

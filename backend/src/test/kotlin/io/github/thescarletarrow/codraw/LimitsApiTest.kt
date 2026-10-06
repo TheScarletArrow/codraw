@@ -161,6 +161,23 @@ class LimitsApiTest(
     }
 
     @Test
+    fun `versions without a name go first when the versions take more than the limit`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        listOf("Релиз" to 0, null to 1, null to 2).forEach { (name, first) ->
+            clock.advance(Duration.ofSeconds(1))
+            saveVersion(board, ByteArray(400) { first.toByte() }, name).andExpect { status { isCreated() } }
+        }
+        // 1200 bytes do not fit into 1 KB: the oldest version without a name goes, not the older one with a name.
+        assertEquals(listOf<Byte>(2, 0), versionFirstBytes(board))
+
+        clock.advance(Duration.ofSeconds(1))
+        saveVersion(board, ByteArray(900) { 3 }, "Релиз 2").andExpect { status { isCreated() } }
+
+        // The new version leaves room for no other: the one without a name goes, and the older one with a name too.
+        assertEquals(listOf<Byte>(3), versionFirstBytes(board))
+    }
+
+    @Test
     fun `a board has at most as many members as the limit, and a member who gets another role does not count again`() {
         val board = createBoard(alice).andExpect { status { isCreated() } }.id()
         val invitation = invite(board, "viewer").andExpect { status { isCreated() } }.token()
@@ -358,11 +375,12 @@ class LimitsApiTest(
             content = state
         }
 
-    private fun saveVersion(board: String, state: ByteArray): ResultActionsDsl =
+    private fun saveVersion(board: String, state: ByteArray, name: String? = null): ResultActionsDsl =
         mockMvc.post("/api/boards/$board/versions") {
             with(alice.session())
             with(csrf())
             param("reason", "manual")
+            if (name != null) param("name", name)
             contentType = MediaType.APPLICATION_OCTET_STREAM
             content = state
         }

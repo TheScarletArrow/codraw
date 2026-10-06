@@ -19,21 +19,23 @@ class BoardDocumentService(
         if (!boards.existsById(boardId)) {
             return StoredDocument.BoardNotFound
         }
-        return documents.findByBoardId(boardId)?.let { StoredDocument.State(it.state) } ?: StoredDocument.Empty
+        return documents.findState(boardId)?.let { StoredDocument.State(it) } ?: StoredDocument.Empty
     }
 
     /**
-     * Saves the document state and marks the board as changed; the state it replaces may become a version of the board.
-     * Returns `false` when the board does not exist.
+     * Saves the document state, which the users [editors] changed since the previous save, and marks the board as
+     * changed. The state it replaces may become a version of the board, which takes the users who changed it as its
+     * authors; the [editors] are then the first who changed the board since that version. Returns `false` when the board
+     * does not exist.
      */
     @Transactional
-    fun save(boardId: UUID, state: ByteArray): Boolean {
+    fun save(boardId: UUID, state: ByteArray, editors: Collection<UUID> = emptyList()): Boolean {
         val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
         if (!boards.touch(boardId, now)) {
             return false
         }
         versions.beforeStore(boardId, now)
-        documents.upsert(boardId, state, now)
+        documents.upsert(boardId, state, editors.toList(), BoardVersionService.AUTHORS_LIMIT, now)
         return true
     }
 }

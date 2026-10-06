@@ -13,9 +13,11 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.io.InputStream
+import java.util.UUID
 
 /** Internal API for collab: loads and stores the Yjs document of a board. */
 @RestController
@@ -36,17 +38,30 @@ class BoardDocumentController(
         }
     }
 
-    /** Stores the state of the document; a state larger than the limit is refused with 413 and is not read to its end. */
+    /**
+     * Stores the state of the document; a state larger than the limit is refused with 413 and is not read to its end.
+     * The ids of the users whose changes the state has since the previous store come in [EDITORS_HEADER], separated by
+     * commas; a store without it changes nothing about who changed the board. An id that is not a UUID gets 400.
+     */
     @PutMapping(consumes = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
-    fun store(@PathVariable id: String, body: InputStream): ResponseEntity<Void> {
+    fun store(
+        @PathVariable id: String,
+        @RequestHeader(EDITORS_HEADER, required = false) editors: List<UUID>?,
+        body: InputStream,
+    ): ResponseEntity<Void> {
         val boardId = BoardIds.parse(id) ?: return ResponseEntity.notFound().build()
         val state = body.readAtMost(limits.documentSize)
         if (state == null) {
             metrics.limitReached(Limit.DOCUMENT)
             return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).build()
         }
-        if (!documents.save(boardId, state)) return ResponseEntity.notFound().build()
+        if (!documents.save(boardId, state, editors.orEmpty())) return ResponseEntity.notFound().build()
         metrics.documentStored(state.size)
         return ResponseEntity.noContent().build()
+    }
+
+    companion object {
+        /** Who changed the document in a store: the ids of the users, separated by commas. */
+        const val EDITORS_HEADER = "X-Editors"
     }
 }

@@ -31,6 +31,24 @@ export async function hasStoredDocument(boardId: string): Promise<boolean> {
   return response.status === 200
 }
 
+/**
+ * The number of shapes in the stored document of the board, on all its pages. Once a change is stored, the backend knows
+ * who made it, e.g. for the authors of the next version.
+ */
+export async function storedVertexCount(boardId: string): Promise<number> {
+  const response = await fetch(`${env.backendUrl}/internal/boards/${boardId}/document`, {
+    headers: { 'X-Internal-Token': env.internalToken },
+  })
+  if (response.status !== 200) return 0
+  const document = new Y.Doc()
+  Y.applyUpdate(document, new Uint8Array(await response.arrayBuffer()))
+  // Mirrors the model of the board document: the cells of a page are in the top-level map `cells:<page id>`.
+  return Array.from(document.share.keys())
+    .filter((name) => name.startsWith('cells:'))
+    .flatMap((name) => Array.from(document.getMap<Y.Map<unknown>>(name).values()))
+    .filter((cell) => cell.get('kind') === 'vertex').length
+}
+
 /** A page in a fresh browser context signed in as the test user with this name. */
 export async function userPage(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext()

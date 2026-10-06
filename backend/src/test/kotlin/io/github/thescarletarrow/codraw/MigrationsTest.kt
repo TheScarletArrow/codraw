@@ -36,6 +36,7 @@ class MigrationsTest {
         private val pointThreadColumns = threadColumns + setOf("x", "y")
         private val notificationColumns =
             setOf("id", "user_id", "kind", "board_id", "comment_id", "actor_id", "role", "created_at", "read_at")
+        private val versionAuthorsColumns = setOf("id", "board_id", "state", "reason", "created_at", "authors", "name")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -47,12 +48,19 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V12 create tables on an empty database and U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(12, flyway().migrate().migrationsExecuted)
+    fun `V1 to V13 create tables on an empty database and U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(13, flyway().migrate().migrationsExecuted)
         assertEquals(reactionsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(notificationColumns + "thread_id", columns("notifications"))
+        assertEquals(versionAuthorsColumns, columns("board_versions"))
+        assertEquals(setOf("board_id", "state", "updated_at", "editors"), columns("board_documents"))
+
+        revert("U13__claude_epic_lovelace_pwi6v4_version_authors.sql")
+        assertEquals(reactionsTables, appTables())
+        assertEquals(setOf("id", "board_id", "state", "reason", "created_at"), columns("board_versions"))
+        assertEquals(setOf("board_id", "state", "updated_at"), columns("board_documents"))
 
         revert("U12__claude_epic_lovelace_pwi6v4_comment_reactions_and_assignees.sql")
         assertEquals(notificationsTables, appTables())
@@ -93,9 +101,38 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(12, flyway().migrate().migrationsExecuted)
+        assertEquals(13, flyway().migrate().migrationsExecuted)
         assertEquals(reactionsTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
+        assertEquals(versionAuthorsColumns, columns("board_versions"))
+    }
+
+    @Test
+    fun `V13 gives existing versions and documents nobody who changed them and keeps names from 1 to 100 characters`() {
+        flyway("12").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO board_documents (board_id, state, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', '\x01', now());
+            INSERT INTO board_versions (board_id, state, reason, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', '\x01', 'AUTO', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("13").migrate().migrationsExecuted)
+
+        assertEquals(0, jdbcClient.sql("SELECT cardinality(editors) FROM board_documents").query(Int::class.java).single())
+        assertEquals(0, jdbcClient.sql("SELECT cardinality(authors) FROM board_versions").query(Int::class.java).single())
+        jdbcClient.sql("UPDATE board_versions SET name = :name").param("name", "я".repeat(100)).update()
+        for (name in listOf("", "я".repeat(101))) {
+            assertFailsWith<DataIntegrityViolationException> {
+                jdbcClient.sql("UPDATE board_versions SET name = :name").param("name", name).update()
+            }
+        }
     }
 
     @Test
@@ -480,7 +517,7 @@ class MigrationsTest {
 
     @Test
     fun `U12 drops reactions, assignees and notifications of assigned threads, and keeps threads and other notifications`() {
-        flyway().migrate()
+        flyway("12").migrate()
         jdbcClient.sql(
             """
             INSERT INTO users (id, provider, provider_user_id, name, created_at)
@@ -512,7 +549,7 @@ class MigrationsTest {
         assertFailsWith<DataIntegrityViolationException> {
             jdbcClient.sql("UPDATE notifications SET kind = 'ASSIGNED'").update()
         }
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("12").migrate().migrationsExecuted)
     }
 
     @Test
@@ -548,9 +585,7 @@ class MigrationsTest {
 
     private fun count(table: String) = jdbcClient.sql("SELECT count(*) FROM $table").query(Int::class.java).single()
 
-    private fun boardColumns(): Set<String> = jdbcClient.sql(
-        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'boards'",
-    ).query(String::class.java).list().filterNotNull().toSet()
+    private fun boardColumns(): Set<String> = columns("boards")
 
     private fun columns(table: String): Set<String> = jdbcClient.sql(
         "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :table",

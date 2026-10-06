@@ -6,7 +6,9 @@ import io.github.thescarletarrow.codraw.board.AccessRequests
 import io.github.thescarletarrow.codraw.board.BoardDocumentService
 import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.board.VersionReason
 import io.github.thescarletarrow.codraw.comment.CommentService
 import io.github.thescarletarrow.codraw.comment.Reaction
 import io.github.thescarletarrow.codraw.gitHubUser
@@ -33,6 +35,7 @@ class GuestCleanupTest(
     @Autowired private val users: UserService,
     @Autowired private val boards: BoardService,
     @Autowired private val documents: BoardDocumentService,
+    @Autowired private val versions: BoardVersionService,
     @Autowired private val sessions: SessionRepository<*>,
     @Autowired private val jdbcClient: JdbcClient,
     @Autowired private val clock: MutableClock,
@@ -194,6 +197,20 @@ class GuestCleanupTest(
 
         assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
         assertEquals(alice.id, boards.find(board.id!!)!!.ownerId)
+    }
+
+    @Test
+    fun `a gone guest who changed a board of another user is left out of the authors of its versions`() {
+        val alice = users.gitHubUser("Alice")
+        val guest = users.createGuest()
+        val board = boards.create("Общая", alice.id).id!!
+        documents.save(board, byteArrayOf(1), listOf(guest.id, alice.id))
+        versions.save(board, byteArrayOf(1), VersionReason.MANUAL)
+
+        clock.advance(Duration.ofDays(2))
+
+        assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
+        assertEquals(listOf("Alice"), versions.list(board).single().authors.map { it.name })
     }
 
     @Test

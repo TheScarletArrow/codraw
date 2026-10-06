@@ -48,8 +48,8 @@ enum class BoardRole(@get:JsonValue val value: String) {
         get() = this >= EDITOR
 
     /**
-     * Whether the role sees, saves and restores the versions of the board. Whoever edits the board may wreck it, so
-     * they may bring it back too; a restore keeps the state it replaces as a version.
+     * Whether the role sees, saves, names and restores the versions of the board. Whoever edits the board may wreck
+     * it, so they may bring it back too; a restore keeps the state it replaces as a version.
      */
     val managesVersions: Boolean
         get() = edits

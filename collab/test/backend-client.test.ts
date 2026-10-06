@@ -30,6 +30,16 @@ describe("backend client", () => {
     await expect(client.loadDocument(board)).resolves.toEqual(new Uint8Array([1, 2, 3, 0, 255]));
   });
 
+  it("names the users who changed the document in a header of the store, only when there are any", async () => {
+    await client.storeDocument(board, new Uint8Array([1]), ["0199a000-0000-7000-8000-0000000000a1", "0199a000-0000-7000-8000-0000000000b1"]);
+    await client.storeDocument(board, new Uint8Array([2]));
+
+    expect(backend.requests.filter((request) => request.method === "PUT").map((request) => request.editors)).toEqual([
+      ["0199a000-0000-7000-8000-0000000000a1", "0199a000-0000-7000-8000-0000000000b1"],
+      undefined,
+    ]);
+  });
+
   it("reports a missing board", async () => {
     const missing = "0199a000-0000-7000-8000-000000000002";
 

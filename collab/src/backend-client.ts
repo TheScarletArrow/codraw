@@ -1,3 +1,6 @@
+/** Header of a store that names the users who changed the document since the previous store. */
+export const EDITORS_HEADER = "X-Editors";
+
 /** Reason that the client gets when the board does not exist. */
 export const BOARD_NOT_FOUND = "board-not-found";
 
@@ -32,7 +35,8 @@ export interface BoardAccess {
 export interface BackendClient {
   /** Returns the stored Yjs state of the board, or `null` when the board has no state yet. */
   loadDocument(boardId: string): Promise<Uint8Array | null>;
-  storeDocument(boardId: string, state: Uint8Array): Promise<void>;
+  /** Stores the Yjs state of the board, which the users `editors` changed since the previous store. */
+  storeDocument(boardId: string, state: Uint8Array, editors?: readonly string[]): Promise<void>;
   loadAccess(boardId: string): Promise<BoardAccess>;
 }
 
@@ -62,10 +66,15 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
       }
     },
 
-    async storeDocument(boardId, state) {
+    async storeDocument(boardId, state, editors = []) {
       const response = await fetch(documentUrl(boardId), {
         method: "PUT",
-        headers: { ...headers, "Content-Type": "application/octet-stream" },
+        headers: {
+          ...headers,
+          "Content-Type": "application/octet-stream",
+          // A list in a header, as HTTP has them; the state stays the plain body that the backend reads with a limit.
+          ...(editors.length > 0 && { [EDITORS_HEADER]: editors.join(", ") }),
+        },
         // Copy into a plain ArrayBuffer-backed array, which is what fetch accepts as a body.
         body: new Uint8Array(state),
       });

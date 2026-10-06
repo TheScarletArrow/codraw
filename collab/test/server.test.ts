@@ -470,6 +470,74 @@ describe("collab server", () => {
     });
   });
 
+  describe("who changed the document", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+    const CAROL = "0199a000-0000-7000-8000-0000000000c1";
+
+    const asUser = (subject: string) => () => backend.issueToken(board, { subject });
+    const storedEditors = () => backend.editorsOfStores(board).flat();
+
+    it("names the users who changed the document since the previous store with each store, not the others", async () => {
+      await startServer();
+      const alice = await connect(board);
+      const bob = await connect(board, asUser(BOB));
+      await connect(board, asUser(CAROL));
+
+      bob.document.getMap("meta").set("title", "Bob");
+      await waitFor(() => backend.storesFor(board) === 1);
+      alice.document.getMap("meta").set("title", "Alice");
+      bob.document.getMap("meta").set("description", "Bob");
+      await waitFor(() => backend.storesFor(board) === 2);
+
+      expect(backend.editorsOfStores(board)[0]).toEqual([BOB]);
+      expect(new Set(backend.editorsOfStores(board)[1])).toEqual(new Set([ALICE, BOB]));
+    });
+
+    it("does not name a participant who may only view", async () => {
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
+      await startServer();
+      const owner = await connect(board);
+      const viewer = await connect(board, asUser(BOB));
+
+      viewer.document.getMap("meta").set("title", "Viewer");
+      owner.document.getMap("meta").set("description", "Owner");
+      await waitFor(() => backend.storesFor(board) > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(storedEditors()).toEqual([ALICE]);
+    });
+
+    it("names a member who edits a board closed to others, not a member who may only view", async () => {
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: { [BOB]: "editor", [CAROL]: "viewer" } });
+      await startServer();
+      await connect(board);
+      const editor = await connect(board, asUser(BOB));
+      const viewer = await connect(board, asUser(CAROL));
+
+      viewer.document.getMap("meta").set("title", "Viewer");
+      editor.document.getMap("meta").set("description", "Member");
+      await waitFor(() => backend.storesFor(board) > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(storedEditors()).toEqual([BOB]);
+    });
+
+    it("names the users of a store that failed with the next store", async () => {
+      await startServer();
+      const alice = await connect(board);
+      const bob = await connect(board, asUser(BOB));
+      backend.failingStores = 1;
+
+      bob.document.getMap("meta").set("title", "Bob");
+      await waitFor(() => backend.storesFor(board) === 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      alice.document.getMap("meta").set("description", "Alice");
+      await waitFor(() => backend.storesFor(board) === 2);
+
+      expect(backend.editorsOfStores(board)[1]).toEqual([BOB, ALICE]);
+    });
+  });
+
   describe("size of documents", () => {
     function closeReasonOf({ provider }: Connection): Promise<{ code: number; reason: string }> {
       return new Promise((resolve) =>

@@ -43,7 +43,10 @@ describe('legal pages', () => {
     }
     const retention = screen.getByRole('region', { name: 'Сколько хранятся данные' })
     expect(retention).toHaveTextContent('когда с ними 14 дней никто не работал')
-    expect(retention).toHaveTextContent('не больше 100 последних версий')
+    expect(retention).toHaveTextContent('не больше 100 последних версий; версии с названием удаляются последними')
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'кто из участников менял доску между версиями',
+    )
     expect(screen.getByRole('region', { name: 'Cookie' })).toHaveTextContent('SESSION')
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'имя участника, который закрепил элемент доски',
@@ -61,6 +64,9 @@ describe('legal pages', () => {
     expect(retention).toHaveTextContent('Реакции удалённого пользователя удаляются, а назначенные ему ветки остаются без ответственного')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'список участников доски с их ролями; владелец видит ещё и тех, кто открывал доску по ссылке, и запросы доступа с именем, аватаром и сообщением того, кто просит',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Кто из участников менял доску между версиями, видят те, кому доступна история версий, — владелец и редакторы',
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'Запросы доступа. Какую роль пользователь попросил у владельца чужой доски, его сообщение владельцу',
