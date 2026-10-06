@@ -138,8 +138,21 @@ function Transparency({
   }, [transparency, onCommit])
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="shrink-0">Прозрачность</span>
+    <div className="flex flex-col gap-1.5 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        Прозрачность
+        <span className="flex items-center gap-1">
+          <NumberField
+            label={`${name}, %`}
+            value={dragged ?? transparency}
+            min={0}
+            max={100}
+            className="w-14"
+            onCommit={onCommit}
+          />
+          <span aria-hidden>%</span>
+        </span>
+      </div>
       <input
         ref={slider}
         type="range"
@@ -149,17 +162,8 @@ function Transparency({
         aria-label={name}
         value={dragged ?? transparency ?? 0}
         onChange={(event) => setDragged(Number(event.target.value))}
-        className="min-w-0 flex-1 accent-primary"
+        className="w-full accent-primary"
       />
-      <NumberField
-        label={`${name}, %`}
-        value={dragged ?? transparency}
-        min={0}
-        max={100}
-        className="w-14"
-        onCommit={onCommit}
-      />
-      <span aria-hidden>%</span>
     </div>
   )
 }
