@@ -176,7 +176,7 @@ describe('EditorToolbar', () => {
   })
 
   it('offers fill, line and text colors for selected shapes and applies them', async () => {
-    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', hasShapes: true } }))
+    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, hasShapes: true } }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
     await userEvent.click(screen.getByRole('button', { name: 'Розовый' }))
@@ -190,8 +190,33 @@ describe('EditorToolbar', () => {
     expect(editor.setColor).toHaveBeenCalledWith('font', '#6c8ebf')
   })
 
+  it('shows the transparency of the fill and changes it by the slider and by the field', async () => {
+    act(() => editor.setState({ colors: { fill: '#dae8fc', stroke: '#1f2328', font: '#1f2328', fillOpacity: 60, hasShapes: true } }))
+    await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
+    const slider = screen.getByRole('slider', { name: 'Прозрачность заливки' })
+    const field = screen.getByRole('spinbutton', { name: 'Прозрачность заливки, %' })
+
+    expect(slider).toHaveValue('40')
+    expect(field).toHaveValue(40)
+    fireEvent.change(slider, { target: { value: '75' } })
+    expect(editor.setFillOpacity).toHaveBeenCalledWith(25)
+
+    await userEvent.clear(field)
+    await userEvent.type(field, '10{Enter}')
+    expect(editor.setFillOpacity).toHaveBeenLastCalledWith(90)
+  })
+
+  it('shows no transparency when the selected shapes have different ones', async () => {
+    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: null, hasShapes: true } }))
+    await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Прозрачность заливки, %' })).toHaveValue(null)
+    await userEvent.click(screen.getByRole('button', { name: 'Цвет линии' }))
+    expect(screen.queryByRole('slider', { name: /Прозрачность/ })).toBeNull()
+  })
+
   it('offers no fill when only edges are selected', () => {
-    act(() => editor.setState({ colors: { fill: null, stroke: '#1f2328', font: '#1f2328', hasShapes: false } }))
+    act(() => editor.setState({ colors: { fill: null, stroke: '#1f2328', font: '#1f2328', fillOpacity: null, hasShapes: false } }))
 
     expect(screen.queryByRole('button', { name: 'Цвет заливки' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Цвет линии' })).toBeInTheDocument()
@@ -403,7 +428,7 @@ describe('EditorToolbar', () => {
     act(() =>
       editor.setState({
         lock: { all: false, canLock: true, locks: [] },
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
       }),
     )
 
@@ -419,7 +444,7 @@ describe('EditorToolbar', () => {
       editor.setState({
         lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },
         tableSelected: true,
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
         geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
         arrange: 2,
@@ -455,7 +480,7 @@ describe('EditorToolbar', () => {
         canUndo: true,
         tableSelected: true,
         edgeMarkers: { start: 'none', end: 'classic' },
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
         geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true },
         lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },

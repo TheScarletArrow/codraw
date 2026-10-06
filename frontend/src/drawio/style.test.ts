@@ -132,3 +132,10 @@ describe('locks in files of draw.io', () => {
     expect(parseStyle('locked=1;codrawLockedBy=Мэллори;', 'vertex')).not.toHaveProperty('codrawLockedBy')
   })
 })
+
+describe('fill opacity in files of draw.io', () => {
+  it('keeps the opacity of a fill both ways', () => {
+    expect(parseStyle('rounded=0;fillOpacity=35;', 'vertex').fillOpacity).toBe(35)
+    expect(parseStyle(formatStyle({ fillOpacity: 35 }, 'vertex'), 'vertex').fillOpacity).toBe(35)
+  })
+})

@@ -148,6 +148,8 @@ export interface SelectionColors {
   fill: string | null
   stroke: string | null
   font: string | null
+  /** Opacity of the fill of the selected shapes, 0–100; `null` when it differs between them or no shapes are selected. */
+  fillOpacity: number | null
   /** Shapes are selected, so the fill can be changed; edges have no fill. */
   hasShapes: boolean
 }
@@ -445,6 +447,11 @@ export interface DiagramEditor {
   setEdgeMarker(end: EdgeEnd, marker: string): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
   setColor(target: ColorTarget, color: string): void
+  /**
+   * Sets the opacity of the fill of the selected shapes, 0–100, as one undo step; the line and the text stay opaque.
+   * 100 is the default.
+   */
+  setFillOpacity(opacity: number): void
   /** Sets the text size of the selected objects and of the fields of selected tables as one undo step. */
   setFontSize(size: number): void
   /** Makes the text of each object {@link setFontSize} would change one size of the row larger or smaller. */
@@ -758,6 +765,7 @@ const CHANGING_COMMANDS = [
   'deleteSelection',
   'setEdgeMarker',
   'setColor',
+  'setFillOpacity',
   'setFontSize',
   'setFontFamily',
   'stepFontSize',
@@ -982,6 +990,7 @@ export function createDiagramEditor(
       fill: shapes.length > 0 ? same(shapes.map((cell) => colorOf(cell, 'fill'))) : null,
       stroke: same(cells.map((cell) => colorOf(cell, 'stroke'))),
       font: same(cells.map((cell) => colorOf(cell, 'font'))),
+      fillOpacity: shapes.length > 0 ? same(shapes.map(fillOpacityOf)) : null,
       hasShapes: shapes.length > 0,
     }
   }
@@ -2198,6 +2207,14 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       graph.setCellStyles(COLOR_KEYS[target], color, cells)
     },
+    setFillOpacity(opacity) {
+      const shapes = unlocked(graph.getSelectionCells()).filter((cell) => cell.isVertex())
+      if (shapes.length === 0 || !Number.isFinite(opacity)) return
+      const value = Math.min(100, Math.max(0, Math.round(opacity)))
+      graph.stopEditing(false)
+      // The default is kept by removing the key, as draw.io does.
+      setStyleValue(shapes, 'fillOpacity', value === 100 ? undefined : value)
+    },
     setFontSize(size) {
       applyFontSizes(unlocked(textCells()), () => clampFontSize(size))
     },
@@ -2455,6 +2472,12 @@ export function createDiagramEditor(
 }
 
 const COLOR_KEYS = { fill: 'fillColor', stroke: 'strokeColor', font: 'fontColor' } as const
+
+/** Opacity of the fill of a shape, 0–100; draw.io stores it as `fillOpacity`, opaque without it. */
+function fillOpacityOf(cell: Cell): number {
+  const opacity = Number(cell.getStyle().fillOpacity ?? 100)
+  return Number.isFinite(opacity) ? Math.min(100, Math.max(0, opacity)) : 100
+}
 
 function lineWidthOf(cell: Cell): number {
   return Number(cell.getStyle().strokeWidth ?? MIN_LINE_WIDTH)

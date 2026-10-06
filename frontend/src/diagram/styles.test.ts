@@ -173,6 +173,32 @@ describe('line and text styles', () => {
     expect(styleOf(doc, field.getId()!).fontFamily).toBe('Courier New')
   })
 
+  it('sets the opacity of the fill of the selected shapes only, with opaque as the default, as one undo step', () => {
+    const { doc, editor, a, b, edge } = open()
+    editor.graph.setSelectionCells([a, edge])
+    expect(editor.getState().colors?.fillOpacity).toBe(100)
+
+    editor.setFillOpacity(40)
+
+    expect(styleOf(doc, a.getId()!).fillOpacity).toBe(40)
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('opacity')
+    expect(styleOf(doc, edge.getId()!)).not.toHaveProperty('fillOpacity')
+    expect(editor.getState().colors?.fillOpacity).toBe(40)
+    editor.graph.setSelectionCells([a, b])
+    expect(editor.getState().colors?.fillOpacity).toBeNull()
+
+    editor.setFillOpacity(140)
+    expect(styleOf(doc, b.getId()!)).not.toHaveProperty('fillOpacity')
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('fillOpacity')
+    expect(undoSteps(editor)).toBe(3 + 2)
+  })
+
+  it('has no opacity of the fill when only edges are selected', () => {
+    const { editor, edge } = open()
+    editor.graph.setSelectionCell(edge)
+    expect(editor.getState().colors?.fillOpacity).toBeNull()
+  })
+
   it('fits a shape with auto width to its bold label', () => {
     const { editor } = open()
     const text = editor.addShape('text', { x: 100, y: 500 })!

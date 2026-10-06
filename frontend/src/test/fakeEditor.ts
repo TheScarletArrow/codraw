@@ -121,6 +121,7 @@ export function createFakeEditor({
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
     setColor: vi.fn(),
+    setFillOpacity: vi.fn(),
     setFontSize: vi.fn(),
     stepFontSize: vi.fn(),
     toggleFontStyle: vi.fn(),
