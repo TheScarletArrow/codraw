@@ -2,6 +2,7 @@ import { FileDown, FileUp } from 'lucide-react'
 import { useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
+import type { Author } from '../diagram/attribution.ts'
 import { DRAWIO_FILE_TYPES, downloadDrawio } from './files.ts'
 import { importPages } from './importPages.ts'
 import { DrawioFormatError, parseDrawio } from './parse.ts'
@@ -14,10 +15,12 @@ interface DrawioActionsProps {
   onImported: (pageId: string) => void
   /** The participant may only view the board: only the export is offered. */
   readOnly?: boolean
+  /** The participant who imports, whom the imported elements keep as who changed them last. */
+  author?: Author | null
 }
 
 /** Import of `.drawio` files into the board and export of the board to `.drawio`. */
-export function DrawioActions({ document, title, onImported, readOnly = false }: DrawioActionsProps) {
+export function DrawioActions({ document, title, onImported, readOnly = false, author = null }: DrawioActionsProps) {
   const input = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,7 +30,7 @@ export function DrawioActions({ document, title, onImported, readOnly = false }:
     setError(null)
     setBusy(true)
     try {
-      const [first] = importPages(document, await parseDrawio(await file.text()))
+      const [first] = importPages(document, await parseDrawio(await file.text()), author)
       if (first) onImported(first)
     } catch (cause) {
       setError(cause instanceof DrawioFormatError ? cause.message : 'Не удалось импортировать файл')

@@ -20,6 +20,7 @@ import {
   SelectionCellsHandler,
   StackLayout,
   StyleDefaultsConfig,
+  TooltipHandler,
   ValueChange,
   getDefaultPlugins,
   type CellState,
@@ -57,6 +58,14 @@ import {
   pageTables,
   syncBaseTables,
 } from './baseTables.ts'
+import {
+  attributionLabel,
+  MODIFIED_AT_KEY,
+  MODIFIED_BY_KEY,
+  MODIFIED_BY_NAME_KEY,
+  readAttribution,
+  type Attribution,
+} from './attribution.ts'
 import { createUndoManager, DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
@@ -254,6 +263,12 @@ export interface SelectionLock {
   locks: CellLock[]
 }
 
+/** Who changed the single selected element last and when, as the element keeps it. */
+export interface SelectionAttribution extends Attribution {
+  /** The participant of the editor changed it. */
+  mine: boolean
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -304,6 +319,8 @@ export interface EditorState {
   laser: boolean
   /** How the selection is locked, or `null` when nothing is selected. */
   lock: SelectionLock | null
+  /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
+  attribution: SelectionAttribution | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -631,6 +648,12 @@ const RIGHT_BUTTON_BIT = 2
 /** Color of the guides that show where a dragged shape lines up with others: the color of the selection. */
 const GUIDE_COLOR = '#2563eb'
 
+/** How long the pointer rests over an element before its tooltip tells who changed it last, in milliseconds. */
+const TOOLTIP_DELAY = 1000
+
+/** Keys of a cell that tell who changed it last. */
+const ATTRIBUTION_KEYS = [MODIFIED_BY_KEY, MODIFIED_BY_NAME_KEY, MODIFIED_AT_KEY]
+
 /** Shift of a duplicate, and of every next paste of the same clipboard with the keyboard. */
 const PASTE_OFFSET = 20
 
@@ -655,6 +678,11 @@ export interface DiagramEditorOptions {
   readOnly?: boolean
   /** The name of the participant, which the elements they lock keep as who locked them. */
   participantName?: string
+  /**
+   * The id of the participant (their user). With {@link participantName}, the elements they change keep both as who
+   * changed them last, and the editor tells their own changes from others'.
+   */
+  participantId?: string
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -707,6 +735,7 @@ export function createDiagramEditor(
     undoManager: sharedUndoManager,
     readOnly = false,
     participantName,
+    participantId,
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -752,7 +781,8 @@ export function createDiagramEditor(
   const tableLayout = new TableLayout(graph)
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
-  const binding = new DiagramBinding(model, cells, LOCAL_ORIGIN, readOnly)
+  const author = participantId && participantName ? { id: participantId, name: participantName } : null
+  const binding = new DiagramBinding(model, cells, LOCAL_ORIGIN, readOnly, author)
   const stopEdgeRouting = startEdgeRouting(graph)
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
@@ -962,6 +992,18 @@ export function createDiagramEditor(
       locks: [...holders].map((holder) => ({ cellId: holder.getId()!, lockedBy: lockedByOf(holder) })),
     }
   }
+  /** The cell of the document of the single selected element, if there is one. */
+  const selectedCellMap = () => {
+    const id = graph.getSelectionCount() === 1 ? graph.getSelectionCell().getId() : null
+    return id ? cells.get(id) : undefined
+  }
+  /** The participant of the editor changed it, as far as the ids tell. */
+  const isMine = (attribution: Attribution) => participantId !== undefined && attribution.by === participantId
+  /** Who changed the single selected element last; see {@link SelectionAttribution}. */
+  const selectionAttribution = (): SelectionAttribution | null => {
+    const attribution = readAttribution(selectedCellMap())
+    return attribution && { ...attribution, mine: isMine(attribution) }
+  }
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1163,6 +1205,7 @@ export function createDiagramEditor(
       layoutSelection: selectedLayoutCells().length >= 2,
       laser,
       lock: selectionLock(),
+      attribution: selectionAttribution(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1180,6 +1223,34 @@ export function createDiagramEditor(
   // The selection and the markers of the selected edges, also when another participant changes them.
   graph.getSelectionModel().addListener(InternalEvent.CHANGE, notify)
   model.addListener(InternalEvent.CHANGE, notify)
+  // The binding writes the changes of this participant before the model reports them. Changes of others can change who
+  // changed the selected element without a change of the model, e.g. a restored version that has another name there.
+  const handleAttribution = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
+    const selected = transaction.origin === LOCAL_ORIGIN ? undefined : selectedCellMap()
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event.target === selected &&
+      event instanceof Y.YMapEvent &&
+      ATTRIBUTION_KEYS.some((key) => event.keysChanged.has(key))
+    if (selected && events.some(changed)) notify()
+  }
+  cells.observeDeep(handleAttribution)
+  // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
+  // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
+  // handles of edges in English. The single selected element shows who changed it under the canvas already.
+  const tooltips = graph.getPlugin<TooltipHandler>('TooltipHandler')
+  if (tooltips) {
+    tooltips.delay = TOOLTIP_DELAY
+    tooltips.getTooltip = ({ cell }) => {
+      const id = cell.getId()
+      const onlySelected = graph.getSelectionCount() === 1 && graph.isCellSelected(cell)
+      const attribution = id && !laser && !onlySelected ? readAttribution(cells.get(id)) : null
+      if (!attribution) return null
+      const tip = container.ownerDocument.createElement('span')
+      tip.textContent = attributionLabel(attribution, Date.now(), isMine(attribution))
+      return tip
+    }
+    graph.setTooltips(true)
+  }
   // A field shows the other fields of its table and the fields its edges lead to, which maxGraph does not redraw when
   // they change, and its name ends where its width and its neighbours say; moving a shape changes no field.
   const redrawTables = (_sender: unknown, event: EventObject) => {
@@ -1357,6 +1428,8 @@ export function createDiagramEditor(
   const popupMenu = graph.getPlugin<PopupMenuHandler>('PopupMenuHandler')
   if (popupMenu) {
     popupMenu.factoryMethod = (_menu, _cell, event) => {
+      // The tooltip, which the release of the button would show over the menu.
+      tooltips?.hide()
       if (graph.isEditing()) return
       const rect = container.getBoundingClientRect()
       const request: ContextMenuRequest = {
@@ -2131,6 +2204,7 @@ export function createDiagramEditor(
       laser = on
       if (!on) endLaserStroke()
       container.classList.toggle(LASER_CLASS, on)
+      tooltips?.hide()
       notify()
     },
     onLaser: (listener) => listen(laserListeners, listener),
@@ -2185,6 +2259,7 @@ export function createDiagramEditor(
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
       model.removeListener(notify)
+      cells.unobserveDeep(handleAttribution)
       layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()

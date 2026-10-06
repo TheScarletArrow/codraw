@@ -167,43 +167,60 @@ export function readCell(id: string, cell: CellMap): CellData {
   }
 }
 
+/** What {@link writeCell} changed in the document. */
+export interface CellWrite {
+  /** The cell was not in the document. */
+  created: boolean
+  /** Fields of the cell that changed, the keys of its style aside. */
+  fields: (keyof CellData)[]
+  /** Keys of the style that were set, changed or removed. */
+  style: string[]
+}
+
+/** Fields of a cell that {@link writeCell} writes as they are; the style is written key by key. */
+const PLAIN_FIELDS = ['kind', 'parent', 'order', 'value', 'geometry', 'source', 'target'] as const
+
 /**
  * Creates or updates a cell, writing only the fields that differ from the stored ones. Untouched
  * fields stay as they are, so concurrent edits of different fields by different clients merge.
+ * Returns what it changed: nothing when the stored cell was equal already.
  */
-export function writeCell(cells: CellsMap, data: CellData) {
+export function writeCell(cells: CellsMap, data: CellData): CellWrite {
   let cell = cells.get(data.id)
+  const write: CellWrite = { created: !cell, fields: [], style: [] }
   if (!cell) {
     cell = new Y.Map()
     cells.set(data.id, cell)
   }
-  setIfChanged(cell, 'kind', data.kind)
-  setIfChanged(cell, 'parent', data.parent)
-  setIfChanged(cell, 'order', data.order)
-  setIfChanged(cell, 'value', data.value)
-  setIfChanged(cell, 'geometry', data.geometry)
-  setIfChanged(cell, 'source', data.source)
-  setIfChanged(cell, 'target', data.target)
+  for (const field of PLAIN_FIELDS) {
+    if (setIfChanged(cell, field, data[field])) write.fields.push(field)
+  }
 
   let style = cell.get('style')
   if (!(style instanceof Y.Map)) {
     style = new Y.Map()
     cell.set('style', style)
+    write.fields.push('style')
   }
   const styleMap = style as Y.Map<StyleValue>
   for (const [key, value] of Object.entries(data.style)) {
     if (value === undefined) continue
-    setIfChanged(styleMap, key, value)
+    if (setIfChanged(styleMap, key, value)) write.style.push(key)
   }
   for (const key of Array.from(styleMap.keys())) {
-    if (data.style[key] === undefined) styleMap.delete(key)
+    if (data.style[key] === undefined) {
+      styleMap.delete(key)
+      write.style.push(key)
+    }
   }
+  return write
 }
 
-function setIfChanged<T>(map: Y.Map<T>, key: string, value: T) {
-  if (!sameValue(map.get(key), value)) {
-    map.set(key, value)
-  }
+/** Sets the key unless it holds an equal value already; returns whether it did. */
+function setIfChanged<T>(map: Y.Map<T>, key: string, value: T): boolean {
+  if (sameValue(map.get(key), value)) return false
+  map.set(key, value)
+  return true
 }
 
 function sameValue(a: unknown, b: unknown): boolean {

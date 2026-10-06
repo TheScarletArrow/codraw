@@ -1,5 +1,5 @@
 import { ChevronDown, Plus } from 'lucide-react'
-import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -29,6 +29,8 @@ interface PageTabsProps {
   onMove: (id: string, index: number) => void
   /** The participant may only view the board: the tabs only switch pages. */
   readOnly?: boolean
+  /** Shown at the right end of the bar, like a status bar: e.g. who changed the selected element last. */
+  children?: ReactNode
 }
 
 /** Tabs of the pages of a board under the canvas, as in draw.io. */
@@ -43,6 +45,7 @@ export function PageTabs({
   onDelete,
   onMove,
   readOnly = false,
+  children,
 }: PageTabsProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menuFor, setMenuFor] = useState<string | null>(null)
@@ -176,6 +179,7 @@ export function PageTabs({
           <Plus />
         </Button>
       )}
+      {children && <div className="ml-auto flex max-w-96 min-w-0 shrink-0 items-center px-3">{children}</div>}
     </div>
   )
 }

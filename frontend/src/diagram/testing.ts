@@ -1,5 +1,6 @@
 import { Cell, Geometry, GraphDataModel, type CellStyle } from '@maxgraph/core'
 import * as Y from 'yjs'
+import type { Author } from './attribution.ts'
 import { DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
 import { getCells, initializeDocument, LAYER_CELL_ID } from './model.ts'
 
@@ -13,10 +14,11 @@ export interface TestClient {
   localWrites: () => number
 }
 
-export function createClient(doc = new Y.Doc()): TestClient {
+/** A participant's model bound to the document; with an `author`, the cells they change keep them. */
+export function createClient(doc = new Y.Doc(), author: Author | null = null): TestClient {
   initializeDocument(doc)
   const model = new GraphDataModel()
-  const binding = new DiagramBinding(model, getCells(doc))
+  const binding = new DiagramBinding(model, getCells(doc), LOCAL_ORIGIN, false, author)
   let writes = 0
   doc.on('afterTransaction', (transaction: Y.Transaction) => {
     if (transaction.origin === LOCAL_ORIGIN && transaction.changed.size > 0) writes++

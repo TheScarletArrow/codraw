@@ -13,6 +13,7 @@ import {
   type EventObject,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
+import { isAttributedWrite, writeAttribution, type Author } from './attribution.ts'
 import { newId } from './ids.ts'
 import {
   compareCells,
@@ -38,12 +39,13 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
 /**
  * Keeps a maxGraph model and the cells of a Yjs page in sync. Yjs is the source of truth:
  *
- * - local edits (model `CHANGE` events) are written to Yjs in one transaction with {@link LOCAL_ORIGIN};
+ * - local edits (model `CHANGE` events) are written to Yjs in one transaction with {@link LOCAL_ORIGIN}, and every
+ *   cell they change keeps in the same transaction that the author changed it and when;
  * - other transactions (remote participants, undo/redo) are reconciled into the model: every affected
  *   cell is re-read from Yjs, so the model ends up equal to the document whatever the order of events.
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
- * leaving the document of this client different from everybody else's.
+ * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.
  */
 export class DiagramBinding {
   private applyingRemote = false
@@ -52,12 +54,20 @@ export class DiagramBinding {
   private readonly cells: CellsMap
   private readonly origin: unknown
   private readonly readOnly: boolean
+  private readonly author: Author | null
 
-  constructor(model: GraphDataModel, cells: CellsMap, origin: unknown = LOCAL_ORIGIN, readOnly = false) {
+  constructor(
+    model: GraphDataModel,
+    cells: CellsMap,
+    origin: unknown = LOCAL_ORIGIN,
+    readOnly = false,
+    author: Author | null = null,
+  ) {
     this.model = model
     this.cells = cells
     this.origin = origin
     this.readOnly = readOnly
+    this.author = author
     // Cells are created by several clients at once, so ids must be globally unique.
     model.createId = () => newId()
     // maxGraph's ConnectionHandler inserts edges with the id '' and the model only generates ids for null,
@@ -131,7 +141,13 @@ export class DiagramBinding {
 
     this.cells.doc!.transact(() => {
       removed.forEach((id) => deleteCell(this.cells, id))
-      alive.forEach((cell) => writeCell(this.cells, this.toCellData(cell)))
+      const at = Date.now()
+      for (const cell of alive) {
+        const data = this.toCellData(cell)
+        // Cells the change touched but left as they were keep who changed them last, and so do those it only locked.
+        const write = writeCell(this.cells, data)
+        if (this.author && isAttributedWrite(write)) writeAttribution(this.cells.get(data.id)!, this.author, at)
+      }
     }, this.origin)
   }
 

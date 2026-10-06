@@ -55,6 +55,7 @@ export function createFakeEditor({
     layoutSelection: false,
     laser: false,
     lock: null,
+    attribution: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
