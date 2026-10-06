@@ -1313,12 +1313,14 @@ describe('BoardPage', () => {
       createdAt: '2026-10-05T10:00:00Z',
       resolvedAt: null,
       resolvedBy: null,
+      assignee: null,
       comments: [
         {
           id: `${id}-1`,
           author: { id: 'bob', name: 'Боб', avatarUrl: null },
           body: 'Почему без кэша?',
           mentions: [],
+          reactions: [],
           createdAt: '2026-10-05T10:00:00Z',
           editedAt: null,
         },

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Crown, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { boardLimitOf, SHARED_BOARDS_QUERY_KEY, type Board } from '../api/boards.ts'
 import {
   fetchMembers,
@@ -185,11 +186,20 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
 }
 
 /** The picture of the profile of a user, or the first letter of their name. */
-export function Avatar({ person }: { person: { name: string; avatarUrl: string | null } }) {
+export function Avatar({
+  person,
+  className,
+}: {
+  person: { name: string; avatarUrl: string | null }
+  className?: string
+}) {
   return person.avatarUrl ? (
-    <img src={person.avatarUrl} alt="" className="size-6 shrink-0 rounded-full" />
+    <img src={person.avatarUrl} alt="" className={cn('size-6 shrink-0 rounded-full', className)} />
   ) : (
-    <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs">
+    <span
+      aria-hidden
+      className={cn('flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs', className)}
+    >
       {person.name.charAt(0).toUpperCase()}
     </span>
   )

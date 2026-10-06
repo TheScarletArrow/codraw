@@ -23,8 +23,17 @@ const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,
+  assignee: null,
   comments: [
-    { id: `${id}-1`, author: bob, body: 'Сюда нужен кэш\nи очередь', mentions: [], createdAt: '2026-10-05T10:00:00Z', editedAt: null },
+    {
+      id: `${id}-1`,
+      author: bob,
+      body: 'Сюда нужен кэш\nи очередь',
+      mentions: [],
+      reactions: [],
+      createdAt: '2026-10-05T10:00:00Z',
+      editedAt: null,
+    },
   ],
   ...changes,
 })

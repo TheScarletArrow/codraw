@@ -20,6 +20,9 @@ enum class NotificationKind(@get:JsonValue val value: String) {
     /** A comment answers in a thread that the recipient started or wrote in. */
     REPLY("reply"),
 
+    /** Somebody made the recipient the assignee of a thread of comments. */
+    ASSIGNED("assigned"),
+
     /** A user asks the recipient, the owner of the board, for a role on it. */
     ACCESS_REQUEST("access-request"),
 
@@ -69,13 +72,14 @@ class Notifications(private val jdbc: JdbcClient) {
 
     /**
      * Notifies each of the users [userIds] of the [kind] at [at]. A user who has a notification about the comment
-     * [commentId] already is skipped: one notification per comment and recipient.
+     * [commentId] or the thread [threadId] already is skipped: one notification per comment or thread and recipient.
      */
     fun add(
         userIds: Collection<UUID>,
         kind: NotificationKind,
         boardId: UUID,
         commentId: UUID?,
+        threadId: UUID?,
         actorId: UUID,
         role: MemberRole?,
         at: Instant,
@@ -83,16 +87,17 @@ class Notifications(private val jdbc: JdbcClient) {
         if (userIds.isEmpty()) return
         jdbc.sql(
             """
-            INSERT INTO notifications (user_id, kind, board_id, comment_id, actor_id, role, created_at)
-            SELECT recipient, :kind, :boardId, :commentId::uuid, :actorId, :role, :at
+            INSERT INTO notifications (user_id, kind, board_id, comment_id, thread_id, actor_id, role, created_at)
+            SELECT recipient, :kind, :boardId, :commentId::uuid, :threadId::uuid, :actorId, :role, :at
             FROM unnest(:userIds::uuid[]) AS recipient
-            ON CONFLICT (user_id, comment_id) DO NOTHING
+            ON CONFLICT DO NOTHING
             """,
         )
             .param("userIds", userIds.toTypedArray())
             .param("kind", kind.name)
             .param("boardId", boardId)
             .param("commentId", commentId)
+            .param("threadId", threadId)
             .param("actorId", actorId)
             .param("role", role?.name)
             .param("at", at.atOffset(ZoneOffset.UTC))
@@ -107,6 +112,20 @@ class Notifications(private val jdbc: JdbcClient) {
         )
             .param("commentId", commentId)
             .param("userIds", userIds.toTypedArray())
+            .update()
+    }
+
+    /** Deletes the notification of the user [userId] about the thread [threadId], only an unread one with [unreadOnly]. */
+    fun deleteAboutThread(userId: UUID, threadId: UUID, unreadOnly: Boolean) {
+        jdbc.sql(
+            """
+            DELETE FROM notifications
+            WHERE user_id = :userId AND thread_id = :threadId AND (read_at IS NULL OR NOT :unreadOnly)
+            """,
+        )
+            .param("userId", userId)
+            .param("threadId", threadId)
+            .param("unreadOnly", unreadOnly)
             .update()
     }
 
@@ -151,13 +170,17 @@ class Notifications(private val jdbc: JdbcClient) {
                b.id AS board_id, b.title, b.owner_id, b.created_at AS board_created_at,
                b.updated_at AS board_updated_at, b.link_access, m.role AS member_role,
                a.id AS actor_id, a.name AS actor_name, a.avatar_url AS actor_avatar_url,
-               t.id AS thread_id, t.page_id, left(c.body, :snippetLength + 1) AS body
+               t.id AS thread_id, t.page_id, left(coalesce(c.body, f.body), :snippetLength + 1) AS body
         FROM notifications n
         JOIN boards b ON b.id = n.board_id
         LEFT JOIN board_members m ON m.board_id = n.board_id AND m.user_id = n.user_id
         LEFT JOIN users a ON a.id = n.actor_id
         LEFT JOIN comments c ON c.id = n.comment_id
-        LEFT JOIN comment_threads t ON t.id = c.thread_id
+        LEFT JOIN comment_threads t ON t.id = coalesce(c.thread_id, n.thread_id)
+        -- The first comment of an assigned thread tells what the thread is about.
+        LEFT JOIN LATERAL (
+            SELECT body FROM comments WHERE thread_id = n.thread_id ORDER BY created_at, id LIMIT 1
+        ) f ON true
         WHERE n.user_id = :userId AND (:before::uuid IS NULL OR n.id < :before::uuid)
         ORDER BY n.id DESC
         LIMIT :limit
@@ -226,7 +249,7 @@ class Notifications(private val jdbc: JdbcClient) {
     /**
      * Passes the notifications of the user [fromUserId], and those that they caused others, to the user [toUserId].
      * Notifications that would tell [toUserId] about themselves are dropped, and so are those of [fromUserId] about a
-     * comment that [toUserId] has a notification about already.
+     * comment or a thread that [toUserId] has a notification about already.
      */
     fun transfer(fromUserId: UUID, toUserId: UUID) {
         jdbc.sql(
@@ -242,7 +265,7 @@ class Notifications(private val jdbc: JdbcClient) {
             """
             DELETE FROM notifications incoming USING notifications existing
             WHERE incoming.user_id = :fromUserId AND existing.user_id = :toUserId
-              AND existing.comment_id = incoming.comment_id
+              AND (existing.comment_id = incoming.comment_id OR existing.thread_id = incoming.thread_id)
             """,
         )
             .param("fromUserId", fromUserId)

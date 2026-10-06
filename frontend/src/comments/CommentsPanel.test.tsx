@@ -26,6 +26,7 @@ const comment = (id: string, author: Person | null, body: string, mentions: Pers
   author,
   body,
   mentions,
+  reactions: [],
   createdAt: '2026-10-05T10:00:00Z',
   editedAt: null,
 })
@@ -38,6 +39,7 @@ const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,
+  assignee: null,
   comments: [comment(`${id}-1`, bob, 'Почему без кэша?')],
   ...changes,
 })
@@ -382,6 +384,101 @@ describe('CommentsPanel', () => {
     expect(focused).toHaveAttribute('aria-current', 'true')
     expect(screen.getByRole('button', { name: 'Решённые' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('article', { name: 'Ветка: «API»' })).toBeNull()
+  })
+
+  it('puts and takes away the reactions of the user and tells the others', async () => {
+    const reacted = (people: Person[]) =>
+      thread('t1', { comments: [{ ...comment('c1', bob, 'Почему без кэша?'), reactions: [{ reaction: 'thumbs-up', people }] }] })
+    const reactionUrl = `${threadsUrl}/t1/comments/c1/reactions/thumbs-up`
+    const { fetchMock, onChanged } = renderPanel({
+      threads: [{ body: [reacted([bob])] }, { body: [reacted([bob, alice])] }, { body: [reacted([bob])] }],
+      responses: { [`PUT ${reactionUrl}`]: { body: reacted([bob, alice]) }, [`DELETE ${reactionUrl}`]: { body: reacted([bob]) } },
+    })
+    const card = await screen.findByRole('article', { name: 'Ветка: «API»' })
+
+    await userEvent.click(within(card).getByRole('button', { name: '👍 1' }))
+    await waitFor(() => expect(requestsOf(fetchMock, 'PUT', reactionUrl)).toHaveLength(1))
+    expect(onChanged).toHaveBeenCalledTimes(1)
+    const mine = await within(card).findByRole('button', { name: '👍 2' })
+    expect(mine).toHaveAttribute('aria-pressed', 'true')
+    expect(mine).toHaveAttribute('title', 'Боб, Алиса')
+
+    await userEvent.click(mine)
+    await waitFor(() => expect(requestsOf(fetchMock, 'DELETE', reactionUrl)).toHaveLength(1))
+    expect(await within(card).findByRole('button', { name: '👍 1' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('reacts with any reaction of the set', async () => {
+    const reactionUrl = `${threadsUrl}/t1/comments/t1-1/reactions/eyes`
+    const { fetchMock } = renderPanel({ threads: [thread('t1')], responses: { [`PUT ${reactionUrl}`]: { body: thread('t1') } } })
+    const card = await screen.findByRole('article', { name: 'Ветка: «API»' })
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Добавить реакцию' }))
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Набор реакций' })).getByRole('button', { name: '👀' }))
+
+    await waitFor(() => expect(requestsOf(fetchMock, 'PUT', reactionUrl)).toHaveLength(1))
+  })
+
+  it('assigns a thread to a participant, shows the assignee and takes them away', async () => {
+    const assigned = thread('t1', { assignee: bob })
+    const { fetchMock, onChanged } = renderPanel({
+      threads: [{ body: [thread('t1')] }, { body: [assigned] }, { body: [thread('t1')] }],
+      responses: {
+        [`PUT ${threadsUrl}/t1/assignee`]: { body: assigned },
+        [`DELETE ${threadsUrl}/t1/assignee`]: { body: thread('t1') },
+      },
+    })
+    const card = await screen.findByRole('article', { name: 'Ветка: «API»' })
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Назначить' }))
+    const picker = within(screen.getByRole('dialog', { name: 'Назначить ответственного' }))
+    await userEvent.click(await picker.findByRole('button', { name: 'Боб' }))
+
+    expect(bodyOf(fetchMock, 'PUT', `${threadsUrl}/t1/assignee`)).toEqual({ userId: 'bob' })
+    expect(await within(card).findByRole('button', { name: 'Боб' })).toHaveAccessibleDescription('Назначить другого')
+    expect(card).toHaveTextContent('Ответственный:')
+    expect(onChanged).toHaveBeenCalledTimes(1)
+    expect(within(card).queryByRole('button', { name: 'Назначить' })).toBeNull()
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Снять' }))
+    await waitFor(() => expect(requestsOf(fetchMock, 'DELETE', `${threadsUrl}/t1/assignee`)).toHaveLength(1))
+    expect(await within(card).findByRole('button', { name: 'Назначить' })).toBeInTheDocument()
+    expect(card).not.toHaveTextContent('Ответственный')
+  })
+
+  it('says when a thread could not be assigned', async () => {
+    renderPanel({ threads: [thread('t1')], responses: { [`PUT ${threadsUrl}/t1/assignee`]: { status: 404 } } })
+    const card = await screen.findByRole('article', { name: 'Ветка: «API»' })
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Назначить' }))
+    await userEvent.click(await within(screen.getByRole('dialog')).findByRole('button', { name: 'Боб' }))
+
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Не удалось назначить ответственного')
+  })
+
+  it('shows the threads assigned to the user, open and resolved', async () => {
+    renderPanel({
+      threads: [
+        thread('mine', { assignee: alice }),
+        thread('done', { assignee: alice, cellId: 'link', resolvedAt: '2026-10-05T11:00:00Z', resolvedBy: bob }),
+        thread('theirs', { assignee: bob, cellId: null }),
+      ],
+    })
+    await screen.findAllByRole('article')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Назначены мне' }))
+
+    expect(screen.getAllByRole('article').map((article) => article.getAttribute('data-thread'))).toEqual(['mine', 'done'])
+    expect(screen.getByRole('button', { name: 'Назначены мне' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('says when no thread is assigned to the user', async () => {
+    renderPanel({ threads: [thread('t1', { assignee: bob })] })
+    await screen.findByRole('article')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Назначены мне' }))
+
+    expect(screen.getByText('Вам пока не назначено ни одной ветки.')).toBeInTheDocument()
   })
 
   it('says when the threads could not be loaded', async () => {

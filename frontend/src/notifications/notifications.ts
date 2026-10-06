@@ -12,6 +12,7 @@ export const NOTIFICATIONS_POLL_INTERVAL = 30_000
 const KIND_LABELS: Record<NotificationKind, string> = {
   mention: 'Упоминание',
   reply: 'Ответ в ветке',
+  assigned: 'Назначение ветки',
   'access-request': 'Запрос доступа',
   'access-granted': 'Доступ к доске',
   'access-declined': 'Отказ в доступе',
@@ -20,7 +21,8 @@ const KIND_LABELS: Record<NotificationKind, string> = {
 
 /**
  * A notification in words: who, what on which board, and a line more. The words do not depend on the gender of the
- * actor: «Аня: упоминание в «Схема БД»», not «Аня упомянула».
+ * actor: «Аня: упоминание в «Схема БД»», not «Аня упомянула», and «Аня: вам назначена ветка в «Схема БД»», not «Аня
+ * назначила».
  */
 export interface NotificationText {
   /** `null` for a notification about a board the user can no longer open. */
@@ -45,6 +47,8 @@ export function describeNotification(notification: UserNotification): Notificati
       return { actor, action: `упоминание в ${board}`, detail: notification.snippet }
     case 'reply':
       return { actor, action: `ответ в ветке на ${board}`, detail: notification.snippet }
+    case 'assigned':
+      return { actor, action: `вам назначена ветка в ${board}`, detail: notification.snippet }
     case 'access-request':
       return { actor, action: `запрос доступа к ${board}`, detail: editing ? 'Просит редактирование' : 'Просит просмотр' }
     case 'access-granted':
@@ -67,14 +71,17 @@ export function notificationTitle({ actor, action }: NotificationText): string {
   return actor ? `${actor}: ${action}` : action
 }
 
+/** The kinds of notifications about a thread, which lead to it. */
+const THREAD_KINDS = new Set<NotificationKind>(['mention', 'reply', 'assigned'])
+
 /**
- * Where a notification leads: a mention or an answer to its thread on its page, a request for access to «Поделиться»
- * with the requests, anything else and a board the user can no longer open to the board.
+ * Where a notification leads: a mention, an answer or an assigned thread to the thread on its page, a request for
+ * access to «Поделиться» with the requests, anything else and a board the user can no longer open to the board.
  */
 export function notificationLink(notification: UserNotification): string {
   const board = `/boards/${encodeURIComponent(notification.boardId)}`
   if (!notification.access) return board
-  if ((notification.kind === 'mention' || notification.kind === 'reply') && notification.threadId) {
+  if (THREAD_KINDS.has(notification.kind) && notification.threadId) {
     const params = new URLSearchParams()
     if (notification.pageId) params.set('page', notification.pageId)
     params.set('thread', notification.threadId)

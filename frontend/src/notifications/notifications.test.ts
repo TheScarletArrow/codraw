@@ -30,6 +30,7 @@ describe('notifications', () => {
     const cases: [Partial<UserNotification>, string, string | null][] = [
       [{}, 'Аня: упоминание в «Схема БД»', '@Боб посмотри'],
       [{ kind: 'reply', snippet: 'Согласна' }, 'Аня: ответ в ветке на «Схема БД»', 'Согласна'],
+      [{ kind: 'assigned', commentId: null, snippet: 'Поправь связь' }, 'Аня: вам назначена ветка в «Схема БД»', 'Поправь связь'],
       [{ kind: 'access-request', role: 'editor', ...access }, 'Аня: запрос доступа к «Схема БД»', 'Просит редактирование'],
       [{ kind: 'access-request', role: 'viewer', ...access }, 'Аня: запрос доступа к «Схема БД»', 'Просит просмотр'],
       [{ kind: 'access-granted', role: 'editor', ...access }, 'Аня: доступ к «Схема БД»', 'Теперь можно редактировать'],
@@ -57,6 +58,7 @@ describe('notifications', () => {
     expect(notificationTitle(describeNotification(notification({ ...closed, kind: 'access-declined' })))).toBe(
       'Отказ в доступе',
     )
+    expect(notificationTitle(describeNotification(notification({ ...closed, kind: 'assigned' })))).toBe('Назначение ветки')
   })
 
   it('tells a kind it does not know in general words and leads to the board', () => {
@@ -66,10 +68,13 @@ describe('notifications', () => {
     expect(notificationLink(unknown)).toBe(`/boards/${boardId}`)
   })
 
-  it('leads to the thread on its page, to the requests for access, or to the board', () => {
+  it('leads to the thread of a mention, an answer or an assignment on its page, to the requests for access, or to the board', () => {
     expect(notificationLink(notification())).toBe(`/boards/${boardId}?page=page-2&thread=thread-1`)
     expect(notificationLink(notification({ kind: 'reply', pageId: 'страница 1' }))).toBe(
       `/boards/${boardId}?page=%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0+1&thread=thread-1`,
+    )
+    expect(notificationLink(notification({ kind: 'assigned', commentId: null }))).toBe(
+      `/boards/${boardId}?page=page-2&thread=thread-1`,
     )
     expect(notificationLink(notification({ kind: 'access-request', role: 'editor', ...access }))).toBe(
       `/boards/${boardId}?share=requests`,

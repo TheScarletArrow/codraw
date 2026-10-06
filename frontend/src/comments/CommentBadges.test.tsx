@@ -13,6 +13,7 @@ const thread = (id: string, cellId: string | null, changes: Partial<CommentThrea
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,
+  assignee: null,
   comments: [],
   ...changes,
 })

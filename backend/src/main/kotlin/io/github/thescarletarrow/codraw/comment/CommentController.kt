@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -24,8 +25,9 @@ import java.net.URI
 import java.util.UUID
 
 /**
- * Threads of comments on a board. Everybody whose role lets them open the board reads and writes them, viewers too;
- * when the owner closes the link, everybody but the members gets 403 like for the board itself.
+ * Threads of comments on a board. Everybody whose role lets them open the board reads and writes them, reacts to them
+ * and assigns them, viewers too; when the owner closes the link, everybody but the members gets 403 like for the board
+ * itself.
  */
 @RestController
 @RequestMapping("/api/boards/{id}")
@@ -117,6 +119,49 @@ class CommentController(private val boards: BoardService, private val comments: 
         return ResponseEntity.noContent().build()
     }
 
+    /** Puts the reaction of the user on the comment; putting it again changes nothing. Returns the whole thread. */
+    @PutMapping("/threads/{threadId}/comments/{commentId}/reactions/{reaction}")
+    fun addReaction(
+        @PathVariable id: String,
+        @PathVariable threadId: String,
+        @PathVariable commentId: String,
+        @PathVariable reaction: String,
+        @AuthenticationPrincipal principal: OAuth2User,
+    ): CommentThread {
+        val board = participatedBoard(id, principal)
+        return comments.addReaction(board, parse(threadId), parse(commentId), principal.userId, reaction(reaction))
+    }
+
+    /** Takes the reaction of the user away from the comment, if it is there. Returns the whole thread. */
+    @DeleteMapping("/threads/{threadId}/comments/{commentId}/reactions/{reaction}")
+    fun removeReaction(
+        @PathVariable id: String,
+        @PathVariable threadId: String,
+        @PathVariable commentId: String,
+        @PathVariable reaction: String,
+        @AuthenticationPrincipal principal: OAuth2User,
+    ): CommentThread {
+        val board = participatedBoard(id, principal)
+        return comments.removeReaction(board, parse(threadId), parse(commentId), principal.userId, reaction(reaction))
+    }
+
+    /** Makes a participant whom comments may mention the assignee of the thread; returns the whole thread. */
+    @PutMapping("/threads/{threadId}/assignee")
+    fun assign(
+        @PathVariable id: String,
+        @PathVariable threadId: String,
+        @RequestBody request: AssigneeRequest,
+        @AuthenticationPrincipal principal: OAuth2User,
+    ): CommentThread = comments.assign(participatedBoard(id, principal), parse(threadId), principal.userId, request.userId)
+
+    /** Leaves the thread without an assignee; returns the whole thread. */
+    @DeleteMapping("/threads/{threadId}/assignee")
+    fun unassign(
+        @PathVariable id: String,
+        @PathVariable threadId: String,
+        @AuthenticationPrincipal principal: OAuth2User,
+    ): CommentThread = comments.assign(participatedBoard(id, principal), parse(threadId), principal.userId, null)
+
     /** Who may be mentioned in comments: the owner first, then the members and those who opened the board. */
     @GetMapping("/people")
     fun people(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<Person> =
@@ -124,6 +169,10 @@ class CommentController(private val boards: BoardService, private val comments: 
 
     @ExceptionHandler
     fun notFound(exception: CommentNotFoundException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.message)
+
+    @ExceptionHandler
+    fun assigneeNotFound(exception: AssigneeNotParticipantException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.message)
 
     @ExceptionHandler
@@ -169,6 +218,9 @@ class CommentController(private val boards: BoardService, private val comments: 
         return mentions
     }
 
+    private fun reaction(value: String): Reaction = Reaction.of(value)
+        ?: badRequest("Unknown reaction; one of ${Reaction.entries.joinToString { it.value }}")
+
     private fun badRequest(reason: String): Nothing = throw ResponseStatusException(HttpStatus.BAD_REQUEST, reason)
 
     private companion object {
@@ -194,6 +246,9 @@ data class CommentRequest(
     val body: String,
     val mentions: List<UUID> = emptyList(),
 )
+
+/** The participant to assign a thread to. */
+data class AssigneeRequest(val userId: UUID)
 
 /** What changes in a thread: whether it is resolved, where it stands; what is not set stays. */
 data class ChangeThreadRequest(

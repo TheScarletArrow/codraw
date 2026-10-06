@@ -14,9 +14,10 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
- * Comments of the participants of a board. Whoever may open the board reads and writes them, viewers too: comments do
- * not change the diagram. The caller checks that the user has a role on the board. A comment notifies those it mentions
- * and those who wrote in its thread before.
+ * Comments of the participants of a board. Whoever may open the board reads and writes them, reacts to them and assigns
+ * their threads, viewers too: comments do not change the diagram. The caller checks that the user has a role on the
+ * board. A comment notifies those it mentions and those who wrote in its thread before, an assigned thread its
+ * assignee; reactions notify nobody.
  */
 @Service
 class CommentService(
@@ -119,6 +120,36 @@ class CommentService(
         return thread(board, threadId)
     }
 
+    /** Puts the [reaction] of the user [userId] on a comment; putting it again changes nothing. */
+    @Transactional
+    fun addReaction(board: Board, threadId: UUID, commentId: UUID, userId: UUID, reaction: Reaction): CommentThread {
+        comments.comment(board.boardId, threadId, commentId) ?: throw CommentNotFoundException()
+        comments.addReaction(commentId, userId, reaction, now())
+        return thread(board, threadId)
+    }
+
+    /** Takes the [reaction] of the user [userId] away from a comment, if it is there. */
+    @Transactional
+    fun removeReaction(board: Board, threadId: UUID, commentId: UUID, userId: UUID, reaction: Reaction): CommentThread {
+        comments.comment(board.boardId, threadId, commentId) ?: throw CommentNotFoundException()
+        comments.removeReaction(commentId, userId, reaction)
+        return thread(board, threadId)
+    }
+
+    /**
+     * Makes [assigneeId] the assignee of the thread in place of anybody before, or leaves the thread without one when it
+     * is `null`; any participant may, the user [userId] here. Only those who may be mentioned may be assigned. The new
+     * assignee hears of it, unless they assigned the thread to themselves.
+     */
+    @Transactional
+    fun assign(board: Board, threadId: UUID, userId: UUID, assigneeId: UUID?): CommentThread {
+        // Those whom comments may mention may be assigned, nobody else.
+        if (assigneeId != null && mentioned(board, setOf(assigneeId)).isEmpty()) throw AssigneeNotParticipantException()
+        val reassignment = comments.assign(board.boardId, threadId, assigneeId) ?: throw CommentNotFoundException()
+        notifications.threadAssigned(board.boardId, threadId, userId, reassignment.previousAssigneeId, assigneeId)
+        return thread(board, threadId)
+    }
+
     /** Passes the comments of the guest [fromUserId] to the user [toUserId] who signs in, like their boards. */
     fun transfer(fromUserId: UUID, toUserId: UUID) = comments.transfer(fromUserId, toUserId)
 
@@ -160,6 +191,9 @@ class CommentService(
 
 /** The thread or the comment is not on the board. */
 class CommentNotFoundException : RuntimeException("Comment not found")
+
+/** The user to assign a thread to is not among those who may be mentioned on the board. */
+class AssigneeNotParticipantException : RuntimeException("The user takes no part in the board")
 
 /** The user may not do this with the comment. */
 class CommentForbiddenException(message: String) : RuntimeException(message)

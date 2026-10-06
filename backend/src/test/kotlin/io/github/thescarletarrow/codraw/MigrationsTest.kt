@@ -31,7 +31,11 @@ class MigrationsTest {
         private val membersTables = embedTables + setOf("board_members", "board_invites")
         private val accessRequestsTables = membersTables + "board_access_requests"
         private val notificationsTables = accessRequestsTables + "notifications"
+        private val reactionsTables = notificationsTables + "comment_reactions"
         private val threadColumns = setOf("id", "board_id", "page_id", "cell_id", "resolved_at", "resolved_by", "created_at")
+        private val pointThreadColumns = threadColumns + setOf("x", "y")
+        private val notificationColumns =
+            setOf("id", "user_id", "kind", "board_id", "comment_id", "actor_id", "role", "created_at", "read_at")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -43,11 +47,17 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V11 create tables on an empty database and U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(11, flyway().migrate().migrationsExecuted)
-        assertEquals(notificationsTables, appTables())
+    fun `V1 to V12 create tables on an empty database and U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(12, flyway().migrate().migrationsExecuted)
+        assertEquals(reactionsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
-        assertEquals(threadColumns + setOf("x", "y"), columns("comment_threads"))
+        assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
+        assertEquals(notificationColumns + "thread_id", columns("notifications"))
+
+        revert("U12__claude_epic_lovelace_pwi6v4_comment_reactions_and_assignees.sql")
+        assertEquals(notificationsTables, appTables())
+        assertEquals(pointThreadColumns, columns("comment_threads"))
+        assertEquals(notificationColumns, columns("notifications"))
 
         revert("U11__claude_epic_lovelace_pwi6v4_point_comments.sql")
         assertEquals(threadColumns, columns("comment_threads"))
@@ -83,9 +93,9 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(11, flyway().migrate().migrationsExecuted)
-        assertEquals(notificationsTables, appTables())
-        assertEquals(threadColumns + setOf("x", "y"), columns("comment_threads"))
+        assertEquals(12, flyway().migrate().migrationsExecuted)
+        assertEquals(reactionsTables, appTables())
+        assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
     }
 
     @Test
@@ -386,6 +396,123 @@ class MigrationsTest {
         assertFailsWith<DataIntegrityViolationException> {
             jdbcClient.sql("UPDATE comment_threads SET x = 1, y = 2 WHERE id = '0199a000-0000-7000-8000-000000000101'").update()
         }
+    }
+
+    @Test
+    fun `V12 keeps reactions of the set once per user, an assignee and one notification of an assigned thread per recipient`() {
+        flyway("11").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO comment_threads (id, board_id, page_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-000000000001', 'page-1', now());
+            INSERT INTO comments (id, thread_id, author_id, body, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-000000000101',
+                    '0199a000-0000-7000-8000-0000000000a1', 'Привет', now());
+            INSERT INTO notifications (user_id, kind, board_id, comment_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000b1', 'MENTION', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-0000000000a1', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("12").migrate().migrationsExecuted)
+
+        assertEquals(1, count("notifications"))
+        val react = { user: String, reaction: String ->
+            jdbcClient.sql(
+                """
+                INSERT INTO comment_reactions (comment_id, user_id, reaction, created_at)
+                VALUES ('0199a000-0000-7000-8000-000000000201', :user::uuid, :reaction, now())
+                """,
+            ).param("user", user).param("reaction", reaction).update()
+        }
+        val alice = "0199a000-0000-7000-8000-0000000000a1"
+        val guest = "0199a000-0000-7000-8000-0000000000b1"
+        react(alice, "THUMBS_UP")
+        react(alice, "HEART")
+        react(guest, "THUMBS_UP")
+        assertFailsWith<DataIntegrityViolationException> { react(alice, "THUMBS_UP") }
+        assertFailsWith<DataIntegrityViolationException> { react(alice, "FIRE") }
+
+        jdbcClient.sql("UPDATE comment_threads SET assignee_id = :guest::uuid").param("guest", guest).update()
+        val notification = { kind: String, thread: String?, comment: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notifications (user_id, kind, board_id, comment_id, thread_id, actor_id, created_at)
+                VALUES (:guest::uuid, :kind, '0199a000-0000-7000-8000-000000000001', :comment::uuid, :thread::uuid,
+                        :alice::uuid, now())
+                """,
+            ).param("guest", guest).param("alice", alice).param("kind", kind).param("thread", thread).param("comment", comment)
+                .update()
+        }
+        val thread = "0199a000-0000-7000-8000-000000000101"
+        notification("ASSIGNED", thread, null)
+        // A second notification about the thread to the same recipient.
+        assertFailsWith<DataIntegrityViolationException> { notification("ASSIGNED", thread, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("ASSIGNED", null, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("OWNERSHIP", thread, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("ASSIGNED", thread, "0199a000-0000-7000-8000-000000000201") }
+
+        // The guest goes: their reaction goes, the thread stays without its assignee, and so do their notifications.
+        jdbcClient.sql("DELETE FROM users WHERE id = :guest::uuid").param("guest", guest).update()
+        assertEquals(2, count("comment_reactions"))
+        val assigned = jdbcClient.sql("SELECT count(*) FROM comment_threads WHERE assignee_id IS NOT NULL").query(Int::class.java)
+        assertEquals(0, assigned.single())
+        assertEquals(0, count("notifications"))
+
+        jdbcClient.sql("UPDATE comment_threads SET assignee_id = :alice::uuid").param("alice", alice).update()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now())
+            """,
+        ).update()
+        notification("ASSIGNED", thread, null)
+        // A deleted thread takes its notifications and the reactions to its comments with it.
+        jdbcClient.sql("DELETE FROM comment_threads").update()
+        assertEquals(0, count("notifications"))
+        assertEquals(0, count("comment_reactions"))
+    }
+
+    @Test
+    fun `U12 drops reactions, assignees and notifications of assigned threads, and keeps threads and other notifications`() {
+        flyway().migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO comment_threads (id, board_id, page_id, assignee_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-000000000001', 'page-1',
+                    '0199a000-0000-7000-8000-0000000000b1', now());
+            INSERT INTO comments (id, thread_id, author_id, body, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-000000000101',
+                    '0199a000-0000-7000-8000-0000000000a1', 'Привет', now());
+            INSERT INTO comment_reactions (comment_id, user_id, reaction, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-0000000000b1', 'EYES', now());
+            INSERT INTO notifications (user_id, kind, board_id, comment_id, thread_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000b1', 'MENTION', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000201', NULL, '0199a000-0000-7000-8000-0000000000a1', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'ASSIGNED', '0199a000-0000-7000-8000-000000000001',
+                    NULL, '0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-0000000000a1', now())
+            """,
+        ).update()
+
+        revert("U12__claude_epic_lovelace_pwi6v4_comment_reactions_and_assignees.sql")
+
+        assertEquals(1, count("comment_threads"))
+        assertEquals(1, count("comments"))
+        assertEquals(listOf("MENTION"), jdbcClient.sql("SELECT kind FROM notifications").query(String::class.java).list())
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE notifications SET kind = 'ASSIGNED'").update()
+        }
+        assertEquals(1, flyway().migrate().migrationsExecuted)
     }
 
     @Test

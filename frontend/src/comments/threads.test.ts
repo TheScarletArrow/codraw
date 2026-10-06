@@ -24,6 +24,7 @@ const comment = (body: string, mentions: Person[] = []): Comment => ({
   author: alice,
   body,
   mentions,
+  reactions: [],
   createdAt: '2026-10-05T10:00:00Z',
   editedAt: null,
 })
@@ -36,6 +37,7 @@ const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,
+  assignee: null,
   comments: [comment(id)],
   ...changes,
 })
@@ -51,6 +53,15 @@ describe('threads', () => {
     expect(filterThreads(all, 'resolved', 'bob')).toEqual([resolved, mentioning])
     expect(filterThreads(all, 'mentions', 'bob')).toEqual([mentioning])
     expect(filterThreads(all, 'mentions', 'alice')).toEqual([])
+  })
+
+  it('filters the threads assigned to the user, resolved or not', () => {
+    const mine = thread('mine', { assignee: bob })
+    const mineResolved = thread('mine-resolved', { assignee: bob, resolvedAt: '2026-10-05T11:00:00Z', resolvedBy: alice })
+    const theirs = thread('theirs', { assignee: alice })
+
+    expect(filterThreads([open, mine, theirs, mineResolved], 'assigned', 'bob')).toEqual([mine, mineResolved])
+    expect(filterThreads(all, 'assigned', 'bob')).toEqual([])
   })
 
   it('groups threads by page, the current page first, then the others in order, then deleted pages', () => {

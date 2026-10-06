@@ -149,6 +149,22 @@ describe('NotificationBell', () => {
     await waitFor(() => expect(requests(fetchMock, 'POST', `${listUrl}/n-1/read`)).toHaveLength(1))
   })
 
+  it('tells of a thread assigned to the user and opens it', async () => {
+    const { router } = renderBell({
+      [`GET ${countUrl}`]: { body: { count: 1 } },
+      [`GET ${listUrl}`]: page([notification('n-1', { kind: 'assigned', commentId: null, snippet: 'Поправь связь' })]),
+      [`POST ${listUrl}/n-1/read`]: { status: 204 },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Уведомления (1)' }))
+
+    const item = await list().findByRole('link')
+    expect(item).toHaveAccessibleName('Аня: вам назначена ветка в «Схема БД» Поправь связь 5 минут назад Не прочитано')
+    await userEvent.click(item)
+
+    expect(await screen.findByText('Доска')).toBeInTheDocument()
+    expect(router.state.location.search).toBe('?page=page-2&thread=thread-1')
+  })
+
   it('reads all notifications', async () => {
     const { fetchMock } = renderBell({
       [`GET ${countUrl}`]: [{ body: { count: 2 } }, { body: { count: 2 } }, { body: { count: 0 } }],

@@ -2,7 +2,14 @@ import { request } from './http.ts'
 import type { MemberRole } from './members.ts'
 
 /** What a notification tells its recipient. */
-export type NotificationKind = 'mention' | 'reply' | 'access-request' | 'access-granted' | 'access-declined' | 'ownership'
+export type NotificationKind =
+  | 'mention'
+  | 'reply'
+  | 'assigned'
+  | 'access-request'
+  | 'access-granted'
+  | 'access-declined'
+  | 'ownership'
 
 /** The user who did what a notification tells. */
 export interface NotificationActor {
@@ -22,11 +29,11 @@ export interface UserNotification {
   /** Whether the recipient may open the board now. */
   access: boolean
   boardTitle: string | null
-  /** The page of the thread of a mention or an answer. */
+  /** The page of the thread of a mention, an answer or an assignment. */
   pageId: string | null
   threadId: string | null
   commentId: string | null
-  /** The start of the comment of a mention or an answer. */
+  /** The start of the comment of a mention or an answer, or of the first comment of an assigned thread. */
   snippet: string | null
   /** `null` without access and once the actor is deleted. */
   actor: NotificationActor | null
