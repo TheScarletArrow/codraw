@@ -69,9 +69,14 @@ class BoardMemberService(
         return participants(board).first { it.id == userId }
     }
 
-    /** Takes the role of a member from the user [userId]; what the link of the [board] gives stays theirs. */
+    /**
+     * Takes the role of a member from the user [userId]; what the link of the [board] gives stays theirs. When it gives
+     * them nothing, the board forgets their visits.
+     */
+    @Transactional
     fun removeMember(board: Board, userId: UUID) {
         if (!members.remove(board.boardId, userId)) throw MemberNotFoundException()
+        boards.forgetReadersWithoutAccess(board)
     }
 
     /** The invitations of the [board], oldest first. */

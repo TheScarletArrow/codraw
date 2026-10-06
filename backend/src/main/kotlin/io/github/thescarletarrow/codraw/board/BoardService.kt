@@ -19,6 +19,7 @@ class BoardService(
     private val visits: BoardVisits,
     private val members: BoardMembers,
     private val requests: AccessRequests,
+    private val reads: BoardReads,
     private val users: UserRepository,
     private val notifications: NotificationService,
     private val limits: LimitProperties,
@@ -70,13 +71,13 @@ class BoardService(
 
     /**
      * Sets what the link to the [board] gives to others; this is not a change of the board itself. Requests for access
-     * that the link satisfies now are dropped.
+     * that the link satisfies now are dropped, and the visits of those whom it no longer gives access are forgotten.
      */
     @Transactional
     fun changeLinkAccess(board: Board, linkAccess: LinkAccess): Board {
         // Updating the row locks it: a request for access to the board waits for the new link, or the link for it.
         boards.updateLinkAccess(checkNotNull(board.id), linkAccess.name)
-        return board.copy(linkAccess = linkAccess).also(::dropSatisfiedRequests)
+        return board.copy(linkAccess = linkAccess).also(::dropSatisfiedRequests).also(::forgetReadersWithoutAccess)
     }
 
     /**
@@ -97,8 +98,19 @@ class BoardService(
     }
 
     /**
+     * Forgets when the users whom the [board] gives no role any more were on it, e.g. after its owner closed its link: a
+     * later visit compares the board with a state of it that the user could see, so the access to it must not have had a
+     * gap. Every change that may take a role away calls it, and the role is the one [Board.roleOf] gives.
+     */
+    fun forgetReadersWithoutAccess(board: Board) {
+        val boardId = checkNotNull(board.id)
+        val memberRoles = members.roles(boardId)
+        reads.forget(boardId, reads.readers(boardId).filter { board.roleOf(it, memberRoles[it]) == null })
+    }
+
+    /**
      * Deletes the [board] for good, with its document, its members, the requests for access to it and the visits of
-     * other users.
+     * its users.
      */
     fun delete(board: Board) {
         boards.deleteById(checkNotNull(board.id))
@@ -130,14 +142,15 @@ class BoardService(
     }
 
     /**
-     * Passes all boards of the user [fromUserId], the boards they opened through links, their memberships and their
-     * requests for access to the user [toUserId]. Requests that [toUserId] needs no more, e.g. for a board that has
-     * just become theirs, are dropped.
+     * Passes all boards of the user [fromUserId], the boards they opened through links, when they were on boards, their
+     * memberships and their requests for access to the user [toUserId]. Requests that [toUserId] needs no more, e.g. for
+     * a board that has just become theirs, are dropped.
      */
     @Transactional
     fun transfer(fromUserId: UUID, toUserId: UUID) {
         boards.changeOwner(fromUserId, toUserId)
         visits.transfer(fromUserId, toUserId)
+        reads.transfer(fromUserId, toUserId)
         members.transfer(fromUserId, toUserId)
         requests.transfer(fromUserId, toUserId)
         requests.boardsOf(toUserId).forEach { boardId -> find(boardId)?.let(::dropSatisfiedRequests) }

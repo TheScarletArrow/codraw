@@ -24,6 +24,9 @@ import { useLaserPublisher, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
 import { VersionPreview } from '../board/VersionPreview.tsx'
+import { useBoardVisit } from '../board/visit.ts'
+import { VisitBanner } from '../board/VisitBanner.tsx'
+import { VisitChanges } from '../board/VisitChanges.tsx'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import { CommentBadges } from '../comments/CommentBadges.tsx'
@@ -117,6 +120,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [comparing, setComparing] = useState(false)
   const managesVersions = canManageVersions(board)
   const preview = managesVersions && previewed && document ? previewed : null
+  // What others changed since the previous visit of the user, which every participant sees and compares, a viewer too.
+  const visit = useBoardVisit(board.id, status !== 'not-found' && status !== 'forbidden')
+  const changedSince = visit?.since && visit.authors.length > 0 ? { ...visit, since: visit.since } : null
+  const [visitHidden, setVisitHidden] = useState(false)
+  const [showingVisit, setShowingVisit] = useState(false)
+  const visitChanges = showingVisit && changedSince && document && !preview ? changedSince : null
   // Comments of the board, which every participant reads and writes, in a panel in place of the history of versions.
   const threads = useThreads(board.id)
   const isOwner = board.role === 'owner'
@@ -125,12 +134,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
   // The threads the panel shows: with the resolved ones, the canvas marks the resolved threads at points too.
   const [commentFilter, setCommentFilter] = useState<ThreadFilter>('open')
-  const openComments = useCallback(() => {
-    setCommentsOpen(true)
+  const closeHistory = useCallback(() => {
     setHistoryOpen(false)
     setPreviewed(null)
     setComparing(false)
   }, [])
+  const openComments = useCallback(() => {
+    setCommentsOpen(true)
+    closeHistory()
+    setShowingVisit(false)
+  }, [closeHistory])
   const closeComments = () => {
     setCommentsOpen(false)
     setCommentDraft(null)
@@ -289,6 +302,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onOpenHistory={() => {
             setHistoryOpen(true)
             closeComments()
+            setShowingVisit(false)
           }}
         />
         <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
@@ -370,8 +384,24 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           </Button>
         </div>
       )}
+      {changedSince && !visitHidden && !preview && !visitChanges && (
+        <VisitBanner
+          since={changedSince.since}
+          authors={changedSince.authors}
+          onShow={
+            changedSince.baseline
+              ? () => {
+                  setShowingVisit(true)
+                  closeHistory()
+                  closeComments()
+                }
+              : null
+          }
+          onHide={() => setVisitHidden(true)}
+        />
+      )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && !preview && <ShapePalette editor={editor} />}
+        {!readOnly && !preview && !visitChanges && <ShapePalette editor={editor} />}
         {preview && document ? (
           <VersionPreview
             key={preview.id}
@@ -383,6 +413,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             participantId={author.id}
             onRestored={() => setPreviewed(null)}
             onClose={() => setPreviewed(null)}
+          />
+        ) : visitChanges && document ? (
+          <VisitChanges
+            boardId={board.id}
+            since={visitChanges.since}
+            document={document}
+            participantId={author.id}
+            onClose={() => setShowingVisit(false)}
           />
         ) : (
           <div className="flex min-w-0 flex-1 flex-col">
@@ -478,11 +516,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             document={document}
             selectedId={preview?.id ?? null}
             onSelect={setPreviewed}
-            onClose={() => {
-              setHistoryOpen(false)
-              setPreviewed(null)
-              setComparing(false)
-            }}
+            onClose={closeHistory}
           />
         )}
       </div>

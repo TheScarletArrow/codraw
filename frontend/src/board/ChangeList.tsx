@@ -17,13 +17,22 @@ interface ChangeListProps {
   selected: ChangeTarget | null
   /** Goes to the page of the element and shows it. */
   onSelect: (target: ChangeTarget) => void
+  /** What the list says when the board has not changed since the version. */
+  unchanged?: string
 }
 
 /**
  * The changes of the board since a version: how many elements were added, changed and removed, and the changes of each
  * page, the current page first. An element added or removed with its parent is part of the item of the parent.
  */
-export function ChangeList({ diff, pages, currentPageId, selected, onSelect }: ChangeListProps) {
+export function ChangeList({
+  diff,
+  pages,
+  currentPageId,
+  selected,
+  onSelect,
+  unchanged = 'После этой версии доска не менялась.',
+}: ChangeListProps) {
   const counts = countChanges(diff)
   const ordered = [...pages].sort((a, b) => Number(b.id === currentPageId) - Number(a.id === currentPageId))
   const groups = ordered.flatMap((page) => {
@@ -41,7 +50,7 @@ export function ChangeList({ diff, pages, currentPageId, selected, onSelect }: C
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {groups.length === 0 && (
-          <p className="p-2 text-sm text-muted-foreground">После этой версии доска не менялась.</p>
+          <p className="p-2 text-sm text-muted-foreground">{unchanged}</p>
         )}
         {groups.map(({ name, changes, note, items }) => (
           <section key={changes.id} aria-label={name} className="mb-2 flex flex-col last:mb-0">

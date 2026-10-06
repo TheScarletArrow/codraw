@@ -117,6 +117,9 @@ const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> =
   [`GET ${boardUrl}/invites`]: { body: [] },
   [`GET ${boardUrl}/access-requests`]: { body: [] },
   [`GET ${boardUrl}/access-request`]: { status: 204 },
+  [`POST ${boardUrl}/visit`]: { body: { since: null, authors: [], baseline: null } },
+  [`PUT ${boardUrl}/visit`]: { status: 204 },
+  [`DELETE ${boardUrl}/visit`]: { status: 204 },
   ...responses,
 })
 
@@ -865,6 +868,142 @@ describe('BoardPage', () => {
 
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull())
       expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).toBeNull()
+    })
+  })
+
+  describe('changes since the last visit', () => {
+    const visitUrl = `${boardUrl}/visit`
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const changes = {
+      since,
+      authors: [{ id: 'bob', name: 'Боб', avatarUrl: null }],
+      baseline: { id: 'v1', createdAt: since },
+    }
+    const banner = () => screen.queryByRole('region', { name: 'С прошлого визита' })
+
+    const shape = (id: string, order: string, value: string): CellData => ({
+      id,
+      kind: 'vertex',
+      parent: '1',
+      order,
+      value,
+      geometry: { x: 0, y: 0, width: 120, height: 60 },
+      source: null,
+      target: null,
+      style: {},
+    })
+
+    /** The board as the user left it: «Сервис» on its first page. */
+    function baselineState() {
+      const doc = new Y.Doc()
+      initializeDocument(doc)
+      writeCell(getCells(doc), shape('kept', 'a0', 'Сервис'))
+      return Y.encodeStateAsUpdate(doc)
+    }
+
+    /** Opens the board that Боб changed since the last visit of the user: he added «Очередь». */
+    async function openChanged(responses: Record<string, MockResponse | MockResponse[]> = {}) {
+      const provider = await openBoard({
+        [`POST ${visitUrl}`]: { body: changes },
+        [`GET ${visitUrl}/baseline`]: { bytes: baselineState() },
+        ...responses,
+      })
+      act(() => {
+        provider.emitSynced()
+        // The board as collab gives it, which a viewer's page does not set up itself.
+        initializeDocument(provider.document)
+        writeCell(getCells(provider.document), shape('kept', 'a0', 'Сервис'))
+        writeCell(getCells(provider.document), shape('queue', 'a1', 'Очередь'))
+      })
+      return provider
+    }
+
+    it('tells who changed the board since the last visit and shows the changes in place of the board', async () => {
+      const provider = await openChanged()
+
+      const shown = await screen.findByRole('region', { name: 'С прошлого визита' })
+      expect(shown).toHaveTextContent(/С вашего прошлого визита \((сегодня|вчера) в \d{1,2}:\d{2}\) доску изменил\(а\) Боб/)
+      await userEvent.click(within(shown).getByRole('button', { name: 'Показать изменения' }))
+
+      const view = await screen.findByRole('region', { name: 'Изменения с прошлого визита' })
+      expect(view).toHaveTextContent(/Изменения с вашего прошлого визита \((сегодня|вчера) в/)
+      const list = await within(view).findByRole('complementary', { name: 'Изменения' })
+      expect(within(list).getByText('Добавлено 1 · Изменено 0 · Удалено 0')).toBeInTheDocument()
+      expect(within(list).getByRole('button', { name: /Добавлено: Очередь/ })).toBeInTheDocument()
+      expect(canvas.document).toBe(provider.document)
+      expect(within(view).getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(banner()).toBeNull()
+      expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
+
+      await userEvent.click(within(view).getByRole('button', { name: 'Закрыть' }))
+      expect(screen.queryByRole('region', { name: 'Изменения с прошлого визита' })).toBeNull()
+      expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
+      await userEvent.click(within(banner()!).getByRole('button', { name: 'Скрыть' }))
+      expect(banner()).toBeNull()
+      expect(requests(provider.fetchMock, 'POST', visitUrl)).toHaveLength(1)
+    })
+
+    it('shows the changes to a participant who may only view the board', async () => {
+      await openChanged({ [`GET ${boardUrl}`]: { body: boardToView } })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Показать изменения' }))
+
+      const view = await screen.findByRole('region', { name: 'Изменения с прошлого визита' })
+      expect(await within(view).findByText('Добавлено 1 · Изменено 0 · Удалено 0')).toBeInTheDocument()
+    })
+
+    it('tells that the changes could not be loaded', async () => {
+      await openChanged({ [`GET ${visitUrl}/baseline`]: { status: 404 } })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Показать изменения' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить изменения')
+    })
+
+    it('shows no banner on the first visit and when nobody else changed the board', async () => {
+      const first = await openBoard()
+      await waitFor(() => expect(requests(first.fetchMock, 'POST', visitUrl)).toHaveLength(1))
+      await act(async () => {})
+      expect(banner()).toBeNull()
+      first.unmount()
+
+      const unchanged = await openBoard({ [`POST ${visitUrl}`]: { body: { since, authors: [], baseline: null } } })
+      await waitFor(() => expect(requests(unchanged.fetchMock, 'POST', visitUrl)).toHaveLength(1))
+      await act(async () => {})
+      expect(banner()).toBeNull()
+    })
+
+    it('offers no changes to show when the board has no version to compare with', async () => {
+      await openBoard({ [`POST ${visitUrl}`]: { body: { ...changes, baseline: null } } })
+
+      expect(await screen.findByRole('region', { name: 'С прошлого визита' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Показать изменения' })).toBeNull()
+    })
+
+    it('closes the changes when the history of versions or the comments open', async () => {
+      await openChanged({ [`GET ${boardUrl}/versions`]: { body: [] } })
+      await userEvent.click(await screen.findByRole('button', { name: 'Показать изменения' }))
+      await screen.findByRole('region', { name: 'Изменения с прошлого визита' })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
+      expect(screen.queryByRole('region', { name: 'Изменения с прошлого визита' })).toBeNull()
+
+      await userEvent.click(within(banner()!).getByRole('button', { name: 'Показать изменения' }))
+      expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: /^Комментарии/ }))
+      expect(screen.queryByRole('region', { name: 'Изменения с прошлого визита' })).toBeNull()
+    })
+
+    it('tells the backend that the user is on the board and that they left it', async () => {
+      const provider = await openBoard()
+      await waitFor(() => expect(requests(provider.fetchMock, 'POST', visitUrl)).toHaveLength(1))
+      await act(async () => {})
+
+      act(() => document.dispatchEvent(new Event('visibilitychange')))
+      expect(requests(provider.fetchMock, 'PUT', visitUrl)).toHaveLength(1)
+      provider.unmount()
+      expect(requests(provider.fetchMock, 'DELETE', visitUrl)).toHaveLength(1)
     })
   })
 

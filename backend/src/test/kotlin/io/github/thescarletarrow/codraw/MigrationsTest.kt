@@ -37,6 +37,7 @@ class MigrationsTest {
         private val notificationColumns =
             setOf("id", "user_id", "kind", "board_id", "comment_id", "actor_id", "role", "created_at", "read_at")
         private val versionAuthorsColumns = setOf("id", "board_id", "state", "reason", "created_at", "authors", "name")
+        private val readsTables = reactionsTables + "board_reads"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -48,14 +49,18 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V13 create tables on an empty database and U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(13, flyway().migrate().migrationsExecuted)
-        assertEquals(reactionsTables, appTables())
+    fun `V1 to V14 create tables on an empty database and U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(14, flyway().migrate().migrationsExecuted)
+        assertEquals(readsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(notificationColumns + "thread_id", columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
         assertEquals(setOf("board_id", "state", "updated_at", "editors"), columns("board_documents"))
+        assertEquals(setOf("user_id", "board_id", "seen_at", "previous_seen_at", "present"), columns("board_reads"))
+
+        revert("U14__claude_epic_lovelace_pwi6v4_changes_since_visit.sql")
+        assertEquals(reactionsTables, appTables())
 
         revert("U13__claude_epic_lovelace_pwi6v4_version_authors.sql")
         assertEquals(reactionsTables, appTables())
@@ -101,10 +106,57 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(13, flyway().migrate().migrationsExecuted)
-        assertEquals(reactionsTables, appTables())
+        assertEquals(14, flyway().migrate().migrationsExecuted)
+        assertEquals(readsTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
+    }
+
+    @Test
+    fun `V14 keeps one visit per user and board, which goes with its board and its user`() {
+        flyway("13").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now()),
+                   ('0199a000-0000-7000-8000-000000000002', 'Другая', '0199a000-0000-7000-8000-0000000000a1', now(), now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("14").migrate().migrationsExecuted)
+        jdbcClient.sql(
+            """
+            INSERT INTO board_reads (user_id, board_id, seen_at, previous_seen_at, present)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000001', now(), NULL, true),
+                   ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000001', now(), now(), false),
+                   ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000002', now(), NULL, true)
+            """,
+        ).update()
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql(
+                """
+                INSERT INTO board_reads (user_id, board_id, seen_at, present)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000001', now(), true)
+                """,
+            ).update()
+        }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql(
+                """
+                INSERT INTO board_reads (user_id, board_id, seen_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000002', now())
+                """,
+            ).update()
+        }
+
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(1, count("board_reads"))
+
+        jdbcClient.sql("DELETE FROM boards").update()
+        assertEquals(0, count("board_reads"))
     }
 
     @Test

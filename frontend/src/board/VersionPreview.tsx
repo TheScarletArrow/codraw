@@ -1,21 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitCompareArrows } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { fetchVersionState, saveVersion, type BoardVersion } from '../api/versions.ts'
-import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
-import type { ChangeType } from '../diagram/diff.ts'
-import type { DiagramEditor, Point } from '../diagram/editor.ts'
-import { LastChange } from '../diagram/LastChange.tsx'
 import { restoreDocument } from '../diagram/restore.ts'
-import { ChangeHighlights } from './ChangeHighlights.tsx'
-import { ChangeList, type ChangeTarget } from './ChangeList.tsx'
-import { ghostCenter } from './changes.ts'
-import { PageTabs } from './PageTabs.tsx'
-import { useBoardDiff } from './useBoardDiff.ts'
-import { usePages } from './usePages.ts'
+import { VersionView } from './VersionView.tsx'
 import { versionsKey, versionTimeFormat } from './versions.ts'
 
 interface VersionPreviewProps {
@@ -32,19 +23,9 @@ interface VersionPreviewProps {
   onClose: () => void
 }
 
-/** An element chosen in the list of changes, with the middle of its ghost when it was removed. */
-interface Revealed extends ChangeTarget {
-  ghost: Point | null
-}
-
 /**
- * A version of the board in place of the board, for viewing only: its own pages on a canvas of its own, which publishes
- * no presence, so other participants do not see whoever looks at it on pages they do not have. Restoring keeps the
- * current state as a version first.
- *
- * Compared with the board, the canvas shows a page as the board has it now, read-only, with the changes since the
- * version over it and the list of the changes beside it; a page removed since the version is shown as the version has it.
- * Under the canvas, as on the board, is who changed the selected element last.
+ * A version of the board in place of the board, for viewing only, or compared with the board (see {@link VersionView}).
+ * Restoring keeps the current state as a version first.
  */
 export function VersionPreview({
   boardId,
@@ -68,46 +49,6 @@ export function VersionPreview({
     Y.applyUpdate(doc, state.data)
     return doc
   }, [state.data])
-
-  const versionPages = usePages(versionDocument, false)
-  const boardPages = usePages(comparing ? document : null, false)
-  const diff = useBoardDiff(versionDocument, comparing ? document : null)
-  // Compared, the pages of the board now, then those removed since the version.
-  const pages = useMemo(() => {
-    if (!diff) return versionPages
-    const current = new Set(boardPages.map((page) => page.id))
-    return [...boardPages, ...versionPages.filter((page) => !current.has(page.id))]
-  }, [diff, boardPages, versionPages])
-  const [pageId, setPageId] = useState<string | null>(null)
-  const currentPage = pages.find((page) => page.id === pageId) ?? pages[0] ?? null
-  const onBoard = diff !== null && boardPages.some((page) => page.id === currentPage?.id)
-  const pageChanges = useMemo(
-    () => diff && new Map<string, ChangeType>(diff.pages.map((page) => [page.id, page.type])),
-    [diff],
-  )
-  const [editor, setEditor] = useState<DiagramEditor | null>(null)
-
-  // Going to a change: switch to its page, then show its element once that page is shown.
-  const [selected, setSelected] = useState<ChangeTarget | null>(null)
-  const revealing = useRef<Revealed | null>(null)
-  const showChange = (target: ChangeTarget) => {
-    const page = diff?.pages.find((item) => item.id === target.pageId)
-    const removed = page?.cells.some((change) => change.id === target.cellId && change.type === 'removed')
-    const revealed = { ...target, ghost: removed && page?.before ? ghostCenter(page.before.cells, target.cellId) : null }
-    setSelected(target)
-    if (editor && editor.pageId === target.pageId) {
-      reveal(editor, revealed)
-      return
-    }
-    revealing.current = revealed
-    setPageId(target.pageId)
-  }
-  useEffect(() => {
-    const target = revealing.current
-    if (!editor || !target || editor.pageId !== target.pageId) return
-    reveal(editor, target)
-    revealing.current = null
-  }, [editor])
 
   const queryClient = useQueryClient()
   const restore = useMutation({
@@ -179,69 +120,15 @@ export function VersionPreview({
           Закрыть
         </Button>
       </div>
-      <div className="flex min-h-0 flex-1">
-        {diff && (
-          <ChangeList
-            diff={diff}
-            pages={pages}
-            currentPageId={currentPage?.id ?? null}
-            selected={selected}
-            onSelect={showChange}
-          />
-        )}
-        <div className="relative min-h-0 min-w-0 flex-1">
-          {state.isError ? (
-            <p role="alert" className="p-6 text-destructive">
-              Не удалось загрузить версию
-            </p>
-          ) : versionDocument && currentPage ? (
-            <>
-              <DiagramCanvas
-                document={onBoard ? document : versionDocument}
-                pageId={currentPage.id}
-                readOnly
-                participantId={participantId}
-                onEditor={setEditor}
-              />
-              {diff && (
-                <ChangeHighlights
-                  editor={editor}
-                  page={diff.pages.find((page) => page.id === currentPage.id)}
-                  selectedId={selected?.pageId === currentPage.id ? selected.cellId : null}
-                />
-              )}
-            </>
-          ) : (
-            <p className="p-6 text-muted-foreground">{versionDocument ? 'В версии нет страниц' : 'Загрузка версии…'}</p>
-          )}
-        </div>
-      </div>
-      {versionDocument && (
-        <PageTabs
-          pages={pages}
-          currentPageId={currentPage?.id ?? null}
-          onSelect={setPageId}
-          onAdd={() => {}}
-          onRename={() => {}}
-          onDuplicate={() => {}}
-          onDelete={() => {}}
-          onMove={() => {}}
-          readOnly
-          changes={pageChanges ?? undefined}
-        >
-          <LastChange editor={editor} />
-        </PageTabs>
+      {state.isError ? (
+        <p role="alert" className="p-6 text-destructive">
+          Не удалось загрузить версию
+        </p>
+      ) : versionDocument ? (
+        <VersionView version={versionDocument} board={comparing ? document : null} participantId={participantId} />
+      ) : (
+        <p className="p-6 text-muted-foreground">Загрузка версии…</p>
       )}
     </section>
   )
-}
-
-/**
- * Shows an element on the canvas of its page: selects it and centres the canvas on it, or, for an element the canvas
- * does not have because it was removed, selects nothing and centres the canvas on its ghost.
- */
-function reveal(editor: DiagramEditor, { cellId, ghost }: Revealed) {
-  if (editor.revealCell(cellId)) return
-  editor.clearSelection()
-  if (ghost) editor.centerOn(ghost)
 }

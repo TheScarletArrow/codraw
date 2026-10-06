@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.board
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -19,6 +20,23 @@ class BoardDocumentRepository(private val jdbc: JdbcClient) {
     fun findState(boardId: UUID): ByteArray? = jdbc.sql("SELECT state FROM board_documents WHERE board_id = :boardId")
         .param("boardId", boardId)
         .query(ByteArray::class.java)
+        .optional()
+        .orElse(null)
+
+    /**
+     * When the document of the board [boardId] was stored last and who changed it since the latest version of the board;
+     * `null` before its first store.
+     */
+    fun stamp(boardId: UUID): DocumentStamp? = jdbc.sql(
+        "SELECT updated_at, editors FROM board_documents WHERE board_id = :boardId",
+    )
+        .param("boardId", boardId)
+        .query { rs, _ ->
+            DocumentStamp(
+                updatedAt = rs.getObject("updated_at", OffsetDateTime::class.java).toInstant(),
+                editorIds = (rs.getArray("editors").array as Array<*>).map { it as UUID },
+            )
+        }
         .optional()
         .orElse(null)
 
