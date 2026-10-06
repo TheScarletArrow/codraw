@@ -17,6 +17,8 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   guestBoardRetentionDays: 14,
   guestSessionDays: 30,
   versionsPerBoard: 100,
+  notificationRetentionDays: 60,
+  notificationsPerUser: 200,
   ...changes,
 })
 
@@ -57,6 +59,13 @@ describe('legal pages', () => {
       'Запросы доступа. Какую роль пользователь попросил у владельца чужой доски, его сообщение владельцу',
     )
     expect(retention).toHaveTextContent('Запрос доступа — пока владелец не ответит на него или пользователь его не отменит')
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Уведомления. Кто и что сделал, что касается пользователя',
+    )
+    expect(retention).toHaveTextContent('Уведомления — не дольше 60 дней и не больше 200 последних у пользователя')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Уведомление видит только тот, кому оно адресовано',
+    )
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 

@@ -30,6 +30,7 @@ class MigrationsTest {
         private val embedTables = commentsTables + "board_embeds"
         private val membersTables = embedTables + setOf("board_members", "board_invites")
         private val accessRequestsTables = membersTables + "board_access_requests"
+        private val notificationsTables = accessRequestsTables + "notifications"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -41,10 +42,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V9 create tables on an empty database and U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(9, flyway().migrate().migrationsExecuted)
-        assertEquals(accessRequestsTables, appTables())
+    fun `V1 to V10 create tables on an empty database and U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(10, flyway().migrate().migrationsExecuted)
+        assertEquals(notificationsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
+
+        revert("U10__claude_epic_lovelace_pwi6v4_notifications.sql")
+        assertEquals(accessRequestsTables, appTables())
 
         revert("U9__claude_epic_lovelace_pwi6v4_access_requests.sql")
         assertEquals(membersTables, appTables())
@@ -74,8 +78,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(9, flyway().migrate().migrationsExecuted)
-        assertEquals(accessRequestsTables, appTables())
+        assertEquals(10, flyway().migrate().migrationsExecuted)
+        assertEquals(notificationsTables, appTables())
     }
 
     @Test
@@ -276,6 +280,74 @@ class MigrationsTest {
 
         jdbcClient.sql("DELETE FROM boards").update()
         assertEquals(0, count("board_access_requests"))
+    }
+
+    @Test
+    fun `V10 keeps notifications of known kinds, one per comment and recipient, which go with their board, comment and recipient`() {
+        flyway("10").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'guest', '2', 'Гость 1', now()),
+                   ('0199a000-0000-7000-8000-0000000000c1', 'github', '3', 'Carol', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now()),
+                   ('0199a000-0000-7000-8000-000000000002', 'Другая', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO comment_threads (id, board_id, page_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-000000000001', 'page-1', now());
+            INSERT INTO comments (id, thread_id, author_id, body, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-000000000101',
+                    '0199a000-0000-7000-8000-0000000000b1', 'Привет', now());
+            INSERT INTO notifications (user_id, kind, board_id, comment_id, actor_id, role, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'MENTION', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-0000000000b1', NULL, now()),
+                   ('0199a000-0000-7000-8000-0000000000c1', 'REPLY', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000201', '0199a000-0000-7000-8000-0000000000b1', NULL, now()),
+                   ('0199a000-0000-7000-8000-0000000000a1', 'ACCESS_REQUEST', '0199a000-0000-7000-8000-000000000002',
+                    NULL, '0199a000-0000-7000-8000-0000000000b1', 'EDITOR', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'ACCESS_DECLINED', '0199a000-0000-7000-8000-000000000002',
+                    NULL, '0199a000-0000-7000-8000-0000000000a1', 'EDITOR', now())
+            """,
+        ).update()
+
+        val notification = { kind: String, comment: String?, actor: String, role: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notifications (user_id, kind, board_id, comment_id, actor_id, role, created_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', :kind, '0199a000-0000-7000-8000-000000000001',
+                        :comment::uuid, :actor::uuid, :role, now())
+                """,
+            ).param("kind", kind).param("comment", comment).param("actor", actor).param("role", role).update()
+        }
+        val comment = "0199a000-0000-7000-8000-000000000201"
+        val carol = "0199a000-0000-7000-8000-0000000000c1"
+        // A second notification about the comment to the same recipient.
+        assertFailsWith<DataIntegrityViolationException> { notification("REPLY", comment, carol, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("LIKE", null, carol, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("MENTION", null, carol, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("OWNERSHIP", comment, carol, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("ACCESS_GRANTED", null, carol, null) }
+        assertFailsWith<DataIntegrityViolationException> { notification("ACCESS_GRANTED", null, carol, "OWNER") }
+        assertFailsWith<DataIntegrityViolationException> { notification("OWNERSHIP", null, carol, "EDITOR") }
+        // Nobody is notified of what they did themselves.
+        assertFailsWith<DataIntegrityViolationException> {
+            notification("OWNERSHIP", null, "0199a000-0000-7000-8000-0000000000a1", null)
+        }
+
+        // The guest who wrote the comment goes: the comment stays without its author, and so do its notifications.
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(3, count("notifications"))
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM notifications WHERE actor_id IS NOT NULL").query(Int::class.java).single())
+
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000c1'").update()
+        assertEquals(2, count("notifications"))
+
+        jdbcClient.sql("DELETE FROM comments").update()
+        assertEquals(1, count("notifications"))
+
+        jdbcClient.sql("DELETE FROM boards").update()
+        assertEquals(0, count("notifications"))
     }
 
     @Test

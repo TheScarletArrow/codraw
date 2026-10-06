@@ -8,6 +8,7 @@ import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.MemberRole
 import io.github.thescarletarrow.codraw.gitHubUser
+import io.github.thescarletarrow.codraw.notification.NotificationService
 import io.github.thescarletarrow.codraw.signedIn
 import io.micrometer.core.instrument.MeterRegistry
 import org.junit.jupiter.api.BeforeEach
@@ -37,6 +38,7 @@ class GuestCleanupTest(
     @Autowired private val registry: MeterRegistry,
     @Autowired private val members: BoardMembers,
     @Autowired private val requests: AccessRequests,
+    @Autowired private val notifications: NotificationService,
 ) {
 
     @BeforeEach
@@ -105,6 +107,23 @@ class GuestCleanupTest(
         assertNotNull(boards.find(closed.id!!))
         assertEquals(0, count("board_members"))
         assertEquals(0, count("board_access_requests"))
+    }
+
+    @Test
+    fun `deletes the notifications of a gone guest, and those the guest caused others stay without them`() {
+        val alice = users.gitHubUser("Alice")
+        val board = boards.create("Общая", alice.id)
+        val guest = users.createGuest()
+        notifications.accessRequested(board, guest.id, MemberRole.EDITOR)
+        notifications.accessGranted(board, guest.id, MemberRole.EDITOR)
+
+        clock.advance(Duration.ofDays(2))
+
+        assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
+        assertEquals(1, count("notifications"))
+        val left = notifications.page(alice.id, before = null).notifications.single()
+        assertNull(left.actor)
+        assertEquals(board.id, left.boardId)
     }
 
     @Test

@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.board
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
+import io.github.thescarletarrow.codraw.notification.NotificationService
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -15,7 +16,7 @@ import java.util.UUID
 /**
  * Requests of users for access to boards and the answers of their owners. Anybody signed in asks for a role on a board
  * they know the link to; the owner gives a role, which makes the user a member, or declines. The caller checks that the
- * user who answers owns the board.
+ * user who answers owns the board. A request notifies the owner, and an answer the user who asked.
  */
 @Service
 class AccessRequestService(
@@ -23,6 +24,7 @@ class AccessRequestService(
     private val members: BoardMembers,
     private val memberService: BoardMemberService,
     private val boards: BoardService,
+    private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
@@ -48,12 +50,13 @@ class AccessRequestService(
             metrics.limitReached(Limit.ACCESS_REQUESTS)
             throw AccessRequestLimitReachedException(limits.accessRequestsPerBoard)
         }
-        return requests.put(boardId, userId, role, message, now())
+        return requests.put(boardId, userId, role, message, now()).also { notifications.accessRequested(board, userId, role) }
     }
 
     /** The user [userId] no longer asks for access to the [board]; nothing happens when they did not. */
+    @Transactional
     fun cancel(board: Board, userId: UUID) {
-        requests.delete(board.boardId, userId)
+        if (requests.delete(board.boardId, userId)) notifications.accessRequestCancelled(board, userId)
     }
 
     /** The requests for access to the [board], oldest first. */
@@ -69,15 +72,25 @@ class AccessRequestService(
     fun grant(board: Board, requestId: UUID, role: MemberRole): Participant {
         members.lockBoard(board.boardId)
         val request = requests.findById(board.boardId, requestId) ?: throw AccessRequestNotFoundException()
+        val before = members.roleOf(board.boardId, request.userId)
+        // A role that the membership did not have notifies the user that they got it.
         val participant = memberService.give(board, request.userId, role)
         // A role lower than the one asked for leaves the request: the answer removes it all the same.
         requests.delete(board.boardId, request.userId)
+        notifications.accessRequestAnswered(board, request.userId)
+        // A member given the role they have gets nothing, as declined: their page tells them so as well.
+        if (before != null && before >= role) notifications.accessDeclined(board, request.userId, request.role)
         return participant
     }
 
-    /** The owner declines the request [requestId]; its user may ask again. */
+    /** The owner declines the request [requestId]; its user hears of it and may ask again. */
+    @Transactional
     fun decline(board: Board, requestId: UUID) {
+        val request = requests.findById(board.boardId, requestId) ?: throw AccessRequestNotFoundException()
+        // Deleting by the id answers the request read, not one that replaced it meanwhile.
         if (!requests.deleteById(board.boardId, requestId)) throw AccessRequestNotFoundException()
+        notifications.accessRequestAnswered(board, request.userId)
+        notifications.accessDeclined(board, request.userId, request.role)
     }
 
     // PostgreSQL stores microseconds, so truncate to return exactly what is persisted.

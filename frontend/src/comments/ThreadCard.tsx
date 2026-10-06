@@ -46,6 +46,7 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
     <article
       aria-label={`Ветка: ${target.label}`}
       data-thread={thread.id}
+      aria-current={highlighted || undefined}
       className={cn('flex flex-col gap-2 rounded-md border p-2', highlighted && 'ring-2 ring-primary', resolved && 'opacity-80')}
     >
       <div className="flex items-start gap-1">

@@ -48,6 +48,9 @@ interface ShareButtonProps {
   embed?: Embed | null
   pages?: { id: string; name: string }[]
   document?: Y.Doc | null
+  /** Whether the window is open, when the page opens it itself, e.g. from a notification; uncontrolled without it. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -55,7 +58,16 @@ interface ShareButtonProps {
  * for access, which the button counts, the participants of the board, invitation links for the owner, and the live
  * image of a page.
  */
-export function ShareButton({ board, pageId, onChanged, embed, pages = [], document = null }: ShareButtonProps) {
+export function ShareButton({
+  board,
+  pageId,
+  onChanged,
+  embed,
+  pages = [],
+  document = null,
+  open,
+  onOpenChange,
+}: ShareButtonProps) {
   const queryClient = useQueryClient()
   const isOwner = board.role === 'owner'
   // Requests for access come from users without the board open, so the page of the owner asks for them from time to
@@ -100,9 +112,11 @@ export function ShareButton({ board, pageId, onChanged, embed, pages = [], docum
   const linkAccess = chosen ?? board.linkAccess
   return (
     <Popover
-      onOpenChange={(open) => {
-        if (!open) setCopied(false)
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setCopied(false)
         else if (isOwner) void requests.refetch()
+        onOpenChange?.(next)
       }}
     >
       <PopoverTrigger asChild>

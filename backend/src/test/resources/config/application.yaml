@@ -15,3 +15,6 @@ codraw:
   guests:
     # Tests run the cleanup themselves.
     cleanup-cron: "-"
+  notifications:
+    # Tests run the cleanup themselves.
+    cleanup-cron: "-"

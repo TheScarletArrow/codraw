@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.board
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
+import io.github.thescarletarrow.codraw.notification.NotificationService
 import io.github.thescarletarrow.codraw.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -19,6 +20,7 @@ class BoardService(
     private val members: BoardMembers,
     private val requests: AccessRequests,
     private val users: UserRepository,
+    private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
@@ -103,9 +105,10 @@ class BoardService(
     }
 
     /**
-     * Makes the member [newOwnerId] the owner of the [board]; its previous owner stays on it as an editor. Throws
-     * [MemberNotFoundException] when [newOwnerId] is no member, [BoardLimitReachedException] when they own as many
-     * boards as the limit allows, and [BoardOwnerChangedException] when the board got another owner since it was read.
+     * Makes the member [newOwnerId] the owner of the [board], which notifies them; its previous owner stays on it as an
+     * editor. Throws [MemberNotFoundException] when [newOwnerId] is no member, [BoardLimitReachedException] when they
+     * own as many boards as the limit allows, and [BoardOwnerChangedException] when the board got another owner since it
+     * was read.
      */
     @Transactional
     fun transferOwnership(board: Board, newOwnerId: UUID): Board {
@@ -121,6 +124,7 @@ class BoardService(
         if (!boards.changeOwnerOf(boardId, board.ownerId, newOwnerId)) throw BoardOwnerChangedException()
         members.remove(boardId, newOwnerId)
         members.put(boardId, board.ownerId, MemberRole.EDITOR, now())
+        notifications.ownershipGiven(board, newOwnerId)
         // The new owner asks for nothing any more.
         return board.copy(ownerId = newOwnerId).also(::dropSatisfiedRequests)
     }

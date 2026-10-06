@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.LinkAccess
+import io.github.thescarletarrow.codraw.notification.NotificationService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -14,11 +15,13 @@ import java.util.UUID
 
 /**
  * Comments of the participants of a board. Whoever may open the board reads and writes them, viewers too: comments do
- * not change the diagram. The caller checks that the user has a role on the board.
+ * not change the diagram. The caller checks that the user has a role on the board. A comment notifies those it mentions
+ * and those who wrote in its thread before.
  */
 @Service
 class CommentService(
     private val comments: Comments,
+    private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
@@ -37,7 +40,7 @@ class CommentService(
     fun start(board: Board, authorId: UUID, pageId: String, cellId: String?, body: String, mentions: Collection<UUID>): CommentThread {
         checkLimit(board)
         val threadId = comments.addThread(board.boardId, pageId, cellId, now())
-        add(board, threadId, authorId, body, mentions)
+        add(board, threadId, authorId, body, mentions, answered = emptySet())
         return thread(board, threadId)
     }
 
@@ -45,7 +48,9 @@ class CommentService(
     fun reply(board: Board, threadId: UUID, authorId: UUID, body: String, mentions: Collection<UUID>): CommentThread {
         checkLimit(board)
         if (!comments.threadExists(board.boardId, threadId)) throw CommentNotFoundException()
-        add(board, threadId, authorId, body, mentions)
+        // Who wrote in the thread and can still open the board hears of the answer.
+        val answered = comments.participants(board.boardId, board.ownerId, board.linkOpen, comments.authors(threadId))
+        add(board, threadId, authorId, body, mentions, answered)
         return thread(board, threadId)
     }
 
@@ -54,8 +59,11 @@ class CommentService(
     fun edit(board: Board, threadId: UUID, commentId: UUID, userId: UUID, body: String, mentions: Collection<UUID>): CommentThread {
         val comment = comments.comment(board.boardId, threadId, commentId) ?: throw CommentNotFoundException()
         if (comment.authorId != userId) throw CommentForbiddenException("Only the author can change the comment")
+        val before = comments.mentionsOf(commentId)
+        val mentioned = mentioned(board, mentions)
         comments.edit(commentId, body, now())
-        comments.replaceMentions(commentId, mentioned(board, mentions))
+        comments.replaceMentions(commentId, mentioned)
+        notifications.mentionsAdded(board.boardId, commentId, userId, mentioned - before)
         return thread(board, threadId)
     }
 
@@ -88,9 +96,12 @@ class CommentService(
     /** Passes the comments of the guest [fromUserId] to the user [toUserId] who signs in, like their boards. */
     fun transfer(fromUserId: UUID, toUserId: UUID) = comments.transfer(fromUserId, toUserId)
 
-    private fun add(board: Board, threadId: UUID, authorId: UUID, body: String, mentions: Collection<UUID>) {
+    /** Adds the comment, which mentions the participants among [mentions] and answers the users [answered]. */
+    private fun add(board: Board, threadId: UUID, authorId: UUID, body: String, mentions: Collection<UUID>, answered: Set<UUID>) {
         val commentId = comments.addComment(threadId, authorId, body, now())
-        comments.replaceMentions(commentId, mentioned(board, mentions))
+        val mentioned = mentioned(board, mentions)
+        comments.replaceMentions(commentId, mentioned)
+        notifications.commentAdded(board.boardId, commentId, authorId, mentioned, answered)
     }
 
     /** Mentions of users who take no part in the board are dropped. */

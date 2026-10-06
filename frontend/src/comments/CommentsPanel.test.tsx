@@ -8,7 +8,8 @@ import type { Comment, CommentThread, Person } from '../api/comments.ts'
 import { deleteCell, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { mockFetch, type MockResponse } from '../test/render.tsx'
-import { CommentsPanel, type ThreadDraft, type ThreadFocus } from './CommentsPanel.tsx'
+import { CommentsPanel, type ThreadDraft } from './CommentsPanel.tsx'
+import type { ThreadFocus } from './threads.ts'
 import { useThreads } from './useComments.ts'
 
 const boardId = '0199a000-0000-7000-8000-000000000001'
@@ -305,7 +306,20 @@ describe('CommentsPanel', () => {
 
     const focused = await screen.findByRole('article', { name: 'Ветка: Связь без подписи' })
     expect(focused).toHaveClass('ring-2')
+    expect(focused).toHaveAttribute('aria-current', 'true')
     expect(screen.getByRole('article', { name: 'Ветка: «API»' })).not.toHaveClass('ring-2')
+  })
+
+  it('shows the thread it was opened for among the threads it belongs to', async () => {
+    renderPanel({
+      threads: [thread('t1'), thread('t2', { cellId: 'link', resolvedAt: '2026-10-05T11:00:00Z' })],
+      focus: { threadId: 't2' },
+    })
+
+    const focused = await screen.findByRole('article', { name: 'Ветка: Связь без подписи' })
+    expect(focused).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: 'Решённые' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('article', { name: 'Ветка: «API»' })).toBeNull()
   })
 
   it('says when the threads could not be loaded', async () => {

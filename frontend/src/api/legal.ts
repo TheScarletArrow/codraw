@@ -8,6 +8,10 @@ export interface LegalInfo {
   guestBoardRetentionDays: number
   guestSessionDays: number
   versionsPerBoard: number
+  /** A notification is deleted once it is this many days old. */
+  notificationRetentionDays: number
+  /** The most notifications kept of a user. */
+  notificationsPerUser: number
 }
 
 export function fetchLegal(): Promise<LegalInfo> {

@@ -15,19 +15,21 @@ import {
 } from '../api/comments.ts'
 import { CommentComposer } from './CommentComposer.tsx'
 import { ThreadCard, type ThreadActions } from './ThreadCard.tsx'
-import { filterThreads, groupByPage, threadTarget, type ThreadFilter } from './threads.ts'
+import {
+  filterFor,
+  filterThreads,
+  groupByPage,
+  isFocused,
+  threadTarget,
+  type ThreadFilter,
+  type ThreadFocus,
+} from './threads.ts'
 import { useCellInfo, useCommentChange, usePeople } from './useComments.ts'
 
 /** What a new thread will be about: an element of a page, or the page when `cellId` is `null`. */
 export interface ThreadDraft {
   pageId: string
   cellId: string | null
-}
-
-/** A request to show the threads of an element, e.g. from its badge on the canvas. */
-export interface ThreadFocus {
-  pageId: string
-  cellId: string
 }
 
 const FILTERS: [ThreadFilter, string][] = [
@@ -84,11 +86,14 @@ export function CommentsPanel({
   onClose,
 }: CommentsPanelProps) {
   const [filter, setFilter] = useState<ThreadFilter>('open')
-  // A new thread, and the threads of an element from its badge, come into view among the open ones.
-  const [shownFor, setShownFor] = useState({ focus, draft })
-  if (shownFor.focus !== focus || shownFor.draft !== draft) {
-    setShownFor({ focus, draft })
-    if ((focus && focus !== shownFor.focus) || (draft && draft !== shownFor.draft)) setFilter('open')
+  // A new thread and the threads of an element from its badge come into view among the open ones, a thread from a
+  // notification among those it belongs to, once the threads are known.
+  const loaded = threads !== undefined
+  const [shownFor, setShownFor] = useState({ focus, draft, loaded: false })
+  if (shownFor.focus !== focus || shownFor.draft !== draft || shownFor.loaded !== loaded) {
+    setShownFor({ focus, draft, loaded })
+    if (focus && (focus !== shownFor.focus || loaded !== shownFor.loaded)) setFilter(filterFor(focus, threads))
+    else if (draft && draft !== shownFor.draft) setFilter('open')
   }
   const people = usePeople(boardId).data ?? []
   const cellInfo = useCellInfo(document)
@@ -121,7 +126,7 @@ export function CommentsPanel({
 
   useEffect(() => {
     if (!focus || !threads) return
-    const first = threads.find((thread) => thread.pageId === focus.pageId && thread.cellId === focus.cellId)
+    const first = threads.find((thread) => isFocused(thread, focus))
     list.current?.querySelector(`[data-thread="${first?.id}"]`)?.scrollIntoView?.({ block: 'nearest' })
   }, [focus, threads, filter])
 
@@ -205,7 +210,7 @@ export function CommentsPanel({
                 userId={userId}
                 isOwner={isOwner}
                 people={people}
-                highlighted={focus !== null && thread.pageId === focus.pageId && thread.cellId === focus.cellId}
+                highlighted={isFocused(thread, focus)}
                 actions={actions}
                 onShow={onShow}
               />
