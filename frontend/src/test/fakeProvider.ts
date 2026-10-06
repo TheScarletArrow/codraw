@@ -44,12 +44,25 @@ export class FakeHocuspocusProvider {
   readonly awareness = new FakeAwareness(1)
   disconnected = false
   destroyed = false
+  /** Changes sent to collab that it has not confirmed yet, as the provider counts them. */
+  unsyncedChanges = 0
+  /** Times the page closed the socket, e.g. when the browser lost the network. */
+  socketClosed = 0
+  /** Times the page asked to connect at once, e.g. when the browser got the network back. */
+  connects = 0
   /** Stateless messages the page sent through the provider. */
   readonly sentStateless: string[] = []
 
   constructor(configuration: HocuspocusProviderConfiguration) {
-    this.configuration = configuration
+    this.configuration = {
+      ...configuration,
+      websocketProvider: { webSocket: { close: () => (this.socketClosed += 1) } } as never,
+    }
     FakeHocuspocusProvider.instances.push(this)
+    // Like the provider, every change of the document that did not come from collab is sent and waits for collab.
+    configuration.document?.on('update', (_update: Uint8Array, origin: unknown) => {
+      if (origin !== this) this.emitUnsyncedChanges(this.unsyncedChanges + 1)
+    })
   }
 
   static latest(): FakeHocuspocusProvider {
@@ -64,6 +77,11 @@ export class FakeHocuspocusProvider {
 
   disconnect() {
     this.disconnected = true
+  }
+
+  async connect() {
+    this.connects += 1
+    this.disconnected = false
   }
 
   sendStateless(payload: string) {
@@ -92,6 +110,12 @@ export class FakeHocuspocusProvider {
     this.configuration.onSynced?.({ state: true })
   }
 
+  /** Simulates collab confirming changes, or the provider sending new ones. */
+  emitUnsyncedChanges(number: number) {
+    this.unsyncedChanges = number
+    this.configuration.onUnsyncedChanges?.({ number })
+  }
+
   /** Asks for a token like the provider does before each connection. */
   async requestToken(): Promise<string | null> {
     const { token } = this.configuration
@@ -100,6 +124,12 @@ export class FakeHocuspocusProvider {
 
   emitAuthenticated(scope: 'read-write' | 'readonly' = 'read-write') {
     this.configuration.onAuthenticated?.({ scope })
+  }
+
+  /** Simulates a connection that collab authenticated with this access and that then synced the document. */
+  emitConnected(scope: 'read-write' | 'readonly' = 'read-write') {
+    this.emitAuthenticated(scope)
+    this.emitSynced()
   }
 
   emitAuthenticationFailed(reason: string) {

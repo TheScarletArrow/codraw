@@ -58,6 +58,7 @@ import { SqlMenu } from '../sql/SqlMenu.tsx'
 import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
+import { UnsentCopy } from '../offline/UnsentCopy.tsx'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Подключение',
@@ -86,10 +87,12 @@ export function BoardPage() {
   const user = useCurrentUser()
 
   if (board.isPending || user.isPending) return <Message>Загрузка…</Message>
-  if (isNotFound(board.error)) return <BoardNotFound />
-  if (isForbidden(board.error)) return <NoAccess boardId={boardId} />
-  if (board.isError || user.isError) return <Message alert>Не удалось загрузить доску</Message>
-  return <BoardWorkspace board={board.data} user={user.data} />
+  if (user.isError) return <Message alert>Не удалось загрузить доску</Message>
+  if (isNotFound(board.error)) return <BoardNotFound userId={user.data.id} boardId={boardId} />
+  if (isForbidden(board.error)) return <BoardNoAccess userId={user.data.id} boardId={boardId} />
+  if (board.isError) return <Message alert>Не удалось загрузить доску</Message>
+  // Another board, or another user, is another connection and another local copy, with nothing of the previous one.
+  return <BoardWorkspace key={`${user.data.id}:${board.data.id}`} board={board.data} user={user.data} />
 }
 
 function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
@@ -98,7 +101,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Who the elements this participant adds and changes name as who changed them last.
   const author = useMemo<Author>(() => ({ id: user.id, name: user.name }), [user.id, user.name])
   const viewer = !canEdit(board)
-  const connection = useBoardConnection(board.id, identity, viewer)
+  const connection = useBoardConnection({ id: board.id, title: board.title, viewer }, user.id, identity)
   const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
@@ -265,10 +268,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   }
   // A link, e.g. from a notification, asks the page once to open something: the page opens it as soon as it can and
   // takes the request out of the address, so that a reload does not open it again.
-  // `?thread=` opens the comments on that thread, once the threads and the pages are there, and goes to its page and
-  // its element; a thread that is gone opens the comments only.
+  // `?thread=` opens the comments on that thread, once the threads are there and the board is synced, and goes to its
+  // page and its element or its point; a thread that is gone opens the comments only. A local copy shown before the
+  // board is synced may lack the element or the page, e.g. one added since the user was here last.
   const linkedThread = searchParams.get('thread')
-  const readyLink = linkedThread !== null && threads.data && pages.length > 0 ? linkedThread : null
+  const linkable = status === 'synced' && pages.length > 0
+  const readyLink = linkedThread !== null && threads.data && linkable ? linkedThread : null
   const [openedLink, setOpenedLink] = useState<string | null>(null)
   if (readyLink !== openedLink) {
     setOpenedLink(readyLink)
@@ -280,7 +285,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     }
   }
   useEffect(() => {
-    if (!linkedThread || !threads.data || pages.length === 0) return
+    if (!linkedThread || !threads.data || !linkable) return
     const thread = threads.data.find((candidate) => candidate.id === linkedThread)
     const shown = thread && pages.some((page) => page.id === thread.pageId) ? thread : null
     if (shown) revealThread(shown)
@@ -288,7 +293,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
       params.delete('thread')
       if (shown) params.set('page', shown.pageId)
     })
-  }, [linkedThread, threads.data, pages, revealThread, changeParams])
+  }, [linkedThread, threads.data, linkable, pages, revealThread, changeParams])
 
   // `?share=` opens «Поделиться», e.g. on the requests for access, which it fetches again.
   const shareLinked = searchParams.has('share')
@@ -304,8 +309,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     changeParams((params) => params.delete('share'))
   }, [shareLinked, queryClient, board.id, changeParams])
 
-  if (status === 'not-found') return <BoardNotFound />
-  if (status === 'forbidden') return <NoAccess boardId={board.id} />
+  if (status === 'not-found') return <BoardNotFound userId={user.id} boardId={board.id} title={board.title} />
+  if (status === 'forbidden') return <BoardNoAccess userId={user.id} boardId={board.id} title={board.title} />
+  // Without a connection a participant who edits keeps editing: the local copy keeps their edits for later. Edits go to
+  // collab within moments of a synced connection, so only a longer wait shows.
+  const savedLocally = status === 'offline' && connection.cached && !readOnly
+  const unsent = connection.unsent && status !== 'synced'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -386,10 +395,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onOpenChange={setShareOpen}
         />
       </div>
+      {/* Under the header, where the tools of a selection keep their room; read out as it changes. */}
+      <div aria-live="polite">
+        {(savedLocally || unsent) && (
+          <p role="note" className="border-b bg-muted px-3 py-1 text-sm text-muted-foreground">
+            {savedLocally && 'Нет связи — правки сохраняются на этом устройстве'}
+            {savedLocally && unsent && ' · '}
+            {unsent && <span className="font-medium text-foreground">Не отправлено: есть правки</span>}
+          </p>
+        )}
+      </div>
       {connection.tooLarge && (
         <div
           role="alert"
-          className="flex items-center gap-3 border-b bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
         >
           <span className="flex-1">
             Доска достигла предельного размера, последнее изменение не сохранено. Удалите лишнее, чтобы продолжить
@@ -397,7 +416,28 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <Button type="button" variant="ghost" size="sm" onClick={connection.dismissTooLarge}>
             Понятно
           </Button>
+          {connection.setAside === 'too-large' && (
+            <UnsentCopy
+              userId={user.id}
+              boardId={board.id}
+              title={board.title}
+              reason="kept"
+              onDeleted={connection.copyDeleted}
+              className="w-full"
+            />
+          )}
         </div>
+      )}
+      {connection.setAside === 'no-edit-right' && (
+        <UnsentCopy
+          userId={user.id}
+          boardId={board.id}
+          title={board.title}
+          reason="no-edit-right"
+          onDeleted={connection.copyDeleted}
+          role="alert"
+          className="border-b bg-destructive/10 px-3 py-1.5 text-destructive"
+        />
       )}
       {changedSince && !visitHidden && !preview && !visitChanges && (
         <VisitBanner
@@ -426,6 +466,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             comparing={comparing}
             onCompareChange={setComparing}
             participantId={author.id}
+            // A restore keeps the board as a version first: the board as collab has it, not a copy behind it.
+            synced={status === 'synced' && !readOnly}
             onRestored={(pageId) => {
               setPreviewed(null)
               if (pageId) selectPage(pageId)
@@ -549,8 +591,32 @@ function reveal(editor: DiagramEditor, thread: CommentThread) {
   else if (thread.point) editor.centerOn(thread.point)
 }
 
-function BoardNotFound() {
-  return <Message alert>{STATUS_LABELS['not-found']}</Message>
+interface LostBoardProps {
+  userId: string
+  boardId: string
+  title?: string
+}
+
+/** The board is gone; edits of its local copy that never reached it may still be downloaded. */
+function BoardNotFound({ userId, boardId, title }: LostBoardProps) {
+  return (
+    <div>
+      <Message alert>{STATUS_LABELS['not-found']}</Message>
+      <UnsentCopy userId={userId} boardId={boardId} title={title} reason="kept" dropSent className="px-6" />
+    </div>
+  )
+}
+
+/**
+ * The board gives the participant no access, which they may ask its owner for; edits of its local copy that never
+ * reached it may still be downloaded.
+ */
+function BoardNoAccess({ userId, boardId, title }: LostBoardProps) {
+  return (
+    <NoAccess boardId={boardId}>
+      <UnsentCopy userId={userId} boardId={boardId} title={title} reason="no-edit-right" dropSent />
+    </NoAccess>
+  )
 }
 
 function Message({ children, alert = false }: { children: string; alert?: boolean }) {

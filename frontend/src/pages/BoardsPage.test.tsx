@@ -1,9 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as Y from 'yjs'
 import type { Board, SharedBoard } from '../api/boards.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
 import { takePendingImport } from '../drawio/files.ts'
+import { findLocalCopy, openLocalCopy } from '../offline/localCopies.ts'
 import { ALICE, mockFetch as mockAnyFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
 import { BoardsPage } from './BoardsPage.tsx'
 
@@ -251,7 +253,10 @@ describe('BoardsPage', () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
   })
 
-  it('deletes a board after the confirmation that names it', async () => {
+  it('deletes a board after the confirmation that names it, with its copy in the browser', async () => {
+    const copy = openLocalCopy(ALICE.id, 'a', 'Черновик', new Y.Doc())!
+    await copy.whenSynced
+    await copy.destroy()
     const fetchMock = mockFetch({
       'GET /api/boards': [{ body: [board('a', 'Черновик'), board('b', 'Схема')] }, { body: [board('b', 'Схема')] }],
       'DELETE /api/boards/a': { status: 204 },
@@ -266,6 +271,7 @@ describe('BoardsPage', () => {
     await waitFor(() => expect(screen.queryByRole('link', { name: 'Черновик' })).not.toBeInTheDocument())
     expect(screen.getByRole('link', { name: 'Схема' })).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    await waitFor(() => expect(findLocalCopy(ALICE.id, 'a')).toBeNull())
   })
 
   it('keeps a board when its deletion is cancelled', async () => {

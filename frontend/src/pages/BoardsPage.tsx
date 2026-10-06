@@ -17,6 +17,7 @@ import { BoardActions } from '../board/BoardActions.tsx'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { DRAWIO_FILE_TYPES, setPendingImport, titleFromFileName } from '../drawio/files.ts'
 import { DrawioFormatError, parseDrawio } from '../drawio/parse.ts'
+import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { TemplateCards } from '../templates/TemplateCards.tsx'
 import { templatePage, type BoardTemplate } from '../templates/templates.ts'
 
@@ -182,7 +183,11 @@ function OwnBoardItem({ board }: { board: Board }) {
     mutationFn: () => deleteBoard(board.id),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: ['boards', board.id], exact: true })
-      return updateList((boards) => boards.filter((other) => other.id !== board.id))
+      // A deleted board does not stay in the browser either.
+      return Promise.all([
+        updateList((boards) => boards.filter((other) => other.id !== board.id)),
+        deleteLocalCopiesOfBoard(board.id),
+      ])
     },
   })
   const title = rename.isPending ? rename.variables : board.title
