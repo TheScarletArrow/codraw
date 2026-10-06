@@ -1,5 +1,6 @@
 package io.github.thescarletarrow.codraw.comment
 
+import com.fasterxml.jackson.annotation.JsonValue
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -15,6 +16,39 @@ data class Person(
     val avatarUrl: String?,
 )
 
+/** A reaction to a comment, one of a fixed set. Stored by its name. */
+enum class Reaction(@get:JsonValue val value: String) {
+    /** 👍 */
+    THUMBS_UP("thumbs-up"),
+
+    /** ❤️ */
+    HEART("heart"),
+
+    /** 🎉 */
+    PARTY("party"),
+
+    /** 😄 */
+    SMILE("smile"),
+
+    /** 👀 */
+    EYES("eyes"),
+
+    /** ✅ */
+    CHECK("check"),
+    ;
+
+    companion object {
+        /** The reaction that the API names [value], `null` for a name outside the set. */
+        fun of(value: String): Reaction? = entries.find { it.value == value }
+    }
+}
+
+/** One reaction to a comment and who put it, in the order they did. */
+data class CommentReaction(
+    val reaction: Reaction,
+    val people: List<Person>,
+)
+
 data class Comment(
     val id: UUID,
     /** `null` once the author is deleted, e.g. a guest who did not come back. */
@@ -22,6 +56,8 @@ data class Comment(
     val body: String,
     /** The participants of the board that the comment mentions. */
     val mentions: List<Person>,
+    /** The reactions put on the comment, in the order of the set. */
+    val reactions: List<CommentReaction>,
     val createdAt: Instant,
     /** When the author last changed the text, `null` when they never did. */
     val editedAt: Instant?,
@@ -49,6 +85,8 @@ data class CommentThread(
     val resolvedAt: Instant?,
     /** Who marked the thread resolved; `null` while it is open or once they are deleted. */
     val resolvedBy: Person?,
+    /** Who takes care of the thread; `null` while nobody does or once they are deleted. */
+    val assignee: Person?,
     /** The first comment starts the thread; the others answer it, oldest first. */
     val comments: List<Comment>,
 )
@@ -62,6 +100,9 @@ data class StoredThread(
     val authorId: UUID?,
 )
 
+/** The assignee a thread had before it was given another one. */
+data class Reassignment(val previousAssigneeId: UUID?)
+
 /** The author of a stored comment and whether it starts its thread. */
 data class StoredComment(
     val id: UUID,
@@ -70,7 +111,7 @@ data class StoredComment(
     val first: Boolean,
 )
 
-/** Threads of comments on boards, their comments and the users the comments mention. */
+/** Threads of comments on boards, their comments, the users the comments mention and the reactions to them. */
 @Repository
 class Comments(private val jdbc: JdbcClient) {
 
@@ -231,6 +272,51 @@ class Comments(private val jdbc: JdbcClient) {
             .update()
     }
 
+    /**
+     * Makes the user [assigneeId] the assignee of the thread [threadId] of the board [boardId], or leaves the thread
+     * without one when it is `null`. Returns who was the assignee before, read under the lock of the row of the thread,
+     * or `null` when the board has no such thread.
+     */
+    fun assign(boardId: UUID, threadId: UUID, assigneeId: UUID?): Reassignment? = jdbc.sql(
+        """
+        UPDATE comment_threads SET assignee_id = :assigneeId
+        WHERE id = :threadId AND board_id = :boardId
+        RETURNING old.assignee_id AS previous
+        """,
+    )
+        .param("threadId", threadId)
+        .param("boardId", boardId)
+        .param("assigneeId", assigneeId)
+        .query { rs, _ -> Reassignment(rs.getObject("previous", UUID::class.java)) }
+        .optional()
+        .orElse(null)
+
+    /** Puts the [reaction] of the user [userId] on the comment [commentId], unless it is there already. */
+    fun addReaction(commentId: UUID, userId: UUID, reaction: Reaction, at: Instant) {
+        jdbc.sql(
+            """
+            INSERT INTO comment_reactions (comment_id, user_id, reaction, created_at)
+            VALUES (:commentId, :userId, :reaction, :at)
+            ON CONFLICT DO NOTHING
+            """,
+        )
+            .param("commentId", commentId)
+            .param("userId", userId)
+            .param("reaction", reaction.name)
+            .param("at", at.atOffset(ZoneOffset.UTC))
+            .update()
+    }
+
+    fun removeReaction(commentId: UUID, userId: UUID, reaction: Reaction) {
+        jdbc.sql(
+            "DELETE FROM comment_reactions WHERE comment_id = :commentId AND user_id = :userId AND reaction = :reaction",
+        )
+            .param("commentId", commentId)
+            .param("userId", userId)
+            .param("reaction", reaction.name)
+            .update()
+    }
+
     /** Marks the thread resolved by the user [by] at [at], or open again when [at] is `null`. */
     fun resolve(threadId: UUID, by: UUID?, at: Instant?) {
         jdbc.sql("UPDATE comment_threads SET resolved_at = :at, resolved_by = :by WHERE id = :threadId")
@@ -292,7 +378,10 @@ class Comments(private val jdbc: JdbcClient) {
             .filterNotNullTo(mutableSetOf())
     }
 
-    /** Passes the comments, the resolutions and the mentions of the user [fromUserId] to the user [toUserId]. */
+    /**
+     * Passes the comments, the resolutions, the mentions, the reactions and the assigned threads of the user
+     * [fromUserId] to the user [toUserId]. A reaction that both put on a comment stays once, as [toUserId] put it.
+     */
     fun transfer(fromUserId: UUID, toUserId: UUID) {
         jdbc.sql("UPDATE comments SET author_id = :toUserId WHERE author_id = :fromUserId")
             .param("fromUserId", fromUserId)
@@ -313,17 +402,37 @@ class Comments(private val jdbc: JdbcClient) {
             .param("toUserId", toUserId)
             .update()
         jdbc.sql("DELETE FROM comment_mentions WHERE user_id = :fromUserId").param("fromUserId", fromUserId).update()
+        jdbc.sql(
+            """
+            INSERT INTO comment_reactions (comment_id, user_id, reaction, created_at)
+            SELECT comment_id, :toUserId, reaction, created_at FROM comment_reactions WHERE user_id = :fromUserId
+            ON CONFLICT DO NOTHING
+            """,
+        )
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+        jdbc.sql("DELETE FROM comment_reactions WHERE user_id = :fromUserId").param("fromUserId", fromUserId).update()
+        jdbc.sql("UPDATE comment_threads SET assignee_id = :toUserId WHERE assignee_id = :fromUserId")
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
     }
 
-    /** Threads of the board, or only the thread [threadId] of it, with their comments and mentions: three queries. */
+    /**
+     * Threads of the board, or only the thread [threadId] of it, with their comments, mentions and reactions: four
+     * queries.
+     */
     private fun load(boardId: UUID, threadId: UUID?): List<CommentThread> {
         val threadFilter = if (threadId == null) "" else "AND t.id = :threadId"
         val threads = jdbc.sql(
             """
             SELECT t.id, t.page_id, t.cell_id, t.x, t.y, t.created_at, t.resolved_at,
-                   r.id AS resolver_id, r.name AS resolver_name, r.avatar_url AS resolver_avatar_url
+                   r.id AS resolver_id, r.name AS resolver_name, r.avatar_url AS resolver_avatar_url,
+                   s.id AS assignee_id, s.name AS assignee_name, s.avatar_url AS assignee_avatar_url
             FROM comment_threads t
             LEFT JOIN users r ON r.id = t.resolved_by
+            LEFT JOIN users s ON s.id = t.assignee_id
             WHERE t.board_id = :boardId $threadFilter
             ORDER BY t.created_at, t.id
             """,
@@ -351,6 +460,31 @@ class Comments(private val jdbc: JdbcClient) {
             .list()
             .groupBy({ it.first }, { it.second })
 
+        val reactions = jdbc.sql(
+            """
+            SELECT r.comment_id, r.reaction, u.id, u.name, u.avatar_url
+            FROM comment_reactions r
+            JOIN comments c ON c.id = r.comment_id
+            JOIN comment_threads t ON t.id = c.thread_id
+            JOIN users u ON u.id = r.user_id
+            WHERE t.board_id = :boardId $threadFilter
+            ORDER BY r.created_at, u.id
+            """,
+        )
+            .param("boardId", boardId)
+            .apply { if (threadId != null) param("threadId", threadId) }
+            .query { rs, _ ->
+                val reaction = Reaction.valueOf(rs.getString("reaction"))
+                rs.getObject("comment_id", UUID::class.java) to (reaction to checkNotNull(rs.toPerson()))
+            }
+            .list()
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, reacted) ->
+                reacted.groupBy({ it.first }, { it.second })
+                    .map { (reaction, people) -> CommentReaction(reaction, people) }
+                    .sortedBy { it.reaction.ordinal }
+            }
+
         val comments = jdbc.sql(
             """
             SELECT c.id, c.thread_id, c.body, c.created_at, c.edited_at,
@@ -371,6 +505,7 @@ class Comments(private val jdbc: JdbcClient) {
                     author = rs.toPerson("author_"),
                     body = rs.getString("body"),
                     mentions = mentions[id].orEmpty(),
+                    reactions = reactions[id].orEmpty(),
                     createdAt = rs.instant("created_at")!!,
                     editedAt = rs.instant("edited_at"),
                 )
@@ -389,6 +524,7 @@ class Comments(private val jdbc: JdbcClient) {
         createdAt = instant("created_at")!!,
         resolvedAt = instant("resolved_at"),
         resolvedBy = toPerson("resolver_"),
+        assignee = toPerson("assignee_"),
         comments = emptyList(),
     )
 

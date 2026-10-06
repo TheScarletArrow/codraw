@@ -1,8 +1,11 @@
 import type { CommentThread, Person, ThreadPoint } from '../api/comments.ts'
 import type { CellKind } from '../diagram/model.ts'
 
-/** What the panel shows: open threads, resolved threads, or the threads that mention the current user. */
-export type ThreadFilter = 'open' | 'resolved' | 'mentions'
+/**
+ * What the panel shows: open threads, resolved threads, the threads that mention the current user or those assigned
+ * to them.
+ */
+export type ThreadFilter = 'open' | 'resolved' | 'mentions' | 'assigned'
 
 export const threadsKey = (boardId: string) => ['threads', boardId] as const
 
@@ -31,6 +34,8 @@ export function filterFor(focus: ThreadFocus, threads: CommentThread[] | undefin
 export const mentionsUser = (thread: CommentThread, userId: string) =>
   thread.comments.some((comment) => comment.mentions.some((person) => person.id === userId))
 
+export const isAssignedTo = (thread: CommentThread, userId: string) => thread.assignee?.id === userId
+
 export function filterThreads(threads: CommentThread[], filter: ThreadFilter, userId: string): CommentThread[] {
   switch (filter) {
     case 'open':
@@ -39,6 +44,8 @@ export function filterThreads(threads: CommentThread[], filter: ThreadFilter, us
       return threads.filter((thread) => !isOpen(thread))
     case 'mentions':
       return threads.filter((thread) => mentionsUser(thread, userId))
+    case 'assigned':
+      return threads.filter((thread) => isAssignedTo(thread, userId))
   }
 }
 

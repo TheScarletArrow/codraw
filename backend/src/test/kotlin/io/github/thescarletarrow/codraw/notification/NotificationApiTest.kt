@@ -399,6 +399,108 @@ class NotificationApiTest(
     }
 
     @Test
+    fun `an assigned thread notifies its assignee with its page and its first comment, and nobody who takes it`() {
+        open(board, bob)
+        open(board, carol)
+        val thread = start(board, alice, body = "Поправь связь", pageId = "page-2")
+        reply(board, thread, alice, "Ту, что к API")
+        val assignedAt = clock.instant()
+
+        assign(board, thread, bob, by = alice)
+
+        notifications(bob).andExpect {
+            jsonPath("$.notifications") { value(hasSize<Any>(1)) }
+            jsonPath("$.notifications[0].kind") { value("assigned") }
+            jsonPath("$.notifications[0].access") { value(true) }
+            jsonPath("$.notifications[0].boardTitle") { value("Схема БД") }
+            jsonPath("$.notifications[0].pageId") { value("page-2") }
+            jsonPath("$.notifications[0].threadId") { value(thread) }
+            jsonPath("$.notifications[0].commentId") { value(nullValue()) }
+            jsonPath("$.notifications[0].snippet") { value("Поправь связь") }
+            jsonPath("$.notifications[0].actor.name") { value("Alice") }
+            jsonPath("$.notifications[0].role") { value(nullValue()) }
+            jsonPath("$.notifications[0].createdAt") { value(assignedAt.toString()) }
+        }
+
+        // Карл takes the thread himself: nobody hears of it, and Боб loses the notification of a thread no longer his.
+        assign(board, thread, carol, by = carol)
+        unreadCount(carol).andExpect { jsonPath("$.count") { value(0) } }
+        assertEquals(emptyList<String>(), kinds(bob))
+        unreadCount(alice).andExpect { jsonPath("$.count") { value(0) } }
+    }
+
+    @Test
+    fun `a new assignment of the same user replaces their notification of the thread, and taking it away takes the unread one`() {
+        open(board, bob)
+        open(board, carol)
+        val thread = start(board, alice)
+        start(board, alice, body = "@Bob", mentions = listOf(bob))
+
+        assign(board, thread, bob, by = alice)
+        assign(board, thread, null, by = alice)
+        assertEquals(listOf("mention"), kinds(bob))
+
+        assign(board, thread, bob, by = alice)
+        markAllRead(bob)
+        assign(board, thread, null, by = carol)
+        assertEquals(listOf("assigned", "mention"), kinds(bob))
+
+        clock.advance(Duration.ofMinutes(1))
+        assign(board, thread, bob, by = carol)
+        notifications(bob).andExpect {
+            jsonPath("$.notifications[*].kind") { value(contains("assigned", "mention")) }
+            jsonPath("$.notifications[0].actor.name") { value("Carol") }
+            jsonPath("$.notifications[0].readAt") { value(nullValue()) }
+            jsonPath("$.notifications[0].createdAt") { value(clock.instant().toString()) }
+        }
+
+        // Another assignee before Боб read it: the notification goes to Карл only.
+        assign(board, thread, carol, by = alice)
+        assertEquals(listOf("mention"), kinds(bob))
+        assertEquals(listOf("assigned"), kinds(carol))
+    }
+
+    @Test
+    fun `an assignment on a board the user can no longer open tells nothing of the thread, and goes with the thread`() {
+        open(board, bob)
+        val thread = start(board, alice, body = "Тайная ветка")
+        assign(board, thread, bob, by = alice)
+        setLinkAccess(board, "none")
+
+        notifications(bob).andExpect {
+            jsonPath("$.notifications[0].kind") { value("assigned") }
+            jsonPath("$.notifications[0].access") { value(false) }
+            jsonPath("$.notifications[0].threadId") { value(nullValue()) }
+            jsonPath("$.notifications[0].pageId") { value(nullValue()) }
+            jsonPath("$.notifications[0].snippet") { value(nullValue()) }
+        }
+
+        deleteComment(board, thread, firstComment(thread))
+        assertEquals(emptyList<String>(), kinds(bob))
+    }
+
+    @Test
+    fun `the notification of a thread assigned to a guest passes to the account they sign in with, once`() {
+        val guest = users.createGuest()
+        open(board, guest)
+        val dave = users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Dave", "Dave", null))
+        open(board, dave)
+        val thread = start(board, alice)
+        val other = start(board, alice, body = "Другая ветка")
+        assign(board, thread, dave, by = alice)
+        markAllRead(dave)
+        assign(board, thread, guest, by = alice)
+        assign(board, other, guest, by = alice)
+
+        users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Dave", "Dave", null), guest.id)
+
+        notifications(dave).andExpect {
+            jsonPath("$.notifications[*].threadId") { value(contains(other, thread)) }
+            jsonPath("$.notifications[*].kind") { value(contains("assigned", "assigned")) }
+        }
+    }
+
+    @Test
     fun `the cleanup deletes notifications older than the retention, in batches`() {
         open(board, bob)
         repeat(3) { start(board, alice, body = "@Bob старое $it", mentions = listOf(bob)) }
@@ -521,6 +623,25 @@ class NotificationApiTest(
             contentType = MediaType.APPLICATION_JSON
             content = json.writeValueAsString(mapOf("body" to body, "mentions" to mentions.map { it.id }))
         }.andExpect { status { isOk() } }
+    }
+
+    /** Makes the [assignee] the assignee of the thread, or nobody when it is `null`. */
+    private fun assign(board: String, thread: String, assignee: User?, by: User) {
+        val path = "/api/boards/$board/threads/$thread/assignee"
+        val result = if (assignee == null) {
+            mockMvc.delete(path) {
+                with(by.session())
+                with(csrf())
+            }
+        } else {
+            mockMvc.put(path) {
+                with(by.session())
+                with(csrf())
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"userId": "${assignee.id}"}"""
+            }
+        }
+        result.andExpect { status { isOk() } }
     }
 
     private fun deleteComment(board: String, thread: String, comment: String) {

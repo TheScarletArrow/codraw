@@ -4,14 +4,20 @@ import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
+  addReaction,
+  assignThread,
   deleteComment,
   editComment,
+  removeReaction,
   replyToThread,
   resolveThread,
   startThread,
+  unassignThread,
   type Comment,
   type CommentText,
   type CommentThread,
+  type Person,
+  type Reaction,
   type ThreadPoint,
 } from '../api/comments.ts'
 import { CommentComposer } from './CommentComposer.tsx'
@@ -45,12 +51,14 @@ const FILTERS: [ThreadFilter, string][] = [
   ['open', 'Открытые'],
   ['resolved', 'Решённые'],
   ['mentions', 'Упоминают меня'],
+  ['assigned', 'Назначены мне'],
 ]
 
 const EMPTY: Record<ThreadFilter, string> = {
   open: 'Открытых веток нет. Щёлкните правой кнопкой по элементу или по пустому месту и выберите «Комментировать».',
   resolved: 'Решённых веток нет.',
   mentions: 'Вас пока никто не упомянул.',
+  assigned: 'Вам пока не назначено ни одной ветки.',
 }
 
 interface CommentsPanelProps {
@@ -77,8 +85,9 @@ interface CommentsPanelProps {
 }
 
 /**
- * The comments of the board: threads by page, the current page first, filtered to the open, the resolved or those that
- * mention the participant, and a new thread about the page or about the element chosen on the canvas.
+ * The comments of the board: threads by page, the current page first, filtered to the open, the resolved, those that
+ * mention the participant or those assigned to them, and a new thread about the page or about the element chosen on the
+ * canvas.
  */
 export function CommentsPanel({
   boardId,
@@ -130,11 +139,22 @@ export function CommentsPanel({
   const resolve = useCommentChange(boardId, onChanged, ({ thread, resolved }: { thread: CommentThread; resolved: boolean }) =>
     resolveThread(boardId, thread.id, resolved),
   )
+  const react = useCommentChange(
+    boardId,
+    onChanged,
+    ({ thread, comment, reaction, on }: { thread: CommentThread; comment: Comment; reaction: Reaction; on: boolean }) =>
+      (on ? addReaction : removeReaction)(boardId, thread.id, comment.id, reaction),
+  )
+  const assign = useCommentChange(boardId, onChanged, ({ thread, assignee }: { thread: CommentThread; assignee: Person | null }) =>
+    assignee ? assignThread(boardId, thread.id, assignee.id) : unassignThread(boardId, thread.id),
+  )
   const actions: ThreadActions = {
     reply: (thread, text) => reply.mutateAsync({ thread, text }),
     edit: (thread, comment, text) => edit.mutateAsync({ thread, comment, text }),
     remove: (thread, comment) => remove.mutateAsync({ thread, comment }),
     resolve: (thread, resolved) => resolve.mutateAsync({ thread, resolved }),
+    react: (thread, comment, reaction, on) => react.mutateAsync({ thread, comment, reaction, on }),
+    assign: (thread, assignee) => assign.mutateAsync({ thread, assignee }),
   }
 
   useEffect(() => {
@@ -157,7 +177,7 @@ export function CommentsPanel({
         </Button>
       </div>
       <div className="flex flex-col gap-2 border-b p-3">
-        <div role="group" aria-label="Какие ветки показать" className="flex gap-1">
+        <div role="group" aria-label="Какие ветки показать" className="flex flex-wrap gap-1">
           {FILTERS.map(([value, label]) => (
             <Button
               key={value}

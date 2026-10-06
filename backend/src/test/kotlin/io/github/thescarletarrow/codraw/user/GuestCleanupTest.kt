@@ -7,6 +7,8 @@ import io.github.thescarletarrow.codraw.board.BoardDocumentService
 import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.comment.CommentService
+import io.github.thescarletarrow.codraw.comment.Reaction
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.notification.NotificationService
 import io.github.thescarletarrow.codraw.signedIn
@@ -39,6 +41,7 @@ class GuestCleanupTest(
     @Autowired private val members: BoardMembers,
     @Autowired private val requests: AccessRequests,
     @Autowired private val notifications: NotificationService,
+    @Autowired private val comments: CommentService,
 ) {
 
     @BeforeEach
@@ -124,6 +127,26 @@ class GuestCleanupTest(
         val left = notifications.page(alice.id, before = null).notifications.single()
         assertNull(left.actor)
         assertEquals(board.id, left.boardId)
+    }
+
+    @Test
+    fun `deletes the reactions of a gone guest and leaves the threads assigned to them without an assignee`() {
+        val alice = users.gitHubUser("Alice")
+        val board = boards.create("Общая", alice.id)
+        val guest = users.createGuest()
+        members.put(board.id!!, guest.id, MemberRole.VIEWER, clock.instant())
+        val thread = comments.start(board, alice.id, "page-1", cellId = null, point = null, "Поправь связь", emptyList())
+        val comment = thread.comments.single().id
+        comments.addReaction(board, thread.id, comment, guest.id, Reaction.EYES)
+        comments.addReaction(board, thread.id, comment, alice.id, Reaction.EYES)
+        comments.assign(board, thread.id, alice.id, guest.id)
+
+        clock.advance(Duration.ofDays(2))
+
+        assertEquals(GuestCleanup.Result(boards = 0, guests = 1), cleanup.cleanUp())
+        val left = comments.thread(board, thread.id)
+        assertNull(left.assignee)
+        assertEquals(listOf(alice.id), left.comments.single().reactions.single().people.map { it.id })
     }
 
     @Test

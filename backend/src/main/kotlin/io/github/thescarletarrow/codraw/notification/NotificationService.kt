@@ -40,6 +40,20 @@ class NotificationService(
         notify(mentioned, NotificationKind.MENTION, boardId, authorId, commentId = commentId)
     }
 
+    /**
+     * The user [actorId] made [assigneeId] the assignee of the thread [threadId] on the board [boardId] in place of
+     * [previousAssigneeId], or left the thread without one. The previous assignee loses their unread notification of the
+     * thread, which is no longer theirs. The new one gets a notification at the top of the list in place of any earlier
+     * one of the thread, unless they assigned the thread to themselves.
+     */
+    fun threadAssigned(boardId: UUID, threadId: UUID, actorId: UUID, previousAssigneeId: UUID?, assigneeId: UUID?) {
+        if (previousAssigneeId == assigneeId) return
+        previousAssigneeId?.let { notifications.deleteAboutThread(it, threadId, unreadOnly = true) }
+        if (assigneeId == null || assigneeId == actorId) return
+        notifications.deleteAboutThread(assigneeId, threadId, unreadOnly = false)
+        notify(setOf(assigneeId), NotificationKind.ASSIGNED, boardId, actorId, threadId = threadId)
+    }
+
     /** The user [userId] asks the owner of the [board] for the [role]; a notification of their earlier unread request goes. */
     fun accessRequested(board: Board, userId: UUID, role: MemberRole) {
         notifications.deleteUnread(board.ownerId, board.boardId, userId, NotificationKind.ACCESS_REQUEST)
@@ -103,11 +117,12 @@ class NotificationService(
         boardId: UUID,
         actorId: UUID,
         commentId: UUID? = null,
+        threadId: UUID? = null,
         role: MemberRole? = null,
     ) {
         val recipients = userIds - actorId
         if (recipients.isEmpty()) return
-        notifications.add(recipients, kind, boardId, commentId, actorId, role, now())
+        notifications.add(recipients, kind, boardId, commentId, threadId, actorId, role, now())
         // Others create the notifications of a user: the oldest go, so that nobody fills the database of another.
         notifications.keepNewest(recipients, limits.notificationsPerUser)
     }
@@ -154,11 +169,11 @@ data class Notification(
     /** Whether the recipient may open the board now. */
     val access: Boolean,
     val boardTitle: String?,
-    /** The page of the thread of a mention or an answer. */
+    /** The page of the thread of a mention, an answer or an assignment. */
     val pageId: String?,
     val threadId: UUID?,
     val commentId: UUID?,
-    /** The start of the comment of a mention or an answer. */
+    /** The start of the comment of a mention or an answer, or of the first comment of an assigned thread. */
     val snippet: String?,
     /** `null` without access and once the actor is deleted. */
     val actor: Actor?,
