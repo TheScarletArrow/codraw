@@ -29,7 +29,8 @@ export function VersionAuthors({ authors }: { authors: VersionAuthor[] }) {
   )
 }
 
-function AuthorMark({ author }: { author: VersionAuthor }) {
+/** The avatar of a participant who changed the board, or the first letter of their name, in their colour. */
+export function AuthorMark({ author }: { author: VersionAuthor }) {
   const color = participantColor(author.id)
   if (author.avatarUrl) {
     return (

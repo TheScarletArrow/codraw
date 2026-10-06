@@ -58,7 +58,9 @@ export async function requestBytes(path: string, init: RequestInit = {}): Promis
 }
 
 async function send(path: string, init: RequestInit, accept: string): Promise<Response> {
-  const token = SAFE_METHODS.has(init.method ?? 'GET') ? undefined : await ensureCsrfToken()
+  // With the token at hand the request leaves at once, before anything is awaited: a page that is being closed sends a
+  // request with `keepalive` only from the handler of `pagehide` itself.
+  const token = SAFE_METHODS.has(init.method ?? 'GET') ? undefined : (csrfToken() ?? (await ensureCsrfToken()))
   const response = await fetch(path, {
     ...init,
     headers: { Accept: accept, ...(token && { [CSRF_HEADER]: token }), ...init.headers },

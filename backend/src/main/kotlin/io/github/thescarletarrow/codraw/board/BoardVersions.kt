@@ -54,6 +54,21 @@ class BoardVersions(private val jdbc: JdbcClient) {
             .list(),
     )
 
+    /** The versions of the board [boardId] without their states, oldest first. */
+    fun stamps(boardId: UUID): List<VersionStamp> = jdbc.sql(
+        "SELECT id, created_at, reason, authors FROM board_versions WHERE board_id = :boardId ORDER BY created_at, id",
+    )
+        .param("boardId", boardId)
+        .query { rs, _ ->
+            VersionStamp(
+                id = rs.getObject("id", UUID::class.java),
+                createdAt = rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
+                reason = VersionReason.valueOf(rs.getString("reason")),
+                authorIds = rs.authorIds(),
+            )
+        }
+        .list()
+
     /** The state of the version [versionId] of the board [boardId], or `null` when the board has no such version. */
     fun state(boardId: UUID, versionId: UUID): ByteArray? = jdbc.sql(
         "SELECT state FROM board_versions WHERE board_id = :boardId AND id = :versionId",
@@ -177,20 +192,15 @@ class BoardVersions(private val jdbc: JdbcClient) {
             .update()
     }
 
+    /** The users [ids] as authors, in the order of the ids; repeated ids show once, users who are gone not at all. */
+    fun authors(ids: List<UUID>): List<VersionAuthor> {
+        val users = users(ids.toSet())
+        return ids.distinct().mapNotNull(users::get)
+    }
+
     /** The authors of the [versions] from the users, read at once; repeated ids show once, users who are gone not at all. */
     private fun withAuthors(versions: List<StoredVersion>): List<BoardVersion> {
-        val ids = versions.flatMapTo(mutableSetOf()) { it.authorIds }
-        val users = if (ids.isEmpty()) {
-            emptyMap()
-        } else {
-            jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = ANY (:ids::uuid[])")
-                .param("ids", ids.toTypedArray())
-                .query { rs, _ ->
-                    VersionAuthor(rs.getObject("id", UUID::class.java), rs.getString("name"), rs.getString("avatar_url"))
-                }
-                .list()
-                .associateBy { it.id }
-        }
+        val users = users(versions.flatMapTo(mutableSetOf()) { it.authorIds })
         return versions.map { version ->
             BoardVersion(
                 id = version.id,
@@ -200,6 +210,18 @@ class BoardVersions(private val jdbc: JdbcClient) {
                 authors = version.authorIds.distinct().mapNotNull(users::get),
             )
         }
+    }
+
+    /** The users [ids] who are still there, by their ids. */
+    private fun users(ids: Set<UUID>): Map<UUID, VersionAuthor> {
+        if (ids.isEmpty()) return emptyMap()
+        return jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = ANY (:ids::uuid[])")
+            .param("ids", ids.toTypedArray())
+            .query { rs, _ ->
+                VersionAuthor(rs.getObject("id", UUID::class.java), rs.getString("name"), rs.getString("avatar_url"))
+            }
+            .list()
+            .associateBy { it.id }
     }
 
     /** A version as it is stored, with the ids of its authors. */
@@ -216,8 +238,10 @@ class BoardVersions(private val jdbc: JdbcClient) {
         createdAt = getObject("created_at", OffsetDateTime::class.java).toInstant(),
         reason = VersionReason.valueOf(getString("reason")),
         name = getString("name"),
-        authorIds = (getArray("authors").array as Array<*>).map { it as UUID },
+        authorIds = authorIds(),
     )
+
+    private fun ResultSet.authorIds(): List<UUID> = (getArray("authors").array as Array<*>).map { it as UUID }
 
     private companion object {
         const val COLUMNS = "id, created_at, reason, name, authors"

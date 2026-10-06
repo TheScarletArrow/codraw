@@ -22,6 +22,16 @@ describe('request', () => {
     expect(sentHeaders(fetchMock)).toMatchObject({ 'X-XSRF-TOKEN': 'token+1' })
   })
 
+  it('sends a change at once when the CSRF token is there, so that a closing page can send it', async () => {
+    const fetchMock = mockFetch({ 'DELETE /api/boards/1/visit': { status: 204 } })
+
+    const sent = request('/api/boards/1/visit', { method: 'DELETE', keepalive: true })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ keepalive: true, headers: { 'X-XSRF-TOKEN': 'token+1' } })
+    await sent
+  })
+
   it('does not send the CSRF token with reads', async () => {
     const fetchMock = mockFetch({ 'GET /api/boards': { body: [] } })
 

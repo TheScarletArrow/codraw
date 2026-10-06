@@ -79,6 +79,13 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Уведомление видит только тот, кому оно адресовано',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Визиты досок. Когда пользователь последний раз был на каждой доске',
+    )
+    expect(retention).toHaveTextContent('Время визитов доски — пока у пользователя есть доступ к ней')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов не видит никто, кроме самого пользователя',
+    )
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 
