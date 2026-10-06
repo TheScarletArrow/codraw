@@ -9,6 +9,7 @@ import {
   fetchBoards,
   fetchSharedBoards,
   renameBoard,
+  SHARED_BOARDS_QUERY_KEY,
   type Board,
   type SharedBoard,
 } from '../api/boards.ts'
@@ -20,9 +21,6 @@ import { TemplateCards } from '../templates/TemplateCards.tsx'
 import { templatePage, type BoardTemplate } from '../templates/templates.ts'
 
 export const NEW_BOARD_TITLE = 'Новая доска'
-
-/** Query key of the boards of other users that the user opened through their links. */
-const SHARED_BOARDS_QUERY_KEY = ['shared-boards'] as const
 
 const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -142,7 +140,7 @@ export function BoardsPage() {
       {shared.data && shared.data.length > 0 && (
         <section aria-labelledby="shared-boards" className="mt-8">
           <h3 id="shared-boards" className="text-lg font-semibold">
-            Открытые по ссылке
+            Общие со мной
           </h3>
           <ul className="mt-2 divide-y">
             {shared.data.map((board) => (
@@ -227,7 +225,7 @@ function OwnBoardItem({ board }: { board: Board }) {
   )
 }
 
-/** A board of another user that the user opened through its link, with its owner. */
+/** A board of another user that the user is a member of or opened through its link, with its owner and their role. */
 function SharedBoardItem({ board }: { board: SharedBoard }) {
   return (
     <li className="flex items-center justify-between gap-4 py-3">
@@ -238,12 +236,16 @@ function SharedBoardItem({ board }: { board: SharedBoard }) {
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
           {board.owner.avatarUrl && <img src={board.owner.avatarUrl} alt="" className="size-4 rounded-full" />}
           {board.owner.name}
-          {board.role === 'viewer' && <span className="rounded bg-muted px-1.5 text-xs">просмотр</span>}
+          <span className="rounded bg-muted px-1.5 text-xs">{board.role === 'viewer' ? 'просмотр' : 'редактирование'}</span>
         </span>
       </div>
-      <time dateTime={board.openedAt} className="whitespace-nowrap text-muted-foreground" title="Открыта">
-        {dateFormat.format(new Date(board.openedAt))}
-      </time>
+      {board.openedAt ? (
+        <time dateTime={board.openedAt} className="whitespace-nowrap text-muted-foreground" title="Открыта">
+          {dateFormat.format(new Date(board.openedAt))}
+        </time>
+      ) : (
+        <span className="whitespace-nowrap text-muted-foreground">Не открывалась</span>
+      )}
     </li>
   )
 }

@@ -170,8 +170,8 @@ class Comments(private val jdbc: JdbcClient) {
     }
 
     /**
-     * Who may be mentioned on the board [boardId]: its owner first, then, unless the link is closed, the users who
-     * opened it through its link, most recently first, at most [limit] of them.
+     * Who may be mentioned on the board [boardId]: its owner first, then its members and, unless the link is closed,
+     * the users who opened it through its link, the most recently joined or opened first, at most [limit] of them.
      */
     fun people(boardId: UUID, ownerId: UUID, linkOpen: Boolean, limit: Int): List<Person> {
         val owner = jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = :ownerId")
@@ -179,34 +179,37 @@ class Comments(private val jdbc: JdbcClient) {
             .query { rs, _ -> rs.toPerson() }
             .list()
             .filterNotNull()
-        if (!linkOpen) return owner
         return owner + jdbc.sql(
             """
             SELECT u.id, u.name, u.avatar_url
-            FROM board_visits v
-            JOIN users u ON u.id = v.user_id
-            WHERE v.board_id = :boardId AND v.user_id <> :ownerId
-            ORDER BY v.visited_at DESC, u.id
+            FROM ($PARTICIPANTS) p
+            JOIN users u ON u.id = p.user_id
+            WHERE p.user_id <> :ownerId
+            GROUP BY u.id, u.name, u.avatar_url
+            ORDER BY max(p.since) DESC, u.id
             LIMIT :limit
             """,
         )
             .param("boardId", boardId)
             .param("ownerId", ownerId)
+            .param("linkOpen", linkOpen)
             .param("limit", limit)
             .query { rs, _ -> rs.toPerson() }
             .list()
             .filterNotNull()
     }
 
-    /** Those of the users [userIds] who are the owner [ownerId] or, unless the link is closed, opened the board. */
+    /**
+     * Those of the users [userIds] who are the owner [ownerId] or a member, or, unless the link is closed, opened the
+     * board.
+     */
     fun participants(boardId: UUID, ownerId: UUID, linkOpen: Boolean, userIds: Collection<UUID>): Set<UUID> {
         if (userIds.isEmpty()) return emptySet()
         return jdbc.sql(
             """
             SELECT u.id FROM users u
             WHERE u.id = ANY (:userIds::uuid[])
-              AND (u.id = :ownerId
-                   OR (:linkOpen AND EXISTS (SELECT 1 FROM board_visits v WHERE v.board_id = :boardId AND v.user_id = u.id)))
+              AND (u.id = :ownerId OR u.id IN (SELECT p.user_id FROM ($PARTICIPANTS) p))
             """,
         )
             .param("userIds", userIds.toTypedArray())
@@ -324,4 +327,16 @@ class Comments(private val jdbc: JdbcClient) {
     }
 
     private fun ResultSet.instant(column: String): Instant? = getObject(column, OffsetDateTime::class.java)?.toInstant()
+
+    private companion object {
+        /**
+         * Users other than the owner who take part in the board `:boardId`, with when they joined or last opened it:
+         * its members, and the users who opened it through its link while `:linkOpen`.
+         */
+        const val PARTICIPANTS = """
+            SELECT user_id, created_at AS since FROM board_members WHERE board_id = :boardId
+            UNION ALL
+            SELECT user_id, visited_at FROM board_visits WHERE board_id = :boardId AND :linkOpen
+        """
+    }
 }

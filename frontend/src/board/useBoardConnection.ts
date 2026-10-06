@@ -8,10 +8,11 @@ import { recheckSession } from '../auth/session.ts'
 import type { ParticipantIdentity } from './identity.ts'
 import { threadsKey } from '../comments/threads.ts'
 import { embedKey } from '../embed/links.ts'
+import { membersKey } from './members.ts'
 import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
-/** `forbidden`: the owner closed the link to the board, and the participant has no access to it any more. */
+/** `forbidden`: the owner closed the link to the board or removed the participant, who has no access to it any more. */
 export type ConnectionStatus = 'connecting' | 'synced' | 'offline' | 'not-found' | 'forbidden'
 
 export interface Participant extends ParticipantIdentity {
@@ -74,8 +75,9 @@ export function useBoardConnection(boardId: string, identity: ParticipantIdentit
     const refetchBoard = () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ['boards', boardId], exact: true }),
-        // The owner may have turned the live image on or off.
+        // The owner may have turned the live image on or off, or changed the members.
         queryClient.invalidateQueries({ queryKey: embedKey(boardId), exact: true }),
+        queryClient.invalidateQueries({ queryKey: membersKey(boardId), exact: true }),
       ])
     let authenticated = false
     const provider = new HocuspocusProvider({

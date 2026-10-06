@@ -98,6 +98,9 @@ async function openBoard(responses: Record<string, MockResponse | MockResponse[]
     [`GET ${boardUrl}/threads`]: { body: [] },
     [`GET ${boardUrl}/people`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null }] },
     [`GET ${boardUrl}/embed`]: { status: 404 },
+    [`GET ${boardUrl}/members`]: { body: [{ id: ALICE.id, name: ALICE.name, avatarUrl: null, role: 'owner' }] },
+    [`GET ${boardUrl}/visitors`]: { body: [] },
+    [`GET ${boardUrl}/invites`]: { body: [] },
     ...responses,
   })
   const { unmount, router } = renderRoutes(routes, `/boards/${boardId}${search}`)
@@ -559,12 +562,36 @@ describe('BoardPage', () => {
       expect(Y.encodeStateVector(provider.document)).toEqual(before)
     })
 
-    it('offers no history to a participant who does not own the board', async () => {
-      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+    it('offers the history to an editor who does not own the board, in a menu without renaming and deleting', async () => {
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: { body: boardOfAnother },
+        [`GET ${versionsUrl}`]: { body: [version('v1', 'auto')] },
+      })
       act(() => provider.emitSynced())
 
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      const menu = screen.getByRole('menu', { name: 'Доска «Архитектура»' })
+      expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['История версий'])
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'История версий' }))
+
+      const history = screen.getByRole('complementary', { name: 'История версий' })
+      expect(await within(history).findByRole('button', { name: /Автоматически/ })).toBeInTheDocument()
+    })
+
+    it('offers no history to a participant who may only view the board, and closes it when an editor becomes one', async () => {
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { body: boardToView }],
+        [`GET ${versionsUrl}`]: { body: [] },
+      })
+      act(() => provider.emitSynced())
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'История версий' }))
+      expect(screen.getByRole('complementary', { name: 'История версий' })).toBeInTheDocument()
+
+      act(() => provider.emitStateless(BOARD_CHANGED))
+
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull())
       expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).toBeNull()
-      expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull()
     })
   })
 
@@ -615,7 +642,7 @@ describe('BoardPage', () => {
     })
 
     it('shows a participant who does not own the board its title only', async () => {
-      await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother } })
+      await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
 
       expect(screen.getByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Архитектура' })).not.toBeInTheDocument()

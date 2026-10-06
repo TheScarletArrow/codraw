@@ -24,7 +24,7 @@ const sharedBoard = (id: string, title: string, owner: string): SharedBoard => (
   openedAt: '2026-10-03T09:00:00Z',
 })
 
-/** Answers the requests of the page; the list of boards opened through links is empty unless given. */
+/** Answers the requests of the page; the list of shared boards is empty unless given. */
 const mockFetch = (responses: Record<string, MockResponse | MockResponse[]>) =>
   mockAnyFetch({ 'GET /api/boards/shared': { body: [] }, ...responses })
 
@@ -172,7 +172,7 @@ describe('BoardsPage', () => {
     expect(within(documents).getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute('href', '/privacy')
   })
 
-  it('lists the boards opened through links with their owners, without the menu of the owner', async () => {
+  it('lists the boards shared with the user with their owners, without the menu of the owner', async () => {
     mockFetch({
       'GET /api/boards': { body: [board('own', 'Своя')] },
       'GET /api/boards/shared': { body: [sharedBoard('x', 'Платежи', 'Боб'), sharedBoard('y', 'Склад', 'Вера')] },
@@ -180,7 +180,7 @@ describe('BoardsPage', () => {
 
     renderRoutes(routes)
 
-    const section = await screen.findByRole('region', { name: 'Открытые по ссылке' })
+    const section = await screen.findByRole('region', { name: 'Общие со мной' })
     await within(section).findByRole('link', { name: 'Платежи' })
     expect(within(section).getAllByRole('link').map((link) => link.textContent)).toEqual(['Платежи', 'Склад'])
     expect(within(section).getByRole('link', { name: 'Платежи' })).toHaveAttribute('href', '/boards/x')
@@ -188,32 +188,35 @@ describe('BoardsPage', () => {
     expect(within(section).queryByRole('button', { name: /Меню доски/ })).not.toBeInTheDocument()
   })
 
-  it('marks the boards opened through links that can only be viewed', async () => {
+  it('shows the role of the user on each shared board, and a board of a member that was never opened', async () => {
     mockFetch({
       'GET /api/boards': { body: [] },
       'GET /api/boards/shared': {
         body: [
           { ...sharedBoard('x', 'Платежи', 'Боб'), role: 'viewer', linkAccess: 'view' },
           sharedBoard('y', 'Склад', 'Вера'),
+          { ...sharedBoard('z', 'Новая', 'Глеб'), linkAccess: 'none', openedAt: null },
         ],
       },
     })
 
     renderRoutes(routes)
 
-    const section = await screen.findByRole('region', { name: 'Открытые по ссылке' })
-    const [viewed, edited] = await within(section).findAllByRole('listitem')
+    const section = await screen.findByRole('region', { name: 'Общие со мной' })
+    const [viewed, edited, joined] = await within(section).findAllByRole('listitem')
     expect(viewed).toHaveTextContent('просмотр')
-    expect(edited).not.toHaveTextContent('просмотр')
+    expect(viewed).not.toHaveTextContent('редактирование')
+    expect(edited).toHaveTextContent('редактирование')
+    expect(joined).toHaveTextContent('Не открывалась')
   })
 
-  it('has no section of boards opened through links when there are none', async () => {
+  it('has no section of shared boards when there are none', async () => {
     mockFetch({ 'GET /api/boards': { body: [board('own', 'Своя')] } })
 
     renderRoutes(routes)
 
     await screen.findByRole('link', { name: 'Своя' })
-    expect(screen.queryByRole('region', { name: 'Открытые по ссылке' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Общие со мной' })).not.toBeInTheDocument()
   })
 
   it('renames a board from its menu with Enter', async () => {

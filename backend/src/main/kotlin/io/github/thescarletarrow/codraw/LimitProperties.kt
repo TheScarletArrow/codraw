@@ -21,6 +21,12 @@ data class LimitProperties(
     /** The most comments a board holds, in all its threads. */
     @field:Positive
     val commentsPerBoard: Int = 5000,
+    /** The most members a board has, besides its owner. */
+    @field:Positive
+    val membersPerBoard: Int = 100,
+    /** The most invitation links of a board that are not revoked. */
+    @field:Positive
+    val invitesPerBoard: Int = 20,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The largest live image of a board, as the browsers of participants publish it. */

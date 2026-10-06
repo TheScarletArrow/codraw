@@ -28,7 +28,7 @@ class CommentService(
 
     fun thread(board: Board, threadId: UUID): CommentThread = comments.thread(board.boardId, threadId) ?: throw CommentNotFoundException()
 
-    /** Who may be mentioned on the [board]: its owner first, then those who opened it through its link. */
+    /** Who may be mentioned on the [board]: its owner first, then its members and those who opened it by its link. */
     fun people(board: Board): List<Person> =
         comments.people(board.boardId, board.ownerId, board.linkOpen, PEOPLE_LIMIT)
 
@@ -93,7 +93,7 @@ class CommentService(
         comments.replaceMentions(commentId, mentioned(board, mentions))
     }
 
-    /** Mentions of users who cannot open the board are dropped. */
+    /** Mentions of users who take no part in the board are dropped. */
     private fun mentioned(board: Board, userIds: Collection<UUID>): Set<UUID> =
         comments.participants(board.boardId, board.ownerId, board.linkOpen, userIds.toSet())
 

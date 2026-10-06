@@ -22,8 +22,8 @@ interface VersionPreviewProps {
 
 /**
  * A version of the board in place of the board, for viewing only: its own pages on a canvas of its own, which publishes
- * no presence, so other participants do not see the owner on pages they do not have. Restoring keeps the current state
- * as a version first.
+ * no presence, so other participants do not see whoever looks at it on pages they do not have. Restoring keeps the
+ * current state as a version first.
  */
 export function VersionPreview({ boardId, version, document, onRestored, onClose }: VersionPreviewProps) {
   const state = useQuery({

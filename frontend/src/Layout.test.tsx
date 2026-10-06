@@ -7,7 +7,14 @@ import { ALICE, mockFetch, renderRoutes } from './test/render.tsx'
 
 const routes = [
   { path: '/login', element: <p>Страница входа</p> },
-  { path: '/', element: <Layout />, children: [{ index: true, element: <BoardsPage /> }] },
+  {
+    path: '/',
+    element: <Layout />,
+    children: [
+      { index: true, element: <BoardsPage /> },
+      { path: 'invite/:token', element: <p>Приглашение</p> },
+    ],
+  },
 ]
 
 describe('Layout', () => {
@@ -23,6 +30,15 @@ describe('Layout', () => {
 
     expect(await screen.findByText('Страница входа')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
+  })
+
+  it('remembers the page that needs a session for the login page to come back to', async () => {
+    mockFetch({ 'GET /api/me': { status: 401 } })
+
+    const { router } = renderRoutes(routes, '/invite/AAAAAAAAAAAAAAAAAAAAAA?x=1')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(router.state.location.state).toEqual({ from: '/invite/AAAAAAAAAAAAAAAAAAAAAA?x=1' })
   })
 
   it('shows the name and the avatar of the signed-in user in the header', async () => {

@@ -39,7 +39,7 @@ test('the owner renames a board on its page, and a participant sees the new titl
   await expect(bob.getByRole('button', { name: 'Платежи', exact: true })).toHaveCount(0)
 
   await bob.goto('/')
-  const shared = bob.getByRole('region', { name: 'Открытые по ссылке' })
+  const shared = bob.getByRole('region', { name: 'Общие со мной' })
   await expect(shared.locator(`a[href="${boardPath}"]`)).toHaveText('Платежи')
   await expect(shared).toContainText('Алиса')
   await alice.goto('/')

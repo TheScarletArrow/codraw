@@ -8,15 +8,18 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
-/** A board of another user that the user opened through its link, with its owner. */
-data class VisitedBoard(
+/** A board of another user that the user opened through its link or is a member of, with its owner. */
+data class SharedBoard(
     val board: Board,
     val ownerName: String,
     val ownerAvatarUrl: String?,
-    val visitedAt: Instant,
+    /** The role that the owner gave the user, `null` when they are not a member. */
+    val memberRole: MemberRole?,
+    /** When the user last opened the board, `null` while they never did. */
+    val visitedAt: Instant?,
 )
 
-/** Boards of other users that users opened through their links. */
+/** Boards of other users that users opened through their links, and with memberships the boards shared with them. */
 @Repository
 class BoardVisits(private val jdbc: JdbcClient) {
 
@@ -35,24 +38,32 @@ class BoardVisits(private val jdbc: JdbcClient) {
     }
 
     /**
-     * Boards of other users that the user [userId] opened, most recently opened first. A board whose owner closed its
-     * link is left out, and comes back once the owner opens it again.
+     * Boards of other users that the user [userId] opened or is a member of, the most recently opened or joined first.
+     * A board whose owner closed its link stays for a member only; for anybody else it comes back once the owner opens
+     * it again.
      */
-    fun visitedBy(userId: UUID, limit: Int): List<VisitedBoard> = jdbc.sql(
+    fun sharedWith(userId: UUID, limit: Int): List<SharedBoard> = jdbc.sql(
         """
+        WITH shared AS (
+            SELECT board_id FROM board_visits WHERE user_id = :userId
+            UNION
+            SELECT board_id FROM board_members WHERE user_id = :userId
+        )
         SELECT b.id, b.title, b.owner_id, b.created_at, b.updated_at, b.link_access,
-               u.name AS owner_name, u.avatar_url AS owner_avatar_url, v.visited_at
-        FROM board_visits v
-        JOIN boards b ON b.id = v.board_id
+               u.name AS owner_name, u.avatar_url AS owner_avatar_url, v.visited_at, m.role AS member_role
+        FROM shared s
+        JOIN boards b ON b.id = s.board_id
         JOIN users u ON u.id = b.owner_id
-        WHERE v.user_id = :userId AND b.owner_id <> :userId AND b.link_access <> 'NONE'
-        ORDER BY v.visited_at DESC
+        LEFT JOIN board_visits v ON v.board_id = b.id AND v.user_id = :userId
+        LEFT JOIN board_members m ON m.board_id = b.id AND m.user_id = :userId
+        WHERE b.owner_id <> :userId AND (m.user_id IS NOT NULL OR b.link_access <> 'NONE')
+        ORDER BY GREATEST(v.visited_at, m.created_at) DESC, b.id
         LIMIT :limit
         """,
     )
         .param("userId", userId)
         .param("limit", limit)
-        .query { rs, _ -> rs.toVisitedBoard() }
+        .query { rs, _ -> rs.toSharedBoard() }
         .list()
 
     /** Passes the visits of the user [fromUserId] to the user [toUserId], keeping the later time of a board both opened. */
@@ -70,19 +81,20 @@ class BoardVisits(private val jdbc: JdbcClient) {
         jdbc.sql("DELETE FROM board_visits WHERE user_id = :fromUserId").param("fromUserId", fromUserId).update()
     }
 
-    private fun ResultSet.toVisitedBoard() = VisitedBoard(
+    private fun ResultSet.toSharedBoard() = SharedBoard(
         board = Board(
             id = getObject("id", UUID::class.java),
             title = getString("title"),
             ownerId = getObject("owner_id", UUID::class.java),
-            createdAt = instant("created_at"),
-            updatedAt = instant("updated_at"),
+            createdAt = instant("created_at")!!,
+            updatedAt = instant("updated_at")!!,
             linkAccess = LinkAccess.valueOf(getString("link_access")),
         ),
         ownerName = getString("owner_name"),
         ownerAvatarUrl = getString("owner_avatar_url"),
+        memberRole = getString("member_role")?.let(MemberRole::valueOf),
         visitedAt = instant("visited_at"),
     )
 
-    private fun ResultSet.instant(column: String): Instant = getObject(column, OffsetDateTime::class.java).toInstant()
+    private fun ResultSet.instant(column: String): Instant? = getObject(column, OffsetDateTime::class.java)?.toInstant()
 }

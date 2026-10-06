@@ -45,32 +45,34 @@ class BoardController(private val boards: BoardService, private val users: UserS
         return boards.list(user.id).map { it.toResponse(user, BoardRole.OWNER) }
     }
 
-    /** Boards of other users that the user opened through their links and can still open through them. */
+    /**
+     * Boards of other users that the user is a member of, or opened through their links and can still open through
+     * them.
+     */
     @GetMapping("/shared")
     fun shared(@AuthenticationPrincipal principal: OAuth2User): List<SharedBoardResponse> =
-        boards.visitedBy(principal.userId).mapNotNull { visited ->
-            val board = visited.board
-            val role = board.roleOf(principal.userId) ?: return@mapNotNull null
+        boards.sharedWith(principal.userId).mapNotNull { shared ->
+            val board = shared.board
+            val role = board.roleOf(principal.userId, shared.memberRole) ?: return@mapNotNull null
             SharedBoardResponse(
                 id = checkNotNull(board.id),
                 title = board.title,
                 createdAt = board.createdAt,
                 updatedAt = board.updatedAt,
                 linkAccess = board.linkAccess,
-                owner = BoardOwner(board.ownerId, visited.ownerName, visited.ownerAvatarUrl),
+                owner = BoardOwner(board.ownerId, shared.ownerName, shared.ownerAvatarUrl),
                 role = role,
-                openedAt = visited.visitedAt,
+                openedAt = shared.visitedAt,
             )
         }
 
     /**
-     * Any board by its id, as far as its link gives access to it: the owner closes it to others with [LinkAccess.NONE].
-     * Opening a board of another user is remembered.
+     * Any board by its id, as far as the role of the user gives access to it: the owner closes it to all but the
+     * members with [LinkAccess.NONE]. Opening a board of another user is remembered.
      */
     @GetMapping("/{id}")
     fun get(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse {
-        val board = existingBoard(id)
-        val role = board.roleOf(principal.userId) ?: throw linkAccessClosed()
+        val (board, role) = boards.participated(id, principal.userId)
         boards.recordVisit(board, principal.userId)
         return board.toResponse(owner(board), role)
     }
@@ -110,18 +112,19 @@ class BoardController(private val boards: BoardService, private val users: UserS
                 setProperty("limit", exception.limit)
             }
 
-    private fun existingBoard(id: String): Board = boards.existing(id)
-
     private fun ownBoard(id: String, principal: OAuth2User): Board = boards.ownedBy(id, principal.userId)
 
     private fun currentUser(principal: OAuth2User): User =
         checkNotNull(users.find(principal.userId)) { "Signed-in user ${principal.userId} does not exist" }
 
-    private fun owner(board: Board): User = checkNotNull(users.find(board.ownerId)) { "Owner of board ${board.id} does not exist" }
+    private fun owner(board: Board): User = users.ownerOf(board)
 }
 
-/** The board is there, but its owner closed its link to others. */
+/** The board is there, but its owner closed its link to others, and the user is not a member. */
 fun linkAccessClosed() = ResponseStatusException(HttpStatus.FORBIDDEN, "The owner closed the link to the board")
+
+/** The owner of the [board], who exists as long as the board does. */
+fun UserService.ownerOf(board: Board): User = checkNotNull(find(board.ownerId)) { "Owner of board ${board.id} does not exist" }
 
 private const val TITLE_MAX_LENGTH = 200
 
@@ -163,11 +166,12 @@ data class SharedBoardResponse(
     val linkAccess: LinkAccess,
     val owner: BoardOwner,
     val role: BoardRole,
-    /** When the user last opened the board. */
-    val openedAt: Instant,
+    /** When the user last opened the board; `null` for a board they are a member of and never opened. */
+    val openedAt: Instant?,
 )
 
-private fun Board.toResponse(owner: User, role: BoardRole) = BoardResponse(
+/** The board as the user with the [role] on it sees it. */
+fun Board.toResponse(owner: User, role: BoardRole) = BoardResponse(
     id = checkNotNull(id) { "Persisted board must have an id" },
     title = title,
     createdAt = createdAt,

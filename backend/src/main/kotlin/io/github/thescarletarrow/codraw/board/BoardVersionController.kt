@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.io.InputStream
 import java.net.URI
 
-/** Versions of a board: earlier states of its document, which only its owner sees and saves. */
+/** Versions of a board: earlier states of its document, which those who edit the board see, save and restore. */
 @RestController
 @RequestMapping("/api/boards/{id}/versions")
 class BoardVersionController(
@@ -45,7 +45,7 @@ class BoardVersionController(
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found")
     }
 
-    /** Saves the state of the document that the owner's page sends, e.g. right before it restores a version. */
+    /** Saves the state of the document that the page of an editor sends, e.g. right before it restores a version. */
     @PostMapping(consumes = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
     fun save(
         @PathVariable id: String,
@@ -65,10 +65,10 @@ class BoardVersionController(
         return ResponseEntity.created(URI.create("/api/boards/$boardId/versions/${version.id}")).body(version)
     }
 
-    private fun boardId(id: String, principal: OAuth2User) = checkNotNull(boards.ownedBy(id, principal.userId).id)
+    private fun boardId(id: String, principal: OAuth2User) = checkNotNull(boards.versionsManagedBy(id, principal.userId).id)
 
     private companion object {
-        /** Versions that the owner saves; automatic ones only the backend makes. */
+        /** Versions that editors save; automatic ones only the backend makes. */
         val SAVED_REASONS = listOf(VersionReason.MANUAL, VersionReason.RESTORE).associateBy { it.value }
     }
 }

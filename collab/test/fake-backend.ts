@@ -93,7 +93,7 @@ export class FakeBackend {
         return;
       }
       if (isAccess) {
-        const access = this.access.get(boardId) ?? { ownerId: ALICE, linkAccess: "edit" };
+        const access = this.access.get(boardId) ?? { ownerId: ALICE, linkAccess: "edit", members: {} };
         response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(access));
         return;
       }

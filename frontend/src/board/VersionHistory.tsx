@@ -15,7 +15,9 @@ interface VersionHistoryProps {
   onClose: () => void
 }
 
-/** The versions of a board for its owner: the list, most recent first, and saving the current state as a version. */
+/**
+ * The versions of a board for whoever edits it: the list, most recent first, and saving the current state as a version.
+ */
 export function VersionHistory({ boardId, document, selectedId, onSelect, onClose }: VersionHistoryProps) {
   const queryClient = useQueryClient()
   const versions = useQuery({ queryKey: versionsKey(boardId), queryFn: () => fetchVersions(boardId) })

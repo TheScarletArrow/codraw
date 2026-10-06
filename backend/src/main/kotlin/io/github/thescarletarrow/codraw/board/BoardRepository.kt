@@ -16,6 +16,11 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Query("UPDATE boards SET owner_id = :newOwnerId WHERE owner_id = :ownerId")
     fun changeOwner(ownerId: UUID, newOwnerId: UUID): Int
 
+    /** Gives the board [id] the owner [newOwnerId], if [ownerId] still owns it; the time of change stays. */
+    @Modifying
+    @Query("UPDATE boards SET owner_id = :newOwnerId WHERE id = :id AND owner_id = :ownerId")
+    fun changeOwnerOf(id: UUID, ownerId: UUID, newOwnerId: UUID): Boolean
+
     @Modifying
     @Query("UPDATE boards SET updated_at = :updatedAt WHERE id = :id")
     fun touch(id: UUID, updatedAt: Instant): Boolean

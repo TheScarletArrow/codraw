@@ -45,7 +45,7 @@ test('another user opens a board through its link and edits it together with the
   // The board stays in the list of its owner only; the other user finds it among the boards opened through links.
   await bob.goto('/')
   await expect(bob.getByText('Досок пока нет')).toBeVisible()
-  await expect(bob.getByRole('region', { name: 'Открытые по ссылке' }).locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
+  await expect(bob.getByRole('region', { name: 'Общие со мной' }).locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
   await alice.goto('/')
   await expect(alice.locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
 

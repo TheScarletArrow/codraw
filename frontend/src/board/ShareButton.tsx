@@ -8,12 +8,14 @@ import { changeLinkAccess, type Board, type LinkAccess } from '../api/boards.ts'
 import type { Embed } from '../api/embed.ts'
 import { EmbedSection } from '../embed/EmbedSection.tsx'
 import type * as Y from 'yjs'
+import { InvitesSection } from './InvitesSection.tsx'
+import { MembersSection } from './MembersSection.tsx'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
 const COPIED_DURATION = 2_000
 
 const LINK_ACCESS_OPTIONS: { value: LinkAccess; label: string; description: string }[] = [
-  { value: 'none', label: 'Только я', description: 'По ссылке доску не откроет никто, кроме вас' },
+  { value: 'none', label: 'Только я', description: 'По ссылке доску не откроет никто, кроме вас и участников' },
   { value: 'view', label: 'Просмотр', description: 'По ссылке доску смотрят без правки' },
   { value: 'edit', label: 'Редактирование', description: 'По ссылке доску редактируют вместе с вами' },
 ]
@@ -36,7 +38,7 @@ interface ShareButtonProps {
   board: Board
   /** The page the participant is on: the link opens the board on it. */
   pageId: string | null
-  /** Tells the other participants that the access to the board or its live image changed. */
+  /** Tells the other participants that the access to the board, its members or its live image changed. */
   onChanged: () => void
   /** The live image of the board, `null` when it is off, `undefined` until it is known. */
   embed?: Embed | null
@@ -45,8 +47,8 @@ interface ShareButtonProps {
 }
 
 /**
- * «Поделиться»: the link to the board with a copy button, for the owner what the link gives to others, and the live
- * image of a page.
+ * «Поделиться»: the link to the board with a copy button, for the owner what the link gives to others, the participants
+ * of the board, invitation links for the owner, and the live image of a page.
  */
 export function ShareButton({ board, pageId, onChanged, embed, pages = [], document = null }: ShareButtonProps) {
   const queryClient = useQueryClient()
@@ -89,7 +91,7 @@ export function ShareButton({ board, pageId, onChanged, embed, pages = [], docum
           Поделиться
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex max-h-[80vh] w-80 flex-col gap-3 overflow-y-auto" aria-label="Поделиться доской">
+      <PopoverContent align="end" className="flex max-h-[80vh] w-96 flex-col gap-3 overflow-y-auto" aria-label="Поделиться доской">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="board-link" className="text-sm font-medium">
             Ссылка на доску
@@ -148,6 +150,8 @@ export function ShareButton({ board, pageId, onChanged, embed, pages = [], docum
         ) : (
           <p className="text-sm text-muted-foreground">{ACCESS_OF_OTHERS[board.linkAccess]}</p>
         )}
+        <MembersSection board={board} onChanged={onChanged} />
+        {board.role === 'owner' && <InvitesSection board={board} />}
         <EmbedSection board={board} embed={embed} pages={pages} pageId={pageId} document={document} onChanged={onChanged} />
       </PopoverContent>
     </Popover>
