@@ -8,6 +8,7 @@ const NO_EDITOR: EditorState = {
   tableSelected: false,
   tableVendor: null,
   field: null,
+  index: null,
   tableBase: null,
   edgeMarkers: null,
   colors: null,

@@ -55,6 +55,25 @@ describe('clipboard format', () => {
     expect(pastedEdge!.getTerminal(false)).toBe(pastedService)
   })
 
+  it('keeps the indexes of a copied table', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const editor = createDiagramEditor(container, doc)
+    const table = editor.addShape('table', { x: 100, y: 100 })!
+    editor.graph.setSelectionCell(table)
+    editor.graph.labelChanged(editor.addTableIndex()!, 'users_id_idx (id)', null as never)
+
+    const text = clipboardText(editor.graph.cloneCells([table], false))
+    editor.destroy()
+
+    const content = await readClipboardText(text)
+    const [pasted] = content?.kind === 'cells' ? content.cells : []
+    expect(pasted!.getChildAt(1).getValue()).toBe('users_id_idx (id)')
+    expect(pasted!.getChildAt(1).getStyle()).toMatchObject({ codrawIndex: true })
+  })
+
   it('reads a fragment of draw.io, encoded or not, and the first page of a file', async () => {
     for (const text of [DRAWIO_FRAGMENT, encodeURIComponent(DRAWIO_FRAGMENT), `<mxfile><diagram name="P">${DRAWIO_FRAGMENT}</diagram></mxfile>`]) {
       const content = await readClipboardText(text)

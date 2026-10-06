@@ -1,5 +1,5 @@
 /** What a right click on the canvas is about: nothing selected, one element of a kind, or several elements. */
-export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'edge' | 'group' | 'selection'
+export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'index' | 'edge' | 'group' | 'selection'
 
 export type MenuCommand =
   | 'paste'
@@ -8,6 +8,7 @@ export type MenuCommand =
   | 'redo'
   | 'editLabel'
   | 'addField'
+  | 'addIndex'
   | 'cut'
   | 'copy'
   | 'duplicate'
@@ -85,7 +86,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
   ],
   shape: [[EDIT_LABEL], CLIPBOARD, ORDER, COMMENT, [DELETE]],
-  table: [[EDIT_LABEL, ['addField', 'Добавить поле']], CLIPBOARD, ORDER, COMMENT, [DELETE]],
+  table: [[EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']], CLIPBOARD, ORDER, COMMENT, [DELETE]],
   field: [
     [
       ['editLabel', 'Изменить', 'F2'],
@@ -93,6 +94,14 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     COMMENT,
     [['delete', 'Удалить поле', 'Delete']],
+  ],
+  index: [
+    [
+      ['editLabel', 'Изменить', 'F2'],
+      ['addIndex', 'Добавить индекс ниже'],
+    ],
+    COMMENT,
+    [['delete', 'Удалить индекс', 'Delete']],
   ],
   edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], COMMENT, [DELETE]],
   group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, COMMENT, [DELETE]],

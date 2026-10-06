@@ -332,7 +332,7 @@ function parseErDiagram(lines: string[]): ErDiagram {
   const table = (name: string) => {
     let found = diagram.tables.find((candidate) => candidate.name === name)
     if (!found) {
-      found = { name, columns: [], foreignKeys: [] }
+      found = { name, columns: [], foreignKeys: [], indexes: [] }
       diagram.tables.push(found)
     }
     return found

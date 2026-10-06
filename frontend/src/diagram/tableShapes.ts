@@ -11,7 +11,7 @@ import { vendorOf } from '../sql/dbVendors.ts'
 import { plainText, sourceRefers, splitField } from '../sql/tableField.ts'
 import { measureLabel, type LabelStyle } from './autoWidth.ts'
 import { isBaseTable } from './baseTables.ts'
-import { isTableStyle, type ShapeStyle } from './shapes.ts'
+import { isTableIndexStyle, isTableStyle, TABLE_INDEX_GAP, type ShapeStyle } from './shapes.ts'
 import {
   BADGE_HEIGHT,
   BASE_BADGE,
@@ -35,18 +35,30 @@ const BASE_BADGE_COLOR = '#57606a'
 const KEY_COLOR = '#b7791f'
 const LINK_COLOR = '#2563eb'
 const UNIQUE_COLOR = '#7c3aed'
+const INDEX_COLOR = '#0d9488'
+/** Size of the caption of the block of indexes. */
+const CAPTION_FONT_SIZE = 9
 /** Opacity of the texts after the name of a field, so that the name stands out. */
 const MUTED = 0.6
 /** What a field without text shows, so that it can be found and named. */
 export const FIELD_PLACEHOLDER = 'имя поля'
+/** What an index without text shows. */
+export const INDEX_PLACEHOLDER = 'имя (столбцы)'
+/** The caption of the block of indexes of a table. */
+export const INDEXES_CAPTION = 'Индексы'
 
 function isTable(cell: Cell | null | undefined): boolean {
   return cell?.isVertex() === true && isTableStyle(cell.getStyle() as ShapeStyle)
 }
 
+/** A row of a table that is an index, not a field. */
+export function isIndexRow(cell: Cell | null | undefined): boolean {
+  return cell?.isVertex() === true && isTable(cell.getParent()) && isTableIndexStyle(cell.getStyle() as Record<string, unknown>)
+}
+
 /** A field of a table that is drawn in columns: one of its own shape, not, e.g., a styled row of a draw.io file. */
 export function isColumnField(cell: Cell | null | undefined): boolean {
-  if (!cell?.isVertex() || !isTable(cell.getParent())) return false
+  if (!cell?.isVertex() || !isTable(cell.getParent()) || isIndexRow(cell)) return false
   const shape = cell.getStyle().shape
   return shape === undefined || shape === 'rectangle'
 }
@@ -91,16 +103,18 @@ export function watchTableRows(graph: AbstractGraph): () => void {
   }
 }
 
-/** The rows of the fields of a table, by field, with the references of their edges. */
+/** The rows of the fields of a table, with the references of their edges, and of its indexes, by cell. */
 export function tableRowsOf(graph: AbstractGraph, table: Cell): Map<Cell, TableRow> {
   const cached = caches.get(graph)?.get(table)
   if (cached) return cached
   const fields = table.getChildren().filter(isColumnField)
+  const indexes = table.getChildren().filter(isIndexRow)
   const rows = tableRows(
     fields.map((field) => ({ text: String(field.getValue() ?? ''), font: fontOf(graph, field), reference: referenceOf(field) })),
     measureLabel,
+    indexes.map((index) => ({ text: String(index.getValue() ?? ''), font: fontOf(graph, index), reference: null })),
   )
-  const result = new Map(fields.map((field, index) => [field, rows[index]!]))
+  const result = new Map([...fields, ...indexes].map((row, index) => [row, rows[index]!]))
   caches.get(graph)?.set(table, result)
   return result
 }
@@ -145,6 +159,19 @@ function paintIcon(c: AbstractCanvas2D, icon: FieldIcon, x: number, y: number) {
     c.moveTo(x + ICON_SIZE - 0.75, y + 6)
     c.lineTo(x + ICON_SIZE - 0.75, y + 8.5)
     c.stroke()
+  } else if (icon === 'index') {
+    // A bolt: an index makes lookups fast.
+    c.setFillColor(INDEX_COLOR)
+    c.setStrokeWidth(0)
+    c.begin()
+    c.moveTo(x + 7.5, y + 0.5)
+    c.lineTo(x + 2, y + 7)
+    c.lineTo(x + 5.5, y + 7)
+    c.lineTo(x + 4.5, y + 11.5)
+    c.lineTo(x + 10, y + 5)
+    c.lineTo(x + 6.5, y + 5)
+    c.close()
+    c.fill()
   } else if (icon === 'unique') {
     c.setStrokeColor(UNIQUE_COLOR)
     c.setFillColor(UNIQUE_COLOR)
@@ -165,18 +192,29 @@ function paintIcon(c: AbstractCanvas2D, icon: FieldIcon, x: number, y: number) {
   c.restore()
 }
 
-/** The placeholder of a field without text, from `x` and as wide as `w`, in the middle of the height `h` from `y`. */
-function paintPlaceholder(c: AbstractCanvas2D, style: { fontColor?: unknown; fontSize?: unknown }, x: number, y: number, w: number, h: number) {
+/** The placeholder of a row without text, from `x` and as wide as `w`, in the middle of the height `h` from `y`. */
+function paintPlaceholder(
+  c: AbstractCanvas2D,
+  placeholder: string,
+  style: { fontColor?: unknown; fontSize?: unknown },
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
   c.save()
   c.setAlpha(0.4)
   c.setFontColor(String(style.fontColor ?? '#1f2328'))
   c.setFontSize(Number(style.fontSize ?? 13))
   c.setFontStyle(2)
-  c.text(x, y + h / 2, Math.max(0, w - ROW_PADDING), h, FIELD_PLACEHOLDER, 'left', 'middle', false, '', 'hidden', true, 0, '')
+  c.text(x, y + h / 2, Math.max(0, w - ROW_PADDING), h, placeholder, 'left', 'middle', false, '', 'hidden', true, 0, '')
   c.restore()
 }
 
-/** `codraw.tableField`: the icons of keys and the columns after the name, which the label of the field draws. */
+/**
+ * `codraw.tableField`: the icons of keys and the columns after the name, which the label of the field draws; for an
+ * index, its icon and what follows its name.
+ */
 class TableFieldShape extends RectangleShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
     super.paintVertexShape(c, x, y, w, h)
@@ -188,7 +226,8 @@ class TableFieldShape extends RectangleShape {
     if (!String(cell.getValue() ?? '').trim()) {
       // On the canvas only, not in an exported image, and not while the field is being named.
       const onCanvas = (c as unknown as { root?: Element }).root === this.node
-      if (onCanvas && !graph.isEditing(cell)) paintPlaceholder(c, this.style ?? {}, x + row.nameX, y, w - row.nameX, h)
+      const placeholder = isIndexRow(cell) ? INDEX_PLACEHOLDER : FIELD_PLACEHOLDER
+      if (onCanvas && !graph.isEditing(cell)) paintPlaceholder(c, placeholder, this.style ?? {}, x + row.nameX, y, w - row.nameX, h)
       return
     }
     row.icons.forEach((icon, index) => paintIcon(c, icon, x + ICON_X + index * ICON_STEP, y + (h - ICON_SIZE) / 2))
@@ -210,8 +249,8 @@ class TableFieldShape extends RectangleShape {
 }
 
 /**
- * A swimlane that, as a table with a database, has the badge of the database at the left of its header, and as a base
- * table the badge of a base at the right.
+ * A swimlane that, as a table with a database, has the badge of the database at the left of its header, as a base
+ * table the badge of a base at the right, and above its indexes a line with their caption.
  */
 class TableShape extends SwimlaneShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
@@ -222,6 +261,28 @@ class TableShape extends SwimlaneShape {
     const top = (Math.min(this.getTitleSize(), h) - BADGE_HEIGHT) / 2
     if (vendor) paintBadge(c, BADGE_X, top, vendor.badge, vendor.color, vendor.textColor)
     if (isBaseTable(cell)) paintBadge(c, w - BADGE_X - badgeWidth(BASE_BADGE), top, BASE_BADGE, BASE_BADGE_COLOR, '#ffffff')
+    const firstIndex = cell?.getChildren().find(isIndexRow)?.getGeometry()
+    if (firstIndex) this.paintIndexesCaption(c, w, firstIndex.y - TABLE_INDEX_GAP)
+  }
+
+  /** A line across the table at `top` and the caption of the indexes under it. */
+  private paintIndexesCaption(c: AbstractCanvas2D, w: number, top: number) {
+    const style = this.style ?? {}
+    c.save()
+    c.setShadow(false)
+    c.setDashed(false)
+    c.setStrokeWidth(1)
+    c.setStrokeColor(String(style.strokeColor ?? '#1f2328'))
+    c.begin()
+    c.moveTo(0, top)
+    c.lineTo(w, top)
+    c.stroke()
+    c.setAlpha(MUTED)
+    c.setFontColor(String(style.fontColor ?? '#1f2328'))
+    c.setFontSize(CAPTION_FONT_SIZE)
+    c.setFontStyle(1)
+    c.text(ICON_X, top + TABLE_INDEX_GAP / 2, 0, 0, INDEXES_CAPTION, 'left', 'middle', false, '', 'visible', false, 0, '')
+    c.restore()
   }
 }
 

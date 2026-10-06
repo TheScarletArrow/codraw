@@ -154,6 +154,41 @@ describe('the schema of a diagram', () => {
     expect(schemaSql(schema)).not.toContain('BaseEntity')
   })
 
+  it('makes rows of indexes under the fields and writes them back as CREATE INDEX, but not as columns or to Mermaid', async () => {
+    const ddl = `
+      CREATE TABLE users (id uuid PRIMARY KEY, org_id uuid, email text, "Created At" timestamptz, UNIQUE (org_id, email));
+      CREATE INDEX users_org_idx ON users (org_id, "Created At" DESC) WHERE email IS NOT NULL;
+      CREATE UNIQUE INDEX "Email Key" ON users USING btree (lower(email));
+    `
+    const cells = await schemaCells(parseSql(ddl), { x: 0, y: 0 })
+    const users = tables(cells)[0]!
+    const rows = cells.filter((cell) => cell.parent === users.id)
+
+    expect(rows.filter((cell) => cell.style.codrawIndex).map((cell) => cell.value)).toEqual([
+      'users_org_id_email_key (org_id, email) UNIQUE',
+      'users_org_idx (org_id, "Created At" DESC) WHERE email IS NOT NULL',
+      '"Email Key" (lower(email)) UNIQUE USING btree',
+    ])
+    // The rows of indexes are under the fields, past the room for the caption of their block.
+    expect(rows.map((cell) => cell.geometry!.y)).toEqual([30, 56, 82, 108, 154, 180, 206])
+    expect(users.geometry!.height).toBe(232)
+    expect(users.geometry!.width).toBeGreaterThan(7.5 * 'users_org_idx'.length + 7.5 * '(org_id, "Created At" DESC)'.length)
+
+    const schema = diagramSchema(cells)
+    expect(schema.tables[0]!.columns.map((column) => column.name)).toEqual(['id', 'org_id', 'email', 'Created At'])
+    expect(schemaSql(schema)).toBe(
+      [
+        'CREATE TABLE users (\n    id uuid PRIMARY KEY,\n    org_id uuid,\n    email text,\n    "Created At" timestamptz\n);',
+        [
+          'CREATE UNIQUE INDEX users_org_id_email_key ON users (org_id, email);',
+          'CREATE INDEX users_org_idx ON users (org_id, "Created At" DESC) WHERE email IS NOT NULL;',
+          'CREATE UNIQUE INDEX "Email Key" ON users USING btree (lower(email));',
+        ].join('\n'),
+      ].join('\n\n') + '\n',
+    )
+    expect(schemaMermaid(schema)).not.toContain('idx')
+  })
+
   it('writes an erDiagram of Mermaid with keys and relations', async () => {
     const mermaid = schemaMermaid(diagramSchema(await schemaCells(parseSql(DDL), { x: 0, y: 0 })))
 

@@ -3,7 +3,7 @@ import { useId, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { DB_VENDORS, vendorTypes, type DbVendorId } from '../sql/dbVendors.ts'
-import type { DiagramEditor, SelectedField, TableBase } from './editor.ts'
+import type { DiagramEditor, SelectedField, SelectedIndex, TableBase } from './editor.ts'
 
 interface TableToolsProps {
   editor: DiagramEditor | null
@@ -11,12 +11,17 @@ interface TableToolsProps {
   vendor: DbVendorId | null
   /** The selected field, or `null` when the table itself is selected. */
   field: SelectedField | null
+  /** The selected index, or `null`. */
+  index: SelectedIndex | null
   /** The selected table as to base tables. */
   base: TableBase | null
 }
 
-/** The database and the base of the selected table, a new field, and the type and keys of the selected field. */
-export function TableTools({ editor, vendor, field, base }: TableToolsProps) {
+/**
+ * The database and the base of the selected table, a new field or index, the type and keys of the selected field, and
+ * the columns of the selected index.
+ */
+export function TableTools({ editor, vendor, field, index, base }: TableToolsProps) {
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -41,7 +46,17 @@ export function TableTools({ editor, vendor, field, base }: TableToolsProps) {
         <Plus />
         Добавить поле
       </Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableIndex()}>
+        <Plus />
+        Добавить индекс
+      </Button>
       {field && <FieldTools editor={editor} vendor={vendor} field={field} />}
+      {index && (
+        <>
+          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+          <IndexProps editor={editor} index={index} />
+        </>
+      )}
     </>
   )
 }
@@ -159,6 +174,56 @@ export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | 
         UNIQUE
       </Button>
     </>
+  )
+}
+
+/** The columns and the uniqueness of the selected index: on the toolbar and next to the index. */
+export function IndexProps({ editor, index }: { editor: DiagramEditor | null; index: SelectedIndex }) {
+  return (
+    <>
+      <ColumnsField value={index.columns} onCommit={(columns) => editor?.setIndexProps({ columns })} />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={index.unique}
+        title="Уникальный индекс"
+        className={cn('px-2 font-mono text-xs', index.unique && 'bg-accent text-accent-foreground')}
+        onClick={() => editor?.setIndexProps({ unique: !index.unique })}
+      >
+        UNIQUE
+      </Button>
+    </>
+  )
+}
+
+/** The columns of an index, applied on Enter or when the field loses focus; Escape brings the current ones back. */
+function ColumnsField({ value, onCommit }: { value: string; onCommit: (columns: string) => void }) {
+  // What the participant is typing; `null` while the field shows the current columns.
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    setDraft(null)
+    if (draft !== null && draft.trim() !== value) onCommit(draft)
+  }
+  return (
+    <input
+      aria-label="Столбцы индекса"
+      title="Столбцы и выражения индекса через запятую"
+      placeholder="Столбцы"
+      spellCheck={false}
+      value={draft ?? value}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          commit()
+        } else if (event.key === 'Escape') {
+          setDraft(null)
+        }
+      }}
+      className="h-8 w-48 min-w-0 shrink-0 rounded-md border bg-background px-2 font-mono text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    />
   )
 }
 

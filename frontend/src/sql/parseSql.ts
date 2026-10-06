@@ -1,3 +1,5 @@
+import { defaultIndexName, indexColumnNames, renameIndexColumn, tokenEnd, writtenName } from './tableIndex.ts'
+
 /** A column of a table, as DDL declares it. */
 export interface SqlColumn {
   name: string
@@ -18,16 +20,30 @@ export interface SqlForeignKey {
   references: string[]
 }
 
+/** An index of a table; the columns and the rest as DDL writes them. */
+export interface SqlIndex {
+  name: string
+  /** What the parentheses hold, e.g. `org_id, lower(email)`. */
+  columns: string
+  unique: boolean
+  /** The method after `USING`, e.g. `gin`; empty without one. */
+  method: string
+  /** What follows the columns, e.g. `WHERE deleted_at IS NULL`. */
+  rest: string
+}
+
 export interface SqlTable {
   name: string
   columns: SqlColumn[]
   foreignKeys: SqlForeignKey[]
+  /** Indexes but those of the primary key and of unique columns, which their columns show. */
+  indexes: SqlIndex[]
 }
 
 /** Tables of a database, in the order DDL creates them. */
 export interface SqlSchema {
   tables: SqlTable[]
-  /** Statements that change no table, e.g. `CREATE INDEX` or `INSERT`, and those not understood. */
+  /** Statements that change no table, e.g. `CREATE VIEW` or `INSERT`, and those not understood. */
   skipped: number
 }
 
@@ -289,10 +305,10 @@ function findTable(schema: SqlSchema, name: string): SqlTable | undefined {
   return schema.tables.find((table) => table.name === name)
 }
 
-/** A constraint of a table: primary key, foreign key or unique columns. */
+/** A constraint of a table: primary key, foreign key, unique columns, or an index of MySQL (`INDEX`, `KEY`). */
 function tableConstraint(table: SqlTable, tokens: Token[]) {
   const reader = new Reader(tokens)
-  const name = reader.take('CONSTRAINT') ? reader.identifier() : null
+  let name = reader.take('CONSTRAINT') ? reader.identifier() : null
   const column = (name: string) => table.columns.find((candidate) => candidate.name === name)
   if (reader.take('PRIMARY', 'KEY')) {
     for (const name of reader.names()) {
@@ -307,13 +323,26 @@ function tableConstraint(table: SqlTable, tokens: Token[]) {
       table.foreignKeys.push({ name, columns, table: referenced, references: reader.names() })
     }
   } else if (reader.take('UNIQUE')) {
-    reader.take('KEY')
+    if (reader.take('KEY') || reader.take('INDEX')) name = (reader.sees('(') ? null : reader.identifier()) ?? name
     const columns = reader.names()
     if (columns.length === 1) {
       const found = column(columns[0]!)
       if (found) found.unique = true
+    } else if (columns.length > 1) {
+      addIndex(table, name, columns.map(writtenName).join(', '), true, 'key')
     }
+  } else if (reader.take('INDEX') || reader.take('KEY')) {
+    const indexName = reader.sees('(') ? null : reader.identifier()
+    const columns = reader.names()
+    if (columns.length > 0) addIndex(table, indexName, columns.map(writtenName).join(', '), false, 'idx')
   }
+}
+
+/** Adds an index to the table, with the name PostgreSQL would give it when it has none; it replaces one of its name. */
+function addIndex(table: SqlTable, name: string | null, columns: string, unique: boolean, suffix: 'idx' | 'key', method = '', rest = '') {
+  const index: SqlIndex = { name: name ?? defaultIndexName(table.name, columns, suffix), columns, unique, method, rest }
+  table.indexes = table.indexes.filter((existing) => existing.name !== index.name)
+  table.indexes.push(index)
 }
 
 function addColumn(table: SqlTable, tokens: Token[]) {
@@ -328,7 +357,7 @@ function createTable(schema: SqlSchema, reader: Reader): boolean {
   reader.take('IF', 'NOT', 'EXISTS')
   const name = reader.name()
   if (name === null || !reader.take('(')) return false
-  const table: SqlTable = { name, columns: [], foreignKeys: [] }
+  const table: SqlTable = { name, columns: [], foreignKeys: [], indexes: [] }
   const constraints: Token[][] = []
   while (!reader.done && !reader.sees(')')) {
     const element = reader.element()
@@ -366,12 +395,15 @@ function alterTable(schema: SqlSchema, reader: Reader): boolean {
         action.take('IF', 'EXISTS')
         const constraint = action.identifier()
         table.foreignKeys = table.foreignKeys.filter((foreignKey) => foreignKey.name !== constraint)
+        table.indexes = table.indexes.filter((index) => index.name !== constraint)
       } else {
         action.take('COLUMN')
         action.take('IF', 'EXISTS')
         const column = action.identifier()
         table.columns = table.columns.filter((candidate) => candidate.name !== column)
         table.foreignKeys = table.foreignKeys.filter((foreignKey) => !foreignKey.columns.includes(column ?? ''))
+        // PostgreSQL drops the indexes of a dropped column.
+        table.indexes = table.indexes.filter((index) => !hasColumn(index, column ?? ''))
       }
     } else if (action.take('RENAME')) {
       if (action.take('TO')) {
@@ -420,11 +452,67 @@ function renameColumn(schema: SqlSchema, table: SqlTable, from: string, to: stri
   if (column) column.name = to
   const rename = (names: string[]) => names.map((name) => (name === from ? to : name))
   for (const foreignKey of table.foreignKeys) foreignKey.columns = rename(foreignKey.columns)
+  for (const index of table.indexes) index.columns = renameIndexColumn(index.columns, from, writtenName(to))
   for (const other of schema.tables) {
     for (const foreignKey of other.foreignKeys) {
       if (foreignKey.table === table.name) foreignKey.references = rename(foreignKey.references)
     }
   }
+}
+
+const hasColumn = (index: SqlIndex, column: string) =>
+  indexColumnNames(index.columns).some((name) => name.toLowerCase() === column.toLowerCase())
+
+/**
+ * `CREATE [UNIQUE] INDEX [CONCURRENTLY] [IF NOT EXISTS] [name] ON [ONLY] table [USING method] (…) …`: an index of a
+ * table of the schema, with its columns and what follows them as written in `sql`.
+ */
+function createIndex(schema: SqlSchema, reader: Reader, unique: boolean, sql: string): boolean {
+  reader.take('CONCURRENTLY')
+  reader.take('IF', 'NOT', 'EXISTS')
+  const name = reader.sees('ON') ? null : reader.name()
+  if (!reader.take('ON')) return false
+  reader.take('ONLY')
+  const tableName = reader.name()
+  const table = tableName === null ? undefined : findTable(schema, tableName)
+  if (!table) return false
+  const method = reader.take('USING') ? (reader.next()?.text ?? '') : ''
+  const tokens = rest(reader)
+  if (tokens[0]?.kind !== 'symbol' || tokens[0].value !== '(') return false
+  let close = 0
+  for (let depth = 0; close < tokens.length; close++) {
+    const token = tokens[close]!
+    if (token.kind === 'symbol' && token.value === '(') depth++
+    if (token.kind === 'symbol' && token.value === ')' && --depth === 0) break
+  }
+  const source = (from: number, to: number) =>
+    from >= Math.min(to, tokens.length) ? '' : sql.slice(tokens[from]!.start, tokenEnd(tokens[Math.min(to, tokens.length) - 1]!, sql)).trim()
+  addIndex(table, name, source(1, close), unique, 'idx', method, source(close + 1, tokens.length))
+  return true
+}
+
+function dropIndexes(schema: SqlSchema, reader: Reader): boolean {
+  reader.take('CONCURRENTLY')
+  reader.take('IF', 'EXISTS')
+  const names = new Set<string>()
+  do {
+    const name = reader.name()
+    if (name !== null) names.add(name)
+  } while (reader.take(','))
+  for (const table of schema.tables) table.indexes = table.indexes.filter((index) => !names.has(index.name))
+  return names.size > 0
+}
+
+function alterIndex(schema: SqlSchema, reader: Reader): boolean {
+  reader.take('IF', 'EXISTS')
+  const name = reader.name()
+  if (name === null || !reader.take('RENAME', 'TO')) return false
+  const renamed = reader.name()
+  if (renamed === null) return false
+  for (const table of schema.tables) {
+    for (const index of table.indexes) if (index.name === name) index.name = renamed
+  }
+  return true
 }
 
 function dropTables(schema: SqlSchema, reader: Reader): boolean {
@@ -441,10 +529,13 @@ function dropTables(schema: SqlSchema, reader: Reader): boolean {
   return names.size > 0
 }
 
-function statement(schema: SqlSchema, tokens: Token[]): boolean {
+function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
   const reader = new Reader(tokens)
   if (reader.take('CREATE')) {
     reader.take('OR', 'REPLACE')
+    const unique = reader.take('UNIQUE')
+    if (reader.take('INDEX')) return createIndex(schema, reader, unique, sql)
+    if (unique) return false
     for (const word of ['GLOBAL', 'LOCAL', 'TEMPORARY', 'TEMP', 'UNLOGGED']) reader.take(word)
     if (!reader.take('TABLE')) return false
     // `CREATE TABLE … AS SELECT` and partitions copy another table: they are not drawn.
@@ -457,16 +548,19 @@ function statement(schema: SqlSchema, tokens: Token[]): boolean {
   }
   if (reader.take('ALTER', 'TABLE')) return alterTable(schema, reader)
   if (reader.take('DROP', 'TABLE')) return dropTables(schema, reader)
+  if (reader.take('ALTER', 'INDEX')) return alterIndex(schema, reader)
+  if (reader.take('DROP', 'INDEX')) return dropIndexes(schema, reader)
   return false
 }
 
 /**
  * Applies the DDL of PostgreSQL (and the common part of MySQL) to the schema: `CREATE TABLE`, `ALTER TABLE` that adds,
- * drops, renames and changes columns and constraints, `DROP TABLE`. Other statements are counted as skipped.
+ * drops, renames and changes columns and constraints, `DROP TABLE`, `CREATE INDEX`, `DROP INDEX` and renaming an index.
+ * Other statements are counted as skipped.
  */
 export function parseSql(sql: string, schema: SqlSchema = { tables: [], skipped: 0 }): SqlSchema {
   for (const tokens of statements(tokenize(sql))) {
-    if (!statement(schema, tokens)) schema.skipped++
+    if (!statement(schema, tokens, sql)) schema.skipped++
   }
   return schema
 }

@@ -90,6 +90,10 @@ export interface ShapeSection {
 /** Height of the table header that holds the table name. */
 export const TABLE_HEADER_HEIGHT = 30
 export const TABLE_FIELD_HEIGHT = 26
+/** Room above the first index of a table, for the line and the caption of the block of indexes. */
+export const TABLE_INDEX_GAP = 20
+/** Style key of a row of a table that is an index, not a field. draw.io keeps keys it does not know, so files keep it. */
+export const TABLE_INDEX_KEY = 'codrawIndex'
 
 /** A table of a database schema: a swimlane whose fields are stacked under the name, as in draw.io. */
 export const TABLE_STYLE: ShapeStyle = {
@@ -509,6 +513,12 @@ export function shapeGroupOf(style: ShapeStyle): ShapeGroup | null {
 /** A table is a cell whose children are stacked fields. */
 export function isTableStyle(style: ShapeStyle | null | undefined): boolean {
   return style?.childLayout === 'stackLayout'
+}
+
+/** The style of a row of a table that is an index; for the cells of a page, e.g. those of an export. */
+export function isTableIndexStyle(style: Record<string, unknown>): boolean {
+  const value = style[TABLE_INDEX_KEY]
+  return value === true || value === 1 || value === '1'
 }
 
 /** MIME type for dragging a palette shape onto the canvas. */

@@ -28,8 +28,35 @@ describe('EditorToolbar', () => {
     act(() => editor.setState({ tableSelected: true }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Добавить поле' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить индекс' }))
 
     expect(editor.addTableField).toHaveBeenCalled()
+    expect(editor.addTableIndex).toHaveBeenCalled()
+  })
+
+  it('sets the columns of the selected index on Enter and its uniqueness', async () => {
+    act(() => editor.setState({ tableSelected: true, index: { cellId: 'index', tableId: 'table', columns: 'org_id', unique: false } }))
+    const columns = screen.getByRole('textbox', { name: 'Столбцы индекса' })
+
+    expect(columns).toHaveValue('org_id')
+    expect(screen.queryByRole('combobox', { name: 'Тип поля' })).toBeNull()
+    await userEvent.type(columns, ', created_at{Enter}')
+    await userEvent.click(screen.getByRole('button', { name: 'UNIQUE' }))
+
+    expect(editor.setIndexProps).toHaveBeenCalledWith({ columns: 'org_id, created_at' })
+    expect(editor.setIndexProps).toHaveBeenCalledWith({ unique: true })
+  })
+
+  it('brings the columns of the index back on Escape', async () => {
+    act(() => editor.setState({ tableSelected: true, index: { cellId: 'index', tableId: 'table', columns: 'org_id', unique: true } }))
+    const columns = screen.getByRole('textbox', { name: 'Столбцы индекса' })
+
+    await userEvent.type(columns, 'x{Escape}')
+    columns.blur()
+
+    expect(columns).toHaveValue('org_id')
+    expect(screen.getByRole('button', { name: 'UNIQUE' })).toHaveAttribute('aria-pressed', 'true')
+    expect(editor.setIndexProps).not.toHaveBeenCalled()
   })
 
   it('chooses the database of the selected table', async () => {

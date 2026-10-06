@@ -1,6 +1,6 @@
 import { Cell, Geometry, type AbstractGraph, type CellStyle } from '@maxgraph/core'
 import { plainText, splitField } from '../sql/tableField.ts'
-import { isTableStyle, TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT, type ShapeStyle } from './shapes.ts'
+import { isTableIndexStyle, isTableStyle, TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT, type ShapeStyle } from './shapes.ts'
 
 /**
  * Style keys of base tables: a base table is a template of fields that other tables inherit, as a mapped superclass of
@@ -84,7 +84,11 @@ export function defaultBase(tables: Map<string, Cell>): Cell | null {
   return [...tables.values()].find(isDefaultBase) ?? null
 }
 
-const ownFields = (table: Cell) => table.getChildren().filter((field) => field.isVertex() && inheritedFieldId(field) === null)
+/** Fields of a table but the inherited ones; indexes are not fields, and tables do not inherit them. */
+const ownFields = (table: Cell) =>
+  table
+    .getChildren()
+    .filter((field) => field.isVertex() && inheritedFieldId(field) === null && !isTableIndexStyle(field.getStyle() as Record<string, unknown>))
 
 /** The name of a field, in lower case as SQL compares names; empty for a field without one. */
 const nameOf = (field: Cell) => {

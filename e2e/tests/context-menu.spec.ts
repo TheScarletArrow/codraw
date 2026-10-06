@@ -80,6 +80,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
   expect(await menuLabels(page)).toEqual([
     'Изменить подпись',
     'Добавить поле',
+    'Добавить индекс',
     'Вырезать',
     'Копировать',
     'Дублировать',

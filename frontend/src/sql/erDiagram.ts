@@ -1,12 +1,13 @@
 import { isBaseStyle } from '../diagram/baseTables.ts'
 import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
-import { findShape, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
+import { findShape, isTableIndexStyle, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
 import { badgeRoom, tableRows } from '../diagram/tableRows.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { tokenize, typeText, type SqlColumn, type SqlForeignKey, type SqlSchema, type SqlTable } from './parseSql.ts'
 import { vendorOf } from './dbVendors.ts'
 import { FIELD_WORDS, plainText, sourceRefers } from './tableField.ts'
+import { indexText, splitIndex } from './tableIndex.ts'
 
 /** A plain identifier needs no quotes: lower case letters, digits and `_`, not starting with a digit. */
 const PLAIN = /^[a-z_][a-z0-9_$]*$/
@@ -77,13 +78,14 @@ export function parseFieldLabel(label: string): (SqlColumn & { foreignKey: boole
 const estimate = (text: string) => text.length * 7.5
 
 /**
- * Width of a table that fits its name beside the badge of its database and the rows of its fields with their
- * references, estimated from the lengths of their texts.
+ * Width of a table that fits its name beside the badge of its database, the rows of its fields with their references
+ * and the rows of its indexes, estimated from the lengths of their texts.
  */
-function tableWidth(table: SqlTable, labels: string[], references: (string | null)[]): number {
+function tableWidth(table: SqlTable, labels: string[], references: (string | null)[], indexes: string[]): number {
   const rows = tableRows(
     labels.map((text, index) => ({ text, font: {}, reference: references[index] ?? null })),
     estimate,
+    indexes.map((text) => ({ text, font: {}, reference: null })),
   )
   // Tables get the database of the table of the palette.
   const header = estimate(table.name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
@@ -145,7 +147,8 @@ export async function schemaCells(
     schema.tables.map((table) => {
       const labels = table.columns.map((column) => fieldLabel(column, referencing(table, column.name)))
       const references = table.columns.map((column) => referenceOf(table, column.name))
-      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table, labels, references))
+      const indexes = table.indexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
+      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table, labels, references, indexes), indexes)
       return [table.name, { id, fields: new Map(table.columns.map((column, index) => [column.name, fields[index]!])) }]
     }),
   )
@@ -204,7 +207,10 @@ interface DiagramReference {
   referencedColumn: string
 }
 
-/** The schema of the tables of a page: fields parsed from their text, references from the edges between fields. */
+/**
+ * The schema of the tables of a page: fields parsed from their text, references from the edges between fields, indexes
+ * from the rows of indexes.
+ */
 export function diagramSchema(cells: CellData[]): SqlSchema {
   // A base table is a template of fields rather than a table of the database: its tables have them as their columns.
   const tableCells = cells.filter(
@@ -213,9 +219,13 @@ export function diagramSchema(cells: CellData[]): SqlSchema {
   const tables: SqlTable[] = []
   const columnOf = new Map<string, { table: SqlTable; column: SqlColumn & { foreignKey: boolean } }>()
   for (const tableCell of tableCells) {
-    const table: SqlTable = { name: plainText(tableCell.value) || 'table', columns: [], foreignKeys: [] }
-    const fields = cells.filter((cell) => cell.parent === tableCell.id && cell.kind === 'vertex').sort(compareCells)
-    for (const field of fields) {
+    const table: SqlTable = { name: plainText(tableCell.value) || 'table', columns: [], foreignKeys: [], indexes: [] }
+    const rows = cells.filter((cell) => cell.parent === tableCell.id && cell.kind === 'vertex').sort(compareCells)
+    for (const row of rows.filter((cell) => isTableIndexStyle(cell.style))) {
+      const index = splitIndex(row.value)
+      if (index) table.indexes.push({ name: index.name, columns: index.columns, unique: index.unique, method: index.method, rest: index.rest })
+    }
+    for (const field of rows.filter((cell) => !isTableIndexStyle(cell.style))) {
       const column = parseFieldLabel(field.value)
       if (!column) continue
       table.columns.push(column)
@@ -241,7 +251,10 @@ function referenceOf(source: Field, target: Field, edge: CellData): { table: Sql
   return { table: from.table, column: from.column.name, referencedTable: to.table.name, referencedColumn: to.column.name }
 }
 
-/** DDL of PostgreSQL that creates the tables, then adds their foreign keys, so that the order of tables never matters. */
+/**
+ * DDL of PostgreSQL that creates the tables, then their indexes, then adds their foreign keys, so that the order of
+ * tables never matters.
+ */
 export function schemaSql(schema: SqlSchema): string {
   const creates = schema.tables.map((table) => {
     const keys = table.columns.filter((column) => column.primaryKey)
@@ -259,6 +272,13 @@ export function schemaSql(schema: SqlSchema): string {
     if (keys.length > 1) lines.push(`PRIMARY KEY (${keys.map((column) => quoteName(column.name)).join(', ')})`)
     return `CREATE TABLE ${quoteName(table.name)} (\n${lines.map((line) => `    ${line}`).join(',\n')}\n);`
   })
+  const indexes = schema.tables.flatMap((table) =>
+    table.indexes.map(
+      (index) =>
+        `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${quoteName(index.name)} ON ${quoteName(table.name)}` +
+        `${index.method ? ` USING ${index.method}` : ''} (${index.columns})${index.rest ? ` ${index.rest}` : ''};`,
+    ),
+  )
   const foreignKeys = schema.tables.flatMap((table) =>
     table.foreignKeys.map(
       (key) =>
@@ -266,7 +286,7 @@ export function schemaSql(schema: SqlSchema): string {
         `REFERENCES ${quoteName(key.table)}${key.references.length > 0 ? ` (${key.references.map(quoteName).join(', ')})` : ''};`,
     ),
   )
-  return [...creates, ...(foreignKeys.length > 0 ? [foreignKeys.join('\n')] : [])].join('\n\n') + '\n'
+  return [...creates, ...[indexes, foreignKeys].filter((lines) => lines.length > 0).map((lines) => lines.join('\n'))].join('\n\n') + '\n'
 }
 
 /** A name that Mermaid takes: letters, digits, `_` and `-`. */

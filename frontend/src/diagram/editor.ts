@@ -29,6 +29,7 @@ import {
 import * as Y from 'yjs'
 import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
 import { fieldText, plainText, renameField, splitField } from '../sql/tableField.ts'
+import { indexText, renameIndex, renameIndexColumn, splitIndex, type IndexParts } from '../sql/tableIndex.ts'
 import {
   allowsAutoWidth,
   anchoredX,
@@ -76,6 +77,8 @@ import {
   TABLE_FIELD_HEIGHT,
   TABLE_FIELD_STYLE,
   TABLE_HEADER_HEIGHT,
+  TABLE_INDEX_GAP,
+  TABLE_INDEX_KEY,
   type ShapeId,
   type ShapeGroup,
   type ShapePreset,
@@ -84,7 +87,9 @@ import {
 import { BASE_BADGE, badgeRoom, nameX, ROW_PADDING } from './tableRows.ts'
 import {
   FIELD_PLACEHOLDER,
+  INDEX_PLACEHOLDER,
   isColumnField,
+  isIndexRow,
   registerTableShapes,
   TABLE_FIELD_SHAPE,
   tableRowsOf,
@@ -196,6 +201,16 @@ export interface SelectedField {
   inheritedFrom: string | null
 }
 
+/** The columns and the uniqueness of the selected index of a table, as its text has them. */
+export interface SelectedIndex {
+  /** Ids of the row of the index and of its table. */
+  cellId: string
+  tableId: string
+  /** What the parentheses of the index hold, e.g. `org_id, created_at`. */
+  columns: string
+  unique: boolean
+}
+
 /** What the selected table, or the table of the selected field, is as to base tables. */
 export interface TableBase {
   /** The table is a base table, whose fields the tables that choose it inherit. */
@@ -224,6 +239,8 @@ export interface EditorState {
   tableVendor: DbVendorId | null
   /** The single selected field of a table, or `null`. */
   field: SelectedField | null
+  /** The single selected index of a table, or `null`. */
+  index: SelectedIndex | null
   /** The selected table, or the table of the selected field, as to base tables; `null` when none is selected. */
   tableBase: TableBase | null
   /** Markers of the selected edges, or `null` when no edge is selected. */
@@ -282,6 +299,10 @@ export interface DiagramEditor {
    * key is NOT NULL.
    */
   setFieldProps(props: Partial<SelectedField>): void
+  /** Adds an index under the selected index (or at the end of the indexes of the selected table) and starts editing it. */
+  addTableIndex(): Cell | null
+  /** Sets the columns or the uniqueness of the selected index, keeping its name and the rest of its text, as one undo step. */
+  setIndexProps(props: Partial<Pick<SelectedIndex, 'columns' | 'unique'>>): void
   /** Sets the database of the selected table, or of the table of the selected field, as one undo step. */
   setTableVendor(vendor: DbVendorId): void
   /**
@@ -565,6 +586,8 @@ const CHANGING_COMMANDS = [
   'addShape',
   'addTableField',
   'setFieldProps',
+  'addTableIndex',
+  'setIndexProps',
   'setTableVendor',
   'addConnectedShape',
   'cut',
@@ -659,10 +682,10 @@ export function createDiagramEditor(
   const handleEditingStarted = (_sender: unknown, event: EventObject) => {
     const cell = event.getProperty('cell') as Cell
     const textarea = cellEditor?.textarea
-    if (!isColumnField(cell) || !textarea) return
+    if (!(isColumnField(cell) || isIndexRow(cell)) || !textarea) return
     namedField = cell
     const row = tableRowsOf(graph, cell.getParent()!).get(cell)
-    textarea.dataset.placeholder = FIELD_PLACEHOLDER
+    textarea.dataset.placeholder = isIndexRow(cell) ? INDEX_PLACEHOLDER : FIELD_PLACEHOLDER
     textarea.style.minWidth = `${Math.max(MIN_NAME_EDITOR_WIDTH, (row?.nameEnd ?? 0) - (row?.nameX ?? 0))}px`
     redrawField(cell)
   }
@@ -701,6 +724,16 @@ export function createDiagramEditor(
     const inherited = inheritedFieldId(field)
     const inheritedFrom = inherited === null ? null : plainText(String(model.getCell(inherited)?.getParent()?.getValue() ?? ''))
     return { cellId: field.getId()!, tableId: field.getParent()!.getId()!, type, notNull, primaryKey, unique, inheritedFrom }
+  }
+  const selectedIndexRow = (): Cell | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    return isIndexRow(cell) ? cell : null
+  }
+  const selectedIndexProps = (): SelectedIndex | null => {
+    const row = selectedIndexRow()
+    const parts = row && indexPartsOf(String(row.getValue() ?? ''))
+    if (!row || !parts) return null
+    return { cellId: row.getId()!, tableId: row.getParent()!.getId()!, columns: parts.columns, unique: parts.unique }
   }
   const selectedTableBase = (): TableBase | null => {
     const table = selectedTable()
@@ -909,7 +942,20 @@ export function createDiagramEditor(
   // field or a table also changes the references that the fields of other tables show.
   const handleLabelChanged = (_sender: unknown, event: EventObject) => {
     const cell = event.getProperty('cell') as Cell
+    if (isColumnField(cell)) renameInIndexes(cell, String(event.getProperty('old') ?? ''))
     fitAutoWidth([cell, ...tablesShowing(cell)])
+  }
+  /** Writes the new name of a renamed field into the columns of the indexes of its table, in the same change. */
+  const renameInIndexes = (field: Cell, old: string) => {
+    const from = splitField(old)?.name
+    const to = splitField(String(field.getValue() ?? ''))
+    if (!from || !to || from === to.name) return
+    for (const row of field.getParent()!.getChildren().filter(isIndexRow)) {
+      const parts = splitIndex(String(row.getValue() ?? ''))
+      if (!parts) continue
+      const columns = renameIndexColumn(parts.columns, from, to.nameText)
+      if (columns !== parts.columns) model.setValue(row, indexText({ ...parts, columns }))
+    }
   }
   graph.addListener(InternalEvent.LABEL_CHANGED, handleLabelChanged)
   // A new edge between fields shows its reference in the field that refers, in the change that adds it.
@@ -950,6 +996,7 @@ export function createDiagramEditor(
       tableSelected: selectedTable() !== null,
       tableVendor: vendorOf(selectedTable()?.getStyle() ?? {})?.id ?? null,
       field: selectedFieldProps(),
+      index: selectedIndexProps(),
       tableBase: selectedTableBase(),
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
@@ -987,7 +1034,7 @@ export function createDiagramEditor(
     const tables = new Set<Cell>()
     for (const change of (event.getProperty('edit') as { changes: object[] }).changes) {
       const { cell, child, parent, previous, terminal } = change as Record<string, unknown>
-      if (change instanceof GeometryChange && !isColumnField(cell as Cell)) continue
+      if (change instanceof GeometryChange && !isColumnField(cell as Cell) && !isIndexRow(cell as Cell)) continue
       for (const value of [cell, child, parent, previous, terminal]) {
         if (value instanceof Cell) tablesShowing(value).forEach((table) => tables.add(table))
       }
@@ -1101,6 +1148,7 @@ export function createDiagramEditor(
     if (cells.length > 1) return 'selection'
     const cell = cells[0]!
     if (cell.isEdge()) return 'edge'
+    if (isIndexRow(cell)) return 'index'
     if (isTable(cell.getParent())) return 'field'
     if (isGroup(cell)) return 'group'
     return isTable(cell) ? 'table' : 'shape'
@@ -1202,6 +1250,26 @@ export function createDiagramEditor(
       .getChildren()
       .filter((cell) => cell.isEdge() && copied(cell.getTerminal(true)) && copied(cell.getTerminal(false)))
     return [...shapes, ...edges]
+  }
+  /**
+   * Adds an empty row with the keys of `style` to the table after the row `after`, or first without one, selects it and
+   * starts editing it. The new row has the text size, the font and the height of the row it follows.
+   */
+  const addTableRow = (table: Cell, after: Cell | null, style: Record<string, StyleValue>) => {
+    const { fontSize, fontFamily } = (after?.getStyle() ?? {}) as ShapeStyle
+    const height = after?.getGeometry()?.height ?? TABLE_FIELD_HEIGHT
+    // The table layout stacks the rows and fixes the position.
+    const row = new Cell('', new Geometry(0, TABLE_HEADER_HEIGHT, table.getGeometry()!.width, height), {
+      ...TABLE_FIELD_STYLE,
+      ...style,
+      ...(fontSize !== undefined && { fontSize }),
+      ...(fontFamily !== undefined && { fontFamily }),
+    } as CellStyle)
+    row.setVertex(true)
+    graph.addCell(row, table, after ? table.getIndex(after) + 1 : 0)
+    graph.setSelectionCell(row)
+    graph.startEditingAtCell(row)
+    return row
   }
   /** Adds clones of `cells` moved by (dx, dy) as one undo step and selects them. */
   const insertCopies = (cells: Cell[], dx: number, dy: number) => {
@@ -1309,22 +1377,30 @@ export function createDiagramEditor(
       const table = selectedTable()
       if (!table) return null
       const selected = graph.getSelectionCell()
-      const fields = Array.from({ length: table.getChildCount() }, (_, index) => table.getChildAt(index))
-      const after = selected !== table ? selected : (fields.at(-1) ?? null)
-      // The new field has the text size, the font and the height of the field it follows.
-      const { fontSize, fontFamily } = (after?.getStyle() ?? {}) as ShapeStyle
-      const height = after?.getGeometry()?.height ?? TABLE_FIELD_HEIGHT
-      // The table layout stacks fields in the order of the cells and fixes the position.
-      const field = new Cell('', new Geometry(0, TABLE_HEADER_HEIGHT, table.getGeometry()!.width, height), {
-        ...TABLE_FIELD_STYLE,
-        ...(fontSize !== undefined && { fontSize }),
-        ...(fontFamily !== undefined && { fontFamily }),
-      } as CellStyle)
-      field.setVertex(true)
-      graph.addCell(field, table, after ? table.getIndex(after) + 1 : fields.length)
-      graph.setSelectionCell(field)
-      graph.startEditingAtCell(field)
-      return field
+      // Fields go before the indexes of the table.
+      const fields = table.getChildren().filter((child) => !isIndexRow(child))
+      const after = selected !== table && !isIndexRow(selected) ? selected : (fields.at(-1) ?? null)
+      return addTableRow(table, after, {})
+    },
+    addTableIndex() {
+      const table = selectedTable()
+      if (!table) return null
+      const selected = graph.getSelectionCell()
+      const after = isIndexRow(selected) ? selected : (table.getChildren().at(-1) ?? null)
+      return addTableRow(table, after, { [TABLE_INDEX_KEY]: true })
+    },
+    setIndexProps(props) {
+      const row = selectedIndexRow()
+      const parts = row && indexPartsOf(String(row.getValue() ?? ''))
+      if (!row || !parts) return
+      const next = { ...parts, ...props }
+      if (props.columns !== undefined) next.columns = props.columns.trim()
+      const text = indexText(next)
+      if (text === row.getValue()) return
+      model.batchUpdate(() => {
+        model.setValue(row, text)
+        fitAutoWidth([row])
+      })
     },
     setFieldProps(props) {
       const field = selectedField()
@@ -1932,6 +2008,12 @@ function isTable(cell: Cell | null): boolean {
   return cell?.isVertex() === true && isTableStyle(cell.getStyle() as ShapeStyle)
 }
 
+/** The parts of the text of an index, or of a name alone, which is an index without columns yet. */
+function indexPartsOf(text: string): IndexParts | null {
+  const named = splitIndex(`${text} ()`)
+  return splitIndex(text) ?? (named && !named.rest && !named.unique && !named.method ? named : null)
+}
+
 /**
  * A group: a container of shapes without a fill and a border, like the groups of draw.io. Tables, and containers of
  * draw.io with a fill or a border, are not groups.
@@ -1943,8 +2025,8 @@ export function isGroup(cell: Cell | null): boolean {
 }
 
 /**
- * Stacks the fields of a table under its header in the order of the cells, across the whole width of the table,
- * and fits the table height to them.
+ * Stacks the fields of a table under its header in the order of the cells, then its indexes under a gap for their
+ * caption, across the whole width of the table, and fits the table height to them.
  */
 class TableLayout extends StackLayout {
   constructor(graph: Graph) {
@@ -1956,6 +2038,18 @@ class TableLayout extends StackLayout {
   // Fields cannot be dragged by the user, but the layout places them.
   override isVertexMovable(_cell: Cell) {
     return true
+  }
+
+  // Indexes go after the fields even when two participants add a field and an index at once.
+  override getLayoutCells(parent: Cell) {
+    const cells = super.getLayoutCells(parent)
+    return [...cells.filter((cell) => !isIndexRow(cell)), ...cells.filter(isIndexRow)]
+  }
+
+  // The rows after the first index follow it, and the table fits the last one.
+  override setChildGeometry(child: Cell, geometry: Geometry) {
+    if (isIndexRow(child) && child.getParent()!.getChildren().find(isIndexRow) === child) geometry.y += TABLE_INDEX_GAP
+    super.setChildGeometry(child, geometry)
   }
 
   override execute(parent: Cell) {
@@ -2039,6 +2133,12 @@ function configureTableFields(graph: Graph) {
   const getCellStyle = graph.getCellStyle.bind(graph)
   graph.getCellStyle = (cell) => {
     const style = getCellStyle(cell)
+    if (isIndexRow(cell)) {
+      const width = cell.getGeometry()?.width ?? 0
+      const row = tableRowsOf(graph, cell.getParent()!).get(cell)
+      const spacingRight = Math.max(ROW_PADDING, width - (row?.nameEnd ?? width - ROW_PADDING))
+      return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: row?.nameX ?? nameX(1), spacingRight }
+    }
     if (isColumnField(cell)) {
       // The label is the name in its column, aligned there; the shape draws the columns after it.
       const width = cell.getGeometry()?.width ?? 0
@@ -2053,17 +2153,28 @@ function configureTableFields(graph: Graph) {
   // An inherited field is edited in its base table.
   const isCellEditable = graph.isCellEditable.bind(graph)
   graph.isCellEditable = (cell) => inheritedFieldId(cell) === null && isCellEditable(cell)
+  // Edges connect fields; an index is not one.
+  const isValidSource = graph.isValidSource.bind(graph)
+  graph.isValidSource = (cell) => !isIndexRow(cell) && isValidSource(cell)
+  // The label of an index, as of a field, is its name.
   const getLabel = graph.getLabel.bind(graph)
   graph.getLabel = (cell) => {
     const label = getLabel(cell)
+    if (label && isIndexRow(cell)) return splitIndex(label)?.name ?? label
     return label && isColumnField(cell) ? (splitField(label)?.name ?? label) : label
   }
   const getEditingValue = graph.getEditingValue.bind(graph)
-  graph.getEditingValue = (cell, event) =>
-    (isColumnField(cell) && splitField(String(cell.getValue() ?? ''))?.nameText) || getEditingValue(cell, event)
+  graph.getEditingValue = (cell, event) => {
+    const text = String(cell.getValue() ?? '')
+    if (isIndexRow(cell)) return splitIndex(text)?.nameText || getEditingValue(cell, event)
+    return (isColumnField(cell) && splitField(text)?.nameText) || getEditingValue(cell, event)
+  }
   const cellLabelChanged = graph.cellLabelChanged.bind(graph)
-  graph.cellLabelChanged = (cell, value, autoSize) =>
-    cellLabelChanged(cell, isColumnField(cell) ? renameField(String(cell.getValue() ?? ''), String(value ?? '')) : value, autoSize)
+  graph.cellLabelChanged = (cell, value, autoSize) => {
+    const text = String(cell.getValue() ?? '')
+    if (isIndexRow(cell)) return cellLabelChanged(cell, renameIndex(text, String(value ?? '')), autoSize)
+    return cellLabelChanged(cell, isColumnField(cell) ? renameField(text, String(value ?? '')) : value, autoSize)
+  }
 }
 
 /**

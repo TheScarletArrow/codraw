@@ -1,4 +1,5 @@
 import { splitField, type FieldParts } from '../sql/tableField.ts'
+import { indexColumnNames, splitIndex, type IndexParts } from '../sql/tableIndex.ts'
 import type { LabelStyle } from './autoWidth.ts'
 
 /** Width of a text drawn with a font, in pixels at 100%. */
@@ -12,7 +13,7 @@ export interface RowField {
   reference: string | null
 }
 
-export type FieldIcon = 'key' | 'link' | 'unique'
+export type FieldIcon = 'key' | 'link' | 'unique' | 'index'
 
 /** A text drawn after the name of a field, with its left edge from the left edge of the field. */
 export interface RowColumn {
@@ -21,7 +22,7 @@ export interface RowColumn {
 }
 
 export interface TableRow {
-  /** `null` when the text is not a field, e.g. while a new field is empty. */
+  /** `null` when the text is not a field, e.g. while a new field is empty, and for an index. */
   parts: FieldParts | null
   /** Icons before the name, from the left. */
   icons: FieldIcon[]
@@ -29,7 +30,8 @@ export interface TableRow {
   nameX: number
   /** Right edge of the column of names, where the label of the field ends; `null` without columns. */
   nameEnd: number | null
-  /** The type, `NULL` or `NOT NULL`, then the reference and the rest of the field. */
+  /** The type, `NULL` or `NOT NULL`, then the reference and the rest of the field; of an index, its columns, then
+   * `UNIQUE`, the method and the rest. */
   columns: RowColumn[]
   /** Width of a field that shows the whole row. */
   width: number
@@ -58,20 +60,30 @@ export const badgeRoom = (badge: string) => BADGE_X + badgeWidth(badge) + 4
 
 const nullability = (parts: FieldParts) => (parts.notNull ? 'NOT NULL' : 'NULL')
 
-/** A key for a primary key, else a link for a field that refers to another one; then a diamond for a unique field. */
-function iconsOf(field: FieldParts | null, reference: string | null): FieldIcon[] {
+/**
+ * A key for a primary key, else a link for a field that refers to another one; then a diamond for a unique field; then
+ * a sign of an index for a column of an index of its table.
+ */
+function iconsOf(field: FieldParts | null, reference: string | null, indexed: Set<string>): FieldIcon[] {
   if (!field) return []
   const key: FieldIcon | null = field.primaryKey ? 'key' : field.foreignKey || reference ? 'link' : null
-  return [...(key ? [key] : []), ...(field.unique ? (['unique'] as const) : [])]
+  return [
+    ...(key ? [key] : []),
+    ...(field.unique ? (['unique'] as const) : []),
+    ...(indexed.has(field.name.toLowerCase()) ? (['index'] as const) : []),
+  ]
 }
 
 /**
- * Rows of the fields of a table: the icons, the name, then the type, the nullability and the reference with the rest,
- * each in a column as wide as its longest text in the table, so that the columns line up.
+ * Rows of the fields of a table, then of its indexes: the icons, the name, then the type, the nullability and the
+ * reference with the rest of a field, each in a column as wide as its longest text among the fields, so that the
+ * columns line up. The names of indexes start where those of fields do, and their columns line up among the indexes.
  */
-export function tableRows(fields: RowField[], measure: Measure): TableRow[] {
+export function tableRows(fields: RowField[], measure: Measure, indexes: RowField[] = []): TableRow[] {
   const parts = fields.map((field) => splitField(field.text))
-  const icons = parts.map((field, index) => iconsOf(field, fields[index]!.reference))
+  const indexParts = indexes.map((index) => splitIndex(index.text))
+  const indexed = new Set(indexParts.flatMap((index) => (index ? indexColumnNames(index.columns) : [])).map((name) => name.toLowerCase()))
+  const icons = parts.map((field, index) => iconsOf(field, fields[index]!.reference, indexed))
   const widest = (text: (parts: FieldParts) => string) =>
     Math.max(0, ...parts.map((field, index) => (field ? measure(text(field), fields[index]!.font) : 0)))
   const nameLeft = nameX(Math.max(0, ...icons.map((row) => row.length)))
@@ -80,12 +92,9 @@ export function tableRows(fields: RowField[], measure: Measure): TableRow[] {
   const typeWidth = widest((field) => field.type)
   const nullX = typeWidth > 0 ? typeX + typeWidth + GAP : typeX
   const extraX = nullX + widest(nullability) + GAP
-  return fields.map(({ text, font, reference }, index) => {
+  const rows = fields.map(({ text, font, reference }, index): TableRow => {
     const field = parts[index]!
-    if (!field) {
-      const width = text.trim() ? nameLeft + measure(text, font) + ROW_PADDING : 0
-      return { parts: null, icons: [], nameX: nameLeft, nameEnd: null, columns: [], width }
-    }
+    if (!field) return textRow(text, font, nameLeft, measure)
     const extra = [reference && `→ ${reference}`, field.rest].filter(Boolean).join('  ')
     const columns: RowColumn[] = [
       ...(field.type ? [{ text: field.type, x: typeX }] : []),
@@ -96,6 +105,40 @@ export function tableRows(fields: RowField[], measure: Measure): TableRow[] {
     return {
       parts: field,
       icons: icons[index]!,
+      nameX: nameLeft,
+      nameEnd,
+      columns,
+      width: last.x + measure(last.text, font) + ROW_PADDING,
+    }
+  })
+  return [...rows, ...indexRows(indexes, indexParts, nameLeft, measure)]
+}
+
+/** A row that shows its text as it is, e.g. of a field without a name yet. */
+function textRow(text: string, font: RowField['font'], nameLeft: number, measure: Measure): TableRow {
+  const width = text.trim() ? nameLeft + measure(text, font) + ROW_PADDING : 0
+  return { parts: null, icons: [], nameX: nameLeft, nameEnd: null, columns: [], width }
+}
+
+/** What an index shows after its columns: `UNIQUE`, the method and the rest. */
+const indexExtra = (index: IndexParts) => [index.unique && 'UNIQUE', index.method && `USING ${index.method}`, index.rest].filter(Boolean).join(' ')
+
+/** Rows of indexes: a diamond for a unique one, else the sign of an index; the name, the columns, then the rest. */
+function indexRows(indexes: RowField[], parts: (IndexParts | null)[], nameLeft: number, measure: Measure): TableRow[] {
+  const widest = (text: (parts: IndexParts) => string) =>
+    Math.max(0, ...parts.map((index, at) => (index ? measure(text(index), indexes[at]!.font) : 0)))
+  const nameEnd = nameLeft + widest((index) => index.name)
+  const columnsX = nameEnd + GAP
+  const extraX = columnsX + widest((index) => `(${index.columns})`) + GAP
+  return indexes.map(({ text, font }, at) => {
+    const index = parts[at]!
+    if (!index) return textRow(text, font, nameLeft, measure)
+    const extra = indexExtra(index)
+    const columns: RowColumn[] = [{ text: `(${index.columns})`, x: columnsX }, ...(extra ? [{ text: extra, x: extraX }] : [])]
+    const last = columns.at(-1)!
+    return {
+      parts: null,
+      icons: [index.unique ? 'unique' : 'index'],
       nameX: nameLeft,
       nameEnd,
       columns,

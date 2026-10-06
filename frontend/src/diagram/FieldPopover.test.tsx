@@ -50,6 +50,16 @@ describe('FieldPopover', () => {
     expect(panel.style.transform).toBe('translate(-100%, -50%)')
   })
 
+  it('sets the columns of the selected index next to it', async () => {
+    editor.placeCell('index', { x: 100, y: 152, width: 200, height: 26 })
+    act(() => editor.setState({ index: { cellId: 'index', tableId: 'table', columns: 'org_id', unique: false }, tableVendor: null }))
+    const panel = screen.getByRole('group', { name: 'Свойства индекса' })
+
+    expect(panel.style.top).toBe('165px')
+    await userEvent.click(screen.getByRole('button', { name: 'UNIQUE' }))
+    expect(editor.setIndexProps).toHaveBeenCalledWith({ unique: true })
+  })
+
   it('follows the table when the canvas scrolls', () => {
     act(() => editor.setState({ field: FIELD, tableVendor: null }))
 

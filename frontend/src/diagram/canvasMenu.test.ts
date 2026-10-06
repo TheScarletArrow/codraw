@@ -21,10 +21,11 @@ describe('menuItems', () => {
     ])
   })
 
-  it('adds a field to a table right after its label', () => {
+  it('adds a field or an index to a table right after its label', () => {
     expect(labels('table')).toEqual([
       'Изменить подпись',
       'Добавить поле',
+      'Добавить индекс',
       'Вырезать',
       'Копировать',
       'Дублировать',
@@ -36,6 +37,10 @@ describe('menuItems', () => {
 
   it('offers only editing, a new field and deletion for a field', () => {
     expect(labels('field')).toEqual(['Изменить', 'Добавить поле ниже', 'Удалить поле'])
+  })
+
+  it('offers only editing, a new index and deletion for an index', () => {
+    expect(labels('index')).toEqual(['Изменить', 'Добавить индекс ниже', 'Удалить индекс'])
   })
 
   it('offers the label, reversing and deletion for an edge', () => {
@@ -90,6 +95,7 @@ describe('menuItems', () => {
     expect(menuItems('table', all).map(({ command, shortcut }) => [command, shortcut])).toEqual([
       ['editLabel', 'F2'],
       ['addField', undefined],
+      ['addIndex', undefined],
       ['cut', 'Mod+X'],
       ['copy', 'Mod+C'],
       ['duplicate', 'Mod+D'],

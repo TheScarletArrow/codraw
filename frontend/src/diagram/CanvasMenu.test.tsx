@@ -27,6 +27,7 @@ describe('CanvasMenu', () => {
     expect(items().map((item) => item.getAttribute('aria-label') ?? item.textContent)).toEqual([
       'Изменить подпись',
       'Добавить поле',
+      'Добавить индекс',
       'Вырезать',
       'Копировать',
       'Дублировать',
@@ -87,11 +88,14 @@ describe('CanvasMenu', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Развернуть направление' }))
     rightClick('field')
     await userEvent.click(screen.getByRole('menuitem', { name: 'Добавить поле ниже' }))
+    rightClick('index')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Добавить индекс ниже' }))
     rightClick('selection')
     await userEvent.click(screen.getByRole('menuitem', { name: 'На задний план' }))
 
     expect(editor.reverseEdge).toHaveBeenCalled()
     expect(editor.addTableField).toHaveBeenCalled()
+    expect(editor.addTableIndex).toHaveBeenCalled()
     expect(editor.sendToBack).toHaveBeenCalled()
   })
 

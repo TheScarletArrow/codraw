@@ -57,6 +57,8 @@ function importedDiagram(text: string): { diagram: MermaidDiagram | null; error:
 const countReferences = (schema: SqlSchema) =>
   schema.tables.reduce((sum, table) => sum + table.foreignKeys.reduce((keys, key) => keys + key.columns.length, 0), 0)
 
+const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) => sum + table.indexes.length, 0)
+
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
  * a flowchart or an ER diagram of Mermaid becomes a diagram of the page.
@@ -211,7 +213,8 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
               )}
             </div>
             <p role="status" className="text-xs text-muted-foreground">
-              Таблиц: {imported.tables.length}, связей: {countReferences(imported)}, пропущено операторов: {imported.skipped}
+              Таблиц: {imported.tables.length}, связей: {countReferences(imported)}, индексов: {countIndexes(imported)},
+              пропущено операторов: {imported.skipped}
             </p>
             {message && (
               <p role="alert" className="text-xs text-destructive">

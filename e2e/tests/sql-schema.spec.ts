@@ -19,7 +19,7 @@ test('migrations of Flyway become tables with their reference for everybody, are
     { name: 'V2__boards.sql', mimeType: 'text/plain', buffer: Buffer.from(BOARDS) },
     { name: 'V1__users.sql', mimeType: 'text/plain', buffer: Buffer.from(USERS) },
   ])
-  await expect(menu.getByRole('status')).toHaveText('Таблиц: 2, связей: 1, пропущено операторов: 1')
+  await expect(menu.getByRole('status')).toHaveText('Таблиц: 2, связей: 1, индексов: 1, пропущено операторов: 0')
   await menu.getByRole('button', { name: 'Добавить на страницу' }).click()
   await expect(menu).toBeHidden()
 
@@ -45,6 +45,7 @@ test('migrations of Flyway become tables with their reference for everybody, are
   await expect(menu).toContainText('SQL скопирован')
   const sql = await alice.evaluate(() => navigator.clipboard.readText())
   expect(sql).toContain('CREATE TABLE users (\n    id uuid PRIMARY KEY,\n    email text NOT NULL UNIQUE\n);')
+  expect(sql).toContain('CREATE INDEX users_email_idx ON users (email);')
   expect(sql).toContain('ALTER TABLE boards ADD FOREIGN KEY (owner_id) REFERENCES users (id);')
   await alice.keyboard.press('Escape')
 

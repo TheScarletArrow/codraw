@@ -7,6 +7,8 @@ import {
   TABLE_FIELD_HEIGHT,
   TABLE_FIELD_STYLE,
   TABLE_HEADER_HEIGHT,
+  TABLE_INDEX_GAP,
+  TABLE_INDEX_KEY,
   type ShapeId,
   type ShapeStyle,
 } from '../diagram/shapes.ts'
@@ -53,22 +55,27 @@ export class DiagramBuilder {
     })
   }
 
-  /** Adds a table of a database with its fields under the name; returns the ids of the table and of its fields. */
-  table(name: string, x: number, y: number, fields: string[], width = 220): { id: string; fields: string[] } {
+  /**
+   * Adds a table of a database with its fields under the name and the rows of its indexes under the fields; returns the
+   * ids of the table and of its fields.
+   */
+  table(name: string, x: number, y: number, fields: string[], width = 220, indexes: string[] = []): { id: string; fields: string[] } {
+    const indexesTop = TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT + TABLE_INDEX_GAP
     const id = this.shape('table', x, y, {
       value: name,
       width,
-      height: TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT,
+      height: indexes.length > 0 ? indexesTop + indexes.length * TABLE_FIELD_HEIGHT : TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT,
     })
-    const fieldIds = fields.map((field, index) =>
+    const row = (value: string, top: number, style: Record<string, StyleValue>) =>
       this.add({
         kind: 'vertex',
         parent: id,
-        value: field,
-        geometry: { x: 0, y: TABLE_HEADER_HEIGHT + index * TABLE_FIELD_HEIGHT, width, height: TABLE_FIELD_HEIGHT },
-        style: { ...TABLE_FIELD_STYLE } as Record<string, StyleValue>,
-      }),
-    )
+        value,
+        geometry: { x: 0, y: top, width, height: TABLE_FIELD_HEIGHT },
+        style: { ...TABLE_FIELD_STYLE, ...style } as Record<string, StyleValue>,
+      })
+    const fieldIds = fields.map((field, index) => row(field, TABLE_HEADER_HEIGHT + index * TABLE_FIELD_HEIGHT, {}))
+    indexes.forEach((index, at) => row(index, indexesTop + at * TABLE_FIELD_HEIGHT, { [TABLE_INDEX_KEY]: true }))
     return { id, fields: fieldIds }
   }
 

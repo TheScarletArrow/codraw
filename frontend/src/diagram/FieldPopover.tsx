@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { DiagramEditor } from './editor.ts'
-import { FieldProps } from './TableTools.tsx'
+import { FieldProps, IndexProps } from './TableTools.tsx'
 import { useEditorState } from './useEditorState.ts'
 
 /** Room between the table and the panel. */
@@ -9,18 +9,20 @@ const GAP = 12
 export const FIELD_POPOVER_WIDTH = 400
 
 /**
- * The type, nullability and keys of the selected field in a panel next to its table, at the height of the field: to the
- * right of the table, or to the left when the visible part of the canvas has no room there.
+ * The type, nullability and keys of the selected field, or the columns of the selected index, in a panel next to its
+ * table, at the height of the row: to the right of the table, or to the left when the visible part of the canvas has no
+ * room there.
  */
 export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
-  const { field, tableVendor } = useEditorState(editor)
+  const { field, index, tableVendor } = useEditorState(editor)
   // Positions depend on scrolling, zoom and cell geometry: re-render whenever the view changes.
   useSyncExternalStore(editor?.onViewChange ?? noSubscription, () => editor?.getViewVersion() ?? 0)
 
-  const fieldBounds = editor && field ? editor.cellBounds(field.cellId) : null
-  const tableBounds = editor && field ? editor.cellBounds(field.tableId) : null
   // An inherited field is edited in its base table.
-  if (!editor || !field || field.inheritedFrom !== null || !fieldBounds || !tableBounds) return null
+  const row = field?.inheritedFrom === null ? field : index
+  const fieldBounds = editor && row ? editor.cellBounds(row.cellId) : null
+  const tableBounds = editor && row ? editor.cellBounds(row.tableId) : null
+  if (!editor || !row || !fieldBounds || !tableBounds) return null
   const right = tableBounds.x + tableBounds.width + GAP
   const fitsRight = right + FIELD_POPOVER_WIDTH <= editor.viewportSize().width
   const top = fieldBounds.y + fieldBounds.height / 2
@@ -29,7 +31,7 @@ export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div
         role="group"
-        aria-label="Свойства поля"
+        aria-label={index ? 'Свойства индекса' : 'Свойства поля'}
         data-side={fitsRight ? 'right' : 'left'}
         className="pointer-events-auto absolute flex items-center gap-1 rounded-md border bg-background p-1 text-foreground shadow-md"
         style={
@@ -38,7 +40,7 @@ export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
             : { left: tableBounds.x - GAP, top, transform: 'translate(-100%, -50%)' }
         }
       >
-        <FieldProps editor={editor} vendor={tableVendor} field={field} />
+        {index ? <IndexProps editor={editor} index={index} /> : <FieldProps editor={editor} vendor={tableVendor} field={field!} />}
       </div>
     </div>
   )

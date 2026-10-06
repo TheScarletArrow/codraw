@@ -69,4 +69,35 @@ describe('rows of a table', () => {
     expect(tableRows([field('')], measure)[0]).toEqual({ parts: null, icons: [], nameX: NAME_X, nameEnd: null, columns: [], width: 0 })
     expect(tableRows([field('(x)')], measure)[0]!.width).toBe(NAME_X + 30 + ROW_PADDING)
   })
+
+  it('shows indexes after the fields: their names where the names of fields start, their columns lined up among them', () => {
+    const [, , org, email, odd] = tableRows(
+      [field('id uuid PK'), field('org_id uuid')],
+      measure,
+      [field('users_org_idx (org_id, created_at)'), field('email_key (lower(email)) UNIQUE USING btree'), field('broken')],
+    )
+    const nameEnd = NAME_X + 130
+    const columnsX = nameEnd + 12
+    const extraX = columnsX + 20 * 10 + 12
+    expect(org).toMatchObject({ parts: null, icons: ['index'], nameX: NAME_X, nameEnd, columns: [{ text: '(org_id, created_at)', x: columnsX }] })
+    expect(email).toMatchObject({
+      icons: ['unique'],
+      columns: [
+        { text: '(lower(email))', x: columnsX },
+        { text: 'UNIQUE USING btree', x: extraX },
+      ],
+      width: extraX + 180 + ROW_PADDING,
+    })
+    expect(odd).toEqual({ parts: null, icons: [], nameX: NAME_X, nameEnd: null, columns: [], width: NAME_X + 60 + ROW_PADDING })
+  })
+
+  it('marks the columns of indexes with the sign of an index after the other icons, but not those of expressions', () => {
+    const rows = tableRows(
+      [field('id uuid PK'), field('ORG_ID uuid UNIQUE'), field('email text'), field('name text')],
+      measure,
+      [field('a_idx (id, org_id DESC)'), field('b_idx (lower(email))')],
+    )
+    expect(rows.slice(0, 4).map((row) => row.icons)).toEqual([['key', 'index'], ['unique', 'index'], [], []])
+    expect(rows[0]!.nameX).toBe(nameX(2))
+  })
 })

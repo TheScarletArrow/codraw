@@ -47,7 +47,10 @@ function pageCells(doc: Y.Doc, pageId: string) {
   )
 }
 
-/** A board with two pages: shapes, an edge with a label and markers, a table with a field and custom properties. */
+/**
+ * A board with two pages: shapes, an edge with a label and markers, a table with a field and an index, and custom
+ * properties.
+ */
 function sampleBoard() {
   const doc = board()
   renamePage(doc, DEFAULT_PAGE_ID, 'Контекст')
@@ -72,6 +75,10 @@ function sampleBoard() {
     const tables = getCells(doc, second)
     writeCell(tables, cell('table', { value: 'users', style: { shape: 'swimlane', startSize: 30, childLayout: 'stackLayout', foldable: false } }))
     writeCell(tables, cell('field', { parent: 'table', value: 'id uuid PK', geometry: { x: 0, y: 30, width: 120, height: 26 }, style: { movable: false } }))
+    writeCell(
+      tables,
+      cell('index', { parent: 'table', value: 'users_id_idx (id)', geometry: { x: 0, y: 76, width: 120, height: 26 }, style: { codrawIndex: true }, order: 'a1' }),
+    )
   })
   return { doc, second }
 }
@@ -91,7 +98,7 @@ describe('exportDrawio', () => {
     const ids = (index: number) =>
       Array.from(diagrams[index]!.getElementsByTagName('mxCell')).map((element) => element.getAttribute('id') ?? element.parentElement!.getAttribute('id'))
     expect(ids(0)).toEqual(['0', '1', 'client', 'api', 'edge'])
-    expect(ids(1)).toEqual(['0', '1', 'table', 'field'])
+    expect(ids(1)).toEqual(['0', '1', 'table', 'field', 'index'])
   })
 
   it('writes styles, geometry, multi-line labels and custom properties as draw.io reads them', () => {

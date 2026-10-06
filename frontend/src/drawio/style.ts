@@ -14,6 +14,7 @@ const BOOLEAN_KEYS = new Set([
   'cloneable',
   'codrawBase',
   'codrawBaseDefault',
+  'codrawIndex',
   'connectable',
   'curved',
   'dashed',

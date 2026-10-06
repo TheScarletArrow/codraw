@@ -103,6 +103,13 @@ describe('text wrap in files of draw.io', () => {
   })
 })
 
+describe('indexes in files of draw.io', () => {
+  it('keeps the key of a row of an index both ways', () => {
+    expect(formatStyle({ codrawIndex: true }, 'vertex')).toContain('codrawIndex=1')
+    expect(parseStyle(formatStyle({ codrawIndex: true }, 'vertex'), 'vertex')).toMatchObject({ codrawIndex: true })
+  })
+})
+
 describe('base tables in files of draw.io', () => {
   it('keeps the keys of base tables and inherited fields both ways', () => {
     const table = { codrawBase: true, codrawBaseDefault: true, codrawBaseTable: 'base' }

@@ -102,7 +102,7 @@ describe('parsing DDL', () => {
     const schema = parseSql(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
       CREATE TABLE notes (id serial PRIMARY KEY, body text);
-      CREATE INDEX notes_body_idx ON notes (body);
+      CREATE VIEW recent_notes AS SELECT * FROM notes;
       CREATE FUNCTION touch() RETURNS trigger AS $$ BEGIN NEW.body := 'x;y'; RETURN NEW; END; $$ LANGUAGE plpgsql;
       INSERT INTO notes (body) VALUES ('a; b');
       CREATE TABLE copy AS SELECT * FROM notes;
@@ -125,6 +125,68 @@ describe('parsing DDL', () => {
 
     expect(columns(schema, 'orders')).toEqual(['id int PK NN', 'user_id int NN'])
     expect(keys(schema, 'orders')).toEqual([{ columns: ['user_id'], table: 'users', references: ['id'] }])
+  })
+
+  it('reads indexes: of CREATE INDEX with their columns and conditions as written, and composite unique constraints', () => {
+    const schema = parseSql(`
+      CREATE TABLE users (id uuid PRIMARY KEY, org_id uuid, email text UNIQUE, created_at timestamptz, UNIQUE (org_id, email));
+      CREATE INDEX ON users (org_id);
+      CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS users_email_key ON ONLY public.users USING btree (lower(email)) WHERE email IS NOT NULL;
+      CREATE INDEX users_recent_idx ON users (created_at DESC) INCLUDE (email);
+      ALTER TABLE users ADD CONSTRAINT users_pair UNIQUE (id, org_id);
+      CREATE INDEX missing_idx ON missing (id);
+    `)
+
+    expect(schema.tables[0]!.indexes).toEqual([
+      { name: 'users_org_id_email_key', columns: 'org_id, email', unique: true, method: '', rest: '' },
+      { name: 'users_org_id_idx', columns: 'org_id', unique: false, method: '', rest: '' },
+      { name: 'users_email_key', columns: 'lower(email)', unique: true, method: 'btree', rest: 'WHERE email IS NOT NULL' },
+      { name: 'users_recent_idx', columns: 'created_at DESC', unique: false, method: '', rest: 'INCLUDE (email)' },
+      { name: 'users_pair', columns: 'id, org_id', unique: true, method: '', rest: '' },
+    ])
+    expect(columns(schema, 'users')).toContain('email text U')
+    expect(schema.skipped).toBe(1)
+  })
+
+  it('follows indexes through migrations: renamed and dropped columns, renamed and dropped indexes and constraints', () => {
+    const schema = parseSql(`
+      CREATE TABLE users (id uuid PRIMARY KEY, mail text, name text, org_id uuid);
+      CREATE INDEX users_mail_idx ON users (mail, lower(mail));
+      CREATE INDEX users_name_idx ON users (name);
+      CREATE INDEX users_old_idx ON users (org_id);
+      ALTER TABLE users ADD CONSTRAINT users_org_name UNIQUE (org_id, name);
+      ALTER TABLE users RENAME COLUMN mail TO email;
+      ALTER INDEX users_mail_idx RENAME TO users_email_idx;
+      ALTER TABLE users DROP COLUMN name;
+      DROP INDEX IF EXISTS users_old_idx, users_gone_idx;
+    `)
+
+    expect(schema.tables[0]!.indexes).toEqual([{ name: 'users_email_idx', columns: 'email, lower(mail)', unique: false, method: '', rest: '' }])
+    expect(schema.skipped).toBe(0)
+
+    parseSql('ALTER TABLE users ADD CONSTRAINT users_pair UNIQUE (id, email); ALTER TABLE users DROP CONSTRAINT users_pair', schema)
+    expect(schema.tables[0]!.indexes.map((index) => index.name)).toEqual(['users_email_idx'])
+  })
+
+  it('reads the indexes of MySQL inside CREATE TABLE', () => {
+    const schema = parseSql(`
+      CREATE TABLE \`orders\` (
+        \`id\` INT NOT NULL,
+        \`user_id\` INT NOT NULL,
+        \`code\` VARCHAR(20),
+        KEY \`user_idx\` (\`user_id\`),
+        INDEX (\`user_id\`, \`code\`),
+        UNIQUE KEY \`code_key\` (\`code\`),
+        UNIQUE INDEX \`pair_key\` (\`id\`, \`code\`)
+      );
+    `)
+
+    expect(schema.tables[0]!.indexes).toEqual([
+      { name: 'user_idx', columns: 'user_id', unique: false, method: '', rest: '' },
+      { name: 'orders_user_id_code_idx', columns: 'user_id, code', unique: false, method: '', rest: '' },
+      { name: 'pair_key', columns: 'id, code', unique: true, method: '', rest: '' },
+    ])
+    expect(columns(schema, 'orders')).toContain('code varchar(20) U')
   })
 
   it('orders migrations of Flyway by version, then repeatable ones, then other files, without undo migrations', () => {

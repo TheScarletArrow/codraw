@@ -103,13 +103,14 @@ describe('SqlMenu', () => {
     await user.paste(
       'CREATE TABLE teams (id uuid PRIMARY KEY); CREATE TABLE members (team_id uuid REFERENCES teams); CREATE INDEX i ON members (team_id);',
     )
-    expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 2, связей: 1, пропущено операторов: 1')
+    expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 2, связей: 1, индексов: 1, пропущено операторов: 0')
     await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
 
     await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
     const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
     const teams = cells.find((cell) => cell.value === 'teams')!
     expect(cells.find((cell) => cell.value === 'team_id uuid FK')).toBeDefined()
+    expect(cells.find((cell) => cell.value === 'i (team_id)')?.style).toMatchObject({ codrawIndex: true })
     // The page has `boards` from 400 to 620: new tables start 80 to the right of it.
     expect(Math.min(...cells.filter((cell) => cell.parent === '1' && cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
     expect(teams.geometry!.y).toBeGreaterThanOrEqual(40)
@@ -128,7 +129,7 @@ describe('SqlMenu', () => {
       new File(['DROP TABLE users;'], 'U1__users.sql'),
     ])
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 1, связей: 0, пропущено операторов: 0'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 1, связей: 0, индексов: 0, пропущено операторов: 0'))
     expect(menu()).toHaveTextContent('Файлов: 3')
     await user.click(screen.getByRole('button', { name: 'Назад' }))
     expect(screen.getByRole('button', { name: 'Импорт SQL…' })).toBeInTheDocument()
