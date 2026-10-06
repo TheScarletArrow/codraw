@@ -2,7 +2,17 @@ import type { HocuspocusProvider } from '@hocuspocus/provider'
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { DiagramEditor, Point } from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
+import { throttle } from '../lib/throttle.ts'
 import type { ParticipantIdentity } from './identity.ts'
+import {
+  addLaserPoint,
+  encodeLaser,
+  LASER_FADE_MS,
+  readLaser,
+  trimLaser,
+  type LaserTrail,
+  type PublishedLaser,
+} from './laser.ts'
 
 export type Awareness = NonNullable<HocuspocusProvider['awareness']>
 
@@ -22,6 +32,17 @@ export interface RemotePresence extends ParticipantIdentity {
   presenting: number | null
   /** The client id of the participant they follow; `null` when they follow nobody, and for old clients. */
   following: number | null
+  /** The trail of their laser pointer; `null` when nothing of it is seen, and for old clients. */
+  laser: PublishedLaser | null
+  /** The message at their cursor; `null` when they have none, and for old clients. */
+  chat: ChatMessage | null
+}
+
+/** A message at the cursor of a participant: its text and when they started it, on their clock (ms). */
+export interface ChatMessage {
+  text: string
+  /** Tells one message from another. */
+  at: number
 }
 
 /** What a participant sees: the middle of their visible area in diagram coordinates and the scale. */
@@ -35,6 +56,12 @@ export const CURSOR_INTERVAL_MS = 50
 /** Updates of the view are sent at most this often (10 per second). */
 export const VIEW_INTERVAL_MS = 100
 
+/** Updates of a message at the cursor are sent at most this often (10 per second). */
+export const CHAT_INTERVAL_MS = 100
+
+/** The longest message at the cursor. */
+export const CHAT_MAX_LENGTH = 100
+
 /**
  * Publishes the page, the view, the local pointer, the selection and the label edited in place of the editor to the
  * other participants.
@@ -45,33 +72,18 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
     awareness.setLocalStateField('page', editor.pageId)
     const publishCursor = (point: Point | null) =>
       awareness.setLocalStateField('cursor', point && { x: Math.round(point.x), y: Math.round(point.y) })
-    let lastSent = -Infinity
+    // Within the interval, the latest position waits for its end.
     let pending: Point | null = null
-    let timer: ReturnType<typeof setTimeout> | undefined
+    const cursor = throttle(() => publishCursor(pending), CURSOR_INTERVAL_MS)
 
     const offPointer = editor.onPointerMove((point) => {
       if (point === null) {
-        clearTimeout(timer)
-        timer = undefined
+        cursor.cancel()
         publishCursor(null)
         return
       }
-      const now = performance.now()
-      if (now - lastSent >= CURSOR_INTERVAL_MS) {
-        // A timer that has not fired yet, e.g. on a busy page, would send an older position after this one.
-        clearTimeout(timer)
-        timer = undefined
-        lastSent = now
-        publishCursor(point)
-        return
-      }
-      // Within the interval, keep the latest position and send it when the interval ends.
       pending = point
-      timer ??= setTimeout(() => {
-        timer = undefined
-        lastSent = performance.now()
-        publishCursor(pending)
-      }, CURSOR_INTERVAL_MS - (now - lastSent))
+      cursor.run()
     })
     const offSelection = editor.onSelectionChange((ids) => awareness.setLocalStateField('selection', ids))
 
@@ -110,7 +122,7 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
       offSelection()
       offView()
       offEditing?.()
-      clearTimeout(timer)
+      cursor.cancel()
       clearTimeout(viewTimer)
       publishEditing(null)
       awareness.setLocalStateField('viewport', null)
@@ -118,6 +130,43 @@ export function usePresencePublisher(editor: DiagramEditor | null, awareness: Aw
       awareness.setLocalStateField('selection', [])
     }
   }, [editor, awareness])
+}
+
+/**
+ * Publishes the trail of the laser pointer of the editor: the points of the last second, at most as often as the
+ * cursor. Once its last point has faded, the trail is cleared: a participant who comes later would take an old trail
+ * for a new one. It is cleared as well when the editor goes away, and is not published without a connection.
+ */
+export function useLaserPublisher(editor: DiagramEditor | null, awareness: Awareness | null, online: boolean) {
+  useEffect(() => {
+    if (!editor || !awareness || !online) return
+    let trail: LaserTrail = []
+    let drawing = false
+    const publish = () => {
+      const now = performance.now()
+      trail = trimLaser(trail, now)
+      awareness.setLocalStateField('laser', trail.length > 0 ? encodeLaser(trail, now) : null)
+    }
+    const laser = throttle(publish, CURSOR_INTERVAL_MS)
+    let fadeTimer: ReturnType<typeof setTimeout> | undefined
+    const offLaser = editor.onLaser((point) => {
+      if (point === null) {
+        drawing = false
+        return
+      }
+      trail = addLaserPoint(trail, point, performance.now(), !drawing)
+      drawing = true
+      laser.run()
+      clearTimeout(fadeTimer)
+      fadeTimer = setTimeout(publish, LASER_FADE_MS)
+    })
+    return () => {
+      offLaser()
+      laser.cancel()
+      clearTimeout(fadeTimer)
+      awareness.setLocalStateField('laser', null)
+    }
+  }, [editor, awareness, online])
 }
 
 /**
@@ -227,7 +276,16 @@ export function readRemotePresence(awareness: Awareness): RemotePresence[] {
       editing: typeof editing === 'string' && editing !== '' ? editing : null,
       presenting: typeof presenting === 'number' && Number.isFinite(presenting) && presenting > 0 ? presenting : null,
       following: Number.isInteger(following) ? (following as number) : null,
+      laser: readLaser(state.laser),
+      chat: readChat(state.chat),
     })
   })
   return result
+}
+
+/** A message at the cursor of another participant, cut to {@link CHAT_MAX_LENGTH}; `null` for anything else. */
+function readChat(value: unknown): ChatMessage | null {
+  const chat = value as Partial<ChatMessage> | null | undefined
+  if (typeof chat?.text !== 'string' || chat.text.trim() === '' || !Number.isFinite(chat.at)) return null
+  return { text: chat.text.slice(0, CHAT_MAX_LENGTH), at: chat.at as number }
 }

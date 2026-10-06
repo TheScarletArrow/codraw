@@ -705,6 +705,24 @@ describe('BoardPage', () => {
       expect(editor.undo).toHaveBeenCalled()
       expect(editor.redo).toHaveBeenCalled()
     })
+
+    it('publishes the trail of the laser pointer and the message at the cursor, and drops both without a connection', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      const local = () => provider.awareness.getStates().get(provider.awareness.clientID) ?? {}
+
+      act(() => editor.drawLaser({ x: 10, y: 20 }))
+      fireEvent.keyDown(document.body, { key: '/' })
+      const message = screen.getByRole('textbox', { name: 'Сообщение у курсора' })
+      fireEvent.change(message, { target: { value: 'смотри сюда' } })
+      expect(local()).toMatchObject({ laser: { strokes: [[[10, 20, 0]]] }, chat: { text: 'смотри сюда' } })
+
+      act(() => provider.emitStatus('disconnected'))
+
+      expect(local()).toMatchObject({ laser: null, chat: null })
+      expect(message).not.toBeInTheDocument()
+    })
   })
 
   describe('pages', () => {

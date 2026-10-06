@@ -1,15 +1,18 @@
-import { act, render, renderHook, screen } from '@testing-library/react'
+import { act, render, renderHook, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeAwareness } from '../test/fakeProvider.ts'
+import { LASER_FADE_MS, MAX_LASER_POINTS } from './laser.ts'
 import { PresenceLayer } from './PresenceLayer.tsx'
 import {
+  CHAT_MAX_LENGTH,
   currentPresentation,
   CURSOR_INTERVAL_MS,
   presentationStart,
   readRemotePresence,
   useFollowingPublisher,
+  useLaserPublisher,
   usePresencePublisher,
   VIEW_INTERVAL_MS,
   type Awareness,
@@ -185,6 +188,141 @@ describe('usePresencePublisher', () => {
   })
 })
 
+describe('useLaserPublisher', () => {
+  let editor: FakeEditor
+  let awareness: FakeAwareness
+  const local = () => awareness.getStates().get(awareness.clientID) ?? {}
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] })
+    editor = createFakeEditor()
+    awareness = new FakeAwareness(1)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const publish = (online = true) => renderHook(() => useLaserPublisher(editor, asAwareness(awareness), online))
+
+  it('publishes the trail at once and then at most once per interval, with rounded points and their ages', () => {
+    publish()
+    const updates: unknown[] = []
+    awareness.on('change', () => updates.push(local().laser))
+
+    editor.drawLaser({ x: 10.4, y: 20.6 })
+    vi.advanceTimersByTime(20)
+    editor.drawLaser({ x: 30, y: 40 })
+    vi.advanceTimersByTime(10)
+    editor.drawLaser({ x: 50, y: 60 })
+    expect(updates).toEqual([{ strokes: [[[10, 21, 0]]], at: Date.now() - 30 }])
+
+    vi.advanceTimersByTime(CURSOR_INTERVAL_MS - 30)
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toEqual({
+      strokes: [
+        [
+          [10, 21, 50],
+          [30, 40, 30],
+          [50, 60, 20],
+        ],
+      ],
+      at: Date.now(),
+    })
+  })
+
+  it('starts a new stroke after the button was released', () => {
+    publish()
+
+    editor.drawLaser({ x: 1, y: 1 })
+    editor.drawLaser(null)
+    editor.drawLaser({ x: 9, y: 9 })
+    vi.advanceTimersByTime(CURSOR_INTERVAL_MS)
+
+    expect(local().laser).toMatchObject({ strokes: [[[1, 1, CURSOR_INTERVAL_MS]], [[9, 9, CURSOR_INTERVAL_MS]]] })
+  })
+
+  it('publishes the points of the last second, at most as many as allowed', () => {
+    publish()
+
+    for (let index = 0; index < 2 * MAX_LASER_POINTS; index++) {
+      editor.drawLaser({ x: index, y: 0 })
+      vi.advanceTimersByTime(10)
+    }
+
+    const [stroke] = (local().laser as { strokes: [number, number, number][][] }).strokes
+    expect(stroke).toHaveLength(MAX_LASER_POINTS)
+    expect(Math.max(...stroke!.map(([, , age]) => age))).toBeLessThan(LASER_FADE_MS)
+  })
+
+  it('clears the trail once its last point has faded', () => {
+    publish()
+    editor.drawLaser({ x: 1, y: 1 })
+    editor.drawLaser(null)
+
+    vi.advanceTimersByTime(LASER_FADE_MS - 1)
+    expect(local().laser).not.toBeNull()
+    vi.advanceTimersByTime(1)
+    expect(local().laser).toBeNull()
+  })
+
+  it('clears the trail when the editor goes away or the connection is lost, and publishes none meanwhile', () => {
+    const { rerender, unmount } = renderHook(
+      ({ online }) => useLaserPublisher(editor, asAwareness(awareness), online),
+      { initialProps: { online: true } },
+    )
+    editor.drawLaser({ x: 1, y: 1 })
+    expect(local().laser).not.toBeNull()
+
+    rerender({ online: false })
+    expect(local().laser).toBeNull()
+    editor.drawLaser({ x: 2, y: 2 })
+    vi.advanceTimersByTime(CURSOR_INTERVAL_MS)
+    expect(local().laser).toBeNull()
+
+    rerender({ online: true })
+    editor.drawLaser({ x: 3, y: 3 })
+    unmount()
+    expect(local().laser).toBeNull()
+  })
+
+  it('reads the trails of others within the bounds and ignores what is not one', () => {
+    const others = new FakeAwareness(1)
+    others.setState(2, { user: bob, laser: { strokes: [[[1, 2, 30]]], at: 5 } })
+    others.setState(3, { user: { ...bob, name: 'Вера' }, laser: { strokes: [[[1, 2, LASER_FADE_MS]]], at: 5 } })
+    others.setState(4, { user: { ...bob, name: 'Гена' }, laser: 'trail' })
+    others.setState(5, { user: { ...bob, name: 'Старый' } })
+
+    expect(readRemotePresence(asAwareness(others)).map((participant) => participant.laser)).toEqual([
+      { strokes: [[[1, 2, 30]]], at: 5 },
+      null,
+      null,
+      null,
+    ])
+  })
+})
+
+describe('messages at the cursor', () => {
+  it('reads the messages of others, cut to the longest, and ignores what is not a message', () => {
+    const others = new FakeAwareness(1)
+    others.setState(2, { user: bob, chat: { text: 'смотри сюда', at: 5 } })
+    others.setState(3, { user: { ...bob, name: 'Вера' }, chat: { text: 'я'.repeat(CHAT_MAX_LENGTH + 20), at: 5 } })
+    others.setState(4, { user: { ...bob, name: 'Гена' }, chat: { text: '   ', at: 5 } })
+    others.setState(5, { user: { ...bob, name: 'Дина' }, chat: { text: 42, at: 5 } })
+    others.setState(6, { user: { ...bob, name: 'Ева' }, chat: { text: 'без времени' } })
+    others.setState(7, { user: { ...bob, name: 'Старый' } })
+
+    expect(readRemotePresence(asAwareness(others)).map((participant) => participant.chat)).toEqual([
+      { text: 'смотри сюда', at: 5 },
+      { text: 'я'.repeat(CHAT_MAX_LENGTH), at: 5 },
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+})
+
 describe('presenting and following', () => {
   const local = (awareness: FakeAwareness) => awareness.getStates().get(awareness.clientID) ?? {}
   const presenting = (clientId: number, since: number | null) => ({ clientId, presenting: since }) as RemotePresence
@@ -251,16 +389,18 @@ describe('presenting and following', () => {
 })
 
 describe('PresenceLayer', () => {
+  const alice = { name: 'Алиса', color: '#2563eb', avatarUrl: null }
   let editor: FakeEditor
   let awareness: FakeAwareness
 
   beforeEach(() => {
     editor = createFakeEditor()
     awareness = new FakeAwareness(1)
-    awareness.setLocalStateField('user', { name: 'Алиса', color: '#2563eb', avatarUrl: null })
+    awareness.setLocalStateField('user', alice)
   })
 
-  const renderLayer = () => render(<PresenceLayer editor={editor} awareness={asAwareness(awareness)} />)
+  const renderLayer = () =>
+    render(<PresenceLayer editor={editor} awareness={asAwareness(awareness)} identity={alice} />)
 
   it('shows the cursors of other participants with their names and avatars at their diagram position', () => {
     awareness.setLocalStateField('cursor', { x: 5, y: 5 })
@@ -273,6 +413,22 @@ describe('PresenceLayer', () => {
     expect(cursors[0]).toHaveTextContent('Боб')
     expect(cursors[0]!.querySelector('img')).toHaveAttribute('src', bob.avatarUrl)
     expect(cursors[0]!.style.transform).toBe('translate(200px, 150px)')
+  })
+
+  it('shows the message of another participant at their cursor as they type it, in their color', () => {
+    const typing = (chat: { text: string; at: number } | null) => ({ user: bob, cursor: { x: 200, y: 150 }, chat })
+    awareness.setState(7, typing({ text: 'смотри', at: 1 }))
+    renderLayer()
+
+    const bubble = within(screen.getByTestId('remote-cursor')).getByTestId('remote-chat')
+    expect(bubble).toHaveTextContent('смотри')
+    expect(bubble.style.backgroundColor).toBe('rgb(220, 38, 38)')
+
+    act(() => awareness.setState(7, typing({ text: 'смотри сюда', at: 1 })))
+    expect(screen.getByTestId('remote-chat')).toHaveTextContent('смотри сюда')
+
+    act(() => awareness.setState(7, typing(null)))
+    expect(screen.queryByTestId('remote-chat')).toBeNull()
   })
 
   it('moves cursors with scrolling and removes them when the participant leaves the canvas', () => {

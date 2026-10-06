@@ -12,6 +12,7 @@ import {
   Underline,
   Undo2,
   UnfoldHorizontal,
+  Wand,
   ZoomIn,
   ZoomOut,
   type LucideIcon,
@@ -33,12 +34,12 @@ import { useEditorState } from './useEditorState.ts'
 
 interface EditorToolbarProps {
   editor: DiagramEditor | null
-  /** The participant may only view the board: only the scale is shown. */
+  /** The participant may only view the board: only the scale and the laser pointer are shown. */
   readOnly?: boolean
 }
 
 export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) {
-  const { canUndo, canRedo, scale } = useEditorState(editor)
+  const { canUndo, canRedo, scale, laser } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
@@ -113,6 +114,19 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
         onClick={() => editor?.zoomToFit()}
       >
         <Maximize />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Указка"
+        aria-pressed={laser}
+        title={laser ? 'Выключить указку (K, Esc)' : 'Указка: показать на схеме, ничего не меняя (K)'}
+        disabled={!editor}
+        className="aria-pressed:bg-accent"
+        onClick={() => editor?.setLaser(!laser)}
+      >
+        <Wand />
       </Button>
       {!readOnly && <AutoLayoutPicker editor={editor} />}
       {!readOnly && <EditingTools editor={editor} />}

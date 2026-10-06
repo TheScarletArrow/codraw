@@ -17,6 +17,8 @@ const participant = (clientId: number, name: string, color: string): RemotePrese
   editing: null,
   presenting: null,
   following: null,
+  laser: null,
+  chat: null,
 })
 const bob = participant(7, 'Боб', '#dc2626')
 const vera = participant(8, 'Вера', '#16a34a')

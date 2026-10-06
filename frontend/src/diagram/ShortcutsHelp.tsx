@@ -3,17 +3,8 @@ import { Keyboard } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { takesText } from '../lib/keyboard.ts'
 import { formatKeys, shortcutGroups } from './shortcuts.ts'
-
-/** The target of a key takes text itself: `?` is a character there. */
-function takesText(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return (
-    target.isContentEditable ||
-    target.closest('[contenteditable]:not([contenteditable="false"])') !== null ||
-    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
-  )
-}
 
 /** The shortcuts of the editor in one window, from a button of the board page or with `?`. */
 export function ShortcutsHelp({ readOnly = false, isMac = Client.IS_MAC }: { readOnly?: boolean; isMac?: boolean }) {

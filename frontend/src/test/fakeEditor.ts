@@ -15,6 +15,8 @@ export type FakeEditor = DiagramEditor & {
   scrollTo(offset: Point): void
   /** Simulates a label edited in place, its change by another participant meanwhile, or the end of editing (`null`). */
   edit(editing: LabelEditing | null): void
+  /** Simulates a point of a drag with the laser pointer (diagram coordinates) or releasing the button (`null`). */
+  drawLaser(point: Point | null): void
 }
 
 export interface FakeEditorOptions {
@@ -51,6 +53,7 @@ export function createFakeEditor({
     hasCells: false,
     canCopy: false,
     layoutSelection: false,
+    laser: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -62,6 +65,7 @@ export function createFakeEditor({
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const viewListeners = new Set<() => void>()
   const editingListeners = new Set<(editing: LabelEditing | null) => void>()
+  const laserListeners = new Set<(point: Point | null) => void>()
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
     return () => {
@@ -138,6 +142,11 @@ export function createFakeEditor({
       changeView()
     }),
     onPointerMove: (listener) => listen(pointerListeners, listener),
+    setLaser: vi.fn((laser: boolean) => {
+      state = { ...state, laser }
+      listeners.forEach((listener) => listener())
+    }),
+    onLaser: (listener) => listen(laserListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -176,6 +185,9 @@ export function createFakeEditor({
     edit(next) {
       editing = next
       editingListeners.forEach((listener) => listener(next))
+    },
+    drawLaser(point) {
+      laserListeners.forEach((listener) => listener(point))
     },
   }
 }
