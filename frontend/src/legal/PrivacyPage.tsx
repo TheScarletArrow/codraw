@@ -128,6 +128,10 @@ export function PrivacyPage() {
               сначала скачать в <code>.drawio</code>. Удалить все копии сразу можно и в настройках браузера — очисткой
               данных этого сайта.
             </p>
+            <p className="mt-2">
+              Ещё браузер помнит номер последней версии CoDraw, о новинках которой вам рассказало окно «Что нового»
+              (<code>localStorage</code>), чтобы показать его после обновления один раз.
+            </p>
           </section>
 
           <section aria-labelledby="privacy-retention">

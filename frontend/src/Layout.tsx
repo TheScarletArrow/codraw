@@ -7,9 +7,10 @@ import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 import { NotificationBell } from './notifications/NotificationBell.tsx'
 import { deleteLocalCopiesOf, keepLocalCopiesOf } from './offline/localCopies.ts'
+import { WhatsNew } from './releaseNotes/WhatsNew.tsx'
 
 /**
- * Pages of a signed-in user, with their notifications in the header; without a session it opens the login page, which
+ * Pages of a signed-in user, with their notifications and the novelties of CoDraw in the header; without a session it opens the login page, which
  * comes back to the page, e.g. an invitation, once the visitor continues as a guest.
  */
 export function Layout() {
@@ -34,7 +35,8 @@ export function Layout() {
         </Link>
         {user.data && (
           <>
-            <NotificationBell className="ml-auto" />
+            <WhatsNew className="ml-auto" />
+            <NotificationBell />
             <UserMenu user={user.data} />
           </>
         )}
