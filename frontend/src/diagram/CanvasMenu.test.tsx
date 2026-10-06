@@ -181,14 +181,24 @@ describe('CanvasMenu', () => {
       await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать' }))
       await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
 
-      expect(onComment).toHaveBeenCalledWith('edge-7')
+      expect(onComment).toHaveBeenCalledWith({ cellId: 'edge-7' })
       expect(screen.queryByRole('menu')).toBeNull()
       expect(editor.focus).not.toHaveBeenCalled()
     })
 
-    it('does not comment on the canvas or on several elements', () => {
+    it('comments on the point of a click on the empty canvas, and leaves the keyboard to the field of the comment', async () => {
+      rightClick('canvas')
+
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать здесь' }))
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+      expect(onComment).toHaveBeenCalledWith({ point: { x: 300, y: 200 } })
+      expect(editor.focus).not.toHaveBeenCalled()
+    })
+
+    it('does not comment on the canvas as on an element, nor on several elements', () => {
       rightClick('selection')
-      expect(screen.queryByRole('menuitem', { name: 'Комментировать' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: /^Комментировать/ })).toBeNull()
 
       rightClick('canvas')
       expect(screen.queryByRole('menuitem', { name: 'Комментировать' })).toBeNull()
@@ -232,7 +242,18 @@ describe('CanvasMenu', () => {
 
       expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Комментировать'])
       await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать' }))
-      expect(onComment).toHaveBeenCalledWith('edge-7')
+      expect(onComment).toHaveBeenCalledWith({ cellId: 'edge-7' })
+    })
+
+    it('comments on a point of the empty canvas when the page takes comments', async () => {
+      document.body.innerHTML = ''
+      const onComment = vi.fn()
+      render(<CanvasMenu editor={editor} onComment={onComment} />)
+      rightClick('canvas')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Выделить всё', 'Комментировать здесь'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать здесь' }))
+      expect(onComment).toHaveBeenCalledWith({ point: { x: 300, y: 200 } })
     })
   })
 })

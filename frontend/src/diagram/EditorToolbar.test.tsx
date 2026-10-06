@@ -384,6 +384,21 @@ describe('EditorToolbar', () => {
     expect(editor.setLaser).toHaveBeenLastCalledWith(false)
   })
 
+  it('turns the comment tool on in place of the laser pointer, and shows which one is on', async () => {
+    const laser = screen.getByRole('button', { name: 'Указка' })
+    const comment = screen.getByRole('button', { name: 'Комментарий' })
+    await userEvent.click(laser)
+
+    await userEvent.click(comment)
+
+    expect(editor.setCommentTool).toHaveBeenCalledWith(true)
+    expect(comment).toHaveAttribute('aria-pressed', 'true')
+    expect(laser).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(comment)
+    expect(editor.setCommentTool).toHaveBeenLastCalledWith(false)
+    expect(comment).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('locks the selection', async () => {
     act(() =>
       editor.setState({
@@ -452,7 +467,7 @@ describe('EditorToolbar', () => {
       within(toolbar)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё', 'Указка'])
+    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё', 'Указка', 'Комментарий'])
     expect(within(toolbar).queryByRole('combobox')).toBeNull()
     expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
   })

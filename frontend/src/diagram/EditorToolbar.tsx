@@ -9,6 +9,7 @@ import {
   Lock,
   LockOpen,
   Maximize,
+  MessageCirclePlus,
   Redo2,
   TextWrap,
   Underline,
@@ -37,12 +38,12 @@ import { useEditorState } from './useEditorState.ts'
 
 interface EditorToolbarProps {
   editor: DiagramEditor | null
-  /** The participant may only view the board: only the scale and the laser pointer are shown. */
+  /** The participant may only view the board: only the scale, the laser pointer and the comment tool are shown. */
   readOnly?: boolean
 }
 
 export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) {
-  const { canUndo, canRedo, scale, laser } = useEditorState(editor)
+  const { canUndo, canRedo, scale, laser, commentTool } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
@@ -130,6 +131,19 @@ export function EditorToolbar({ editor, readOnly = false }: EditorToolbarProps) 
         onClick={() => editor?.setLaser(!laser)}
       >
         <Wand />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Комментарий"
+        aria-pressed={commentTool}
+        title={commentTool ? 'Закончить комментировать (C, Esc)' : 'Комментарий: щёлкните по месту на холсте (C)'}
+        disabled={!editor}
+        className="aria-pressed:bg-accent"
+        onClick={() => editor?.setCommentTool(!commentTool)}
+      >
+        <MessageCirclePlus />
       </Button>
       {!readOnly && <AutoLayoutPicker editor={editor} />}
       {!readOnly && <EditingTools editor={editor} />}

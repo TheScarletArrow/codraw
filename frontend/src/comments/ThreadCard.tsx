@@ -24,7 +24,7 @@ interface ThreadCardProps {
   /** The thread is about the element the participant came from, e.g. by its badge. */
   highlighted: boolean
   actions: ThreadActions
-  /** Goes to the page of the thread and to its element. */
+  /** Goes to the page of the thread and to its element or its point. */
   onShow: (thread: CommentThread) => void
 }
 

@@ -1,4 +1,4 @@
-import type { CommentThread, Person } from '../api/comments.ts'
+import type { CommentThread, Person, ThreadPoint } from '../api/comments.ts'
 import type { CellKind } from '../diagram/model.ts'
 
 /** What the panel shows: open threads, resolved threads, or the threads that mention the current user. */
@@ -77,6 +77,16 @@ export function openThreadsByCell(threads: CommentThread[], pageId: string): Map
   return counts
 }
 
+/** A thread that stands at a point of its page. */
+export type ThreadAtPoint = CommentThread & { point: ThreadPoint }
+
+/** The threads of the page that stand at points, the open ones, and the resolved ones too with `withResolved`. */
+export function threadsAtPoints(threads: CommentThread[], pageId: string, withResolved: boolean): ThreadAtPoint[] {
+  return threads.filter(
+    (thread): thread is ThreadAtPoint => thread.pageId === pageId && thread.point !== null && (withResolved || isOpen(thread)),
+  )
+}
+
 export const commentTimeFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 
 /** An element of a page that a thread is about, as the board document has it. */
@@ -87,7 +97,11 @@ export interface CellInfo {
 }
 
 /** What a thread is about, as its header says it; `cell` is `null` when the page no longer has the element. */
-export function threadTarget(thread: Pick<CommentThread, 'cellId'>, cell: CellInfo | null): { label: string; deleted: boolean } {
+export function threadTarget(
+  thread: Pick<CommentThread, 'cellId' | 'point'>,
+  cell: CellInfo | null,
+): { label: string; deleted: boolean } {
+  if (thread.point) return { label: 'Место на холсте', deleted: false }
   if (thread.cellId === null) return { label: 'Вся страница', deleted: false }
   if (!cell) return { label: 'Элемент удалён', deleted: true }
   if (cell.label !== '') return { label: `«${cell.label}»`, deleted: false }

@@ -27,12 +27,23 @@ data class Comment(
     val editedAt: Instant?,
 )
 
-/** Comments about one element of a page, or about the whole page when [cellId] is `null`. */
+/** A point of a page in the coordinates of its diagram, like the positions of the shapes. */
+data class ThreadPoint(
+    val x: Double,
+    val y: Double,
+)
+
+/**
+ * Comments about one element of a page, about a point of it, or about the whole page when neither [cellId] nor [point]
+ * is set; never about both.
+ */
 data class CommentThread(
     val id: UUID,
     val pageId: String,
     /** The id of the cell in the document of the board; the cell may be deleted since. */
     val cellId: String?,
+    /** Where the thread stands on the page. */
+    val point: ThreadPoint?,
     val createdAt: Instant,
     /** When the thread was marked resolved, `null` while it is open. */
     val resolvedAt: Instant?,
@@ -40,6 +51,15 @@ data class CommentThread(
     val resolvedBy: Person?,
     /** The first comment starts the thread; the others answer it, oldest first. */
     val comments: List<Comment>,
+)
+
+/** Where a stored thread stands and who started it. */
+data class StoredThread(
+    val id: UUID,
+    /** The thread stands at a point of its page. */
+    val atPoint: Boolean,
+    /** The author of its first comment; `null` once they are deleted. */
+    val authorId: UUID?,
 )
 
 /** The author of a stored comment and whether it starts its thread. */
@@ -67,6 +87,27 @@ class Comments(private val jdbc: JdbcClient) {
         .param("boardId", boardId)
         .query(Boolean::class.java)
         .single()
+
+    /** The thread [threadId] of the board [boardId]: whether it stands at a point and who wrote its first comment. */
+    fun storedThread(boardId: UUID, threadId: UUID): StoredThread? = jdbc.sql(
+        """
+        SELECT t.id, t.x IS NOT NULL AS at_point,
+               (SELECT f.author_id FROM comments f WHERE f.thread_id = t.id ORDER BY f.created_at, f.id LIMIT 1) AS author_id
+        FROM comment_threads t
+        WHERE t.id = :threadId AND t.board_id = :boardId
+        """,
+    )
+        .param("threadId", threadId)
+        .param("boardId", boardId)
+        .query { rs, _ ->
+            StoredThread(
+                id = rs.getObject("id", UUID::class.java),
+                atPoint = rs.getBoolean("at_point"),
+                authorId = rs.getObject("author_id", UUID::class.java),
+            )
+        }
+        .optional()
+        .orElse(null)
 
     fun comment(boardId: UUID, threadId: UUID, commentId: UUID): StoredComment? = jdbc.sql(
         """
@@ -105,15 +146,18 @@ class Comments(private val jdbc: JdbcClient) {
         .query(Int::class.java)
         .single()
 
-    fun addThread(boardId: UUID, pageId: String, cellId: String?, at: Instant): UUID = jdbc.sql(
+    fun addThread(boardId: UUID, pageId: String, cellId: String?, point: ThreadPoint?, at: Instant): UUID = jdbc.sql(
         """
-        INSERT INTO comment_threads (board_id, page_id, cell_id, created_at) VALUES (:boardId, :pageId, :cellId, :at)
+        INSERT INTO comment_threads (board_id, page_id, cell_id, x, y, created_at)
+        VALUES (:boardId, :pageId, :cellId, :x, :y, :at)
         RETURNING id
         """,
     )
         .param("boardId", boardId)
         .param("pageId", pageId)
         .param("cellId", cellId)
+        .param("x", point?.x)
+        .param("y", point?.y)
         .param("at", at.atOffset(ZoneOffset.UTC))
         .query(UUID::class.java)
         .single()
@@ -176,6 +220,15 @@ class Comments(private val jdbc: JdbcClient) {
     /** Deletes the thread with all its comments. */
     fun deleteThread(threadId: UUID) {
         jdbc.sql("DELETE FROM comment_threads WHERE id = :threadId").param("threadId", threadId).update()
+    }
+
+    /** Moves the thread to the [point] of its page. */
+    fun move(threadId: UUID, point: ThreadPoint) {
+        jdbc.sql("UPDATE comment_threads SET x = :x, y = :y WHERE id = :threadId")
+            .param("threadId", threadId)
+            .param("x", point.x)
+            .param("y", point.y)
+            .update()
     }
 
     /** Marks the thread resolved by the user [by] at [at], or open again when [at] is `null`. */
@@ -267,7 +320,7 @@ class Comments(private val jdbc: JdbcClient) {
         val threadFilter = if (threadId == null) "" else "AND t.id = :threadId"
         val threads = jdbc.sql(
             """
-            SELECT t.id, t.page_id, t.cell_id, t.created_at, t.resolved_at,
+            SELECT t.id, t.page_id, t.cell_id, t.x, t.y, t.created_at, t.resolved_at,
                    r.id AS resolver_id, r.name AS resolver_name, r.avatar_url AS resolver_avatar_url
             FROM comment_threads t
             LEFT JOIN users r ON r.id = t.resolved_by
@@ -332,11 +385,18 @@ class Comments(private val jdbc: JdbcClient) {
         id = getObject("id", UUID::class.java),
         pageId = getString("page_id"),
         cellId = getString("cell_id"),
+        point = toPoint(),
         createdAt = instant("created_at")!!,
         resolvedAt = instant("resolved_at"),
         resolvedBy = toPerson("resolver_"),
         comments = emptyList(),
     )
+
+    /** The point in the columns `x` and `y`; `null` when the thread stands at none. */
+    private fun ResultSet.toPoint(): ThreadPoint? {
+        val x = getDouble("x")
+        return if (wasNull()) null else ThreadPoint(x, getDouble("y"))
+    }
 
     /** The user in the columns `id`, `name` and `avatar_url`, or `{prefix}id`… of a join; `null` when there is none. */
     private fun ResultSet.toPerson(prefix: String = ""): Person? {

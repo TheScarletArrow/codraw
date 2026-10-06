@@ -108,7 +108,7 @@ test('a field and the empty canvas get their own menus', async ({ browser }) => 
   await page.keyboard.press('Escape')
 
   await rightClick(page, await emptyPoint(page))
-  expect(await menuLabels(page)).toEqual(['Вставить', 'Выделить всё', 'Отменить', 'Повторить'])
+  expect(await menuLabels(page)).toEqual(['Вставить', 'Выделить всё', 'Отменить', 'Повторить', 'Комментировать здесь'])
   // Chromium lets the page read the clipboard of the system, so there may be something to paste.
   await expect(item(page, 'Вставить')).toBeEnabled()
   expect(await selectedIds(page)).toEqual([])

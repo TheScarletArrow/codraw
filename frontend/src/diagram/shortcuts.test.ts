@@ -45,6 +45,7 @@ describe('shortcuts', () => {
     expect(actions).toContain('Копировать')
     expect(actions).toContain('Показать всё')
     expect(actions).toContain('Указка')
+    expect(actions).toContain('Комментарий')
     expect(actions).toContain('Сообщение у курсора')
     expect(actions).not.toContain('Удалить')
     expect(actions).not.toContain('Дублировать')

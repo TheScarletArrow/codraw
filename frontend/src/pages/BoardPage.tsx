@@ -27,16 +27,17 @@ import { VersionPreview } from '../board/VersionPreview.tsx'
 import { useBoardConnection, type ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import { CommentBadges } from '../comments/CommentBadges.tsx'
+import { CommentPins } from '../comments/CommentPins.tsx'
 import { CommentsButton } from '../comments/CommentsButton.tsx'
 import { CommentsPanel, type ThreadDraft } from '../comments/CommentsPanel.tsx'
-import type { ThreadFocus } from '../comments/threads.ts'
+import type { ThreadFilter, ThreadFocus } from '../comments/threads.ts'
 import { useThreads } from '../comments/useComments.ts'
 import { fetchEmbed } from '../api/embed.ts'
 import { embedKey } from '../embed/links.ts'
 import { useEmbedPublisher } from '../embed/useEmbedPublisher.ts'
 import { PageHistories } from '../diagram/binding.ts'
 import type { Author } from '../diagram/attribution.ts'
-import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
+import { CanvasMenu, type CommentTarget } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
@@ -120,15 +121,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState<ThreadDraft | null>(null)
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
-  const openComments = () => {
+  // The threads the panel shows: with the resolved ones, the canvas marks the resolved threads at points too.
+  const [commentFilter, setCommentFilter] = useState<ThreadFilter>('open')
+  const openComments = useCallback(() => {
     setCommentsOpen(true)
     setHistoryOpen(false)
     setPreviewed(null)
-  }
+  }, [])
   const closeComments = () => {
     setCommentsOpen(false)
     setCommentDraft(null)
     setCommentFocus(null)
+    setCommentFilter('open')
   }
   // The live image of a page: the browsers of the participants who edit publish its picture after their changes.
   const embed = useQuery({ queryKey: embedKey(board.id), queryFn: () => fetchEmbed(board.id) })
@@ -176,16 +180,19 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (!(event.target instanceof Element && event.target.closest(BANNER_SELECTOR))) following.stop()
   }
 
-  // Going to a thread: switch to its page, then show its element once that page is shown.
-  const revealing = useRef<{ pageId: string; cellId: string } | null>(null)
-  /** Shows the element of the thread, at once or once its page is on the canvas; `true` when that page is another one. */
+  // Going to a thread: switch to its page, then show its element or its point once that page is shown.
+  const revealing = useRef<CommentThread | null>(null)
+  /**
+   * Shows the element or the point of the thread, at once or once its page is on the canvas; `true` when that page is
+   * another one.
+   */
   const revealThread = useCallback(
     (thread: CommentThread) => {
       if (editor && editor.pageId === thread.pageId) {
-        if (thread.cellId) editor.revealCell(thread.cellId)
+        reveal(editor, thread)
         return false
       }
-      revealing.current = thread.cellId ? { pageId: thread.pageId, cellId: thread.cellId } : null
+      revealing.current = thread
       return true
     },
     [editor],
@@ -194,21 +201,36 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (pages.some((page) => page.id === thread.pageId) && revealThread(thread)) selectPage(thread.pageId)
   }
   useEffect(() => {
-    const target = revealing.current
-    if (!editor || !target || editor.pageId !== target.pageId) return
-    editor.revealCell(target.cellId)
+    const thread = revealing.current
+    if (!editor || !thread || editor.pageId !== thread.pageId) return
+    reveal(editor, thread)
     revealing.current = null
   }, [editor])
-  const commentOn = (cellId: string) => {
-    if (!editor) return
-    openComments()
-    setCommentFocus(null)
-    setCommentDraft({ pageId: editor.pageId, cellId })
-  }
+  /** Starts a new thread about an element of the current page or at a point of it, in the panel. */
+  const commentOn = useCallback(
+    (target: CommentTarget) => {
+      if (!editor) return
+      openComments()
+      setCommentFocus(null)
+      setCommentDraft(
+        'cellId' in target
+          ? { pageId: editor.pageId, cellId: target.cellId, point: null }
+          : // Whole units of the diagram are precise enough for a mark, even zoomed in.
+            { pageId: editor.pageId, cellId: null, point: { x: Math.round(target.point.x), y: Math.round(target.point.y) } },
+      )
+    },
+    [editor, openComments],
+  )
+  // A click with the comment tool of the canvas starts a thread at its point.
+  useEffect(() => editor?.onCommentPoint((point) => commentOn({ point })), [editor, commentOn])
   const showThreadsOf = (cellId: string) => {
     if (!editor) return
     openComments()
     setCommentFocus({ pageId: editor.pageId, cellId })
+  }
+  const showThreadAtPoint = (thread: CommentThread) => {
+    openComments()
+    setCommentFocus({ threadId: thread.id })
   }
   // A link, e.g. from a notification, asks the page once to open something: the page opens it as soon as it can and
   // takes the request out of the address, so that a reload does not open it again.
@@ -379,6 +401,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
+                  <CommentPins
+                    editor={editor}
+                    boardId={board.id}
+                    threads={threads.data}
+                    draft={commentDraft}
+                    showResolved={commentsOpen && commentFilter === 'resolved'}
+                    focusedThreadId={commentFocus && 'threadId' in commentFocus ? commentFocus.threadId : null}
+                    userId={user.id}
+                    isOwner={isOwner}
+                    onOpen={showThreadAtPoint}
+                    onChanged={notifyCommentsChanged}
+                  />
                   <LockBadges editor={editor} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}
@@ -426,6 +460,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             draft={commentDraft}
             onDraftChange={setCommentDraft}
             focus={commentFocus}
+            onFilterChange={setCommentFilter}
             onShow={showThread}
             onChanged={notifyCommentsChanged}
             onClose={closeComments}
@@ -446,6 +481,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
       </div>
     </div>
   )
+}
+
+/** Selects the element of the thread and brings it into view, or brings its point to the middle of the canvas. */
+function reveal(editor: DiagramEditor, thread: CommentThread) {
+  if (thread.cellId) editor.revealCell(thread.cellId)
+  else if (thread.point) editor.centerOn(thread.point)
 }
 
 function BoardNotFound() {

@@ -17,6 +17,8 @@ export type FakeEditor = DiagramEditor & {
   edit(editing: LabelEditing | null): void
   /** Simulates a point of a drag with the laser pointer (diagram coordinates) or releasing the button (`null`). */
   drawLaser(point: Point | null): void
+  /** Simulates a click with the comment tool at a point (diagram coordinates). */
+  placeComment(point: Point): void
 }
 
 export interface FakeEditorOptions {
@@ -54,6 +56,7 @@ export function createFakeEditor({
     canCopy: false,
     layoutSelection: false,
     laser: false,
+    commentTool: false,
     lock: null,
     attribution: null,
   }
@@ -68,6 +71,7 @@ export function createFakeEditor({
   const viewListeners = new Set<() => void>()
   const editingListeners = new Set<(editing: LabelEditing | null) => void>()
   const laserListeners = new Set<(point: Point | null) => void>()
+  const commentListeners = new Set<(point: Point) => void>()
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
     return () => {
@@ -145,11 +149,17 @@ export function createFakeEditor({
       changeView()
     }),
     onPointerMove: (listener) => listen(pointerListeners, listener),
+    // The tools turn each other off, like those of the editor.
     setLaser: vi.fn((laser: boolean) => {
-      state = { ...state, laser }
+      state = { ...state, laser, commentTool: laser ? false : state.commentTool }
       listeners.forEach((listener) => listener())
     }),
     onLaser: (listener) => listen(laserListeners, listener),
+    setCommentTool: vi.fn((commentTool: boolean) => {
+      state = { ...state, commentTool, laser: commentTool ? false : state.laser }
+      listeners.forEach((listener) => listener())
+    }),
+    onCommentPoint: (listener) => listen(commentListeners, listener),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -191,6 +201,9 @@ export function createFakeEditor({
     },
     drawLaser(point) {
       laserListeners.forEach((listener) => listener(point))
+    },
+    placeComment(point) {
+      commentListeners.forEach((listener) => listener(point))
     },
   }
 }
