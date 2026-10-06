@@ -91,6 +91,41 @@ describe('fields of tables', () => {
     expect(shown()).toContain('имя поля')
   })
 
+  it('applies a field or an index typed in one line, and the name of a table, on Enter, but breaks the line of a shape', () => {
+    const { doc, editor } = open()
+    const table = editor.addShape('table', { x: 100, y: 100 })!
+    editor.graph.setSelectionCell(table)
+    const field = editor.addTableField()!
+    // Every editing has a textarea of its own.
+    const type = (text: string, init: KeyboardEventInit = {}) => {
+      const textarea = editor.graph.getPlugin<CellEditorHandler>('CellEditorHandler')!.textarea!
+      textarea.textContent = text
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true, ...init }))
+    }
+
+    type('id uuid not null', { shiftKey: true })
+    expect(editor.graph.isEditing(field)).toBe(true)
+    type('id uuid not null')
+    expect(editor.graph.isEditing()).toBe(false)
+    expect(textOf(doc, field)).toBe('id uuid NOT NULL')
+
+    editor.graph.startEditingAtCell(table)
+    type('accounts')
+    expect(editor.graph.isEditing()).toBe(false)
+    expect(textOf(doc, table)).toBe('accounts')
+
+    editor.graph.setSelectionCell(table)
+    const index = editor.addTableIndex()!
+    type('accounts_id_idx (id)')
+    expect(editor.graph.isEditing()).toBe(false)
+    expect(textOf(doc, index)).toBe('accounts_id_idx (id)')
+
+    const shape = editor.addShape('rectangle', { x: 400, y: 100 })!
+    editor.graph.startEditingAtCell(shape)
+    type('Сервис')
+    expect(editor.graph.isEditing(shape)).toBe(true)
+  })
+
   it('stops editing the name of a new field when the editor is destroyed', () => {
     vi.useFakeTimers()
     onTestFinished(() => {

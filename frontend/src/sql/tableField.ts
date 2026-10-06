@@ -132,16 +132,62 @@ export function fieldText(field: FieldParts): string {
     .join(' ')
 }
 
+/** Words of the rest of a field that a typed field gets in upper case, as its keys. */
+const REST_KEYWORDS = new Set([
+  'DEFAULT',
+  'CHECK',
+  'COLLATE',
+  'GENERATED',
+  'ALWAYS',
+  'BY',
+  'AS',
+  'IDENTITY',
+  'STORED',
+  'REFERENCES',
+  'ON',
+  'DELETE',
+  'UPDATE',
+  'CASCADE',
+  'RESTRICT',
+  'SET',
+  'NULL',
+  'NO',
+  'ACTION',
+])
+
+/**
+ * A typed field as CoDraw writes it, whatever the case of the typed words: the name and the type as typed, `PK` (also
+ * for `primary key`), `FK`, `NOT NULL`, `UNIQUE`, then the rest with its SQL words outside parentheses in upper case,
+ * e.g. `id uuid not null default gen_random_uuid()` → `id uuid NOT NULL DEFAULT gen_random_uuid()`. `null` when the
+ * text does not start with a name.
+ */
+export function normalizeField(entered: string): string | null {
+  const field = splitField(entered)
+  if (!field) return null
+  let rest = ''
+  let at = 0
+  let depth = 0
+  for (const token of tokenize(field.rest)) {
+    if (token.kind === 'symbol' && token.value === '(') depth++
+    if (token.kind === 'symbol' && token.value === ')') depth--
+    if (depth !== 0 || token.kind !== 'word' || !REST_KEYWORDS.has(token.value)) continue
+    rest += field.rest.slice(at, token.start) + token.value
+    at = token.start + token.text.length
+  }
+  return fieldText({ ...field, rest: rest + field.rest.slice(at) })
+}
+
 /**
  * The text of a field after its name was edited: a name alone replaces the name and keeps the rest of the field; more
- * than a name, e.g. `email text NOT NULL`, becomes the whole field. Nothing typed keeps the field as it was.
+ * than a name, e.g. `email text not null`, becomes the whole field as {@link normalizeField} writes it. Nothing typed
+ * keeps the field as it was.
  */
 export function renameField(text: string, entered: string): string {
   const typed = splitField(entered)
   if (!typed) return text
   const field = splitField(text)
   const whole = typed.type || typed.rest || typed.primaryKey || typed.foreignKey || typed.notNull || typed.unique
-  if (whole || !field) return entered.trim()
+  if (whole || !field) return normalizeField(entered) ?? entered.trim()
   if (typed.nameText === field.nameText) return text
   return fieldText({ ...field, name: typed.name, nameText: typed.nameText })
 }

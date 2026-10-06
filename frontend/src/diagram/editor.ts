@@ -674,6 +674,16 @@ export function createDiagramEditor(
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
+  // The name of a table, a field and an index are a line each: Enter applies them, as Escape cancels them.
+  if (cellEditor) {
+    const isStopEditingEvent = cellEditor.isStopEditingEvent.bind(cellEditor)
+    cellEditor.isStopEditingEvent = (event) => {
+      const cell = cellEditor.getEditingCell()
+      const line = isTable(cell) || isColumnField(cell) || isIndexRow(cell)
+      const enter = event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing
+      return isStopEditingEvent(event) || (line && enter)
+    }
+  }
   // The editor of the name of a field is at least as wide as the column of names and, while empty, shows the
   // placeholder, which the row hides meanwhile. Editing stops through the handler also when it loses focus, without
   // the event of the graph.
