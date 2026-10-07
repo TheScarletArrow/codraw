@@ -115,6 +115,14 @@ describe('ProposalPage', () => {
     expect(within(note).getByRole('button', { name: 'Отозвать' })).toBeInTheDocument()
     // The draft of a board that had no pages gets its first page from its author.
     expect(getPages(provider.document).size).toBe(1)
+
+    // Stickies are changed on the draft as on the board.
+    const editor = canvas.editor!
+    act(() => editor.placeCell('sticky', { x: 100, y: 100, width: 160, height: 160 }))
+    act(() => editor.setState({ stickies: { cellIds: ['sticky'], color: '#fff2cc', textFit: true, locked: false } }))
+    act(() => editor.setSignatures([{ cellId: 'sticky', by: ALICE.id, name: 'Алиса', color: '#1f2328' }]))
+    expect(screen.getByRole('toolbar', { name: 'Стикеры' })).toBeInTheDocument()
+    expect(screen.getByTestId('sticky-signature')).toHaveTextContent('Алиса')
   })
 
   it('offers neither the laser pointer nor the comment tool on the draft, which nobody else is on', async () => {
@@ -155,6 +163,8 @@ describe('ProposalPage', () => {
       `/boards/${boardId}?proposal=${proposalId}`,
     )
     expect(within(note).queryByRole('button', { name: 'Отозвать' })).toBeNull()
+    act(() => canvas.editor!.setState({ stickies: { cellIds: ['sticky'], color: '#fff2cc', textFit: true, locked: false } }))
+    expect(screen.queryByRole('toolbar', { name: 'Стикеры' })).toBeNull()
   })
 
   it('searches the pages of the draft with Ctrl+F and goes to the page of a match', async () => {

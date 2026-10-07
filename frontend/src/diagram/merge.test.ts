@@ -5,10 +5,11 @@ import { readAttribution, writeAttribution } from './attribution.ts'
 import { diffDocuments, snapshotDocument, snapshotPage, type CellSnapshot } from './diff.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from './locks.ts'
-import { mergeConflicts, mergeProposal, MERGE_ORIGIN } from './merge.ts'
+import { mergeConflicts, mergedSnapshot, mergeProposal, MERGE_ORIGIN } from './merge.ts'
 import { DEFAULT_PAGE_ID, getCells, LAYER_CELL_ID, readAttrs, writeAttrs, writeCell, type CellData } from './model.ts'
 import { addPage, deletePage, listPages, movePage, renamePage } from './pages.ts'
 import { TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
+import { readStatus, writeStatus } from './status.ts'
 import { boardWith, edgeData, laterState, shapeData } from './testing.ts'
 
 const BOB = { id: 'bob', name: 'Боб' }
@@ -157,6 +158,20 @@ describe('mergeProposal', () => {
         style: { fillColor: '#ff0000', fontSize: 12 },
         geometry: { x: 300, y: 20, width: 200, height: 60 },
       })
+    })
+
+    it('get the status the draft set, with who set it, and keep the statuses the draft left', () => {
+      const base = boardWith(shape('api'), shape('db'))
+      const { board, accept } = proposal(
+        base,
+        (draft) => draft.transact(() => writeStatus(getCells(draft).get('api')!, 'done', BOB, 1000)),
+        (board) => board.transact(() => writeStatus(getCells(board).get('db')!, 'review', ALICE, 2000)),
+      )
+
+      accept()
+
+      expect(readStatus(getCells(board).get('api'))).toEqual({ status: 'done', by: 'bob', name: 'Боб', at: 1000 })
+      expect(readStatus(getCells(board).get('db'))).toEqual({ status: 'review', by: 'alice', name: 'Алиса', at: 2000 })
     })
 
     it('take the key of the draft where both changed it', () => {
@@ -461,6 +476,26 @@ describe('mergeProposal', () => {
     accept()
 
     expect(Y.encodeStateVector(board)).toEqual(before)
+  })
+})
+
+describe('mergedSnapshot', () => {
+  it('is the board as accepting would make it, and leaves the board as it is', () => {
+    const { base, draft, board } = proposal(
+      boardWith(shape('api'), shape('db')),
+      (draft) => {
+        writeCell(getCells(draft), shape('queue', { value: 'Очередь' }))
+        change(draft, 'db', { value: 'PostgreSQL' })
+      },
+      (board) => change(board, 'api', { value: 'Шлюз' }),
+    )
+    const before = Y.encodeStateAsUpdate(board)
+
+    const merged = mergedSnapshot(board, snapshotDocument(base), snapshotDocument(draft))
+
+    const values = Object.fromEntries([...merged.get(DEFAULT_PAGE_ID)!.cells.values()].map((cell) => [cell.id, cell.value]))
+    expect(values).toEqual({ api: 'Шлюз', db: 'PostgreSQL', queue: 'Очередь' })
+    expect(Y.encodeStateAsUpdate(board)).toEqual(before)
   })
 })
 

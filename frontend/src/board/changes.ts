@@ -15,6 +15,7 @@ import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
+import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
 
 /** What a change is, as the list and the marks say it. */
 export const CHANGE_LABELS: Record<ChangeType, string> = {
@@ -168,12 +169,18 @@ const GEOMETRY_WORDS: Record<string, string> = {
   targetPoint: 'конец',
 }
 
-/** What changed in a changed element, in words, each once, in the order of the fields, geometry, style, properties. */
+/**
+ * What changed in a changed element, in words, each once, in the order of the fields, geometry, style, properties; a
+ * status as the element has it now: «статус «Готово»» or «статус снят».
+ */
 function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Kinds): string[] {
   const { fields, geometry, style, attrs } = change.changes
   const cell = change.after
   const row = kinds.isTableRow(cell)
+  const status = cell.extra[STATUS_KEY]
   const fieldWord = (field: string): string => {
+    // The status and the mark of who set it are one change, said by the status the element has now.
+    if (STATUS_KEYS.includes(field)) return isElementStatus(status) ? `статус «${STATUS_LABELS[status]}»` : 'статус снят'
     switch (field) {
       case 'value':
         return row ? 'текст' : isTableStyle(cell.style) ? 'название' : 'подпись'

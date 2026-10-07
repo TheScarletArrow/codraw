@@ -1,5 +1,14 @@
 import { vi } from 'vitest'
-import type { Box, CellLink, ContextMenuRequest, DiagramEditor, EditorState, LabelEditing, Point } from '../diagram/editor.ts'
+import type {
+  Box,
+  CellLink,
+  ContextMenuRequest,
+  DiagramEditor,
+  EditorState,
+  LabelEditing,
+  Point,
+  StickySignature,
+} from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -25,6 +34,8 @@ export type FakeEditor = DiagramEditor & {
   placeLinks(links: CellLink[]): void
   /** Simulates a click with Ctrl on an element with a link. */
   clickLink(link: CellLink): void
+  /** Sets the stickies that `stickySignatures` returns. */
+  setSignatures(signatures: StickySignature[]): void
 }
 
 export interface FakeEditorOptions {
@@ -60,16 +71,21 @@ export function createFakeEditor({
     canUngroup: false,
     hasCells: false,
     canCopy: false,
+    canCopyStyle: false,
+    canPasteStyle: false,
     layoutSelection: false,
     laser: false,
     commentTool: false,
     lock: null,
     attribution: null,
     link: null,
+    stickies: null,
+    status: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
   let editing: LabelEditing | null = null
+  let signatures: StickySignature[] = []
   const cells = new Map<string, Box | null>()
   const edges = new Map<string, Point[] | null>()
   const listeners = new Set<() => void>()
@@ -98,6 +114,10 @@ export function createFakeEditor({
     pageId,
     readOnly,
     addShape: vi.fn(() => null),
+    addSticky: vi.fn(() => null),
+    setStickyColor: vi.fn(),
+    setTextFit: vi.fn(),
+    stickySignatures: () => signatures,
     addTableField: vi.fn(() => null),
     setFieldProps: vi.fn(),
     addTableIndex: vi.fn(() => null),
@@ -108,6 +128,8 @@ export function createFakeEditor({
     cut: vi.fn(),
     paste: vi.fn(),
     duplicate: vi.fn(),
+    copyStyle: vi.fn(),
+    pasteStyle: vi.fn(),
     insertCells: vi.fn(),
     restoreCells: vi.fn(),
     bringToFront: vi.fn(),
@@ -121,9 +143,11 @@ export function createFakeEditor({
     group: vi.fn(() => null),
     ungroup: vi.fn(),
     setLocked: vi.fn(),
+    setStatus: vi.fn(() => []),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),
+    setTheme: vi.fn(),
     exportSvg: vi.fn(() => null),
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
@@ -233,6 +257,10 @@ export function createFakeEditor({
     },
     clickLink(link) {
       linkListeners.forEach((listener) => listener(link))
+    },
+    setSignatures(next) {
+      signatures = next
+      changeView()
     },
   }
 }

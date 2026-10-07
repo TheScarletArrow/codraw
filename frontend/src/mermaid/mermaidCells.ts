@@ -89,7 +89,7 @@ async function flowchartCells(chart: Flowchart, origin: { x: number; y: number }
 const MANY = new Set<Cardinality>(['zero-or-more', 'one-or-more'])
 
 /** Markers of crow's foot for a cardinality. */
-const MARKERS: Record<Cardinality, string> = {
+export const CARDINALITY_MARKERS: Record<Cardinality, string> = {
   'zero-or-one': 'ERzeroToOne',
   one: 'ERmandOne',
   'zero-or-more': 'ERzeroToMany',
@@ -129,7 +129,8 @@ async function erCells(diagram: ErDiagram, origin: { x: number; y: number }, eng
       column.notNull = toCardinality === 'one' || toCardinality === 'one-or-more'
       table(from).foreignKeys.push({ name: null, columns: [column.name], table: to, references: [] })
     } else {
-      links.push({ from, to, label: relation.label, style: { startArrow: MARKERS[fromCardinality], endArrow: MARKERS[toCardinality] } })
+      const style = { startArrow: CARDINALITY_MARKERS[fromCardinality], endArrow: CARDINALITY_MARKERS[toCardinality] }
+      links.push({ from, to, label: relation.label, style })
     }
   }
   return schemaCells(schema, origin, engine, links)

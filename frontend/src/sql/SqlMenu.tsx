@@ -1,13 +1,17 @@
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Database } from 'lucide-react'
 import { useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { fetchSchemaImport } from '../api/schemaImport.ts'
+import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
 import { downloadBlob, fileName } from '../lib/download.ts'
 import { mermaidCells, mermaidSummary } from '../mermaid/mermaidCells.ts'
 import { MermaidError, parseMermaid, type MermaidDiagram } from '../mermaid/parseMermaid.ts'
+import { DatabaseConnection } from './DatabaseConnection.tsx'
 import { diagramSchema, placeBeside, schemaCells, schemaMermaid, schemaSql } from './erDiagram.ts'
 import { parseSql, parseSqlFiles, type SqlFile, type SqlSchema } from './parseSql.ts'
 
@@ -61,11 +65,13 @@ const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) =>
 
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
- * a flowchart or an ER diagram of Mermaid becomes a diagram of the page.
+ * a flowchart or an ER diagram of Mermaid, and documents of OpenAPI and AsyncAPI, become a diagram of the page.
  */
 export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
   const [open, setOpen] = useState(false)
-  const [importing, setImporting] = useState<'sql' | 'mermaid' | null>(null)
+  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | null>(null)
+  // «Подключение к базе» over «Импорт SQL».
+  const [connecting, setConnecting] = useState(false)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<SqlFile[]>([])
   const [busy, setBusy] = useState(false)
@@ -76,9 +82,12 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
   const tables = schema?.tables.length ?? 0
   const imported = importing === 'sql' ? importedSchema(files, text) : null
   const mermaid = importing === 'mermaid' ? importedDiagram(text) : null
+  // Whether the server reads schemas of databases for this user; asked when «Импорт SQL» opens.
+  const schemaImport = useQuery({ queryKey: ['schema-import'], queryFn: fetchSchemaImport, enabled: importing === 'sql', staleTime: 5 * 60_000 })
 
   const reset = () => {
     setImporting(null)
+    setConnecting(false)
     setText('')
     setFiles([])
     setMessage(null)
@@ -98,19 +107,12 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
     setFiles(await Promise.all(Array.from(list, async (file) => ({ name: file.name, text: await file.text() }))))
   }
 
-  const addTables = async () => {
+  /** Adds the cells built to the right of what the page has, as one undo step, and closes the menu. */
+  const insert = async (cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => {
     if (!editor || !doc || !pageId) return
-    const origin = () => placeBeside(pageCells(doc, pageId))
-    const cells =
-      imported && imported.tables.length > 0
-        ? () => schemaCells(imported, origin())
-        : mermaid?.diagram
-          ? () => mermaidCells(mermaid.diagram!, origin())
-          : null
-    if (!cells) return
     setBusy(true)
     try {
-      editor.insertCells(await cells())
+      editor.insertCells(await cells(placeBeside(pageCells(doc, pageId))))
       setOpen(false)
       reset()
     } catch {
@@ -118,6 +120,12 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
     } finally {
       setBusy(false)
     }
+  }
+
+  const addTables = () => {
+    const diagram = mermaid?.diagram
+    if (imported && imported.tables.length > 0) void insert((origin) => schemaCells(imported, origin))
+    else if (diagram) void insert((origin) => mermaidCells(diagram, origin))
   }
 
   return (
@@ -134,14 +142,21 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           variant="ghost"
           size="icon-sm"
           aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем"
+          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI и AsyncAPI"
           disabled={!doc || !pageId}
         >
           <Database />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" aria-label="SQL и Mermaid" className={importing ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}>
-        {importing === 'mermaid' && mermaid ? (
+        {importing === 'api' ? (
+          <ApiSpecImport
+            busy={busy}
+            error={message === 'import-failed' ? MESSAGES[message] : null}
+            onBack={reset}
+            onAdd={(cells) => void insert(cells)}
+          />
+        ) : importing === 'mermaid' && mermaid ? (
           <>
             <div className="flex items-center gap-1">
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={reset}>
@@ -172,10 +187,20 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                 {MESSAGES[message]}
               </p>
             )}
-            <Button type="button" size="sm" disabled={busy || !mermaid.diagram} onClick={() => void addTables()}>
+            <Button type="button" size="sm" disabled={busy || !mermaid.diagram} onClick={addTables}>
               Добавить на страницу
             </Button>
           </>
+        ) : importing === 'sql' && connecting && schemaImport.data?.kind === 'available' ? (
+          <DatabaseConnection
+            maxTables={schemaImport.data.maxTables}
+            onBack={() => setConnecting(false)}
+            onLoaded={(ddl) => {
+              setText(ddl)
+              setFiles([])
+              setConnecting(false)
+            }}
+          />
         ) : importing === 'sql' && imported ? (
           <>
             <div className="flex items-center gap-1">
@@ -211,7 +236,17 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                   Файлов: {files.length}
                 </span>
               )}
+              {schemaImport.data?.kind === 'available' && (
+                <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setConnecting(true)}>
+                  Подключиться к базе…
+                </Button>
+              )}
             </div>
+            <p className="text-xs text-muted-foreground">
+              Схему готовой базы снимает <code>pg_dump --schema-only</code> или <code>mysqldump --no-data</code>: откройте
+              полученный файл.
+              {schemaImport.data?.kind === 'sign-in' && ' Подключиться к базе можно после входа через GitHub или Google.'}
+            </p>
             <p role="status" className="text-xs text-muted-foreground">
               Таблиц: {imported.tables.length}, связей: {countReferences(imported)}, индексов: {countIndexes(imported)},
               пропущено операторов: {imported.skipped}
@@ -221,7 +256,7 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                 {MESSAGES[message]}
               </p>
             )}
-            <Button type="button" size="sm" disabled={busy || imported.tables.length === 0} onClick={() => void addTables()}>
+            <Button type="button" size="sm" disabled={busy || imported.tables.length === 0} onClick={addTables}>
               Добавить на страницу
             </Button>
           </>
@@ -241,6 +276,9 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                   onClick={() => setImporting('mermaid')}
                 >
                   Импорт Mermaid…
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('api')}>
+                  Импорт OpenAPI / AsyncAPI…
                 </Button>
               </>
             )}

@@ -8,6 +8,8 @@ export interface Problem {
   role?: string
   /** Whose things reached the limit, e.g. the open proposals of the board or of the author on it. */
   scope?: string
+  /** Why an import of the schema of a database failed, e.g. `authentication-failed`. */
+  reason?: string
 }
 
 export class HttpError extends Error {

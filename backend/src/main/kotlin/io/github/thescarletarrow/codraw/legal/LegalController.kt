@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.legal
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.notification.NotificationProperties
+import io.github.thescarletarrow.codraw.schemaimport.SchemaImportProperties
 import io.github.thescarletarrow.codraw.user.GuestLoginController
 import io.github.thescarletarrow.codraw.user.GuestProperties
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -40,6 +41,8 @@ data class LegalResponse(
     val notificationsPerUser: Int,
     /** The most closed proposals of changes kept of a board. */
     val closedProposalsPerBoard: Int,
+    /** Whether users may read schemas of databases through the server, with the user and the password of a database. */
+    val schemaImport: Boolean,
 )
 
 @RestController
@@ -48,6 +51,7 @@ class LegalController(
     private val guests: GuestProperties,
     private val notifications: NotificationProperties,
     private val limits: LimitProperties,
+    private val schemaImport: SchemaImportProperties,
 ) {
 
     /** Open without a sign-in: the privacy policy and the terms of use are read before signing in. */
@@ -61,6 +65,7 @@ class LegalController(
         notificationRetentionDays = notifications.retention.toDays(),
         notificationsPerUser = limits.notificationsPerUser,
         closedProposalsPerBoard = limits.closedProposalsPerBoard,
+        schemaImport = schemaImport.enabled,
     )
 
     companion object {

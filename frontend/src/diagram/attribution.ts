@@ -65,3 +65,38 @@ export function readAttribution(cell: CellMap | undefined): Attribution | null {
 export function attributionLabel(attribution: Attribution, now: number, mine = false): string {
   return `Изменено: ${attribution.name}${mine ? ' (вы)' : ''}, ${relativeTime(attribution.at, now)}`
 }
+
+/**
+ * Keys of a sticky in the board document with who wrote its text: the id and the name of the user. Unlike who changed
+ * it last, they change with the text only, so moving, coloring or resizing a sticky keeps them. Like those keys, files
+ * and the clipboard do not carry them.
+ */
+export const TEXT_AUTHOR_KEY = 'textAuthor'
+export const TEXT_AUTHOR_NAME_KEY = 'textAuthorName'
+
+/** Who wrote the text of a sticky, as the sticky keeps it. */
+export interface TextAuthor {
+  /** The id of the user, or `null` when the sticky does not keep it. */
+  by: string | null
+  /** The name of the user at the time they wrote it. */
+  name: string
+}
+
+/** Keeps in the cell that `author` wrote its text, or that nobody did, e.g. once the text is gone. */
+export function writeTextAuthor(cell: CellMap, author: Author | null) {
+  if (!author) {
+    if (cell.has(TEXT_AUTHOR_KEY)) cell.delete(TEXT_AUTHOR_KEY)
+    if (cell.has(TEXT_AUTHOR_NAME_KEY)) cell.delete(TEXT_AUTHOR_NAME_KEY)
+    return
+  }
+  if (cell.get(TEXT_AUTHOR_KEY) !== author.id) cell.set(TEXT_AUTHOR_KEY, author.id)
+  if (cell.get(TEXT_AUTHOR_NAME_KEY) !== author.name) cell.set(TEXT_AUTHOR_NAME_KEY, author.name)
+}
+
+/** Who wrote the text of the cell, or `null` for a cell that does not keep it. */
+export function readTextAuthor(cell: CellMap | undefined): TextAuthor | null {
+  const name = cell?.get(TEXT_AUTHOR_NAME_KEY)
+  if (typeof name !== 'string' || name.trim() === '') return null
+  const by = cell!.get(TEXT_AUTHOR_KEY)
+  return { by: typeof by === 'string' && by !== '' ? by : null, name }
+}
