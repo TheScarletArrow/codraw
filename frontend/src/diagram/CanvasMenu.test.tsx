@@ -159,6 +159,66 @@ describe('CanvasMenu', () => {
     expect(editor.setLocked).toHaveBeenCalledWith(false)
   })
 
+  describe('with statuses', () => {
+    const onStatusChange = vi.fn()
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onStatusChange.mockReset()
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onStatusChange={onStatusChange} />)
+    })
+
+    it('offers the statuses with the current one chosen, and sets the chosen one', async () => {
+      act(() => editor.setState({ status: { value: 'draft', mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['cell-1'])
+      rightClick('table')
+
+      const statuses = within(screen.getByRole('menu')).getAllByRole('menuitemradio')
+      expect(statuses.map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')])).toEqual([
+        ['Черновик', 'true'],
+        ['Нужно ревью', 'false'],
+        ['Готово', 'false'],
+        ['Без статуса', 'false'],
+      ])
+      expect(within(screen.getByRole('menu')).getByText('Статус')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('menuitemradio', { name: 'Нужно ревью' }))
+
+      expect(editor.setStatus).toHaveBeenCalledWith('review')
+      expect(onStatusChange).toHaveBeenCalledWith('review', ['cell-1'])
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+
+    it('takes the status off, and tells nothing when no status changed', async () => {
+      act(() => editor.setState({ status: { value: null, mixed: true } }))
+      rightClick('selection')
+      expect(screen.queryByRole('menuitemradio', { checked: true })).toBeNull()
+      await userEvent.click(screen.getByRole('menuitemradio', { name: 'Без статуса' }))
+
+      expect(editor.setStatus).toHaveBeenCalledWith(null)
+      expect(onStatusChange).not.toHaveBeenCalled()
+    })
+
+    it('keeps the statuses of locked elements', () => {
+      act(() =>
+        editor.setState({
+          status: { value: 'done', mixed: false },
+          lock: { all: true, canLock: false, locks: [{ cellId: 'cell-1', lockedBy: 'Алиса' }] },
+        }),
+      )
+      rightClick('shape')
+
+      expect(screen.getByRole('menuitemradio', { name: 'Готово', checked: true })).toBeEnabled()
+      expect(screen.getByRole('menuitemradio', { name: 'Черновик' })).toBeEnabled()
+    })
+
+    it('offers no statuses without elements that may have one', () => {
+      rightClick('edge')
+
+      expect(screen.queryByRole('menuitemradio')).toBeNull()
+    })
+  })
+
   describe('with comments', () => {
     const onComment = vi.fn()
 
@@ -218,6 +278,13 @@ describe('CanvasMenu', () => {
       expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
       await userEvent.click(screen.getByRole('menuitem', { name: 'Копировать' }))
       expect(editor.copy).toHaveBeenCalled()
+    })
+
+    it('offers no statuses', () => {
+      act(() => editor.setState({ status: { value: 'review', mixed: false } }))
+      rightClick('shape')
+
+      expect(screen.queryByRole('menuitemradio')).toBeNull()
     })
 
     it('offers neither locking nor unlocking', () => {

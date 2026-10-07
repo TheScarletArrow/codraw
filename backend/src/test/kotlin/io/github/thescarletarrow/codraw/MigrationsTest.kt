@@ -41,6 +41,8 @@ class MigrationsTest {
         private val proposalsTables = readsTables + "proposals"
         private val organizationTables = proposalsTables + setOf("board_folders", "board_tags", "board_placements")
         private val documentColumns = setOf("board_id", "state", "updated_at", "editors")
+        private val reviewRequestNotificationColumns =
+            notificationColumns + setOf("thread_id", "proposal_id", "page_id", "cell_id")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -52,10 +54,15 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V17 create tables on an empty database and U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(16, flyway().migrate().migrationsExecuted)
+    fun `V1 to V18 create tables on an empty database and U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(17, flyway().migrate().migrationsExecuted)
         assertEquals(organizationTables, appTables())
         assertEquals(documentColumns + "search_text", columns("board_documents"))
+        assertEquals(reviewRequestNotificationColumns, columns("notifications"))
+
+        revert("U18__claude_relaxed_euler_o3h2ky_element_status.sql")
+        assertEquals(organizationTables, appTables())
+        assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
 
         revert("U17__claude_relaxed_euler_o3h2ky_board_organization.sql")
         assertEquals(proposalsTables, appTables())
@@ -117,10 +124,10 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(16, flyway().migrate().migrationsExecuted)
+        assertEquals(17, flyway().migrate().migrationsExecuted)
         assertEquals(organizationTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
-        assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
+        assertEquals(reviewRequestNotificationColumns, columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
     }
 
@@ -229,6 +236,72 @@ class MigrationsTest {
         revert("U17__claude_relaxed_euler_o3h2ky_board_organization.sql")
         assertEquals(proposalsTables, appTables())
         assertEquals(documentColumns, columns("board_documents"))
+        assertEquals(1, flyway("17").migrate().migrationsExecuted)
+    }
+
+    @Test
+    fun `V18 keeps notifications about reviews with a page and an element, and the other kinds without them`() {
+        flyway("17").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO notifications (user_id, kind, board_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000b1', 'OWNERSHIP', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-0000000000a1', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway().migrate().migrationsExecuted)
+        val notification = { kind: String, page: String?, cell: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notifications (user_id, kind, board_id, page_id, cell_id, actor_id, created_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', :kind, '0199a000-0000-7000-8000-000000000001', :page,
+                        :cell, '0199a000-0000-7000-8000-0000000000b1', now())
+                """,
+            ).param("kind", kind).param("page", page).param("cell", cell).update()
+        }
+        notification("REVIEW_REQUEST", "page-1", "orders")
+        // Many requests about one element are kept: how often the owner hears of it is up to the backend.
+        notification("REVIEW_REQUEST", "page-1", "orders")
+        notification("REVIEW_REQUEST", "p".repeat(100), "c".repeat(100))
+        for (wrong in listOf(
+            { notification("REVIEW_REQUEST", null, "orders") },
+            { notification("REVIEW_REQUEST", "page-1", null) },
+            { notification("REVIEW_REQUEST", "", "orders") },
+            { notification("REVIEW_REQUEST", "page-1", "c".repeat(101)) },
+            { notification("OWNERSHIP", "page-1", "orders") },
+            { notification("OWNERSHIP", null, "orders") },
+            { notification("REVIEWED", "page-1", "orders") },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        assertEquals(4, count("notifications"))
+
+        // The requester goes: the notification stays without them, like any other.
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(3, count("notifications"))
+        assertEquals(
+            0,
+            jdbcClient.sql("SELECT count(*) FROM notifications WHERE actor_id IS NOT NULL").query(Int::class.java).single(),
+        )
+
+        // The kinds of V15 stay, the requests for reviews go.
+        revert("U18__claude_relaxed_euler_o3h2ky_element_status.sql")
+        assertEquals(0, count("notifications"))
+        jdbcClient.sql(
+            """
+            INSERT INTO notifications (user_id, kind, board_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'OWNERSHIP', '0199a000-0000-7000-8000-000000000001', now())
+            """,
+        ).update()
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE notifications SET kind = 'REVIEW_REQUEST'").update()
+        }
         assertEquals(1, flyway().migrate().migrationsExecuted)
     }
 

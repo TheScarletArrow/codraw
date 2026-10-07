@@ -17,6 +17,7 @@ import {
 import { snapshotPage, type CellSnapshot } from './diff.ts'
 import { addPage, deletePage, listPages, renamePage } from './pages.ts'
 import { cellsToRestore, restoreDocument, restorePage, RESTORE_ORIGIN, writeRestoredFields } from './restore.ts'
+import { readStatus, writeStatus } from './status.ts'
 import { boardWith, connect, edgeData, laterState, shapeData } from './testing.ts'
 
 const shape = (id: string, overrides: Partial<CellData> = {}): CellData => ({
@@ -350,6 +351,24 @@ describe('writeRestoredFields', () => {
     expect(entry.get('layer')).toBe('data')
     expect(entry.has('note')).toBe(false)
     expect(entry.get('modifiedBy')).toBe('bob')
+  })
+
+  it('brings back the status of the version with who set it, and takes off a status set since', () => {
+    const version = boardWith(shape('a'), shape('b'))
+    version.transact(() => writeStatus(getCells(version).get('a')!, 'review', { id: 'bob', name: 'Боб' }, 1000))
+    const doc = laterState(version, (later) => {
+      writeStatus(getCells(later).get('a')!, 'done', { id: 'alice', name: 'Алиса' }, 2000)
+      writeStatus(getCells(later).get('b')!, 'draft', { id: 'alice', name: 'Алиса' }, 2000)
+    })
+    const cells = snapshotPage(version, DEFAULT_PAGE_ID)!.cells
+
+    doc.transact(() => {
+      writeRestoredFields(getCells(doc).get('a')!, cells.get('a')!)
+      writeRestoredFields(getCells(doc).get('b')!, cells.get('b')!)
+    })
+
+    expect(readStatus(getCells(doc).get('a'))).toEqual({ status: 'review', by: 'bob', name: 'Боб', at: 1000 })
+    expect(readStatus(getCells(doc).get('b'))).toBeNull()
   })
 
   it('removes the properties that the version did not have', () => {

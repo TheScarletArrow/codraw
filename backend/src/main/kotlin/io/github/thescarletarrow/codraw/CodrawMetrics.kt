@@ -22,6 +22,7 @@ enum class Limit(val tag: String) {
     AUTHOR_PROPOSALS("proposals-per-author"),
     TAGS("tags"),
     FOLDERS("folders"),
+    REVIEW_REQUESTS("review-requests"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */

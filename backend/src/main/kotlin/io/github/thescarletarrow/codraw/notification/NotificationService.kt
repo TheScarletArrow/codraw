@@ -6,6 +6,7 @@ import io.github.thescarletarrow.codraw.board.MemberRole
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -18,6 +19,7 @@ import java.util.UUID
 class NotificationService(
     private val notifications: Notifications,
     private val limits: LimitProperties,
+    private val properties: NotificationProperties,
     private val clock: Clock,
 ) {
 
@@ -101,6 +103,26 @@ class NotificationService(
     }
 
     /**
+     * The user [actorId] asks the owner of the [board] to review the element [cellId] of the page [pageId], which they
+     * marked «Нужно ревью». The owner is notified neither of their own request nor of an element they were notified of
+     * within [NotificationProperties.reviewRequestInterval], whoever asked. Throws [ReviewRequestLimitException] when the
+     * requests of the user notified owners of boards [LimitProperties.reviewRequestsPerHour] times in the last hour.
+     */
+    @Transactional
+    fun reviewRequested(board: Board, actorId: UUID, pageId: String, cellId: String) {
+        if (board.ownerId == actorId) return
+        val now = now()
+        if (notifications.reviewRequestsAfter(actorId, now - HOUR) >= limits.reviewRequestsPerHour) {
+            throw ReviewRequestLimitException(limits.reviewRequestsPerHour)
+        }
+        val notifiedAfter = now - properties.reviewRequestInterval
+        if (notifications.addReviewRequest(board.ownerId, board.boardId, pageId, cellId, actorId, now, notifiedAfter)) {
+            // Others create the notifications of a user: the oldest go, so that nobody fills the database of another.
+            notifications.keepNewest(setOf(board.ownerId), limits.notificationsPerUser)
+        }
+    }
+
+    /**
      * A page of the notifications of the user [userId], newest first, older than the notification [before] when it is
      * given. A notification about a board that the user has no role on now tells only what happened and when.
      */
@@ -155,6 +177,7 @@ class NotificationService(
             access = access,
             boardTitle = board.title.takeIf { access },
             pageId = pageId.takeIf { access },
+            cellId = cellId.takeIf { access },
             threadId = threadId.takeIf { access },
             commentId = commentId.takeIf { access },
             proposalId = proposalId.takeIf { access },
@@ -175,12 +198,15 @@ class NotificationService(
     companion object {
         /** The most notifications on one page of the list. */
         const val PAGE_SIZE = 30
+
+        /** The window of [LimitProperties.reviewRequestsPerHour]. */
+        private val HOUR: Duration = Duration.ofHours(1)
     }
 }
 
 /**
  * A notification as its recipient sees it. Without a role on the board now ([access] is `false`) it names neither the
- * board nor the comment nor the proposal nor who did it.
+ * board nor the page nor the element nor the comment nor the proposal nor who did it.
  */
 data class Notification(
     val id: UUID,
@@ -189,8 +215,10 @@ data class Notification(
     /** Whether the recipient may open the board now. */
     val access: Boolean,
     val boardTitle: String?,
-    /** The page of the thread of a mention, an answer or an assignment. */
+    /** The page of the thread of a mention, an answer or an assignment, or of the element of a request for a review. */
     val pageId: String?,
+    /** The element of the board document that a request for a review is about. */
+    val cellId: String?,
     val threadId: UUID?,
     val commentId: UUID?,
     /** The proposal of changes that a notification about one is about. */
@@ -214,3 +242,6 @@ data class NotificationPage(val notifications: List<Notification>, val next: UUI
 
 /** The user has no such notification. */
 class NotificationNotFoundException : RuntimeException("Notification not found")
+
+/** The requests of the user for reviews notified owners of boards as many times in the last hour as [limit] allows. */
+class ReviewRequestLimitException(val limit: Int) : RuntimeException("Too many requests for reviews")

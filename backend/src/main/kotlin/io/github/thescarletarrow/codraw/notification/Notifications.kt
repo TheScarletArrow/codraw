@@ -43,6 +43,9 @@ enum class NotificationKind(@get:JsonValue val value: String) {
 
     /** The owner or an editor declined the proposal of changes of the recipient. */
     PROPOSAL_DECLINED("proposal-declined"),
+
+    /** A participant asks the recipient, the owner of the board, to review an element they marked «Нужно ревью». */
+    REVIEW_REQUEST("review-request"),
 }
 
 /** The user who did what a notification tells. */
@@ -61,7 +64,10 @@ data class StoredNotification(
     val memberRole: MemberRole?,
     val commentId: UUID?,
     val threadId: UUID?,
+    /** The page of the thread, or of the element of a request for a review. */
     val pageId: String?,
+    /** The element of the board document that a request for a review is about. */
+    val cellId: String?,
     val proposalId: UUID?,
     /**
      * The start of the comment, of the first comment of an assigned thread, or of the title of the proposal, at most
@@ -78,7 +84,7 @@ data class StoredNotification(
 
 /**
  * Notifications of users. A row keeps who did what to whom and where; the board, the comment, the proposal and the actor
- * are read with it.
+ * are read with it, and the element of a request for a review is read on the board.
  */
 @Repository
 class Notifications(private val jdbc: JdbcClient) {
@@ -120,6 +126,48 @@ class Notifications(private val jdbc: JdbcClient) {
             .param("at", at.atOffset(ZoneOffset.UTC))
             .update()
     }
+
+    /**
+     * Notifies the owner [ownerId] of the board [boardId] at [at] that the user [actorId] asks them to review the element
+     * [cellId] of the page [pageId], unless the owner has a notification about that element created after [notifiedAfter].
+     * Returns whether it notified them.
+     */
+    fun addReviewRequest(
+        ownerId: UUID,
+        boardId: UUID,
+        pageId: String,
+        cellId: String,
+        actorId: UUID,
+        at: Instant,
+        notifiedAfter: Instant,
+    ): Boolean = jdbc.sql(
+        """
+        INSERT INTO notifications (user_id, kind, board_id, page_id, cell_id, actor_id, created_at)
+        SELECT :ownerId, 'REVIEW_REQUEST', :boardId, :pageId, :cellId, :actorId, :at
+        WHERE NOT EXISTS (
+            SELECT FROM notifications
+            WHERE user_id = :ownerId AND board_id = :boardId AND kind = 'REVIEW_REQUEST'
+              AND page_id = :pageId AND cell_id = :cellId AND created_at > :notifiedAfter
+        )
+        """,
+    )
+        .param("ownerId", ownerId)
+        .param("boardId", boardId)
+        .param("pageId", pageId)
+        .param("cellId", cellId)
+        .param("actorId", actorId)
+        .param("at", at.atOffset(ZoneOffset.UTC))
+        .param("notifiedAfter", notifiedAfter.atOffset(ZoneOffset.UTC))
+        .update() > 0
+
+    /** How many notifications about requests for reviews the user [actorId] caused after [after]. */
+    fun reviewRequestsAfter(actorId: UUID, after: Instant): Int = jdbc.sql(
+        "SELECT count(*) FROM notifications WHERE actor_id = :actorId AND kind = 'REVIEW_REQUEST' AND created_at > :after",
+    )
+        .param("actorId", actorId)
+        .param("after", after.atOffset(ZoneOffset.UTC))
+        .query(Int::class.java)
+        .single()
 
     /** Deletes the notifications of the users [userIds] that the comment [commentId] answers them. */
     fun deleteReplies(commentId: UUID, userIds: Collection<UUID>) {
@@ -210,7 +258,8 @@ class Notifications(private val jdbc: JdbcClient) {
                b.id AS board_id, b.title, b.owner_id, b.created_at AS board_created_at,
                b.updated_at AS board_updated_at, b.link_access, m.role AS member_role,
                a.id AS actor_id, a.name AS actor_name, a.avatar_url AS actor_avatar_url,
-               t.id AS thread_id, t.page_id, left(coalesce(c.body, f.body, p.title), :snippetLength + 1) AS body
+               t.id AS thread_id, coalesce(t.page_id, n.page_id) AS page_id, n.cell_id,
+               left(coalesce(c.body, f.body, p.title), :snippetLength + 1) AS body
         FROM notifications n
         JOIN boards b ON b.id = n.board_id
         LEFT JOIN board_members m ON m.board_id = n.board_id AND m.user_id = n.user_id
@@ -338,6 +387,7 @@ class Notifications(private val jdbc: JdbcClient) {
         commentId = getObject("comment_id", UUID::class.java),
         threadId = getObject("thread_id", UUID::class.java),
         pageId = getString("page_id"),
+        cellId = getString("cell_id"),
         proposalId = getObject("proposal_id", UUID::class.java),
         snippet = getString("body")?.let(::snippetOf),
         actor = getObject("actor_id", UUID::class.java)?.let { id ->
