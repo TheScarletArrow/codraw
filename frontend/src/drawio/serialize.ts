@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { EDGE_API_KEY, edgeApiOf } from '../diagram/edgeApi.ts'
 import { LINK_KEY, linkOf } from '../diagram/links.ts'
 import {
   compareCells,
@@ -88,8 +89,11 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
   const inner = (head: string) => (geometry ? `<mxCell${head}>${geometry}</mxCell>` : `<mxCell${head}/>`)
   // The style does not write the link: draw.io keeps it on the element around the cell. A board imported before CoDraw
   // read links keeps it among the custom properties. One that CoDraw would not open is not written.
-  const { id: _id, label: _label, [LINK_KEY]: oldLink, ...properties } = attrs
+  const { id: _id, label: _label, [LINK_KEY]: oldLink, [EDGE_API_KEY]: _api, ...properties } = attrs
   const link = linkOf(cell.style) ?? linkOf({ [LINK_KEY]: oldLink })
+  // The description of the call of an edge is a custom property of draw.io, which shows it in «Edit Data».
+  const api = edgeApiOf(cell.style) ? (cell.style[EDGE_API_KEY] as string) : null
+  if (api) properties[EDGE_API_KEY] = api
   if (Object.keys(properties).length === 0 && !link) return inner(attributes({ id: cell.id, value: cell.value }) + body)
   // A link alone makes the cell a <UserObject>, as draw.io makes it when a link is set; custom properties make it an
   // <object>. Either carries the id and the label.

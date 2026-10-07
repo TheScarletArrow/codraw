@@ -29,6 +29,7 @@ export type MenuCommand =
   | 'comment'
   | 'commentHere'
   | 'link'
+  | 'edgeApi'
 
 /** Items that set the status of the selection. */
 export type StatusCommand = 'statusDraft' | 'statusReview' | 'statusDone' | 'statusNone'
@@ -95,6 +96,8 @@ export interface MenuAvailability {
   locked?: boolean
   /** The page sets links, and the single selected element may have one: «Ссылка…» is offered. */
   canLink?: boolean
+  /** The page shows descriptions of calls, and a single edge is selected: «Описание API…» is offered. */
+  canDescribeApi?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
 }
@@ -115,6 +118,7 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'group',
   'ungroup',
   'link',
+  'edgeApi',
   'delete',
 ])
 
@@ -136,6 +140,7 @@ const DELETE: Entry = ['delete', 'Удалить', 'Delete']
 const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
 const COMMENT: Entry[] = [['comment', 'Комментировать']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
+const EDGE_API: Entry = ['edgeApi', 'Описание API…']
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -191,7 +196,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, LINK, COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, [...LINK, EDGE_API], COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
   group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
   selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, [DELETE]],
@@ -218,6 +223,7 @@ export function menuItems(
     canUnlock = false,
     locked = false,
     canLink = false,
+    canDescribeApi = false,
     status = null,
   }: MenuAvailability,
 ): MenuItem[] {
@@ -235,6 +241,7 @@ export function menuItems(
     lock: canLock,
     unlock: canUnlock,
     link: canLink,
+    edgeApi: canDescribeApi,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]

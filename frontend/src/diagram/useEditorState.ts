@@ -34,6 +34,7 @@ const NO_EDITOR: EditorState = {
   attribution: null,
   canAddImages: false,
   link: null,
+  edgeApi: null,
   stickies: null,
   status: null,
 }

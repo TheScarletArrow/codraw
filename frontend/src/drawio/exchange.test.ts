@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { readAttribution, readTextAuthor, writeAttribution, writeTextAuthor } from '../diagram/attribution.ts'
 import { fromStyle } from '../diagram/binding.ts'
+import { EDGE_API_KEY, emptyEdgeApi, writeEdgeApi } from '../diagram/edgeApi.ts'
 import {
   DEFAULT_PAGE_ID,
   getCells,
@@ -264,6 +265,26 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).payments!.style).toEqual({ link: `data:page/id,${second}`, fontSize: 13 })
     expect(pageCells(copy, DEFAULT_PAGE_ID).payments!.attrs).toEqual({})
     expect(pageCells(copy, DEFAULT_PAGE_ID).docs!.style).toMatchObject({ link: 'mailto:team@example.com' })
+  })
+
+  it('writes the description of the call of an edge on an <object>, not in its style, and reads it back', async () => {
+    const api = writeEdgeApi({ ...emptyEdgeApi(), method: 'POST', path: '/payments' }) as string
+    const doc = board()
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('pay', { kind: 'edge', geometry: null, value: 'POST /payments', style: { [EDGE_API_KEY]: api } }))
+      writeCell(getCells(doc), cell('bad', { kind: 'edge', geometry: null, style: { [EDGE_API_KEY]: '{"v":1,"method":"BREW"}' } }))
+    })
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain(`<object label="POST /payments" ${EDGE_API_KEY}="`)
+    expect(xml).not.toContain(`${EDGE_API_KEY}=%7B`)
+    expect(xml).not.toContain('BREW')
+    expect(pageCells(copy, DEFAULT_PAGE_ID).pay!.style[EDGE_API_KEY]).toBe(api)
+    expect(pageCells(copy, DEFAULT_PAGE_ID).pay!.attrs).toEqual({})
+    expect(pageCells(copy, DEFAULT_PAGE_ID).bad!.style).not.toHaveProperty(EDGE_API_KEY)
   })
 
   it('writes no link that CoDraw would not open, nor one that a board kept among the custom properties', () => {

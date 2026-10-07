@@ -85,6 +85,7 @@ import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
+import { apiLabel, EDGE_API_KEY, edgeApiOf, writeEdgeApi, type EdgeApi } from './edgeApi.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import {
   cellImageUrls,
@@ -341,6 +342,15 @@ export interface SelectionLink {
   canChange: boolean
 }
 
+/** The description of the HTTP call of the single selected edge; see {@link DiagramEditor.setEdgeApi}. */
+export interface SelectionEdgeApi {
+  cellId: string
+  /** Its description, or `null` without one or with one that CoDraw cannot read (see {@link edgeApiOf}). */
+  api: EdgeApi | null
+  /** The participant may change it: they edit the board and the edge is not locked. */
+  canChange: boolean
+}
+
 /** The selected stickies, which the panel of stickies changes; see {@link DiagramEditor.setStickyColor}. */
 export interface SelectedStickies {
   cellIds: string[]
@@ -428,6 +438,8 @@ export interface EditorState {
   canAddImages: boolean
   /** The link of the single selected element that may have one, or `null` when no such element is selected alone. */
   link: SelectionLink | null
+  /** The description of the call of the single selected edge, or `null` when no edge is selected alone. */
+  edgeApi: SelectionEdgeApi | null
   /** The selected stickies, or `null` when none is selected or the participant may only view. */
   stickies: SelectedStickies | null
   /**
@@ -660,6 +672,12 @@ export interface DiagramEditor {
    * locked element, a field or an index, and a link that CoDraw would not open (see {@link linkOf}) change nothing.
    */
   setLink(link: string | null): void
+  /**
+   * Sets the description of the HTTP call of the single selected edge, or removes it with `null`, as one undo step. An
+   * empty label of the edge, or one that tells the call of the description it had (see {@link apiLabel}), becomes the
+   * label of the new one; removing the description keeps the label. A locked edge changes nothing.
+   */
+  setEdgeApi(api: EdgeApi | null): void
   /**
    * The links of the elements of the page that CoDraw opens, in the order of the tree; the same array until the page
    * changes.
@@ -1063,6 +1081,7 @@ const CHANGING_COMMANDS = [
   'setRotation',
   'setPencil',
   'setLink',
+  'setEdgeApi',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -1381,6 +1400,12 @@ export function createDiagramEditor(
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
     if (!cell || !isLinkable(cell)) return null
     return { cellId: cell.getId()!, link: linkOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
+  }
+  /** The description of the call of the single selected edge; see {@link SelectionEdgeApi}. */
+  const selectionEdgeApi = (): SelectionEdgeApi | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    if (!cell?.isEdge()) return null
+    return { cellId: cell.getId()!, api: edgeApiOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
   }
   /**
    * The elements whose status {@link DiagramEditor.setStatus} sets: the selected shapes, tables and groups and the tables
@@ -1717,6 +1742,7 @@ export function createDiagramEditor(
       attribution: selectionAttribution(),
       canAddImages: !readOnly && images !== null,
       link: selectionLink(),
+      edgeApi: selectionEdgeApi(),
       stickies: selectionStickies(),
       status: selectionStatus(),
     }
@@ -3193,6 +3219,21 @@ export function createDiagramEditor(
       if (value === null) return
       graph.stopEditing(false)
       setStyleValue([cell], LINK_KEY, value)
+    },
+    setEdgeApi(api) {
+      const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+      if (!cell?.isEdge() || !isUnlocked(cell)) return
+      const previous = edgeApiOf(cell.getStyle())
+      const label = typeof cell.getValue() === 'string' ? (cell.getValue() as string) : ''
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue([cell], EDGE_API_KEY, api === null ? undefined : writeEdgeApi(api))
+        // The label follows the call while nobody wrote one of their own.
+        if (api !== null && (label.trim() === '' || (previous !== null && label === apiLabel(previous)))) {
+          const next = apiLabel(api)
+          if (next !== label) model.setValue(cell, next)
+        }
+      })
     },
     getLinks() {
       pageLinks ??= findLinks()
