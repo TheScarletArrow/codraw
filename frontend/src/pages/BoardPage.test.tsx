@@ -21,6 +21,8 @@ import {
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { restoreDocument } from '../diagram/restore.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
+import { writeStatus } from '../diagram/status.ts'
+import { shapeData } from '../diagram/testing.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
 import { setPendingImport } from '../drawio/files.ts'
 import { parseDrawio } from '../drawio/parse.ts'
@@ -435,6 +437,14 @@ describe('BoardPage', () => {
       expect(screen.queryByRole('button', { name: 'Импорт из .drawio' })).toBeNull()
       expect(screen.getByRole('button', { name: 'Экспорт в .drawio' })).toBeEnabled()
       expect(screen.getByRole('button', { name: 'Увеличить' })).toBeEnabled()
+
+      // Stickies show who wrote them, but there is no panel to change them.
+      const editor = canvas.editor!
+      act(() => editor.placeCell('sticky', { x: 100, y: 100, width: 160, height: 160 }))
+      act(() => editor.setState({ stickies: { cellIds: ['sticky'], color: '#fff2cc', textFit: true, locked: false } }))
+      act(() => editor.setSignatures([{ cellId: 'sticky', by: null, name: 'Боб', color: '#1f2328' }]))
+      expect(screen.queryByRole('toolbar', { name: 'Стикеры' })).toBeNull()
+      expect(screen.getByTestId('sticky-signature')).toHaveTextContent('Боб')
     })
 
     it('does not write to the document of a participant who may only view, even when it is empty', async () => {
@@ -643,7 +653,7 @@ describe('BoardPage', () => {
       expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
     })
 
-    it('closes the search on the board while a version shows in place of the board, leaving Ctrl+F to the browser', async () => {
+    it('closes the search and the minimap while a version shows in place of the board, leaving Ctrl+F to the browser', async () => {
       await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: versionState() } })
       const pressFind = () => {
         let browserFind = true
@@ -653,12 +663,16 @@ describe('BoardPage', () => {
         return browserFind
       }
       const searchBar = () => screen.queryByRole('search', { name: 'Поиск на доске' })
+      const minimap = () => screen.queryByRole('region', { name: 'Мини-карта' })
+      act(() => canvas.editor!.setState({ hasCells: true }))
+      expect(minimap()).toBeInTheDocument()
       expect(pressFind()).toBe(false)
       expect(searchBar()).toBeInTheDocument()
 
       await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
       const preview = await screen.findByRole('region', { name: /^Версия от / })
 
+      expect(minimap()).toBeNull()
       expect(searchBar()).toBeNull()
       expect(pressFind()).toBe(true)
       expect(searchBar()).toBeNull()
@@ -827,6 +841,34 @@ describe('BoardPage', () => {
         await userEvent.click(screen.getByRole('button', { name: /Изменено: Шлюз/ }))
         await userEvent.click(screen.getByRole('tab', { name: 'Черновик' }))
 
+        expect(Y.encodeStateVector(provider.live)).toEqual(before)
+      })
+
+      it('offers the migration of the schema from the version to the board, and changes nothing in the board', async () => {
+        // The table `users` with the field `mail` in the version and the same field renamed `email` on the board.
+        const users = (field: string): CellData[] => [
+          { ...shape('users', 'a5', 'users', { x: 0, y: 500 }), style: { childLayout: 'stackLayout', dbVendor: 'postgresql' } },
+          { ...shape('users-id', 'a0', 'id uuid PK', { x: 0, y: 30 }), parent: 'users' },
+          { ...shape('users-mail', 'a1', field, { x: 0, y: 56 }), parent: 'users' },
+        ]
+        const versionDocument = new Y.Doc()
+        initializeDocument(versionDocument)
+        versionDocument.transact(() => users('mail text').forEach((cell) => writeCell(getCells(versionDocument), cell)))
+        const provider = await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: Y.encodeStateAsUpdate(versionDocument) } })
+        provider.document.transact(() => users('email text').forEach((cell) => writeCell(getCells(provider.document), cell)))
+        await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+        const preview = await screen.findByRole('region', { name: /^Версия от / })
+        await within(preview).findByTestId('diagram-canvas')
+        expect(within(preview).queryByRole('button', { name: 'Миграция SQL' })).toBeNull()
+        await userEvent.click(within(preview).getByRole('button', { name: 'Сравнить с текущей' }))
+        const before = Y.encodeStateVector(provider.live)
+
+        await userEvent.click(within(preview).getByRole('button', { name: 'Миграция SQL' }))
+
+        const dialog = screen.getByRole('dialog', { name: 'Миграция SQL' })
+        expect(dialog).toHaveTextContent(/Из «версия от .+» в «текущая доска»/)
+        const sql = within(dialog).getByRole('textbox', { name: 'Текст Архитектура — миграция.sql' })
+        expect((sql as HTMLTextAreaElement).value).toContain('\nALTER TABLE users RENAME COLUMN mail TO email;\n')
         expect(Y.encodeStateVector(provider.live)).toEqual(before)
       })
 
@@ -1335,6 +1377,7 @@ describe('BoardPage', () => {
         'Эллипс',
         'Ромб',
         'Текст',
+        'Стикер',
         'Изображение',
       ])
       const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
@@ -1357,6 +1400,19 @@ describe('BoardPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Эллипс' }))
 
       expect(editor.addShape).toHaveBeenCalledWith('ellipse')
+    })
+
+    it('shows the panel of stickies under the selected stickies, and who wrote the stickies of the page', async () => {
+      const editor = await openEditor()
+      act(() => editor.placeCell('sticky', { x: 100, y: 100, width: 160, height: 160 }))
+      expect(screen.queryByRole('toolbar', { name: 'Стикеры' })).toBeNull()
+
+      act(() => editor.setState({ stickies: { cellIds: ['sticky'], color: '#fff2cc', textFit: true, locked: false } }))
+      act(() => editor.setSignatures([{ cellId: 'sticky', by: ALICE.id, name: 'Алиса', color: '#1f2328' }]))
+
+      await userEvent.click(within(screen.getByRole('toolbar', { name: 'Стикеры' })).getByRole('button', { name: 'Розовый' }))
+      expect(editor.setStickyColor).toHaveBeenCalledWith('#f8cecc')
+      expect(screen.getByTestId('sticky-signature')).toHaveTextContent('Алиса')
     })
 
     it('puts the shape id into the drag data', async () => {
@@ -1622,6 +1678,43 @@ describe('BoardPage', () => {
 
         expect(shownPage()).toBe(second)
         expect(banner()).toBeNull()
+      })
+    })
+
+    describe('minimap', () => {
+      const bob = { name: 'Боб', color: '#dc2626', avatarUrl: null }
+      const minimap = () => screen.queryByRole('region', { name: 'Мини-карта' })
+      const banner = () => screen.queryByRole('region', { name: 'Следование' })
+
+      it('shows the page with shapes small, with the other participants of the page where they look', async () => {
+        const provider = await openPages()
+        expect(minimap()).toBeNull()
+
+        act(() => canvas.editor!.setState({ hasCells: true }))
+        const viewport = { x: 100, y: 50, scale: 1 }
+        act(() => provider.awareness.setState(7, { user: bob, page: DEFAULT_PAGE_ID, viewport }))
+
+        expect(minimap()).toBeInTheDocument()
+        expect(screen.getByTestId('minimap-participant')).toHaveAttribute('data-participant', 'Боб')
+      })
+
+      it('ends following when it moves the canvas, but not when it collapses', async () => {
+        const provider = await openPages()
+        act(() => canvas.editor!.setState({ hasCells: true }))
+        const viewport = { x: 1500, y: 900, scale: 1 }
+        act(() => provider.awareness.setState(7, { user: bob, page: DEFAULT_PAGE_ID, viewport }))
+        const participants = screen.getByRole('list', { name: 'Участники' })
+        await userEvent.click(within(participants).getByRole('button', { name: /Боб/ }))
+        expect(banner()).toHaveTextContent('Вы следуете за Боб')
+
+        await userEvent.click(screen.getByRole('button', { name: 'Свернуть мини-карту' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Развернуть мини-карту' }))
+        expect(banner()).toBeInTheDocument()
+
+        fireEvent.pointerDown(screen.getByTestId('minimap'), { button: 0, pointerId: 1, clientX: 5, clientY: 5 })
+
+        expect(banner()).toBeNull()
+        expect(canvas.editor!.centerOn).toHaveBeenCalled()
       })
     })
 
@@ -1946,6 +2039,55 @@ describe('BoardPage', () => {
         expect(showing()).toHaveTextContent('Вы показываете всем')
         expect(updates).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('links', () => {
+    const shownPage = () => screen.getByTestId('diagram-canvas').dataset.page
+
+    it('sets the link of an element in the window that its menu opens', async () => {
+      const provider = await openBoard({ 'GET /api/boards': { body: [] }, 'GET /api/boards/shared': { body: [] } })
+      act(() => provider.emitConnected())
+      let containers = ''
+      act(() => {
+        containers = addPage(provider.document, DEFAULT_PAGE_ID)
+        renamePage(provider.document, containers, 'Контейнеры')
+      })
+      const editor = canvas.editor!
+      act(() => editor.setState({ link: { cellId: 'api', link: null, canChange: true } }))
+
+      act(() => editor.rightClick({ x: 10, y: 10, point: { x: 10, y: 10 }, target: 'shape', cellId: 'api' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Ссылка…' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Ссылка' })
+      expect(within(dialog).getByRole('combobox', { name: 'Страница' })).toHaveValue(containers)
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }))
+
+      expect(editor.setLink).toHaveBeenCalledWith(`data:page/id,${containers}`)
+      expect(screen.queryByRole('dialog', { name: 'Ссылка' })).toBeNull()
+    })
+
+    it('goes to the page of a link with the badge and with Ctrl+click, a viewer too', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      const document = new Y.Doc()
+      initializeDocument(document)
+      const containers = addPage(document, DEFAULT_PAGE_ID)
+      act(() => {
+        Y.applyUpdate(provider.document, Y.encodeStateAsUpdate(document))
+        provider.emitSynced()
+      })
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true'))
+      const editor = canvas.editor!
+      editor.placeCell('api', { x: 100, y: 50, width: 120, height: 60 })
+      act(() => editor.placeLinks([{ cellId: 'api', link: `data:page/id,${containers}` }]))
+
+      act(() => editor.rightClick({ x: 10, y: 10, point: { x: 10, y: 10 }, target: 'shape', cellId: 'api' }))
+      expect(screen.queryByRole('menuitem', { name: 'Ссылка…' })).toBeNull()
+      await userEvent.keyboard('{Escape}')
+      await userEvent.click(screen.getByRole('button', { name: 'Перейти по ссылке: Страница «Страница 2»' }))
+      await waitFor(() => expect(shownPage()).toBe(containers))
+
+      act(() => canvas.editor!.clickLink({ cellId: 'back', link: `data:page/id,${DEFAULT_PAGE_ID}` }))
+      await waitFor(() => expect(shownPage()).toBe(DEFAULT_PAGE_ID))
     })
   })
 
@@ -2460,6 +2602,27 @@ describe('BoardPage', () => {
       expect(within(review).queryByRole('button', { name: 'Отозвать' })).toBeNull()
     })
 
+    it('offers the migration of the schema from the board to the board with the proposal accepted', async () => {
+      const provider = await openReview()
+      const draftDocument = (provider.draft.configuration as { document: Y.Doc }).document
+      act(() => {
+        const jobs = cell('jobs', 'a3', 'jobs')
+        writeCell(getCells(draftDocument), { ...jobs, style: { childLayout: 'stackLayout', dbVendor: 'mysql' } })
+        writeCell(getCells(draftDocument), { ...cell('jobs-id', 'a0', 'id bigint PK'), parent: 'jobs' })
+      })
+      await within(provider.review).findByRole('complementary', { name: 'Изменения' })
+
+      await userEvent.click(within(provider.review).getByRole('button', { name: 'Миграция SQL' }))
+
+      const dialog = screen.getByRole('dialog', { name: 'Миграция SQL' })
+      expect(dialog).toHaveTextContent('Из «текущая доска» в «доска с предложением «Добавить очередь»»')
+      expect(within(dialog).getByRole('combobox', { name: 'СУБД' })).toHaveValue('mysql')
+      const sql = within(dialog).getByRole('textbox', { name: 'Текст Архитектура — миграция.sql' })
+      expect((sql as HTMLTextAreaElement).value).toContain('CREATE TABLE jobs (\n    id bigint NOT NULL,\n    PRIMARY KEY (id)\n);')
+      // The board stays as it is until the proposal is accepted.
+      expect(getCells(provider.document).has('jobs')).toBe(false)
+    })
+
     it('accepts: keeps the board as a version, closes the proposal and merges it into the board for everybody', async () => {
       const provider = await openReview({
         [`POST ${proposalUrl}/accept`]: { body: proposal({ status: 'accepted', decidedBy: ALICE, decidedAt: '2026-10-01T10:00:00Z' }) },
@@ -2534,6 +2697,129 @@ describe('BoardPage', () => {
 
       expect(await within(provider.review).findByText(/Отозвано: Боб/)).toBeInTheDocument()
       expect(within(provider.review).getByRole('link', { name: 'Открыть черновик' })).toBeInTheDocument()
+    })
+  })
+
+  describe('statuses of elements', () => {
+    const bob = { id: 'bob', name: 'Боб' }
+    const reviewUrl = `${boardUrl}/review-requests`
+    const shownPage = () => screen.getByTestId('diagram-canvas').dataset.page
+    const statuses = () => screen.getByRole('dialog', { name: 'Статусы элементов' })
+    /** «API» on the first page and the table «orders» on the page «Данные», both waiting for a review. */
+    function fill(document: Y.Doc) {
+      document.transact(() => {
+        writePage(document, 'page-2', { name: 'Данные', order: 'a5' })
+        writeCell(getCells(document), shapeData('api', 'a0', { value: 'API' }))
+        writeCell(getCells(document, 'page-2'), shapeData('orders', 'a0', { value: 'orders', style: { childLayout: 'stackLayout' } }))
+        writeStatus(getCells(document).get('api')!, 'review', bob, Date.now())
+        writeStatus(getCells(document, 'page-2').get('orders')!, 'review', bob, Date.now())
+      })
+    }
+    /** Right-clicks a shape on the canvas and chooses a status in the menu. */
+    async function chooseStatus(editor: FakeEditor, name: string) {
+      act(() => editor.rightClick({ x: 10, y: 10, point: { x: 0, y: 0 }, target: 'shape', cellId: 'api' }))
+      await userEvent.click(screen.getByRole('menuitemradio', { name }))
+    }
+
+    it('shows the statuses of the page over the canvas and goes to an element to review on another page', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      act(() => fill(provider.document))
+      act(() => canvas.editor!.placeCell('api', { x: 100, y: 50, width: 120, height: 60 }))
+
+      expect(screen.getByRole('img', { name: /^Нужно ревью — Боб, / })).toHaveAttribute('data-cell', 'api')
+      await userEvent.click(await screen.findByRole('button', { name: '2 на ревью' }))
+      await userEvent.click(within(statuses()).getByRole('button', { name: /orders/ }))
+
+      await waitFor(() => expect(shownPage()).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('orders'))
+      expect(provider.router.state.location.search).toBe('?page=page-2')
+      expect(screen.queryByRole('dialog', { name: 'Статусы элементов' })).toBeNull()
+    })
+
+    it('asks the owner to review what a participant who is not the owner marks «Нужно ревью», once per change', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother }, [`POST ${reviewUrl}`]: { status: 204 } })
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      act(() => editor.setState({ status: { value: null, mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['db', 'api'])
+
+      await chooseStatus(editor, 'Нужно ревью')
+
+      expect(editor.setStatus).toHaveBeenCalledWith('review')
+      const sent = requests(provider.fetchMock, 'POST', reviewUrl)
+      expect(sent).toHaveLength(1)
+      expect(JSON.parse(String(sent[0]![1]!.body))).toEqual({ pageId: DEFAULT_PAGE_ID, cellId: 'db' })
+
+      // Another status, or «Нужно ревью» that changes nothing, asks nobody.
+      await chooseStatus(editor, 'Готово')
+      vi.mocked(editor.setStatus).mockReturnValue([])
+      await chooseStatus(editor, 'Нужно ревью')
+      expect(requests(provider.fetchMock, 'POST', reviewUrl)).toHaveLength(1)
+    })
+
+    it('keeps the status quietly when the request for a review fails', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother }, [`POST ${reviewUrl}`]: { status: 429 } })
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      act(() => editor.setState({ status: { value: null, mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['api'])
+
+      await chooseStatus(editor, 'Нужно ревью')
+
+      await waitFor(() => expect(requests(provider.fetchMock, 'POST', reviewUrl)).toHaveLength(1))
+      expect(editor.undo).not.toHaveBeenCalled()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('asks nobody when the owner marks «Нужно ревью»', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      act(() => editor.setState({ status: { value: null, mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['api'])
+
+      await chooseStatus(editor, 'Нужно ревью')
+
+      expect(editor.setStatus).toHaveBeenCalledWith('review')
+      expect(requests(provider.fetchMock, 'POST', reviewUrl)).toHaveLength(0)
+    })
+
+    it('goes to the element of a link once the board is synced, also on a page the local copy lacks', async () => {
+      // An earlier visit left a copy of the board from before the page of the element was added.
+      const stored = new Y.Doc()
+      const persistence = openLocalCopy(ALICE.id, boardId, board.title, stored)!
+      await persistence.whenSynced
+      initializeDocument(stored)
+      await persistence.destroy()
+      const provider = await openBoard({}, '?page=page-2&cell=orders')
+
+      // IndexedDB answers asynchronously, slower when the tests run in parallel.
+      expect(await screen.findByTestId('diagram-canvas', undefined, { timeout: 5_000 })).toBeInTheDocument()
+      expect(canvas.editor!.revealCell).not.toHaveBeenCalled()
+
+      act(() => {
+        fill(provider.document)
+        provider.emitConnected()
+      })
+
+      await waitFor(() => expect(shownPage()).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('orders'))
+      expect(provider.router.state.location.search).toBe('?page=page-2')
+    })
+
+    it('opens the page of the element of a link when the element is gone', async () => {
+      const provider = await openBoard({}, '?page=page-2&cell=gone')
+      act(() => {
+        // The document of the board as collab gives it, with its first page.
+        initializeDocument(provider.document)
+        fill(provider.document)
+        provider.emitSynced()
+      })
+
+      await waitFor(() => expect(provider.router.state.location.search).toBe('?page=page-2'))
+      await waitFor(() => expect(shownPage()).toBe('page-2'))
+      expect(canvas.editor!.revealCell).toHaveBeenCalledWith('gone')
     })
   })
 

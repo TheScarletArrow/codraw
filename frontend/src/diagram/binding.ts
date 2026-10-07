@@ -13,7 +13,7 @@ import {
   type EventObject,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
-import { isAttributedWrite, writeAttribution, type Author } from './attribution.ts'
+import { isAttributedWrite, writeAttribution, writeTextAuthor, type Author } from './attribution.ts'
 import { newId } from './ids.ts'
 import {
   compareCells,
@@ -30,6 +30,7 @@ import {
   type PointData,
   type StyleValue,
 } from './model.ts'
+import { isStickyStyle } from './shapes.ts'
 
 /** Origin of transactions made by this client through the editor. Undo tracks only these. */
 export const LOCAL_ORIGIN = 'codraw:local'
@@ -40,7 +41,8 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  * Keeps a maxGraph model and the cells of a Yjs page in sync. Yjs is the source of truth:
  *
  * - local edits (model `CHANGE` events) are written to Yjs in one transaction with {@link LOCAL_ORIGIN}, and every
- *   cell they change keeps in the same transaction that the author changed it and when;
+ *   cell they change keeps in the same transaction that the author changed it and when, and a sticky whose text they
+ *   change that the author wrote it;
  * - other transactions (remote participants, undo/redo) are reconciled into the model: every affected
  *   cell is re-read from Yjs, so the model ends up equal to the document whatever the order of events.
  *
@@ -146,7 +148,12 @@ export class DiagramBinding {
         const data = this.toCellData(cell)
         // Cells the change touched but left as they were keep who changed them last, and so do those it only locked.
         const write = writeCell(this.cells, data)
-        if (this.author && isAttributedWrite(write)) writeAttribution(this.cells.get(data.id)!, this.author, at)
+        const entry = this.cells.get(data.id)!
+        if (this.author && isAttributedWrite(write)) writeAttribution(entry, this.author, at)
+        // Who wrote a sticky changes with its text only, not when the sticky is moved or recolored.
+        if (this.author && write.fields.includes('value') && isStickyStyle(data.style)) {
+          writeTextAuthor(entry, data.value.trim() ? this.author : null)
+        }
       }
     }, this.origin)
   }

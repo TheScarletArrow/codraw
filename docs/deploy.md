@@ -67,7 +67,12 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_LIMITS_PROPOSALS_PER_BOARD` | `20` | больше открытых предложений изменений у доски не будет; принятые, отклонённые и отозванные не считаются; сверх — 409 |
 | `CODRAW_LIMITS_PROPOSALS_PER_AUTHOR` | `3` | больше открытых предложений у одного автора на одной доске не будет; сверх — 409 |
 | `CODRAW_LIMITS_CLOSED_PROPOSALS_PER_BOARD` | `20` | сколько последних закрытых предложений хранит доска вместе с их черновиками; более старые удаляются, когда закрывается следующее |
+| `CODRAW_LIMITS_TAGS_PER_BOARD` | `10` | больше личных тегов одного пользователя у доски не будет; сверх — 409 |
+| `CODRAW_LIMITS_TAGS_PER_USER` | `50` | больше разных личных тегов на всех досках у пользователя не будет; теги гостя, перешедшие при входе, не ограничиваются; сверх — 409 |
+| `CODRAW_LIMITS_FOLDERS_PER_USER` | `50` | больше личных папок досок у пользователя не будет; папки гостя, перешедшие при входе, не ограничиваются; сверх — 409 |
 | `CODRAW_NOTIFICATIONS_RETENTION` | `90d` | уведомление удаляется, когда ему столько, прочитанное или нет; уборка идёт раз в час |
+| `CODRAW_NOTIFICATIONS_REVIEW_REQUEST_INTERVAL` | `10m` | владелец доски получает не больше одного уведомления о просьбе посмотреть элемент («Нужно ревью») за это время, от кого бы ни была просьба |
+| `CODRAW_LIMITS_REVIEW_REQUESTS_PER_HOUR` | `30` | сколько уведомлений о просьбах о ревью дают владельцам досок просьбы одного пользователя за час; сверх — 429, статус элемента при этом ставится |
 | `CODRAW_LIMITS_EMBED_SIZE` | `2MB` | больше не примет живая картинка доски (SVG из браузеров участников); сверх — 413 |
 | `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски и черновику предложения; у предела проходят только удаления |
 | `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа, черновика предложения и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
@@ -77,6 +82,8 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_IMAGES_S3_ENDPOINT` | `http://s3:9000` | адрес S3-совместимого хранилища изображений; другой — например, облачного S3 — вместо сервиса `s3` |
 | `CODRAW_IMAGES_S3_REGION` | `us-east-1` | регион хранилища |
 | `CODRAW_IMAGES_S3_BUCKET` | `codraw-images` | бакет картинок; `backend` создаёт его, если его нет |
+| `CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS` | пусто | базы PostgreSQL, схему которых пользователи могут загрузить через `backend` («Подключиться к базе…» в «Импорт SQL»): имена хостов, адреса и сети CIDR через запятую; пусто — функция выключена, см. «Схема из живой базы» ниже |
+| `CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR` | `30` | попыток загрузить схему из базы у одного пользователя в час, неудачные тоже; сверх — 429; счётчик — в памяти `backend` |
 
 Политика конфиденциальности и условия использования — шаблоны, которые описывают, что делает CoDraw: какие данные и
 cookie, сроки хранения этой установки, получателей. Оператор в них — из `CODRAW_LEGAL_OPERATOR` и
@@ -95,6 +102,42 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out collab-signing
 
 Его содержимое целиком, с переносами строк, — значение `CODRAW_COLLAB_TOKEN_SIGNING_KEY` в двойных кавычках
 в `.env.prod` или в окружении команды: `CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat collab-signing-key.pem)"`.
+
+### Схема из живой базы
+
+«Импорт SQL» принимает дампы `pg_dump --schema-only` и `mysqldump --no-data` без всякой настройки: пользователь снимает
+схему там, где у него есть доступ к базе, и открывает файл. Кроме того, `backend` может сам прочитать схему базы
+PostgreSQL по адресу, пользователю и паролю, которые вводит пользователь («Подключиться к базе…»). Это сетевой доступ
+`backend` к базам за пользователей, поэтому он выключен, пока администратор не перечислит разрешённые базы
+([ADR-0007](adr/0007-live-schema-import.md)):
+
+```bash
+CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS=db.internal,reports.internal,10.20.0.0/16
+```
+
+- Имя из списка разрешено, во что бы оно ни разрешалось. Любой другой хост — адрес или имя — проходит, только если
+  каждый его адрес лежит в сети из списка; `backend` подключается к проверенному адресу, а не разрешает имя заново.
+- Loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16` с адресом метаданных облака, `fe80::/10`), multicast и
+  адрес базы самого CoDraw закрыты и под широкой сетью вроде `10.0.0.0/8` или `0.0.0.0/0`: их открывает только
+  запись внутри их диапазона (`127.0.0.1/32`) или имя. Неверная запись не даёт `backend` запуститься.
+- Перечисляйте конкретные базы или узкие сети: всё, что в списке, `backend` может попробовать открыть по запросу
+  любого вошедшего пользователя (не гостя), не больше 30 раз в час на пользователя. Схему читает любой пользователь
+  базы, которому можно войти, — права на таблицы и данные не нужны; заведите для этого отдельную роль:
+  `CREATE ROLE codraw_reader LOGIN PASSWORD '…'`.
+- Подключение — только чтение, одно соединение без пула: ждёт соединения 5 секунд, ответа — 20, запрос к каталогу
+  прерывается через 15; схема — не больше 500 таблиц и 2 МБ DDL (свойства `codraw.schema-import.connect-timeout`,
+  `read-timeout`, `statement-timeout`, `max-tables`, `max-ddl-size`). В сессиях базы оно видно как
+  `application_name = 'CoDraw schema import'`.
+- Пароль приходит в теле запроса по HTTPS установки и нигде не хранится, в журнал не пишется. В журнале `backend` —
+  строка о каждой попытке «Schema import from a database» с полями `user.id`, `server.address`, `server.port`,
+  `codraw.schema_import.result` (`WARN` для `host-not-allowed`), в метриках — `codraw_schema_imports_total{result}`.
+  Пользователь видит только общую причину: адрес не разрешён, не удалось подключиться, неверная база, пользователь
+  или пароль, нет схемы, превышено время, слишком большая схема.
+- «С проверкой сертификата» (`verify-full`) доверяет центрам сертификации JVM `backend`; для сертификата своего центра
+  добавьте его в хранилище (`JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=…`). «Обязательно» шифрует без проверки
+  сертификата, как `sslmode=require` в libpq.
+- Политика конфиденциальности при включённой функции говорит, что учётные данные базы проходят через сервер и не
+  хранятся.
 
 ## 2. OAuth
 
@@ -155,8 +198,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 | Где | Что |
 |---|---|
-| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image` и `images`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`) |
-| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), метрики процесса Node.js |
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image` и `images`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
+| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
 каталог `deploy/prometheus` из репозитория:

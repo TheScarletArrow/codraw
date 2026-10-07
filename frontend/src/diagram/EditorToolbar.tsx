@@ -10,6 +10,9 @@ import {
   LockOpen,
   Maximize,
   MessageCirclePlus,
+  Paintbrush,
+  PaintRoller,
+  Pencil,
   Redo2,
   TextWrap,
   Underline,
@@ -45,7 +48,7 @@ interface EditorToolbarProps {
 }
 
 export function EditorToolbar({ editor, readOnly = false, collaboration = true }: EditorToolbarProps) {
-  const { canUndo, canRedo, scale, laser, commentTool } = useEditorState(editor)
+  const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
@@ -151,9 +154,48 @@ export function EditorToolbar({ editor, readOnly = false, collaboration = true }
           </Button>
         </>
       )}
+      {!readOnly && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Карандаш"
+          aria-pressed={pencil}
+          title={pencil ? 'Закончить рисовать (P, Esc)' : 'Карандаш: рисовать от руки (P)'}
+          disabled={!editor}
+          className="aria-pressed:bg-accent"
+          onClick={() => editor?.setPencil(!pencil)}
+        >
+          <Pencil />
+        </Button>
+      )}
       {!readOnly && <AutoLayoutPicker editor={editor} />}
-      {!readOnly && <EditingTools editor={editor} />}
+      {!readOnly && (pencil ? <PencilTools editor={editor} /> : <EditingTools editor={editor} />)}
     </div>
+  )
+}
+
+/**
+ * While the pencil is on, the line it draws with, in place of the tools of the selection: «Линия» is its color, «Стиль»
+ * its width and dash. What is chosen for the lines of the selection is the line of the pencil too.
+ */
+function PencilTools({ editor }: { editor: DiagramEditor | null }) {
+  const { pencilLine } = useEditorState(editor)
+
+  return (
+    <>
+      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <ColorPicker
+        label="Линия"
+        name="Цвет линии"
+        value={pencilLine.color}
+        onChange={(color) => editor?.setPencilLine({ color })}
+      />
+      <LineStylePicker
+        line={{ width: pencilLine.width, dash: pencilLine.dash, edgeShape: null, hasEdges: false }}
+        onChange={({ width, dash }) => editor?.setPencilLine({ width, dash })}
+      />
+    </>
   )
 }
 
@@ -175,11 +217,14 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     geometry,
     arrange,
     lock,
+    canCopyStyle,
+    canPasteStyle,
   } = useEditorState(editor)
 
   return (
     <>
       {lock && <LockTools editor={editor} lock={lock} />}
+      {lock && <StyleTools editor={editor} canCopy={canCopyStyle} canPaste={canPasteStyle} />}
       <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
         {tableSelected && (
           <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />
@@ -278,6 +323,40 @@ function LockTools({ editor, lock }: { editor: DiagramEditor | null; lock: Selec
           {lockLabel(lock.locks.map((holder) => holder.lockedBy))}
         </span>
       )}
+    </>
+  )
+}
+
+/**
+ * «Копировать стиль» and «Вставить стиль», before the colors: outside the tools that a lock disables, as the look of
+ * a locked element can be copied.
+ */
+function StyleTools({ editor, canCopy, canPaste }: { editor: DiagramEditor | null; canCopy: boolean; canPaste: boolean }) {
+  return (
+    <>
+      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Копировать стиль"
+        title="Копировать стиль: заливку, линию и текст выделенного элемента (Ctrl+Alt+C)"
+        disabled={!canCopy}
+        onClick={() => editor?.copyStyle()}
+      >
+        <Paintbrush />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Вставить стиль"
+        title="Вставить стиль: оформить выделенное как образец (Ctrl+Alt+V)"
+        disabled={!canPaste}
+        onClick={() => editor?.pasteStyle()}
+      >
+        <PaintRoller />
+      </Button>
     </>
   )
 }

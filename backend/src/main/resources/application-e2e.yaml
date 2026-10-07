@@ -19,3 +19,6 @@ codraw:
   legal:
     operator: Команда CoDraw
     contact-email: privacy@codraw.test
+  schema-import:
+    # The tests read the schema of the database of the tests, which runs on this machine.
+    allowed-hosts: localhost

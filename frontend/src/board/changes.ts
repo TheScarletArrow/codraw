@@ -11,10 +11,13 @@ import {
 } from '../diagram/diff.ts'
 import type { MergeConflicts } from '../diagram/merge.ts'
 import type { Box, Point } from '../diagram/editor.ts'
+import { isFreehandStyle } from '../diagram/freehand.ts'
+import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
 import { isImageStyle } from '../diagram/images.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
+import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
 
 /** What a change is, as the list and the marks say it. */
 export const CHANGE_LABELS: Record<ChangeType, string> = {
@@ -39,7 +42,7 @@ export interface ChangeItem {
   type: ChangeType
   /** The label of the element as one short line, or its kind when it has none. */
   title: string
-  /** What the element is: «Связь», «Таблица», «Поле», a shape of the palette, … */
+  /** What the element is: «Связь», «Линия от руки», «Таблица», «Поле», a shape of the palette, … */
   kind: string
   /** What changed in a changed element, in words, each once. */
   details: string[]
@@ -107,7 +110,7 @@ class Kinds {
   }
 
   of(cell: CellSnapshot): string {
-    if (cell.kind === 'edge') return 'Связь'
+    if (cell.kind === 'edge') return isFreehandStyle(cell.style) ? 'Линия от руки' : 'Связь'
     if (this.isTableRow(cell)) return isTableIndexStyle(cell.style) ? 'Индекс' : 'Поле'
     if (isTableStyle(cell.style)) return 'Таблица'
     // A group of draw.io and CoDraw: a container without a fill and a border.
@@ -155,6 +158,7 @@ const STYLE_WORDS: Record<string, string> = {
   codrawIndex: 'индекс',
   [LOCKED_KEY]: 'закрепление',
   [LOCKED_BY_KEY]: 'закрепление',
+  [LINK_KEY]: 'ссылка',
 }
 
 const GEOMETRY_WORDS: Record<string, string> = {
@@ -169,12 +173,18 @@ const GEOMETRY_WORDS: Record<string, string> = {
   targetPoint: 'конец',
 }
 
-/** What changed in a changed element, in words, each once, in the order of the fields, geometry, style, properties. */
+/**
+ * What changed in a changed element, in words, each once, in the order of the fields, geometry, style, properties; a
+ * status as the element has it now: «статус «Готово»» or «статус снят».
+ */
 function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Kinds): string[] {
   const { fields, geometry, style, attrs } = change.changes
   const cell = change.after
   const row = kinds.isTableRow(cell)
+  const status = cell.extra[STATUS_KEY]
   const fieldWord = (field: string): string => {
+    // The status and the mark of who set it are one change, said by the status the element has now.
+    if (STATUS_KEYS.includes(field)) return isElementStatus(status) ? `статус «${STATUS_LABELS[status]}»` : 'статус снят'
     switch (field) {
       case 'value':
         return row ? 'текст' : isTableStyle(cell.style) ? 'название' : 'подпись'
@@ -192,9 +202,11 @@ function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Ki
         return 'свойства'
     }
   }
+  // A line drawn by hand moves with its ends and bends together.
+  const geometryWord = (key: string) => (isFreehandStyle(cell.style) ? 'положение' : (GEOMETRY_WORDS[key] ?? 'положение'))
   const words = [
     ...fields.map(fieldWord),
-    ...geometry.map((key) => GEOMETRY_WORDS[key] ?? 'положение'),
+    ...geometry.map(geometryWord),
     ...style.map((key) => STYLE_WORDS[key] ?? 'стиль'),
     ...attrs.map(() => 'свойства'),
   ]

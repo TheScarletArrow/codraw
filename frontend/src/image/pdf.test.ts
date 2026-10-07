@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID, initializeDocument } from '../diagram/model.ts'
 import { addPage } from '../diagram/pages.ts'
-import type { ExportedImage } from '../diagram/svgExport.ts'
+import type { ExportedImage, SvgOptions } from '../diagram/svgExport.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { boardImages, imagesToPdf, MAX_PDF_SIDE, pdfPages, pdfPageSize } from './pdf.ts'
@@ -96,13 +96,13 @@ describe('PDF of images', () => {
   })
 
   /** The image of a page with shapes with the labels, as the export draws it. */
-  function image(labels: string[], style?: Record<string, string | number>): ExportedImage {
+  function image(labels: string[], style?: Record<string, string | number>, options?: SvgOptions): ExportedImage {
     const { doc } = board({ name: 'Страница', labels, style })
     const container = document.createElement('div')
     document.body.append(container)
     const editor = createDiagramEditor(container, doc)
     editors.push(editor)
-    return editor.exportSvg()!
+    return editor.exportSvg(options)!
   }
 
   /** The text of a PDF file with its streams inflated. */
@@ -163,6 +163,14 @@ describe('PDF of images', () => {
     const { streams } = await pdfText(pdf)
     const [, start] = streams.map((stream) => / ([\d.]+) [\d.]+ Tm\s*<[0-9a-f]+> Tj/i.exec(stream)).find(Boolean)!
     expect(x - Number(start)).toBeCloseTo(22.5, -0.5)
+  })
+
+  it('makes an element with a link to an address a link of the page', async () => {
+    const pdf = await imagesToPdf([image(['Документация'], { link: 'https://docs.example.com/payments' }, { links: true })])
+
+    const { raw } = await pdfText(pdf)
+    expect(raw).toMatch(/\/Subtype \/Link/)
+    expect(raw).toContain('/URI (https://docs.example.com/payments)')
   })
 
   it('fails when a font cannot be loaded', async () => {

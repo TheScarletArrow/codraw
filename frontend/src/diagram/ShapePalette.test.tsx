@@ -11,8 +11,8 @@ describe('ShapePalette', () => {
 
     const sections = screen.getAllByRole('group')
     expect(sections.map((section) => [section.getAttribute('aria-label'), within(section).getAllByRole('button').length])).toEqual([
-      // The shapes and «Изображение».
-      ['Основные', 6],
+      // The shapes, «Стикер» and «Изображение».
+      ['Основные', 7],
       ['База данных', 1],
       ['Архитектура', 8],
       ['Инфраструктура', 8],

@@ -50,10 +50,15 @@ const nextFrame = (callback: () => void) =>
 
 /**
  * Routes the edges of the page of the graph around its shapes in a worker whenever the model changes, one request at
- * a time, and redraws the edges whose routes changed. Without workers, or when the router fails to load, edges keep
- * the orthogonal routing of maxGraph. Returns a function that stops it.
+ * a time, and redraws the edges whose routes changed, then calls `onRedraw`: the model does not change with them.
+ * Without workers, or when the router fails to load, edges keep the orthogonal routing of maxGraph. Returns a function
+ * that stops it.
  */
-export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | null = startWorker()): () => void {
+export function startEdgeRouting(
+  graph: AbstractGraph,
+  worker: RoutingWorker | null = startWorker(),
+  onRedraw?: () => void,
+): () => void {
   if (!worker) return () => {}
   registerRoutedEdgeStyle()
   const model = graph.getDataModel()
@@ -94,6 +99,16 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
     scheduled = true
     nextFrame(update)
   }
+  /** Redraws the edges with these ids, whose routes changed. */
+  const redraw = (ids: string[]) => {
+    for (const id of ids) {
+      const edge = model.getCell(id)
+      if (edge) view.invalidate(edge, false, false)
+    }
+    if (ids.length === 0) return
+    view.validate()
+    onRedraw?.()
+  }
   const apply = (input: RoutingInput, routed: Routes) => {
     const shapes = new Map(input.shapes.map(({ id, ...box }) => [id, { id, box }]))
     const next = new Map<string, Route>()
@@ -112,11 +127,7 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
       (id) => JSON.stringify(routes.get(id)) !== JSON.stringify(next.get(id)),
     )
     routes = next
-    for (const id of changed) {
-      const edge = model.getCell(id)
-      if (edge) view.invalidate(edge, false, false)
-    }
-    if (changed.length > 0) view.validate()
+    redraw(changed)
   }
   worker.onmessage = ({ data }) => {
     if (stopped || data.id !== routing?.id) return
@@ -177,11 +188,7 @@ export function startEdgeRouting(graph: AbstractGraph, worker: RoutingWorker | n
     routers.delete(graph)
     routedPromises.delete(graph)
     settle()
-    for (const id of routed) {
-      const edge = model.getCell(id)
-      if (edge) view.invalidate(edge, false, false)
-    }
-    if (routed.length > 0) view.validate()
+    redraw(routed)
   }
   return stop
 }

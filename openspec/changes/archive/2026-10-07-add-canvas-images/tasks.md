@@ -2,7 +2,7 @@
 
 ## 1. Хранение на сервере
 
-- [x] 1.1 backend: миграции `V16`/`U16` — `board_images`; проверка: тест миграций V1–V16 с откатом и проверка уникальности файла на доске
+- [x] 1.1 backend: миграции `V19`/`U19` — `board_images`; проверка: тест миграций V1–V19 с откатом и проверка уникальности файла на доске
 - [x] 1.2 backend: зависимость AWS SDK for Java v2 (`s3`, `url-connection-client`), `ImageProperties` (`codraw.images.s3.*`, уборка), `ImageStorage` — path-style, бакет создаётся сам, хранилище не мешает старту; проверка: тесты с контейнером RustFS
 - [x] 1.3 backend: `ImageFormats` — PNG, JPEG, GIF, WebP по сигнатуре с размерами в пикселях, предел 50 Мп; проверка: unit-тесты форматов, SVG, HTML и «бомбы»
 - [x] 1.4 backend: `BoardImageService` и `BoardImageController` — загрузка (правка доски или автор открытого предложения), отдача с заголовками и `ETag`, место доски, тот же файл один раз, пределы `codraw.limits.image-size` и `images-size-per-board`, метрики; проверка: интеграционные тесты API

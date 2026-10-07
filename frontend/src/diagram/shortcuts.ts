@@ -1,7 +1,7 @@
 /**
  * A line of the help on shortcuts: keys in the notation of shortcuts (`Mod` is Ctrl, or Cmd on macOS), any of which
  * does the action. Besides keys of {@link KEY_BINDINGS}, keys may be `Arrows` (the four arrows), `?`, `/`, `Mod+F` of
- * the search on the board, and the mouse: `Click`, `Drag`, `RightDrag` and `Wheel`.
+ * the search on the board, `M` of the minimap, and the mouse: `Click`, `DoubleClick`, `Drag`, `RightDrag` and `Wheel`.
  */
 export interface ShortcutEntry {
   keys: string[]
@@ -28,10 +28,14 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+X'], action: 'Вырезать', editing: true },
       { keys: ['Mod+V'], action: 'Вставить, в том числе изображение', editing: true },
       { keys: ['Mod+D'], action: 'Дублировать', editing: true },
+      { keys: ['Mod+Alt+C'], action: 'Копировать стиль' },
+      { keys: ['Mod+Alt+V'], action: 'Вставить стиль', editing: true },
       { keys: ['Delete', 'Backspace'], action: 'Удалить', editing: true },
       { keys: ['F2'], action: 'Изменить подпись', editing: true },
+      { keys: ['N', 'Mod+DoubleClick'], action: 'Добавить стикер', editing: true },
       { keys: ['Mod+G'], action: 'Сгруппировать', editing: true },
       { keys: ['Mod+Shift+G'], action: 'Разгруппировать', editing: true },
+      { keys: ['P'], action: 'Карандаш', editing: true },
     ],
   },
   {
@@ -61,6 +65,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+Shift+H'], action: 'Показать всё' },
       { keys: ['RightDrag'], action: 'Прокрутить холст' },
       { keys: ['Mod+F'], action: 'Найти на доске' },
+      { keys: ['Mod+Click'], action: 'Перейти по ссылке элемента' },
+      { keys: ['M'], action: 'Мини-карта' },
       { keys: ['?'], action: 'Горячие клавиши' },
     ],
   },
@@ -95,6 +101,7 @@ const WORDS: Record<string, string> = {
   ArrowRight: '→',
   ArrowDown: '↓',
   Click: 'щелчок',
+  DoubleClick: 'двойной щелчок',
   Drag: 'перетаскивание',
   RightDrag: 'протягивание правой кнопкой',
   Wheel: 'колесо',

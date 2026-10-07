@@ -6,6 +6,7 @@ import { diffDocuments, snapshotDocument, type PageDiff } from '../diagram/diff.
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import { DEFAULT_PAGE_ID, getCells, writeCell, type CellData } from '../diagram/model.ts'
 import { TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
+import { writeStatus } from '../diagram/status.ts'
 import { boardWith, edgeData, laterState, shapeData } from '../diagram/testing.ts'
 import { absoluteBounds, changeItems, edgeLine, ghostCenter, lineMiddle } from './changes.ts'
 
@@ -114,6 +115,43 @@ describe('items of the list of changes', () => {
     ])
   })
 
+  it('says that the link of an element was set, changed or removed', () => {
+    const version = boardWith(
+      shapeData('a', 'a0', { value: 'API' }),
+      shapeData('b', 'a1', { value: 'БД', style: { link: 'data:page/id,db' } }),
+      shapeData('c', 'a2', { value: 'Кэш', style: { link: 'https://docs.example.com' } }),
+    )
+    const now = laterState(version, (doc) => {
+      ;(cell(doc, 'a').get('style') as Y.Map<unknown>).set('link', 'data:page/id,api')
+      ;(cell(doc, 'b').get('style') as Y.Map<unknown>).set('link', 'https://docs.example.com/db')
+      ;(cell(doc, 'c').get('style') as Y.Map<unknown>).delete('link')
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([
+      ['API', ['ссылка']],
+      ['БД', ['ссылка']],
+      ['Кэш', ['ссылка']],
+    ])
+  })
+
+  it('says the status an element got, or that its status was taken off, once', () => {
+    const version = boardWith(shapeData('a', 'a0', { value: 'API' }), shapeData('b', 'a1', { value: 'БД' }))
+    const alice = { id: 'alice', name: 'Алиса' }
+    const bob = { id: 'bob', name: 'Боб' }
+    version.transact(() => writeStatus(cell(version, 'b'), 'review', alice, 1000))
+    const now = laterState(version, (doc) => {
+      writeStatus(cell(doc, 'a'), 'done', bob, 2000)
+      writeStatus(cell(doc, 'b'), null, bob, 2000)
+    })
+    const remarked = laterState(version, (doc) => writeStatus(cell(doc, 'b'), 'draft', bob, 2000))
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([
+      ['API', ['статус «Готово»']],
+      ['БД', ['статус снят']],
+    ])
+    expect(changeItems(firstPage(version, remarked)).map(({ details }) => details)).toEqual([['статус «Черновик»']])
+  })
+
   it('says what changed in a table, a field, an index and an edge in their words', () => {
     const version = boardWith(
       ...table('users', 'a0', 'users', ['id uuid PK', 'email text']),
@@ -134,6 +172,38 @@ describe('items of the list of changes', () => {
       ['email text NOT NULL', 'Поле', ['текст']],
       ['users_email_idx (email) UNIQUE', 'Индекс', ['текст']],
       ['Связь', 'Связь', ['конец', 'маркеры']],
+    ])
+  })
+
+  it('names a line drawn by hand and says that it moved', () => {
+    const line = (id: string, order: string, dx: number) =>
+      edgeData(id, order, null, null, {
+        style: { codrawFreehand: true, edgeStyle: 'none', curved: true, endArrow: 'none' },
+        geometry: {
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+          relative: true,
+          sourcePoint: { x: 10 + dx, y: 10 },
+          points: [{ x: 50 + dx, y: 40 }],
+          targetPoint: { x: 90 + dx, y: 10 },
+        },
+      })
+    const version = boardWith(line('moved', 'a0', 0))
+    const now = laterState(version, (doc) => {
+      writeCell(getCells(doc), line('moved', 'a0', 100))
+      writeCell(getCells(doc), line('drawn', 'a1', 0))
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, kind, details }) => [title, kind, details])).toEqual([
+      ['Линия от руки', 'Линия от руки', []],
+      ['Линия от руки', 'Линия от руки', ['положение']],
+    ])
+    expect(edgeLine(cellsOf(now), 'drawn')).toEqual([
+      { x: 10, y: 10 },
+      { x: 50, y: 40 },
+      { x: 90, y: 10 },
     ])
   })
 

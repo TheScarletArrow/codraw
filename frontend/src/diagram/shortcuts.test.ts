@@ -4,9 +4,9 @@ import { formatKeys, SHORTCUT_GROUPS, shortcutGroups } from './shortcuts.ts'
 
 /**
  * Keys of the help that are not keys of the key handler: clipboard events, the mouse, the help itself, the search on
- * the board and the message at the cursor.
+ * the board, the minimap and the message at the cursor.
  */
-const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/)$|Click|Drag|Wheel/
+const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/|M)$|Click|Drag|Wheel/
 
 describe('shortcuts', () => {
   it('describes exactly the keys the editor binds, with the same editing flag', () => {
@@ -49,19 +49,32 @@ describe('shortcuts', () => {
     expect(formatKeys('F2', true)).toBe('F2')
     expect(formatKeys('Mod+F', false)).toBe('Ctrl+F')
     expect(formatKeys('Mod+F', true)).toBe('⌘F')
+    expect(formatKeys('Mod+Click', false)).toBe('Ctrl+щелчок')
+    expect(formatKeys('Mod+Click', true)).toBe('⌘+щелчок')
+    expect(formatKeys('Mod+DoubleClick', false)).toBe('Ctrl+двойной щелчок')
+    expect(formatKeys('Mod+DoubleClick', true)).toBe('⌘+двойной щелчок')
+    expect(formatKeys('N', true)).toBe('N')
+    expect(formatKeys('Mod+Alt+C', false)).toBe('Ctrl+Alt+C')
+    expect(formatKeys('Mod+Alt+V', true)).toBe('⌥⌘V')
   })
 
   it('leaves the editing shortcuts out for a participant who may only view', () => {
     const actions = shortcutGroups(true).flatMap((group) => group.entries.map((entry) => entry.action))
 
     expect(actions).toContain('Копировать')
+    expect(actions).toContain('Копировать стиль')
+    expect(actions).not.toContain('Вставить стиль')
     expect(actions).toContain('Показать всё')
     expect(actions).toContain('Найти на доске')
+    expect(actions).toContain('Мини-карта')
+    expect(actions).toContain('Перейти по ссылке элемента')
     expect(actions).toContain('Указка')
     expect(actions).toContain('Комментарий')
     expect(actions).toContain('Сообщение у курсора')
     expect(actions).not.toContain('Удалить')
     expect(actions).not.toContain('Дублировать')
+    expect(actions).not.toContain('Карандаш')
+    expect(actions).not.toContain('Добавить стикер')
     expect(shortcutGroups(true).map((group) => group.title)).not.toContain('Текст')
   })
 })

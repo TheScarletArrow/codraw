@@ -58,6 +58,8 @@ codraw:
   notifications:
     # A notification is deleted once it is this old, read or not.
     retention: 90d
+    # The owner of a board hears of a request to review an element at most once in this time.
+    review-request-interval: 10m
     # Every hour; "-" turns the cleanup off.
     cleanup-cron: "0 41 * * * *"
   images:
@@ -65,3 +67,8 @@ codraw:
     cleanup-cron: "0 53 * * * *"
     # The S3-compatible storage of images (codraw.images.s3.endpoint, region, bucket, access-key, secret-key): the
     # environment of the deployment sets it, see docs/deploy.md.
+  schema-import:
+    # Host names, addresses and networks (CIDR) of PostgreSQL databases whose schemas users may read through the
+    # backend, comma-separated, e.g. "db.internal,10.20.0.0/16" (CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS). Empty turns
+    # «Подключиться к базе…» off. See docs/deploy.md and docs/adr/0007-live-schema-import.md.
+    allowed-hosts: ""

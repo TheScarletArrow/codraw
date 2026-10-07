@@ -1,4 +1,4 @@
-import { EdgeMarkerRegistry, Point, ShapeRegistry, type AbstractCanvas2D, type Shape } from '@maxgraph/core'
+import { EdgeMarkerRegistry, Point, ShapeRegistry, StyleDefaultsConfig, type AbstractCanvas2D, type Shape } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import { crowsFoot, EDGE_MARKERS, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
 import { SHAPES } from './shapes.ts'
@@ -37,6 +37,13 @@ describe('diagram extensions', () => {
     for (const { value } of EDGE_MARKERS.filter((marker) => marker.value.startsWith('ER'))) {
       expect(EdgeMarkerRegistry.get(value)).toBeDefined()
     }
+  })
+
+  it('draw shadows as draw.io does: black and a quarter opaque', () => {
+    registerDiagramExtensions()
+
+    expect(StyleDefaultsConfig.shadowColor).toBe('#000000')
+    expect(StyleDefaultsConfig.shadowOpacity).toBe(0.25)
   })
 
   it('register every system design shape that the palette uses', () => {

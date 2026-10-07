@@ -1,5 +1,6 @@
 import { generateNKeysBetween } from 'fractional-indexing'
 import { newId } from '../diagram/ids.ts'
+import { LINK_KEY, linkOf } from '../diagram/links.ts'
 import { LAYER_CELL_ID, ROOT_CELL_ID, type CellData, type GeometryData, type PointData } from '../diagram/model.ts'
 import { htmlToText } from './labels.ts'
 import { parseStyle } from './style.ts'
@@ -102,6 +103,8 @@ interface RawCell {
   element: Element
   value: string
   attrs: Record<string, string>
+  /** The `link` attribute of the element around the cell. */
+  link: string | null
 }
 
 /** Converts the cells of a model: the root becomes `0`, all layers become `1`, and the order follows the file. */
@@ -118,16 +121,24 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
         element,
         value: element.getAttribute('value') ?? '',
         attrs: {},
+        link: null,
       })
     } else if (element.nodeName === 'object' || element.nodeName === 'UserObject') {
-      // A cell with custom properties: the attributes of the wrapper and the cell inside it.
+      // A cell with a link or custom properties: the attributes of the wrapper and the cell inside it.
       const cell = childElements(element, 'mxCell')[0]
       if (!cell) continue
       const attrs: Record<string, string> = {}
       for (const attribute of Array.from(element.attributes)) {
-        if (attribute.name !== 'id' && attribute.name !== 'label') attrs[attribute.name] = attribute.value
+        if (!['id', 'label', 'link'].includes(attribute.name)) attrs[attribute.name] = attribute.value
       }
-      raw.push({ id: element.getAttribute('id') ?? '', parent: cell.getAttribute('parent'), element: cell, value: element.getAttribute('label') ?? '', attrs })
+      raw.push({
+        id: element.getAttribute('id') ?? '',
+        parent: cell.getAttribute('parent'),
+        element: cell,
+        value: element.getAttribute('label') ?? '',
+        attrs,
+        link: element.getAttribute('link'),
+      })
     }
   }
 
@@ -151,6 +162,9 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     const styleText = element.getAttribute('style') ?? ''
     const style = parseStyle(styleText, kind)
     if (element.getAttribute('connectable') === '0') style.connectable = false
+    // A link that CoDraw would not open, e.g. `javascript:`, is dropped.
+    const link = linkOf({ [LINK_KEY]: cell.link })
+    if (link) style[LINK_KEY] = link
     const html = /(^|;)\s*html=1\s*(;|$)/.test(styleText)
     const parent = reference(cell.parent)
     return {

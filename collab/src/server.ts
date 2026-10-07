@@ -19,6 +19,8 @@ import { createDocumentEditors } from "./editors.js";
 import { log } from "./log.js";
 import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED, PROPOSALS_CHANGED } from "./messages.js";
 import { createMetrics, rejectionReasonOf, type Metrics } from "./metrics.js";
+import { createSearchTextBackfill } from "./search-text-backfill.js";
+import { searchTextOf } from "./search-text.js";
 import { createDocumentSizes, DOCUMENT_SIZE_LIMIT, DocumentTooLargeError } from "./size.js";
 
 export interface CollabServerOptions {
@@ -41,6 +43,11 @@ export interface CollabServerOptions {
   documentSizeLimit?: number;
   /** Where the server counts what it does; `GET /metrics` gives them in the Prometheus format. */
   metrics?: Metrics;
+  /**
+   * Period of filling in the texts for search of boards that have none, in milliseconds; the first pass starts when the
+   * server listens. `null` turns filling in off.
+   */
+  searchTextBackfillInterval?: number | null;
 }
 
 /** Room for the framing of a message around the largest change. */
@@ -61,11 +68,19 @@ export function createCollabServer({
   accessCheckInterval = 60_000,
   documentSizeLimit = DOCUMENT_SIZE_LIMIT,
   metrics = createMetrics(),
+  searchTextBackfillInterval = 60 * 60_000,
 }: CollabServerOptions): Server {
   const checkAccess = createAccessChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
+  /** The text for search that the backend has of each open board, as collab sent it last. */
+  const searchTexts = new Map<string, string>();
   let accessChecks: NodeJS.Timeout | undefined;
+  let backfills: NodeJS.Timeout | undefined;
+  let instance: Server["hocuspocus"] | undefined;
+  const backfill = createSearchTextBackfill(backend, metrics, (boardId) => instance?.documents.get(boardId));
+  const fillInSearchTexts = () =>
+    void backfill.run().catch((error: unknown) => log.error("Failed to fill in the texts of boards", error));
   /** The board or the draft that an open document is; authentication lets no other name through. */
   const targetOf = (documentName: string): CollabDocument => {
     const target = documentOf(documentName);
@@ -98,6 +113,24 @@ export function createCollabServer({
       throw error;
     }
   };
+  /**
+   * Sends the text of a stored board document for search, unless the backend has it already. A failure leaves the
+   * stored state as it is: the next store sends the text again.
+   */
+  const storeSearchText = async (documentName: string, boardId: string, text: string) => {
+    if (searchTexts.get(documentName) === text) return;
+    searchTexts.delete(documentName);
+    try {
+      await backend.storeSearchText(boardId, text);
+      searchTexts.set(documentName, text);
+      metrics.searchTextSent("stored");
+    } catch (error) {
+      // The board was deleted right after its state was stored.
+      if (error instanceof BoardNotFoundError) return;
+      metrics.searchTextSent("failed");
+      log.error(`Failed to store the text of board ${boardId}`, error, { "codraw.board": boardId });
+    }
+  };
   return new Server({
     port,
     quiet,
@@ -126,8 +159,9 @@ export function createCollabServer({
             return;
           }
           // Taken before anything is awaited, right after the state was encoded: their changes are in it, and the
-          // changes in it are theirs.
+          // changes in it are theirs. So is the text: it is the text of the state.
           const changedBy = editors.take(documentName);
+          const text = searchTextOf(document);
           const started = performance.now();
           const seconds = () => (performance.now() - started) / 1000;
           try {
@@ -146,6 +180,7 @@ export function createCollabServer({
             log.error(`Failed to store board ${documentName}`, error, { "codraw.board": documentName });
             throw error;
           }
+          await storeSearchText(documentName, target.id, text);
         },
       }),
     ],
@@ -187,6 +222,7 @@ export function createCollabServer({
     async afterUnloadDocument({ documentName }) {
       sizes.forget(documentName);
       editors.forget(documentName);
+      searchTexts.delete(documentName);
     },
     // A participant changed the board, its comments or its proposals; the others fetch them again. Only these messages
     // pass, written by collab itself. A change of the board may be of the access to it, and a change of a proposal in
@@ -205,17 +241,26 @@ export function createCollabServer({
       }
     },
     // Participants tell collab about changes of access, but the owner may change it without the board open, and such a
-    // message may be lost: open documents are checked from time to time as well.
-    async onListen({ instance }) {
-      metrics.observe(instance);
+    // message may be lost: open documents are checked from time to time as well. Boards without a text for search get
+    // theirs at the start and then from time to time.
+    async onListen({ instance: hocuspocus }) {
+      instance = hocuspocus;
+      metrics.observe(hocuspocus);
       accessChecks = setInterval(
-        () => instance.documents.forEach((document) => void checkAccess(document)),
+        () => hocuspocus.documents.forEach((document) => void checkAccess(document)),
         accessCheckInterval,
       );
       accessChecks.unref();
+      if (searchTextBackfillInterval !== null) {
+        fillInSearchTexts();
+        backfills = setInterval(fillInSearchTexts, searchTextBackfillInterval);
+        backfills.unref();
+      }
     },
     async onDestroy() {
       clearInterval(accessChecks);
+      clearInterval(backfills);
+      backfill.stop();
     },
     async onRequest({ request, response }) {
       if (request.method === "GET" && request.url === "/health") {

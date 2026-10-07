@@ -75,7 +75,8 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   const canSavePdf = allPages ? boardHasCells : hasCells
   const clipboardSupported = canCopyImages()
 
-  const exportImage = () => editor?.exportSvg({ selectionOnly: onlySelected, transparent }) ?? null
+  // SVG and PDF open the links of elements to addresses and boards; a PNG has nothing to click.
+  const exportImage = (links: boolean) => editor?.exportSvg({ selectionOnly: onlySelected, transparent, links }) ?? null
   /**
    * The SVG with the diagram of what it shows, so that CoDraw and draw.io open it for editing; the pictures of the board
    * are in the diagram too.
@@ -87,7 +88,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   }
 
   const save = async (format: ImageFormat) => {
-    const exported = exportImage()
+    const exported = exportImage(format !== 'png')
     if (!exported) return
     setBusy(true)
     setMessage(null)
@@ -106,7 +107,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
 
   /** The images of the pages of the PDF: of the pages of the board with objects, or of the current page. */
   const pdfImages = async (): Promise<ExportedImage[]> => {
-    const exported = allPages && doc && editor ? await boardImages(doc, editor, { transparent }) : [exportImage()]
+    const exported = allPages && doc && editor ? await boardImages(doc, editor, { transparent, links: true }) : [exportImage(true)]
     const images = exported.filter((image) => image !== null)
     return Promise.all(images.map((image) => withInlinedImages(image, { types: PDF_IMAGE_TYPES })))
   }
@@ -129,7 +130,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   }
 
   const copy = () => {
-    const image = exportImage()
+    const image = exportImage(false)
     if (!image) return
     setBusy(true)
     setMessage(null)

@@ -4,6 +4,8 @@ import { fromStyle } from './binding.ts'
 import {
   findShape,
   groupShapes,
+  hasTextFit,
+  isStickyStyle,
   isTableStyle,
   markedStyle,
   SHAPE_SECTIONS,
@@ -20,7 +22,7 @@ import {
 describe('shape presets', () => {
   it('are grouped into the sections of the palette', () => {
     expect(SHAPE_SECTIONS.map((section) => [section.title, section.shapes.map((shape) => shape.label)])).toEqual([
-      ['Основные', ['Прямоугольник', 'Скруглённый прямоугольник', 'Эллипс', 'Ромб', 'Текст']],
+      ['Основные', ['Прямоугольник', 'Скруглённый прямоугольник', 'Эллипс', 'Ромб', 'Текст', 'Стикер']],
       ['База данных', ['Таблица']],
       [
         'Архитектура',
@@ -104,6 +106,39 @@ describe('shape presets', () => {
   })
 })
 
+describe('stickies', () => {
+  it('are squares of the first color of stickies whose words wrap and whose text fits them, without a line', () => {
+    expect(findShape('sticky')).toMatchObject({ label: 'Стикер', width: 160, height: 160, value: '' })
+    expect(findShape('sticky')!.style).toEqual({
+      fillColor: '#fff2cc',
+      strokeColor: 'none',
+      shadow: true,
+      whiteSpace: 'wrap',
+      autosizeText: true,
+      fontSize: 20,
+      spacingBottom: 14,
+    })
+    expect(shapeGroupOf(markedStyle(findShape('sticky')!))).toBeNull()
+  })
+
+  it('are shapes made as stickies and the notes of draw.io whose text fits them', () => {
+    expect(isStickyStyle(markedStyle(findShape('sticky')!))).toBe(true)
+    expect(isStickyStyle({ codrawShape: 'sticky', fontSize: 28 })).toBe(true)
+    expect(isStickyStyle(parseStyle('shape=note;whiteSpace=wrap;autosizeText=1;fillColor=#FFF9B2;', 'vertex'))).toBe(true)
+    expect(isStickyStyle({ autosizeText: '1' })).toBe(true)
+    expect(isStickyStyle(markedStyle(findShape('uml-note')!))).toBe(false)
+    expect(isStickyStyle({ autosizeText: false })).toBe(false)
+    expect(isStickyStyle(null)).toBe(false)
+  })
+
+  it('fit their text unless their width follows it', () => {
+    expect(hasTextFit({ autosizeText: true })).toBe(true)
+    expect(hasTextFit({ autosizeText: 1 })).toBe(true)
+    expect(hasTextFit({ autosizeText: true, autosize: true })).toBe(false)
+    expect(hasTextFit({ codrawShape: 'sticky' })).toBe(false)
+  })
+})
+
 describe('shape groups', () => {
   const ids = (shapes: { id: string }[]) => shapes.map((shape) => shape.id)
   const drawio = (style: string) => parseStyle(style, 'vertex') as ShapeStyle
@@ -121,8 +156,8 @@ describe('shape groups', () => {
     ])
   })
 
-  it('hold every shape of the palette but frames and text, in the group of its section', () => {
-    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'boundary', 'kubernetes-cluster', 'c4-boundary'])
+  it('hold every shape of the palette but frames, text and stickies, in the group of its section', () => {
+    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'sticky', 'boundary', 'kubernetes-cluster', 'c4-boundary'])
     for (const section of SHAPE_SECTIONS) {
       for (const shape of section.shapes) {
         expect(shapeGroup(shape.id)).toBe(UNGROUPED_SHAPES.has(shape.id) ? null : section.group)

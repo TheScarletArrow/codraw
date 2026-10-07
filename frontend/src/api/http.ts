@@ -10,6 +10,8 @@ export interface Problem {
   scope?: string
   /** How much of the limit is taken, e.g. the bytes of the images of a board. */
   used?: number
+  /** Why an import of the schema of a database failed, e.g. `authentication-failed`. */
+  reason?: string
 }
 
 export class HttpError extends Error {

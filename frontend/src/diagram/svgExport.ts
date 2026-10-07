@@ -1,6 +1,8 @@
 import { ImageExport, SvgCanvas2D, type Cell, type Graph } from '@maxgraph/core'
+import { linkOf, parseLink } from './links.ts'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 /** An image of cells of the canvas. */
 export interface ExportedImage {
@@ -16,6 +18,11 @@ export interface ExportedImage {
 export interface SvgOptions {
   /** No background: what is not a shape stays transparent. */
   transparent?: boolean
+  /**
+   * Elements with a link to an address or to a board are links of the image, which viewers of SVG and PDF open in a new
+   * window. Links to pages of the board are not: an image has no pages.
+   */
+  links?: boolean
 }
 
 /** Margin around the cells in an image, in pixels at 100%. */
@@ -32,7 +39,7 @@ export const IMAGE_BACKGROUND = '#ffffff'
 export function renderSvg(
   graph: Graph,
   cells: Cell[],
-  { transparent = false }: SvgOptions = {},
+  { transparent = false, links = false }: SvgOptions = {},
 ): Omit<ExportedImage, 'cellIds'> | null {
   const view = graph.getView()
   const bounds = cells.length > 0 ? graph.getBoundingBox(cells) : null
@@ -74,14 +81,27 @@ export function renderSvg(
     canvas.scale(1 / scale)
     canvas.translate(border - bounds.x / scale, border - bounds.y / scale)
     const painter = new ImageExport()
+    if (links) painter.getLinkForCellState = (state) => imageLinkOf(state.cell)
     for (const cell of cells) {
       const state = view.getState(cell)
       if (state) painter.drawState(state, canvas)
+    }
+    // maxGraph writes the address as `xlink:href`, which old programs read; SVG 2 and the PDF renderer read `href`.
+    for (const anchor of Array.from(content.getElementsByTagNameNS(SVG_NS, 'a'))) {
+      anchor.setAttribute('href', anchor.getAttributeNS(XLINK_NS, 'href') ?? '')
+      anchor.setAttribute('target', '_blank')
+      anchor.setAttribute('rel', 'noopener noreferrer')
     }
   } finally {
     host.remove()
   }
   return { svg: new XMLSerializer().serializeToString(root), width, height }
+}
+
+/** The address that an element is a link to in an image: of a link to an address or a board, `null` for any other. */
+function imageLinkOf(cell: Cell): string | null {
+  const link = parseLink(linkOf(cell.getStyle()))
+  return link && link.kind !== 'page' ? link.url : null
 }
 
 /**

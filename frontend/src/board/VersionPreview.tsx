@@ -4,8 +4,9 @@ import { useId, useMemo, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { fetchVersionState, saveVersion, type BoardVersion } from '../api/versions.ts'
-import { snapshotPage, type CellSnapshot } from '../diagram/diff.ts'
+import { snapshotDocument, snapshotPage, type CellSnapshot } from '../diagram/diff.ts'
 import { restoreDocument, restorePage } from '../diagram/restore.ts'
+import { SchemaMigrationMenu } from '../sql/SchemaMigrationMenu.tsx'
 import { ConfirmedAction } from './ConfirmedAction.tsx'
 import { usePages } from './usePages.ts'
 import { VersionView } from './VersionView.tsx'
@@ -21,6 +22,8 @@ export interface CellsRestore {
 
 interface VersionPreviewProps {
   boardId: string
+  /** The files of the migration of the schema are named after the board. */
+  boardTitle: string
   version: BoardVersion
   /** The live board document, which a restore brings to the content of the version. */
   document: Y.Doc
@@ -44,13 +47,15 @@ interface VersionPreviewProps {
 }
 
 /**
- * A version of the board in place of the board, for viewing only, or compared with the board (see {@link VersionView}).
- * The selected cells of the version, a removed or changed element of the comparison, a page or the whole version can be
- * brought back. Restoring a page or the version keeps the current state as a version first, so it waits for the board
- * to be synced; restoring cells is an ordinary change, which whoever restores undoes, also without a connection.
+ * A version of the board in place of the board, for viewing only, or compared with the board (see {@link VersionView}),
+ * with the migration of the schema of the database from the version to the board then. The selected cells of the
+ * version, a removed or changed element of the comparison, a page or the whole version can be brought back. Restoring a
+ * page or the version keeps the current state as a version first, so it waits for the board to be synced; restoring
+ * cells is an ordinary change, which whoever restores undoes, also without a connection.
  */
 export function VersionPreview({
   boardId,
+  boardTitle,
   version,
   document,
   comparing,
@@ -125,6 +130,13 @@ export function VersionPreview({
           <GitCompareArrows />
           Сравнить с текущей
         </Button>
+        {comparing && versionDocument && (
+          <SchemaMigrationMenu
+            read={() => ({ from: snapshotDocument(versionDocument), to: snapshotDocument(document) })}
+            states={{ from: `версия от ${time}`, to: 'текущая доска' }}
+            boardTitle={boardTitle}
+          />
+        )}
         {/* Comparing, the canvas shows the board, and the list brings elements back. */}
         {!comparing && page && selection.length > 0 && (
           <>

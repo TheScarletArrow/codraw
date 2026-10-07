@@ -6,6 +6,7 @@ import {
   RectangleShape,
   Shape,
   ShapeRegistry,
+  StyleDefaultsConfig,
   SvgCanvas2D,
   type AbstractCanvas2D,
   type MarkerFactoryFunction,
@@ -539,8 +540,17 @@ export const SYSTEM_DESIGN_SHAPES = {
   'codraw.chip': ChipShape,
 } satisfies Record<string, ShapeConstructor>
 
-/** Adds shapes and edge markers of draw.io that maxGraph does not have. Safe to call more than once. */
+/** Shadows of shapes with `shadow=1` as draw.io draws them: black, a quarter opaque, instead of opaque grey. */
+const SHADOW_COLOR = '#000000'
+const SHADOW_OPACITY = 0.25
+
+/**
+ * Adds shapes and edge markers of draw.io that maxGraph does not have, and draws shadows as draw.io does. Safe to call
+ * more than once.
+ */
 export function registerDiagramExtensions() {
+  StyleDefaultsConfig.shadowColor = SHADOW_COLOR
+  StyleDefaultsConfig.shadowOpacity = SHADOW_OPACITY
   ShapeRegistry.add('rectangle', ClickThroughRectangleShape)
   ShapeRegistry.add('image', PictureShape)
   ShapeRegistry.add('document', DocumentShape)
