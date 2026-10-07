@@ -15,6 +15,17 @@ export function takesText(target: EventTarget | null): boolean {
  */
 export function isModLetter(event: KeyboardEvent, letter: string, isMac: boolean): boolean {
   if (!(isMac ? event.metaKey : event.ctrlKey) || event.shiftKey || event.altKey) return false
+  return latinLetter(event) === letter
+}
+
+/**
+ * The Latin letter of a key, in lower case: the letter it types, or, when it types none, e.g. in the Russian layout or
+ * with Option on macOS (`ç` for C), the letter of the key on the Latin layout, as the shortcuts of the browser read it;
+ * `null` for a key that is not a letter.
+ */
+export function latinLetter(event: Pick<KeyboardEvent, 'key' | 'code'>): string | null {
   const key = event.key.toLowerCase()
-  return key === letter || (!/^[a-z]$/.test(key) && event.code === `Key${letter.toUpperCase()}`)
+  if (/^[a-z]$/.test(key)) return key
+  const code = /^Key([A-Z])$/.exec(event.code)
+  return code ? code[1]!.toLowerCase() : null
 }

@@ -39,6 +39,8 @@ const COMMANDS: Record<
   cut: (editor) => editor.cut(),
   copy: (editor) => editor.copy(),
   duplicate: (editor) => editor.duplicate(),
+  copyStyle: (editor) => editor.copyStyle(),
+  pasteStyle: (editor) => editor.pasteStyle(),
   bringToFront: (editor) => editor.bringToFront(),
   sendToBack: (editor) => editor.sendToBack(),
   reverseEdge: (editor) => editor.reverseEdge(),
@@ -70,7 +72,7 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup, lock, status } = useEditorState(editor)
+  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, status } = useEditorState(editor)
   const lockId = useId()
 
   useEffect(
@@ -149,6 +151,8 @@ export function CanvasMenu({
             canUndo,
             canRedo,
             canGroup,
+            canCopyStyle,
+            canPasteStyle,
             readOnly: editor.readOnly,
             canComment,
             canLock: lock?.canLock,

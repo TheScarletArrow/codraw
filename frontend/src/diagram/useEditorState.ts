@@ -22,6 +22,8 @@ const NO_EDITOR: EditorState = {
   canUngroup: false,
   hasCells: false,
   canCopy: false,
+  canCopyStyle: false,
+  canPasteStyle: false,
   layoutSelection: false,
   laser: false,
   commentTool: false,
