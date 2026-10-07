@@ -21,11 +21,11 @@ import { useEditorState } from './useEditorState.ts'
 /** What a new thread of comments is about: an element, or a point of the page in diagram coordinates. */
 export type CommentTarget = { cellId: string } | { point: Point }
 
-/** The items that start a thread, which the page does rather than the editor. */
-type CommentCommand = 'comment' | 'commentHere'
+/** The items that the page does rather than the editor: those that start a thread, and the window of a link. */
+type PageCommand = 'comment' | 'commentHere' | 'link'
 
 const COMMANDS: Record<
-  Exclude<MenuCommand, CommentCommand | StatusCommand>,
+  Exclude<MenuCommand, PageCommand | StatusCommand>,
   (editor: DiagramEditor, request: ContextMenuRequest) => void
 > = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
@@ -56,16 +56,19 @@ const COMMANDS: Record<
 /**
  * The menu of a right click on the canvas, with the actions that fit what was clicked. With `onComment`, a single
  * element gets «Комментировать» and the empty canvas «Комментировать здесь», at the point of the click, for viewers
- * too. The menu of locked elements says who locked them. The items of the status set it, and `onStatusChange` hears of
- * the elements whose status they changed.
+ * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
+ * link at the point of the click. The menu of locked elements says who locked them. The items of the status set it, and
+ * `onStatusChange` hears of the elements whose status they changed.
  */
 export function CanvasMenu({
   editor,
   onComment,
+  onLink,
   onStatusChange,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
+  onLink?: (request: ContextMenuRequest) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
 }) {
   const canComment = onComment !== undefined
@@ -74,7 +77,7 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, status } = useEditorState(editor)
+  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, status } = useEditorState(editor)
   const lockId = useId()
 
   useEffect(
@@ -100,6 +103,12 @@ export function CanvasMenu({
   }
   const run = (command: MenuCommand) => {
     close()
+    if (command === 'link') {
+      // The window of the link takes the keyboard.
+      focusTaken.current = true
+      onLink?.(request)
+      return
+    }
     if (isStatusCommand(command)) {
       const changed = editor.setStatus(STATUS_COMMANDS[command])
       if (changed.length > 0) onStatusChange?.(STATUS_COMMANDS[command], changed)
@@ -160,6 +169,7 @@ export function CanvasMenu({
             canLock: lock?.canLock,
             canUnlock: (lock?.locks.length ?? 0) > 0,
             locked,
+            canLink: onLink !== undefined && link !== null && link.cellId === request.cellId,
             status,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined

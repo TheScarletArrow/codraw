@@ -1,3 +1,4 @@
+import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
 import type { StyleValue } from '../diagram/model.ts'
 
@@ -162,6 +163,12 @@ const DROPPED_KEYS = new Set(['html'])
  */
 const BOARD_KEYS = new Set([LOCKED_BY_KEY])
 
+/**
+ * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its
+ * style: the link (see `drawio/serialize.ts`).
+ */
+const ATTRIBUTE_KEYS = new Set([LINK_KEY])
+
 /** draw.io writes `data:image/png,<base64>`: a `;` would end the style value. */
 const DATA_IMAGE = /^data:image\/([a-z0-9.+-]+),([A-Za-z0-9+/=]+)$/i
 const BASE64_DATA_IMAGE = /^data:image\/([a-z0-9.+-]+);base64,/i
@@ -203,7 +210,7 @@ export function parseStyle(text: string, kind: CellKind): Style {
       continue
     }
     const key = entry.slice(0, separator)
-    if (DROPPED_KEYS.has(key) || BOARD_KEYS.has(key)) continue
+    if (DROPPED_KEYS.has(key) || BOARD_KEYS.has(key) || ATTRIBUTE_KEYS.has(key)) continue
     own[key] = readValue(key, entry.slice(separator + 1))
   }
   Object.assign(style, own)
@@ -239,6 +246,7 @@ export function formatStyle(style: Style, kind: CellKind): string {
   const names = Array.isArray(full.baseStyleNames) ? full.baseStyleNames : []
   delete full.baseStyleNames
   BOARD_KEYS.forEach((key) => delete full[key])
+  ATTRIBUTE_KEYS.forEach((key) => delete full[key])
   const parts = [...names, ...Object.entries(full).map(([key, value]) => `${key}=${writeValue(key, value)}`)]
   return parts.length > 0 ? `${parts.join(';')};` : ''
 }

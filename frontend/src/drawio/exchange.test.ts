@@ -62,7 +62,15 @@ function sampleBoard() {
   doc.transact(() => {
     const first = getCells(doc)
     writeCell(first, cell('client', { value: 'Клиент\nвеб', style: { rounded: true, fillColor: '#dae8fc' }, order: 'a0' }))
-    writeCell(first, cell('api', { value: 'API <v1> & "beta"', geometry: { x: 300, y: 20, width: 120, height: 60 }, order: 'a1' }))
+    writeCell(
+      first,
+      cell('api', {
+        value: 'API <v1> & "beta"',
+        geometry: { x: 300, y: 20, width: 120, height: 60 },
+        style: { link: 'https://example.com' },
+        order: 'a1',
+      }),
+    )
     writeCell(
       first,
       cell('edge', {
@@ -75,7 +83,7 @@ function sampleBoard() {
         order: 'a2',
       }),
     )
-    writeAttrs(first.get('api')!, { tooltip: 'Шлюз', link: 'https://example.com' })
+    writeAttrs(first.get('api')!, { tooltip: 'Шлюз' })
     const tables = getCells(doc, second)
     writeCell(tables, cell('table', { value: 'users', style: { shape: 'swimlane', startSize: 30, childLayout: 'stackLayout', foldable: false } }))
     writeCell(tables, cell('field', { parent: 'table', value: 'id uuid PK', geometry: { x: 0, y: 30, width: 120, height: 26 }, style: { movable: false } }))
@@ -186,6 +194,47 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).turned!.style).toEqual({ rotation: 45, fontSize: 13 })
   })
 
+  it('writes a link alone on a <UserObject>, a link to a page as draw.io does, and reads them back', async () => {
+    const doc = board()
+    const second = addPage(doc, DEFAULT_PAGE_ID, 'Контейнеры')
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('payments', { style: { link: `data:page/id,${second}` } }))
+      writeCell(getCells(doc), cell('docs', { kind: 'edge', geometry: null, style: { link: 'mailto:team@example.com' } }))
+    })
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain(
+      `<UserObject label="payments" link="data:page/id,${second}" id="payments"><mxCell style="fontSize=13;" vertex="1" parent="1">`,
+    )
+    expect(xml).toContain(`<diagram id="${second}" name="Контейнеры">`)
+    expect(xml).toContain('<UserObject label="docs" link="mailto:team@example.com" id="docs"><mxCell style="')
+    expect(pageCells(copy, DEFAULT_PAGE_ID).payments!.style).toEqual({ link: `data:page/id,${second}`, fontSize: 13 })
+    expect(pageCells(copy, DEFAULT_PAGE_ID).payments!.attrs).toEqual({})
+    expect(pageCells(copy, DEFAULT_PAGE_ID).docs!.style).toMatchObject({ link: 'mailto:team@example.com' })
+  })
+
+  it('writes no link that CoDraw would not open, nor one that a board kept among the custom properties', () => {
+    const doc = board()
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('bad', { style: { link: 'javascript:alert(1)' } }))
+      writeCell(getCells(doc), cell('old'))
+      writeCell(getCells(doc), cell('oldBad'))
+      writeAttrs(getCells(doc).get('old')!, { link: 'https://example.com/old' })
+      writeAttrs(getCells(doc).get('oldBad')!, { link: 'javascript:alert(2)', tooltip: 'Старое' })
+    })
+
+    const xml = exportDrawio(doc)
+
+    expect(xml).toContain('<mxCell id="bad" value="bad" style="fontSize=13;" vertex="1" parent="1">')
+    // A board imported before CoDraw read links keeps them among the custom properties, which go back to the file.
+    expect(xml).toContain('<UserObject label="old" link="https://example.com/old" id="old">')
+    expect(xml).toContain('<object label="oldBad" tooltip="Старое" id="oldBad">')
+    expect(xml).not.toContain('javascript')
+  })
+
   it('keeps a sticky through a file of draw.io without who wrote it', async () => {
     const doc = board()
     const style = { ...fromStyle(markedStyle(findShape('sticky')!) as never), fillColor: '#f8cecc', fontSize: 12 }
@@ -281,6 +330,25 @@ describe('importPages', () => {
     expect(again).toHaveLength(2)
     expect(again).not.toContain('ctx-page')
     expect(listPages(doc).map((page) => page.name)).toEqual(['Контекст', 'Слои', 'Контекст', 'Слои'])
+  })
+
+  it('keeps the links between the pages of a file whose ids were taken', async () => {
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('own')))
+    const file = `<mxfile><diagram id="${DEFAULT_PAGE_ID}" name="Контекст"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+      <UserObject label="Payments" link="data:page/id,containers" id="payments"><mxCell vertex="1" parent="1"><mxGeometry width="120" height="60" as="geometry"/></mxCell></UserObject>
+      </root></mxGraphModel></diagram><diagram id="containers" name="Контейнеры"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+      <UserObject label="Назад" link="data:page/id,${DEFAULT_PAGE_ID}" id="back"><mxCell vertex="1" parent="1"><mxGeometry width="120" height="60" as="geometry"/></mxCell></UserObject>
+      <UserObject label="Чужая" link="data:page/id,elsewhere" id="other"><mxCell vertex="1" parent="1"><mxGeometry width="120" height="60" as="geometry"/></mxCell></UserObject>
+      </root></mxGraphModel></diagram></mxfile>`
+
+    const [context, containers] = importPages(doc, await parseDrawio(file))
+
+    expect(context).not.toBe(DEFAULT_PAGE_ID)
+    expect(containers).toBe('containers')
+    expect(pageCells(doc, context!).payments!.style.link).toBe('data:page/id,containers')
+    expect(pageCells(doc, containers!).back!.style.link).toBe(`data:page/id,${context}`)
+    expect(pageCells(doc, containers!).other!.style.link).toBe('data:page/id,elsewhere')
   })
 
   it('replaces the only page of a board when it is empty', async () => {

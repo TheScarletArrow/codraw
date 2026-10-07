@@ -335,6 +335,23 @@ describe('shortcutLabel', () => {
     }
   })
 
+  it('offers the link of a shape, a table, a group or an edge in its own group before commenting, when the page sets links', () => {
+    const linking = { ...all, canLink: true, canComment: true }
+
+    for (const target of ['shape', 'table', 'edge', 'group'] as const) {
+      const items = menuItems(target, linking)
+      const link = items.findIndex((item) => item.command === 'link')
+      expect(items[link]).toMatchObject({ label: 'Ссылка…', separatorBefore: true, disabled: false })
+      expect(items[link + 1]).toMatchObject({ command: 'comment', separatorBefore: true })
+    }
+    expect(labels('shape', { ...all, canLink: true }).slice(-2)).toEqual(['Ссылка…', 'Удалить'])
+    for (const target of ['canvas', 'field', 'index', 'selection'] as const) expect(labels(target, linking)).not.toContain('Ссылка…')
+    expect(labels('shape', all)).not.toContain('Ссылка…')
+    // Locked, the link stays as it is; a participant who may only view follows links without the menu.
+    expect(menuItems('shape', { ...linking, locked: true }).find((item) => item.command === 'link')).toMatchObject({ disabled: true })
+    expect(labels('shape', { ...linking, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Комментировать'])
+  })
+
   it('lets a participant who may only view comment, also on a field or an edge', () => {
     const viewing = { ...all, readOnly: true, canComment: true }
 

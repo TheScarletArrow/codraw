@@ -28,6 +28,7 @@ export type MenuCommand =
   | 'delete'
   | 'comment'
   | 'commentHere'
+  | 'link'
 
 /** Items that set the status of the selection. */
 export type StatusCommand = 'statusDraft' | 'statusReview' | 'statusDone' | 'statusNone'
@@ -92,6 +93,8 @@ export interface MenuAvailability {
   canUnlock?: boolean
   /** Every selected element is locked: the items that would change them are disabled. */
   locked?: boolean
+  /** The page sets links, and the single selected element may have one: «Ссылка…» is offered. */
+  canLink?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
 }
@@ -111,6 +114,7 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'reverseEdge',
   'group',
   'ungroup',
+  'link',
   'delete',
 ])
 
@@ -131,6 +135,7 @@ const ORDER: Entry[] = [
 const DELETE: Entry = ['delete', 'Удалить', 'Delete']
 const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
 const COMMENT: Entry[] = [['comment', 'Комментировать']]
+const LINK: Entry[] = [['link', 'Ссылка…']]
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -156,7 +161,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, COMMENT, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     CLIPBOARD,
@@ -164,6 +169,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ORDER,
     LOCK,
     STATUS,
+    LINK,
     COMMENT,
     [DELETE],
   ],
@@ -185,17 +191,17 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, LINK, COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
   selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, [DELETE]],
 }
 
 /**
  * Items of the context menu for a target; the ones that cannot be done now are disabled, and so are those that would
- * change locked elements. The status of the selection is offered when it has elements that may have one, with its
- * current status chosen, also for locked elements. A participant who may only view gets only copying, copying a look,
- * selecting and commenting, so their menu may be empty.
+* change locked elements. The status of the selection is offered when it has elements that may have one, with its *
+current status chosen, also for locked elements. A participant who may only view gets only copying, copying a look, *
+selecting and commenting, so their menu may be empty: following a link needs no menu.
  */
 export function menuItems(
   target: MenuTarget,
@@ -211,6 +217,7 @@ export function menuItems(
     canLock = false,
     canUnlock = false,
     locked = false,
+    canLink = false,
     status = null,
   }: MenuAvailability,
 ): MenuItem[] {
@@ -227,6 +234,7 @@ export function menuItems(
     commentHere: canComment,
     lock: canLock,
     unlock: canUnlock,
+    link: canLink,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]

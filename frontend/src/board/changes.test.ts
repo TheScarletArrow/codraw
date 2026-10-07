@@ -104,6 +104,25 @@ describe('items of the list of changes', () => {
     ])
   })
 
+  it('says that the link of an element was set, changed or removed', () => {
+    const version = boardWith(
+      shapeData('a', 'a0', { value: 'API' }),
+      shapeData('b', 'a1', { value: 'БД', style: { link: 'data:page/id,db' } }),
+      shapeData('c', 'a2', { value: 'Кэш', style: { link: 'https://docs.example.com' } }),
+    )
+    const now = laterState(version, (doc) => {
+      ;(cell(doc, 'a').get('style') as Y.Map<unknown>).set('link', 'data:page/id,api')
+      ;(cell(doc, 'b').get('style') as Y.Map<unknown>).set('link', 'https://docs.example.com/db')
+      ;(cell(doc, 'c').get('style') as Y.Map<unknown>).delete('link')
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([
+      ['API', ['ссылка']],
+      ['БД', ['ссылка']],
+      ['Кэш', ['ссылка']],
+    ])
+  })
+
   it('says the status an element got, or that its status was taken off, once', () => {
     const version = boardWith(shapeData('a', 'a0', { value: 'API' }), shapeData('b', 'a1', { value: 'БД' }))
     const alice = { id: 'alice', name: 'Алиса' }

@@ -89,6 +89,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'На передний план',
     'На задний план',
     'Закрепить',
+    'Ссылка…',
     'Комментировать',
     'Удалить',
   ])
@@ -294,6 +295,7 @@ test('reversing an edge swaps its ends', async ({ browser }) => {
     'Копировать стиль',
     'Вставить стиль',
     'Закрепить',
+    'Ссылка…',
     'Комментировать',
     'Удалить',
   ])

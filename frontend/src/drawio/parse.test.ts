@@ -79,6 +79,30 @@ describe('parseDrawio', () => {
     expect(db.style).toMatchObject({ shape: 'cylinder3', boundedLbl: '1', backgroundOutline: true, size: '15' })
   })
 
+  it('takes the link of a <UserObject> or an <object> for the link of the element, unless CoDraw would not open it', async () => {
+    const model = (cells: string) =>
+      `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`
+    const wrapped = (tag: string, id: string, attributes: string) =>
+      `<${tag} label="${id}" ${attributes} id="${id}"><mxCell style="link=https://style.example;" vertex="1" parent="1"><mxGeometry width="80" height="40" as="geometry"/></mxCell></${tag}>`
+    const [page] = await parseDrawio(
+      model(
+        wrapped('UserObject', 'page', 'link="data:page/id,containers"') +
+          wrapped('object', 'docs', 'tooltip="Документация" link="https://docs.example.com/payments"') +
+          wrapped('UserObject', 'script', 'link="javascript:alert(1)"') +
+          wrapped('UserObject', 'data', 'link="data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;"'),
+      ),
+    )
+    const cells = byId(page!.cells)
+
+    expect(cells.get('page')).toMatchObject({ value: 'page', style: { link: 'data:page/id,containers' } })
+    expect(cells.get('page')!.attrs).toBeUndefined()
+    expect(cells.get('docs')).toMatchObject({ style: { link: 'https://docs.example.com/payments' }, attrs: { tooltip: 'Документация' } })
+    // A link is not a key of the style of draw.io, and an unsafe one goes.
+    expect(cells.get('script')!.style).not.toHaveProperty('link')
+    expect(cells.get('data')!.style).not.toHaveProperty('link')
+    expect(cells.get('script')!.attrs).toBeUndefined()
+  })
+
   it('reads a label of an edge as a cell of the edge that edges cannot connect to', async () => {
     const label = byId((await parseDrawio(SAMPLE_DRAWIO))[0]!.cells).get('label')!
 

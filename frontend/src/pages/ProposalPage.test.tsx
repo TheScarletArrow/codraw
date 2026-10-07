@@ -15,7 +15,7 @@ vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
 // maxGraph needs real SVG layout; the stand-in hands a fake editor to the page, like the real canvas does, and keeps the
-// last one in `canvas.editor`.
+// latest one in `canvas.editor`.
 const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
@@ -187,6 +187,35 @@ describe('ProposalPage', () => {
     await userEvent.type(screen.getByRole('searchbox', { name: 'Найти на доске' }), 'очередь')
 
     expect(within(screen.getByRole('search', { name: 'Поиск на доске' })).getByText('1 из 1')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'queue-page'))
+  })
+
+  it('lets the author link an element of the draft to a page of the draft', async () => {
+    const provider = await openDraft({ 'GET /api/boards': { body: [] }, 'GET /api/boards/shared': { body: [] } })
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+    act(() => provider.document.transact(() => writePage(provider.document, 'queue-page', { name: 'Очереди', order: 'b0' })))
+    const editor = canvas.editor!
+    act(() => editor.setState({ link: { cellId: 'api', link: null, canChange: true } }))
+
+    act(() => editor.rightClick({ x: 10, y: 10, point: { x: 10, y: 10 }, target: 'shape', cellId: 'api' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Ссылка…' }))
+    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Ссылка' })).getByRole('button', { name: 'Сохранить' }))
+
+    expect(editor.setLink).toHaveBeenCalledWith('data:page/id,queue-page')
+  })
+
+  it('goes to the page of the draft that a link leads to', async () => {
+    const provider = await openDraft()
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+    act(() => provider.document.transact(() => writePage(provider.document, 'queue-page', { name: 'Очереди', order: 'b0' })))
+    const editor = canvas.editor!
+    editor.placeCell('api', { x: 100, y: 50, width: 120, height: 60 })
+
+    act(() => editor.placeLinks([{ cellId: 'api', link: 'data:page/id,queue-page' }]))
+    await userEvent.click(screen.getByRole('button', { name: 'Перейти по ссылке: Страница «Очереди»' }))
+
     await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'queue-page'))
   })
 
