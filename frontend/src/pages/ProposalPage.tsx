@@ -26,6 +26,8 @@ import { LockBadges } from '../diagram/LockBadges.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
+import { StickyPanel } from '../diagram/StickyPanel.tsx'
+import { StickySignatures } from '../diagram/StickySignatures.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
@@ -203,10 +205,12 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   collaboration={false}
                   onEditor={setEditor}
                 />
+                <StickySignatures editor={editor} />
                 <StatusBadges editor={editor} document={document} />
                 <LockBadges editor={editor} />
                 {!readOnly && <QuickConnect editor={editor} />}
                 {!readOnly && <FieldPopover editor={editor} />}
+                {!readOnly && <StickyPanel editor={editor} />}
                 <CanvasMenu editor={editor} />
               </>
             ) : (

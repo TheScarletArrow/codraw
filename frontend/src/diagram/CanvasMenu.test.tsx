@@ -92,6 +92,17 @@ describe('CanvasMenu', () => {
     expect(editor.focus).toHaveBeenCalled()
   })
 
+  it('adds a sticky at the point of the click, whose text is edited at once', async () => {
+    rightClick('canvas')
+    const item = screen.getByRole('menuitem', { name: 'Добавить стикер' })
+    expect(item).toHaveTextContent('N')
+
+    await userEvent.click(item)
+
+    expect(editor.addSticky).toHaveBeenCalledWith({ x: 300, y: 200 })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   it('pastes the clipboard of the tab when the browser does not let the page read the system clipboard', async () => {
     const user = userEvent.setup()
     vi.spyOn(navigator.clipboard, 'read').mockRejectedValue(new DOMException('Denied', 'NotAllowedError'))

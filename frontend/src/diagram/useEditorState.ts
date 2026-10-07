@@ -29,6 +29,7 @@ const NO_EDITOR: EditorState = {
   commentTool: false,
   lock: null,
   attribution: null,
+  stickies: null,
   status: null,
 }
 

@@ -29,3 +29,14 @@ export function latinLetter(event: Pick<KeyboardEvent, 'key' | 'code'>): string 
   const code = /^Key([A-Z])$/.exec(event.code)
   return code ? code[1]!.toLowerCase() : null
 }
+
+/**
+ * The key code of a key as maxGraph looks keys up, with the letter of the key on the Latin layout for a letter of a
+ * layout without Latin letters, e.g. `N` for the «т» of the Russian one, as the shortcuts of the browser read it. Other
+ * keys, and letters of Latin layouts, keep their key code.
+ */
+export function latinKeyCode(event: KeyboardEvent): number {
+  const letter = /^Key([A-Z])$/.exec(event.code)?.[1]
+  const nonLatin = event.key.length === 1 && !/^[a-z]$/i.test(event.key)
+  return letter && nonLatin ? letter.charCodeAt(0) : event.keyCode
+}

@@ -1,5 +1,13 @@
 import { vi } from 'vitest'
-import type { Box, ContextMenuRequest, DiagramEditor, EditorState, LabelEditing, Point } from '../diagram/editor.ts'
+import type {
+  Box,
+  ContextMenuRequest,
+  DiagramEditor,
+  EditorState,
+  LabelEditing,
+  Point,
+  StickySignature,
+} from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -21,6 +29,8 @@ export type FakeEditor = DiagramEditor & {
   drawLaser(point: Point | null): void
   /** Simulates a click with the comment tool at a point (diagram coordinates). */
   placeComment(point: Point): void
+  /** Sets the stickies that `stickySignatures` returns. */
+  setSignatures(signatures: StickySignature[]): void
 }
 
 export interface FakeEditorOptions {
@@ -63,11 +73,13 @@ export function createFakeEditor({
     commentTool: false,
     lock: null,
     attribution: null,
+    stickies: null,
     status: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
   let editing: LabelEditing | null = null
+  let signatures: StickySignature[] = []
   const cells = new Map<string, Box | null>()
   const edges = new Map<string, Point[] | null>()
   const listeners = new Set<() => void>()
@@ -94,6 +106,10 @@ export function createFakeEditor({
     pageId,
     readOnly,
     addShape: vi.fn(() => null),
+    addSticky: vi.fn(() => null),
+    setStickyColor: vi.fn(),
+    setTextFit: vi.fn(),
+    stickySignatures: () => signatures,
     addTableField: vi.fn(() => null),
     setFieldProps: vi.fn(),
     addTableIndex: vi.fn(() => null),
@@ -223,6 +239,10 @@ export function createFakeEditor({
     },
     placeComment(point) {
       commentListeners.forEach((listener) => listener(point))
+    },
+    setSignatures(next) {
+      signatures = next
+      changeView()
     },
   }
 }
