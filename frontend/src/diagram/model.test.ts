@@ -3,7 +3,10 @@ import * as Y from 'yjs'
 import {
   compareCells,
   DEFAULT_PAGE_ID,
+  dropUnusedElements,
+  ELEMENT_KEY,
   getCells,
+  getElements,
   getMeta,
   getPages,
   initializeDocument,
@@ -220,5 +223,110 @@ describe('order', () => {
     ]
 
     expect(cells.sort(compareCells).map((cell) => cell.id)).toEqual(['c', 'a', 'b'])
+  })
+})
+
+describe('elements', () => {
+  /** A shape of the element `e1` with these properties as style keys. */
+  const shape = (id: string, properties: Record<string, string | string[]>, element = 'e1') =>
+    vertex(id, { style: { fillColor: '#dae8fc', [ELEMENT_KEY]: element, ...properties } })
+
+  it('keeps the properties in the element and gives them back as style keys of its cell', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const cells = getCells(doc)
+
+    const write = writeCell(cells, shape('box', { codrawName: 'Payments', codrawTechnology: 'Kotlin', codrawTags: ['pci', 'core'] }))
+
+    expect(getElements(doc).get('e1')!.toJSON()).toEqual({ name: 'Payments', technology: 'Kotlin', tags: ['pci', 'core'] })
+    expect((cells.get('box')!.get('style') as Y.Map<unknown>).toJSON()).toEqual({ fillColor: '#dae8fc', [ELEMENT_KEY]: 'e1' })
+    expect(write.style).toEqual(expect.arrayContaining(['codrawName', 'codrawTechnology', 'codrawTags']))
+    expect(readCell('box', cells.get('box')!).style).toEqual({
+      fillColor: '#dae8fc',
+      [ELEMENT_KEY]: 'e1',
+      codrawName: 'Payments',
+      codrawTechnology: 'Kotlin',
+      codrawTags: ['pci', 'core'],
+    })
+  })
+
+  it('writes only the properties that changed and removes those the style lost', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const cells = getCells(doc)
+    writeCell(cells, shape('box', { codrawName: 'Payments', codrawTechnology: 'Kotlin', codrawOwner: 'Платежи' }))
+
+    const write = writeCell(cells, shape('box', { codrawName: 'Payments', codrawTechnology: 'Go' }))
+
+    expect(write).toEqual({ created: false, fields: [], style: ['codrawTechnology', 'codrawOwner'] })
+    expect(getElements(doc).get('e1')!.toJSON()).toEqual({ name: 'Payments', technology: 'Go' })
+    expect(writeCell(cells, shape('box', { codrawName: 'Payments', codrawTechnology: 'Go' }))).toEqual({
+      created: false,
+      fields: [],
+      style: [],
+    })
+  })
+
+  it('drops values the document cannot keep: empty strings, lists of no words', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const cells = getCells(doc)
+
+    writeCell(cells, shape('box', { codrawName: 'Payments', codrawDescription: '', codrawTags: [] }))
+
+    expect(getElements(doc).get('e1')!.toJSON()).toEqual({ name: 'Payments' })
+  })
+
+  it('keeps the keys of a cell without an element in its style, e.g. of an edge', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const cells = getCells(doc)
+
+    writeCell(cells, vertex('edge', { kind: 'edge', style: { codrawTechnology: 'Kafka' } }))
+
+    expect(getElements(doc).size).toBe(0)
+    expect(readCell('edge', cells.get('edge')!).style).toEqual({ codrawTechnology: 'Kafka' })
+  })
+
+  it('reads a cell whose element is gone without properties', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const cells = getCells(doc)
+    writeCell(cells, shape('box', { codrawName: 'Payments' }))
+
+    getElements(doc).delete('e1')
+
+    expect(readCell('box', cells.get('box')!).style).toEqual({ fillColor: '#dae8fc', [ELEMENT_KEY]: 'e1' })
+  })
+
+  it('merges concurrent changes of different properties of one element', () => {
+    const alice = new Y.Doc()
+    const bob = new Y.Doc()
+    initializeDocument(alice)
+    alice.transact(() => writeCell(getCells(alice), shape('box', { codrawName: 'Payments' })))
+    sync(alice, bob)
+
+    alice.transact(() => writeCell(getCells(alice), shape('box', { codrawName: 'Payments', codrawTechnology: 'Kotlin' })))
+    bob.transact(() => writeCell(getCells(bob), shape('box', { codrawName: 'Payments', codrawOwner: 'Платежи' })))
+    sync(alice, bob)
+
+    for (const doc of [alice, bob]) {
+      expect(getElements(doc).get('e1')!.toJSON()).toEqual({ name: 'Payments', technology: 'Kotlin', owner: 'Платежи' })
+    }
+  })
+
+  it('drops elements that no cell of any page names', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    getPages(doc).set('page-2', new Y.Map())
+    writeCell(getCells(doc), shape('a', { codrawName: 'A' }, 'e1'))
+    writeCell(getCells(doc), shape('b', { codrawName: 'B' }, 'e2'))
+    writeCell(getCells(doc, 'page-2'), shape('c', { codrawName: 'B' }, 'e2'))
+
+    getCells(doc).delete('a')
+    getCells(doc).delete('b')
+    dropUnusedElements(doc, ['e1', 'e2', null, 'missing'])
+
+    expect([...getElements(doc).keys()]).toEqual(['e2'])
   })
 })

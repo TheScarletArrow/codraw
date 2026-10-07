@@ -79,7 +79,7 @@ import {
   type Attribution,
   type TextAuthor,
 } from './attribution.ts'
-import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
+import { createCell, createUndoManager, DiagramBinding, localOrigin, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
@@ -1102,7 +1102,9 @@ export function createDiagramEditor(
 ): DiagramEditor {
   const model = new GraphDataModel()
   const cells = getCells(document, pageId)
-  const undoManager = sharedUndoManager ?? createUndoManager(cells)
+  // The origin of what this editor writes, which the history of the page tracks.
+  const origin = localOrigin(pageId)
+  const undoManager = sharedUndoManager ?? createUndoManager(cells, origin)
 
   const graph = new Graph(container, model, [...getDefaultPlugins(), RubberBandHandler])
   // After the graph: the first graph registers the default shapes of maxGraph, including its own `rectangle`.
@@ -1148,7 +1150,7 @@ export function createDiagramEditor(
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
-  const binding = new DiagramBinding(model, cells, LOCAL_ORIGIN, readOnly, author)
+  const binding = new DiagramBinding(model, cells, origin, readOnly, author)
   // New routes redraw edges without a change of the model: the picture on the screen moved all the same.
   const stopEdgeRouting = startEdgeRouting(graph, undefined, () => {
     if (destroyed) return
@@ -1783,7 +1785,7 @@ export function createDiagramEditor(
   // The binding writes the changes of this participant before the model reports them. Changes of others can change who
   // changed the selected element without a change of the model, e.g. a restored version that has another name there.
   const handleAttribution = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
-    const selected = transaction.origin === LOCAL_ORIGIN ? undefined : selectedCellMap()
+    const selected = transaction.origin === origin ? undefined : selectedCellMap()
     const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
       event.target === selected &&
       event instanceof Y.YMapEvent &&
@@ -2789,7 +2791,7 @@ export function createDiagramEditor(
               const entry = cells.get(data.id)
               if (entry && writeRestoredFields(entry, data) && author) writeAttribution(entry, author, at)
             }
-          }, LOCAL_ORIGIN)
+          }, origin)
         } finally {
           restoring = false
         }
@@ -2990,7 +2992,7 @@ export function createDiagramEditor(
           const entry = id ? cells.get(id) : undefined
           if (id && entry && writeStatus(entry, status, author, at)) changed.push(id)
         }
-      }, LOCAL_ORIGIN)
+      }, origin)
       if (changed.length > 0) notify()
       return changed
     },

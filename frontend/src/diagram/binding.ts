@@ -16,9 +16,12 @@ import * as Y from 'yjs'
 import { isAttributedWrite, writeAttribution, writeTextAuthor, type Author } from './attribution.ts'
 import { newId } from './ids.ts'
 import {
+  cellElementId,
   compareCells,
   deleteCell,
+  dropUnusedElements,
   getCells,
+  getElements,
   LAYER_CELL_ID,
   orderBetween,
   readCell,
@@ -35,6 +38,15 @@ import { isStickyStyle } from './shapes.ts'
 /** Origin of transactions made by this client through the editor. Undo tracks only these. */
 export const LOCAL_ORIGIN = 'codraw:local'
 
+/**
+ * Origin of transactions made by this client through the editor of a page. Each page has its own, so that the history
+ * of a page tracks only what was done on it: elements are shared by the pages (see `getElements`), and with one origin
+ * the history of another page would take a change of an element made here.
+ */
+export function localOrigin(pageId: string): string {
+  return `${LOCAL_ORIGIN}:${pageId}`
+}
+
 const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
 
 /**
@@ -44,7 +56,11 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  *   cell they change keeps in the same transaction that the author changed it and when, and a sticky whose text they
  *   change that the author wrote it;
  * - other transactions (remote participants, undo/redo) are reconciled into the model: every affected
- *   cell is re-read from Yjs, so the model ends up equal to the document whatever the order of events.
+ *   cell is re-read from Yjs, so the model ends up equal to the document whatever the order of events; a changed
+ *   element re-reads the cells of the page that name it.
+ *
+ * The cells of elements carry their properties as style keys (see `model.ts`); deleting such cells deletes, in the same
+ * transaction, the elements that no cell names any longer.
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
  * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.
@@ -54,6 +70,7 @@ export class DiagramBinding {
 
   private readonly model: GraphDataModel
   private readonly cells: CellsMap
+  private readonly elements: Y.Map<Y.Map<unknown>> | null
   private readonly origin: unknown
   private readonly readOnly: boolean
   private readonly author: Author | null
@@ -67,6 +84,7 @@ export class DiagramBinding {
   ) {
     this.model = model
     this.cells = cells
+    this.elements = cells.doc ? getElements(cells.doc) : null
     this.origin = origin
     this.readOnly = readOnly
     this.author = author
@@ -81,6 +99,7 @@ export class DiagramBinding {
     }
     this.applyRemote(new Set(cells.keys()))
     cells.observeDeep(this.handleRemoteChanges)
+    this.elements?.observeDeep(this.handleElementChanges)
     model.addListener(InternalEvent.CHANGE, this.handleLocalChanges)
   }
 
@@ -91,6 +110,7 @@ export class DiagramBinding {
 
   destroy() {
     this.cells.unobserveDeep(this.handleRemoteChanges)
+    this.elements?.unobserveDeep(this.handleElementChanges)
     this.model.removeListener(this.handleLocalChanges)
   }
 
@@ -109,6 +129,22 @@ export class DiagramBinding {
         ids.add(String(event.path[0]))
       }
     }
+    this.applyRemote(ids)
+  }
+
+  /** Elements changed by others or by undo: the cells of the page that name them show their properties anew. */
+  private readonly handleElementChanges = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
+    if (transaction.origin === this.origin) return
+    const changed = new Set<string>()
+    for (const event of events) {
+      if (event.target === this.elements) event.changes.keys.forEach((_, key) => changed.add(key))
+      else changed.add(String(event.path[0]))
+    }
+    const ids = new Set<string>()
+    this.cells.forEach((cell, id) => {
+      const element = cellElementId(cell)
+      if (element !== null && changed.has(element)) ids.add(id)
+    })
     this.applyRemote(ids)
   }
 
@@ -141,7 +177,9 @@ export class DiagramBinding {
     // Write in drawing order so that each cell finds the order keys of the siblings before it.
     alive.sort(compareModelPosition)
 
-    this.cells.doc!.transact(() => {
+    const doc = this.cells.doc!
+    doc.transact(() => {
+      const removedElements = removed.map((id) => cellElementId(this.cells.get(id)))
       removed.forEach((id) => deleteCell(this.cells, id))
       const at = Date.now()
       for (const cell of alive) {
@@ -155,6 +193,7 @@ export class DiagramBinding {
           writeTextAuthor(entry, data.value.trim() ? this.author : null)
         }
       }
+      dropUnusedElements(doc, removedElements)
     }, this.origin)
   }
 
@@ -359,15 +398,20 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return keysA.every((key) => deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
 }
 
-/** Undo/redo of this client's own edits: other participants' changes are never undone. */
+/**
+ * Undo/redo of this client's own edits of the cells of a page and of the elements they show: other participants'
+ * changes are never undone.
+ */
 export function createUndoManager(cells: CellsMap, origin: unknown = LOCAL_ORIGIN): Y.UndoManager {
+  const scope = cells.doc ? [cells, getElements(cells.doc)] : [cells]
   // The binding writes one transaction per user action, so every transaction is its own undo step.
-  return new Y.UndoManager(cells, { trackedOrigins: new Set([origin]), captureTimeout: 0 })
+  return new Y.UndoManager(scope, { trackedOrigins: new Set([origin]), captureTimeout: 0 })
 }
 
 /**
- * Undo managers of the pages of a board. Each page has its own history, and it survives switching between
- * pages: the managers live as long as the board is open, not as long as the canvas of a page.
+ * Undo managers of the pages of a board. Each page has its own history, of the transactions of its own origin (see
+ * {@link localOrigin}), and it survives switching between pages: the managers live as long as the board is open, not as
+ * long as the canvas of a page.
  */
 export class PageHistories {
   private readonly managers = new Map<string, Y.UndoManager>()
@@ -380,7 +424,7 @@ export class PageHistories {
   get(pageId: string): Y.UndoManager {
     let manager = this.managers.get(pageId)
     if (!manager) {
-      manager = createUndoManager(getCells(this.doc, pageId))
+      manager = createUndoManager(getCells(this.doc, pageId), localOrigin(pageId))
       this.managers.set(pageId, manager)
     }
     return manager

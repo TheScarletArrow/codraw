@@ -7,6 +7,7 @@ import {
   LAYER_CELL_ID,
   readPage,
   ROOT_CELL_ID,
+  withElementProperties,
   type CellKind,
   type GeometryData,
   type PointData,
@@ -118,7 +119,10 @@ function snapshotCells(doc: Y.Doc, pageId: string): Map<string, CellSnapshot> {
   const cells = new Map<string, CellSnapshot>()
   getCells(doc, pageId).forEach((cell, cellId) => {
     if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID || !(cell instanceof Y.Map)) return
-    cells.set(cellId, snapshotCell(cellId, cell.toJSON() as Record<string, unknown>))
+    const snapshot = snapshotCell(cellId, cell.toJSON() as Record<string, unknown>)
+    // The properties of the element of a cell are compared, merged and restored as keys of its style.
+    snapshot.style = withElementProperties(doc, snapshot.style)
+    cells.set(cellId, snapshot)
   })
   return cells
 }

@@ -2,7 +2,17 @@ import * as Y from 'yjs'
 import { writeAttribution, type Author } from '../diagram/attribution.ts'
 import { newId } from '../diagram/ids.ts'
 import { LINK_KEY, movedPageLink } from '../diagram/links.ts'
-import { getCells, getPages, orderBetween, writeAttrs, writeCell, writePage } from '../diagram/model.ts'
+import {
+  ELEMENT_KEY,
+  elementIdOf,
+  getCells,
+  getElements,
+  getPages,
+  orderBetween,
+  writeAttrs,
+  writeCell,
+  writePage,
+} from '../diagram/model.ts'
 import { deletePage, isPageEmpty, listPages } from '../diagram/pages.ts'
 import type { DrawioPage } from './parse.ts'
 
@@ -12,7 +22,8 @@ export const IMPORT_ORIGIN = 'codraw:import'
 /**
  * Adds the pages of a draw.io file after the pages of the board in one transaction and returns their ids. A board
  * that has a single page without shapes gets exactly the pages of the file: the empty page is deleted. With an
- * `author`, the imported cells keep them as who changed them last.
+ * `author`, the imported cells keep them as who changed them last. The elements of the cells keep their ids when the
+ * board has no such elements, and get new ones otherwise.
  */
 export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | null = null): string[] {
   const existing = listPages(doc)
@@ -30,6 +41,13 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | nu
     taken.add(id)
     return id
   })
+  // So is the id of an element: cells of the file that name one element name one element of the board.
+  const elements = getElements(doc)
+  const elementIds = new Map<string, string>()
+  const elementOf = (id: string) => {
+    if (!elementIds.has(id)) elementIds.set(id, elements.has(id) ? newId() : id)
+    return elementIds.get(id)!
+  }
 
   doc.transact(() => {
     const at = Date.now()
@@ -41,6 +59,8 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | nu
       for (const { attrs, ...cell } of page.cells) {
         const link = movedPageLink(cell.style[LINK_KEY], moved)
         if (link !== cell.style[LINK_KEY]) cell.style = { ...cell.style, [LINK_KEY]: link! }
+        const element = elementIdOf(cell.style)
+        if (element !== null && elementOf(element) !== element) cell.style = { ...cell.style, [ELEMENT_KEY]: elementOf(element) }
         writeCell(cells, cell)
         if (attrs) writeAttrs(cells.get(cell.id)!, attrs)
         if (author) writeAttribution(cells.get(cell.id)!, author, at)

@@ -7,12 +7,19 @@ import * as Y from 'yjs'
  * - `meta`: `{ schemaVersion }`
  * - `pages`: pageId → Y.Map with the fields of {@link PageData}
  * - `cells:<pageId>`: cellId → Y.Map with the fields of {@link CellData}; `style` is a nested Y.Map
+ * - `elements`: elementId → Y.Map with the fields of {@link ElementData}: the properties of an element of the
+ *   architecture, which the cell that shows it names with {@link ELEMENT_KEY}
  *
  * Cells of a page live in a top-level map rather than inside the page entry: top-level types never
  * conflict, so two clients that initialize a fresh document at the same time cannot lose cells.
  *
  * Version 2 made page entries Y.Maps (they were plain objects): renaming and moving a page change
  * different keys, so concurrent changes of one page merge.
+ *
+ * Elements live apart from cells so that one element may later be shown by cells of several pages. To everything but
+ * the document, the properties of the element of a cell are keys of its style ({@link ELEMENT_STYLE_KEYS}):
+ * {@link readCell} adds them to the style, and {@link writeCell} writes them into the element. The model of maxGraph,
+ * copies, files and versions carry them with the cell that way.
  */
 
 export const SCHEMA_VERSION = 2
@@ -85,6 +92,133 @@ export function getCells(doc: Y.Doc, pageId = DEFAULT_PAGE_ID): CellsMap {
   return doc.getMap(`cells:${pageId}`)
 }
 
+/** Style key of a cell that names the element whose properties the cell shows. */
+export const ELEMENT_KEY = 'codrawElement'
+
+/**
+ * The properties of an element of the architecture as the document keeps them; an empty property has no key. `kind` is
+ * a shape of the palette, `tags` are words.
+ */
+export interface ElementData {
+  name?: string
+  kind?: string
+  technology?: string
+  description?: string
+  owner?: string
+  tags?: string[]
+}
+
+export type ElementField = keyof ElementData
+
+/** The style keys under which the editor, copies, files and versions see the properties of the element of a cell. */
+export const ELEMENT_STYLE_KEYS: Readonly<Record<ElementField, string>> = {
+  name: 'codrawName',
+  kind: 'codrawKind',
+  technology: 'codrawTechnology',
+  description: 'codrawDescription',
+  owner: 'codrawOwner',
+  tags: 'codrawTags',
+}
+
+const ELEMENT_FIELDS = Object.keys(ELEMENT_STYLE_KEYS) as ElementField[]
+const ELEMENT_STYLE_KEY_SET: ReadonlySet<string> = new Set(Object.values(ELEMENT_STYLE_KEYS))
+
+/** A style key that holds a property of an element. */
+export const isElementStyleKey = (key: string) => ELEMENT_STYLE_KEY_SET.has(key)
+
+export type ElementMap = Y.Map<unknown>
+
+export function getElements(doc: Y.Doc): Y.Map<ElementMap> {
+  return doc.getMap('elements')
+}
+
+/** The element a style names; `null` without one. */
+export function elementIdOf(style: Record<string, unknown> | null | undefined): string | null {
+  const id = style?.[ELEMENT_KEY]
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+/** The element the cell of the document names; `null` without one. */
+export function cellElementId(cell: CellMap | undefined): string | null {
+  const style = cell?.get('style')
+  const id = style instanceof Y.Map ? style.get(ELEMENT_KEY) : undefined
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+/** A property as the document keeps it: a non-empty string, or for tags a non-empty list of strings; otherwise none. */
+function elementValue(field: ElementField, value: unknown): string | string[] | undefined {
+  if (field === 'tags') {
+    if (!Array.isArray(value)) return undefined
+    const tags = value.filter((tag): tag is string => typeof tag === 'string' && tag !== '')
+    return tags.length > 0 ? tags : undefined
+  }
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+/**
+ * The style of a cell of `doc` with the properties of the element it names as style keys, in place of any such keys of
+ * the style itself; the style as it is when it names no element or the document has no such element.
+ */
+export function withElementProperties(doc: Y.Doc | null, style: Record<string, StyleValue>): Record<string, StyleValue> {
+  const id = elementIdOf(style)
+  const element = doc && id ? getElements(doc).get(id) : undefined
+  if (!(element instanceof Y.Map)) return style
+  const joined: Record<string, StyleValue> = {}
+  for (const [key, value] of Object.entries(style)) if (!isElementStyleKey(key)) joined[key] = value
+  for (const field of ELEMENT_FIELDS) {
+    const value = elementValue(field, element.get(field))
+    if (value !== undefined) joined[ELEMENT_STYLE_KEYS[field]] = Array.isArray(value) ? [...value] : value
+  }
+  return joined
+}
+
+/**
+ * Writes the properties that `style` holds as style keys into the element `id`, creating it, key by key: the others
+ * stay, so concurrent changes of different properties merge; a property the style lacks is removed. Returns the style
+ * keys of the properties that changed.
+ */
+function writeElement(doc: Y.Doc, id: string, style: Record<string, StyleValue>): string[] {
+  const elements = getElements(doc)
+  let element = elements.get(id)
+  if (!(element instanceof Y.Map)) {
+    element = new Y.Map()
+    elements.set(id, element)
+  }
+  const changed: string[] = []
+  for (const field of ELEMENT_FIELDS) {
+    const key = ELEMENT_STYLE_KEYS[field]
+    const value = elementValue(field, style[key])
+    if (value === undefined) {
+      if (element.has(field)) {
+        element.delete(field)
+        changed.push(key)
+      }
+    } else if (setIfChanged(element, field, value)) {
+      changed.push(key)
+    }
+  }
+  return changed
+}
+
+/**
+ * Removes the elements among `ids` that no cell of any page names any longer, e.g. after their cells were deleted. Call
+ * inside a transaction, after the cells changed.
+ */
+export function dropUnusedElements(doc: Y.Doc, ids: Iterable<string | null>) {
+  const elements = getElements(doc)
+  const unused = new Set<string>()
+  for (const id of ids) if (id !== null && elements.has(id)) unused.add(id)
+  if (unused.size === 0) return
+  for (const pageId of getPages(doc).keys()) {
+    for (const cell of getCells(doc, pageId).values()) {
+      const id = cell instanceof Y.Map ? cellElementId(cell) : null
+      if (id !== null) unused.delete(id)
+      if (unused.size === 0) return
+    }
+  }
+  unused.forEach((id) => elements.delete(id))
+}
+
 export function readPage(entry: PageEntry): PageData {
   if (entry instanceof Y.Map) {
     return {
@@ -152,8 +286,10 @@ function emptyCell(id: string, kind: CellKind, parent: string | null): CellData 
   }
 }
 
+/** Reads a cell of the document; the style has the properties of the element of the cell, see {@link withElementProperties}. */
 export function readCell(id: string, cell: CellMap): CellData {
   const style = cell.get('style')
+  const own = style instanceof Y.Map ? (style.toJSON() as Record<string, StyleValue>) : {}
   return {
     id,
     kind: cell.get('kind') as CellKind,
@@ -163,7 +299,7 @@ export function readCell(id: string, cell: CellMap): CellData {
     geometry: (cell.get('geometry') as GeometryData | null | undefined) ?? null,
     source: (cell.get('source') as string | null | undefined) ?? null,
     target: (cell.get('target') as string | null | undefined) ?? null,
-    style: style instanceof Y.Map ? (style.toJSON() as Record<string, StyleValue>) : {},
+    style: withElementProperties(cell.doc, own),
   }
 }
 
@@ -183,9 +319,12 @@ const PLAIN_FIELDS = ['kind', 'parent', 'order', 'value', 'geometry', 'source', 
 /**
  * Creates or updates a cell, writing only the fields that differ from the stored ones. Untouched
  * fields stay as they are, so concurrent edits of different fields by different clients merge.
+ * The properties of the element that the style names go into that element, not into the style of the cell.
  * Returns what it changed: nothing when the stored cell was equal already.
  */
 export function writeCell(cells: CellsMap, data: CellData): CellWrite {
+  const doc = cells.doc
+  const elementId = doc ? elementIdOf(data.style) : null
   let cell = cells.get(data.id)
   const write: CellWrite = { created: !cell, fields: [], style: [] }
   if (!cell) {
@@ -203,15 +342,20 @@ export function writeCell(cells: CellsMap, data: CellData): CellWrite {
     write.fields.push('style')
   }
   const styleMap = style as Y.Map<StyleValue>
+  // A cell of an element keeps none of its properties in its style.
+  const own = (key: string) => data.style[key] !== undefined && !(elementId !== null && isElementStyleKey(key))
   for (const [key, value] of Object.entries(data.style)) {
-    if (value === undefined) continue
+    if (!own(key)) continue
     if (setIfChanged(styleMap, key, value)) write.style.push(key)
   }
   for (const key of Array.from(styleMap.keys())) {
-    if (data.style[key] === undefined) {
+    if (!own(key)) {
       styleMap.delete(key)
       write.style.push(key)
     }
+  }
+  if (elementId !== null) {
+    for (const key of writeElement(doc!, elementId, data.style)) if (!write.style.includes(key)) write.style.push(key)
   }
   return write
 }

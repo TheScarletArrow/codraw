@@ -6,7 +6,17 @@ import { diffDocuments, snapshotDocument, snapshotPage, type CellSnapshot } from
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from './locks.ts'
 import { mergeConflicts, mergedSnapshot, mergeProposal, MERGE_ORIGIN } from './merge.ts'
-import { DEFAULT_PAGE_ID, getCells, LAYER_CELL_ID, readAttrs, writeAttrs, writeCell, type CellData } from './model.ts'
+import {
+  DEFAULT_PAGE_ID,
+  ELEMENT_KEY,
+  getCells,
+  getElements,
+  LAYER_CELL_ID,
+  readAttrs,
+  writeAttrs,
+  writeCell,
+  type CellData,
+} from './model.ts'
 import { addPage, deletePage, listPages, movePage, renamePage } from './pages.ts'
 import { TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
 import { readStatus, writeStatus } from './status.ts'
@@ -476,6 +486,46 @@ describe('mergeProposal', () => {
     accept()
 
     expect(Y.encodeStateVector(board)).toEqual(before)
+  })
+})
+
+describe('mergeProposal of elements', () => {
+  const element = (properties: Record<string, string>) => ({ fillColor: '#ffffff', [ELEMENT_KEY]: 'e1', codrawName: 'API', ...properties })
+
+  it('merges the properties of an element key by key', () => {
+    const { board, accept } = proposal(
+      boardWith(shape('api', { style: element({ codrawTechnology: 'Java' }) })),
+      (draft) => change(draft, 'api', { style: element({ codrawTechnology: 'Kotlin' }) }),
+      (live) => change(live, 'api', { style: element({ codrawTechnology: 'Java', codrawOwner: 'Заказы' }) }),
+    )
+
+    accept()
+
+    expect(getElements(board).get('e1')!.toJSON()).toEqual({ name: 'API', technology: 'Kotlin', owner: 'Заказы' })
+    expect(cellOf(board, 'api')!.style).toEqual(element({ codrawTechnology: 'Kotlin', codrawOwner: 'Заказы' }))
+  })
+
+  it('removes the element with the last cell the draft removed', () => {
+    const { board, accept } = proposal(boardWith(shape('api', { style: element({}) }), shape('db')), (draft) => remove(draft, 'api'))
+
+    accept()
+
+    expect(getElements(board).size).toBe(0)
+  })
+
+  it('brings back an element the board removed with a cell the draft changed', () => {
+    const { board, accept } = proposal(
+      boardWith(shape('api', { style: element({ codrawTechnology: 'Java' }) })),
+      (draft) => change(draft, 'api', { style: element({ codrawTechnology: 'Kotlin' }) }),
+      (live) => {
+        remove(live, 'api')
+        getElements(live).delete('e1')
+      },
+    )
+
+    accept()
+
+    expect(getElements(board).get('e1')!.toJSON()).toEqual({ name: 'API', technology: 'Kotlin' })
   })
 })
 

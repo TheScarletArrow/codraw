@@ -1,8 +1,9 @@
 import { Geometry, GraphDataModel } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { createUndoManager, DiagramBinding, PageHistories } from './binding.ts'
-import { DEFAULT_PAGE_ID, getCells, initializeDocument } from './model.ts'
+import type { CellStyle } from '@maxgraph/core'
+import { createUndoManager, DiagramBinding, localOrigin, PageHistories } from './binding.ts'
+import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, getElements, initializeDocument } from './model.ts'
 import { addPage } from './pages.ts'
 import { addVertex, childIds, connect, createClient } from './testing.ts'
 
@@ -87,7 +88,7 @@ describe('undo and redo', () => {
     // Every visit of a page creates a new canvas bound to its cells and takes the history of the page, as the editor does.
     const visit = (pageId: string) => {
       const model = new GraphDataModel()
-      return { model, binding: new DiagramBinding(model, getCells(doc, pageId)), history: histories.get(pageId) }
+      return { model, binding: new DiagramBinding(model, getCells(doc, pageId), localOrigin(pageId)), history: histories.get(pageId) }
     }
 
     const first = visit(DEFAULT_PAGE_ID)
@@ -102,5 +103,31 @@ describe('undo and redo', () => {
     expect(back.model.getCell(own.getId()!)).toBeFalsy()
     expect(getCells(doc, second).size).toBe(3)
     expect(histories.get(second).canUndo()).toBe(true)
+  })
+
+  it('keeps a change of an element out of the history of another page', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+    const histories = new PageHistories(doc)
+    const visit = (pageId: string) => {
+      const model = new GraphDataModel()
+      return { model, binding: new DiagramBinding(model, getCells(doc, pageId), localOrigin(pageId)), history: histories.get(pageId) }
+    }
+    const style = (technology: string) => ({ [ELEMENT_KEY]: 'e1', codrawName: 'Payments', codrawTechnology: technology }) as CellStyle
+
+    const other = visit(second)
+    const moved = addVertex(other.model, 'На второй странице')
+    other.binding.destroy()
+    const first = visit(DEFAULT_PAGE_ID)
+    const payments = addVertex(first.model, 'Payments', style('Kotlin'))
+    first.model.setStyle(payments, style('Go'))
+    first.binding.destroy()
+    const back = visit(second)
+    back.history.undo()
+
+    expect(back.model.getCell(moved.getId()!)).toBeFalsy()
+    expect(getElements(doc).get('e1')!.get('technology')).toBe('Go')
+    expect(histories.get(DEFAULT_PAGE_ID).undoStack).toHaveLength(2)
   })
 })

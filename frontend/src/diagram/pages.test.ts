@@ -3,7 +3,9 @@ import * as Y from 'yjs'
 import { readAttribution, writeAttribution } from './attribution.ts'
 import {
   DEFAULT_PAGE_ID,
+  ELEMENT_KEY,
   getCells,
+  getElements,
   getPages,
   initializeDocument,
   LAYER_CELL_ID,
@@ -179,6 +181,44 @@ describe('pages', () => {
     expect(readStatus(copied)).toBeNull()
     expect(STATUS_KEYS.filter((key) => copied.has(key))).toEqual([])
     expect(readStatus(cells.get('a'))).toEqual({ status: 'done', by: 'alice', name: 'Алиса', at: 1000 })
+  })
+
+  it('gives the copies of cells of elements copies of the elements', () => {
+    const doc = board()
+    const cells = getCells(doc)
+    const style = { [ELEMENT_KEY]: 'e1', codrawName: 'Payments', codrawTechnology: 'Kotlin' }
+    doc.transact(() => {
+      writeCell(cells, cell('a', { style }))
+      writeCell(cells, cell('b', { style }))
+    })
+
+    const copy = duplicatePage(doc, DEFAULT_PAGE_ID)!
+
+    const copied = Array.from(getCells(doc, copy).entries())
+      .filter(([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID)
+      .map(([id, map]) => readCell(id, map).style)
+    const element = copied[0]![ELEMENT_KEY] as string
+    expect(element).not.toBe('e1')
+    expect(copied).toEqual([
+      { ...style, [ELEMENT_KEY]: element },
+      { ...style, [ELEMENT_KEY]: element },
+    ])
+    doc.transact(() => getElements(doc).get(element)!.set('technology', 'Go'))
+    expect(readCell('a', cells.get('a')!).style.codrawTechnology).toBe('Kotlin')
+  })
+
+  it('deletes the elements that only the deleted page shows', () => {
+    const doc = board()
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+    doc.transact(() => {
+      writeCell(getCells(doc, second), cell('a', { style: { [ELEMENT_KEY]: 'only', codrawName: 'A' } }))
+      writeCell(getCells(doc, second), cell('b', { style: { [ELEMENT_KEY]: 'shared', codrawName: 'B' } }))
+      writeCell(getCells(doc), cell('c', { style: { [ELEMENT_KEY]: 'shared', codrawName: 'B' } }))
+    })
+
+    deletePage(doc, second)
+
+    expect([...getElements(doc).keys()]).toEqual(['shared'])
   })
 
   it('deletes a page with its cells but never the last page', () => {
