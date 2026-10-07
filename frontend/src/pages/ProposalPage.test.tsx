@@ -13,8 +13,6 @@ import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
 import { ProposalPage } from './ProposalPage.tsx'
 
-// The host of images of the canvas, as the page gives it.
-const canvas = vi.hoisted(() => ({ images: null as ImageHost | null }))
 vi.mock('../api/images.ts', async (original) => ({
   ...(await original<typeof import('../api/images.ts')>()),
   uploadImage: vi.fn(async () => ({ id: 'i', url: '/api/boards/b/images/i', contentType: 'image/png', size: 3, width: 4, height: 2 })),
@@ -23,8 +21,8 @@ vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
 // maxGraph needs real SVG layout; the stand-in hands a fake editor to the page, like the real canvas does, and keeps the
-// latest one in `canvas.editor`.
-const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
+// latest one in `canvas.editor` and the host of images that the page gives it in `canvas.images`.
+const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null, images: null as ImageHost | null }))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
