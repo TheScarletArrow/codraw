@@ -22,6 +22,16 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.7.0',
+    date: '2026-10-07',
+    items: [
+      {
+        title: 'Импорт docker-compose',
+        text: 'В меню «SQL и Mermaid» — «Импорт docker-compose…»: сервисы из docker-compose.yml становятся базами данных, кэшами, очередями и контейнерами с образом и портами в подписи, зависимости и адреса других сервисов в переменных окружения — связями с протоколом, а сети — рамками. Несколько файлов сливаются, как в docker compose.',
+      },
+    ],
+  },
+  {
     version: '0.6.0',
     date: '2026-10-07',
     items: [

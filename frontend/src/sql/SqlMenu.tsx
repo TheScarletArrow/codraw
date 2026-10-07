@@ -8,6 +8,7 @@ import { fetchSchemaImport } from '../api/schemaImport.ts'
 import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
+import { InfraImport } from '../infra/InfraImport.tsx'
 import { downloadBlob, fileName } from '../lib/download.ts'
 import { mermaidCells, mermaidSummary } from '../mermaid/mermaidCells.ts'
 import { MermaidError, parseMermaid, type MermaidDiagram } from '../mermaid/parseMermaid.ts'
@@ -65,11 +66,12 @@ const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) =>
 
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
- * a flowchart or an ER diagram of Mermaid, and documents of OpenAPI and AsyncAPI, become a diagram of the page.
+ * a flowchart or an ER diagram of Mermaid, documents of OpenAPI and AsyncAPI, and files of docker-compose become a
+ * diagram of the page.
  */
 export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
   const [open, setOpen] = useState(false)
-  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | null>(null)
+  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'infra' | null>(null)
   // «Подключение к базе» over «Импорт SQL».
   const [connecting, setConnecting] = useState(false)
   const [text, setText] = useState('')
@@ -142,7 +144,7 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           variant="ghost"
           size="icon-sm"
           aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI и AsyncAPI"
+          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI и docker-compose"
           disabled={!doc || !pageId}
         >
           <Database />
@@ -151,6 +153,13 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
       <PopoverContent align="end" aria-label="SQL и Mermaid" className={importing ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}>
         {importing === 'api' ? (
           <ApiSpecImport
+            busy={busy}
+            error={message === 'import-failed' ? MESSAGES[message] : null}
+            onBack={reset}
+            onAdd={(cells) => void insert(cells)}
+          />
+        ) : importing === 'infra' ? (
+          <InfraImport
             busy={busy}
             error={message === 'import-failed' ? MESSAGES[message] : null}
             onBack={reset}
@@ -279,6 +288,9 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                 </Button>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('api')}>
                   Импорт OpenAPI / AsyncAPI…
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('infra')}>
+                  Импорт docker-compose…
                 </Button>
               </>
             )}
