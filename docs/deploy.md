@@ -1,11 +1,14 @@
 # Развёртывание CoDraw на сервере
 
-CoDraw разворачивается из готовых образов четырьмя контейнерами: `frontend` (nginx), `backend`, `collab`
-и PostgreSQL. Наружу открыт один порт — порт приложения: nginx отдаёт приложение и с того же адреса передаёт API
-в `backend`, а синхронизацию — в `collab`. TLS завершает прокси перед этим портом.
+CoDraw разворачивается из готовых образов пятью контейнерами: `frontend` (nginx), `backend`, `collab`, PostgreSQL
+и `s3` — S3-совместимое хранилище картинок досок RustFS ([ADR-0006](adr/0006-image-storage.md)). Наружу открыт один
+порт — порт приложения: nginx отдаёт приложение и с того же адреса передаёт API в `backend`, а синхронизацию — в
+`collab`. Картинки браузеры получают через `backend`, хранилище снаружи недоступно. TLS завершает прокси перед этим
+портом.
 
 ```
 браузер ──https──▶ TLS-прокси ──http──▶ frontend :8080 ──/api/──▶ backend :8080 ──▶ PostgreSQL
+                                                     │                        └──▶ s3 :9000 (картинки досок)
                                                      └─/collab─▶ collab :1234 ──▶ backend (внутренний API)
 ```
 
@@ -36,6 +39,8 @@ CI публикует образы при каждом пуше в `main`:
 | Переменная | Обязательна | Что |
 |---|---|---|
 | `POSTGRES_PASSWORD` | да | пароль базы |
+| `CODRAW_S3_SECRET_KEY` | да | секретный ключ хранилища изображений, не короче 8 символов, например `openssl rand -hex 32` |
+| `CODRAW_S3_ACCESS_KEY` | нет | ключ доступа хранилища изображений, по умолчанию `codraw` |
 | `CODRAW_INTERNAL_TOKEN` | да | секрет внутреннего API между `collab` и `backend`, например `openssl rand -hex 32` |
 | `CODRAW_COLLAB_TOKEN_SIGNING_KEY` | да | RSA-ключ подписи токенов синхронизации (PEM, PKCS#8) |
 | `CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY` | нет | прежний ключ на время смены ключа |
@@ -72,6 +77,11 @@ CI публикует образы при каждом пуше в `main`:
 | `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски и черновику предложения; у предела проходят только удаления |
 | `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа, черновика предложения и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
 | `CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD` | `64MB` | сколько занимают версии одной доски вместе; сверх этого удаляются старые версии — сначала без названия, затем с названием, — а новейшая остаётся всегда |
+| `CODRAW_LIMITS_IMAGE_SIZE` | `10MB` | больше файл картинки на доску не примут (браузер проверяет до загрузки, `backend` — 413); держите ниже 32 МБ, которые пропускает nginx |
+| `CODRAW_LIMITS_IMAGES_SIZE_PER_BOARD` | `100MB` | сколько занимают картинки одной доски вместе, одинаковый файл — один раз; сверх — 409. Картинки хранятся, пока жива доска, даже убранные с неё: их показывают версии и предложения |
+| `CODRAW_IMAGES_S3_ENDPOINT` | `http://s3:9000` | адрес S3-совместимого хранилища изображений; другой — например, облачного S3 — вместо сервиса `s3` |
+| `CODRAW_IMAGES_S3_REGION` | `us-east-1` | регион хранилища |
+| `CODRAW_IMAGES_S3_BUCKET` | `codraw-images` | бакет картинок; `backend` создаёт его, если его нет |
 | `CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS` | пусто | базы PostgreSQL, схему которых пользователи могут загрузить через `backend` («Подключиться к базе…» в «Импорт SQL»): имена хостов, адреса и сети CIDR через запятую; пусто — функция выключена, см. «Схема из живой базы» ниже |
 | `CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR` | `30` | попыток загрузить схему из базы у одного пользователя в час, неудачные тоже; сверх — 429; счётчик — в памяти `backend` |
 
@@ -143,8 +153,16 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 ```
 
-`--wait` ждёт, пока все контейнеры станут `healthy`: PostgreSQL, затем `backend` (миграции базы применяются при
-его старте), затем `collab` и `frontend`. Приложение отвечает на `http://<сервер>:8080`.
+`--wait` ждёт, пока все контейнеры станут `healthy`: PostgreSQL и хранилище изображений, затем `backend` (миграции
+базы применяются при его старте, бакет картинок создаётся, если его нет), затем `collab` и `frontend`. Приложение
+отвечает на `http://<сервер>:8080`.
+
+**Другое хранилище изображений.** `backend` говорит с хранилищем по обычному S3 с путём бакета в адресе (path-style),
+поэтому вместо сервиса `s3` подойдёт любое S3-совместимое: облачный S3, SeaweedFS, сборка MinIO. Задайте
+`CODRAW_IMAGES_S3_ENDPOINT`, `CODRAW_IMAGES_S3_REGION`, `CODRAW_IMAGES_S3_BUCKET` и ключи в `CODRAW_S3_ACCESS_KEY` и
+`CODRAW_S3_SECRET_KEY`; бакет должен быть закрыт для чтения снаружи — картинки отдаёт `backend`, проверяя доступ к
+доске. Сервис `s3` стека тогда работает вхолостую. Если хранилище недоступно, доски работают, а загрузка и показ
+картинок отвечают 503; уборка картинок удалённых досок ждёт его.
 
 ## 4. TLS-прокси
 
@@ -169,7 +187,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod pull
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 ```
 
-Контейнеры пересоздаются, данные остаются в томе `codraw-prod_postgres-data`. Подключённые участники видят «Нет
+Контейнеры пересоздаются, данные остаются в томах `codraw-prod_postgres-data` и `codraw-prod_s3-data` (картинки). Подключённые участники видят «Нет
 связи» на время перезапуска и переподключаются сами. Для отката задайте `CODRAW_VERSION` с хешем предыдущего коммита
 и выполните `up -d --wait`. Откат на версию до изменения схемы базы требует отката миграций — U-скриптов в
 `backend/src/main/resources/db/migration`.
@@ -180,7 +198,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 | Где | Что |
 |---|---|
-| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image` и `images`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
 | `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
@@ -219,7 +237,8 @@ Prometheus показывает сработавшие правила на ст�
 
 ## Резервные копии
 
-Всё состояние — в PostgreSQL: доски, документы, пользователи, сеансы.
+Состояние — в PostgreSQL (доски, документы, пользователи, сеансы, описания картинок) и в томе хранилища `s3-data`
+(файлы картинок).
 
 ```bash
 # копия
@@ -231,12 +250,27 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres 
   pg_restore -U codraw -d codraw --clean --if-exists < codraw-2026-10-05.dump
 ```
 
+Картинки копируются вместе с томом хранилища; файл картинки по своему адресу никогда не меняется, поэтому копия тома,
+снятая после копии базы, покрывает все картинки, на которые та ссылается:
+
+```bash
+# копия тома картинок рядом с копией базы
+docker run --rm -v codraw-prod_s3-data:/data:ro -v "$PWD":/backup alpine \
+  tar czf /backup/codraw-images-$(date +%F).tar.gz -C /data .
+
+# восстановление: остановите s3, распакуйте копию в том и запустите стек снова
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop s3
+docker run --rm -v codraw-prod_s3-data:/data -v "$PWD":/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/codraw-images-2026-10-05.tar.gz -C /data'
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+```
+
 Делайте копию по расписанию (cron) и храните её вне сервера.
 
 ## Что проверяет CI
 
 Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает три образа, поднимает из них
-этот же `docker-compose.prod.yml` с профилем `monitoring`, ждёт, пока Prometheus увидит `backend` и `collab`, и в
+этот же `docker-compose.prod.yml` с профилем `monitoring` (с хранилищем изображений), ждёт, пока Prometheus увидит `backend` и `collab`, и в
 браузере проверяет через nginx совместную работу двух гостей, заголовки безопасности, кеширование и закрытость
 внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить против своего стека:
 `STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.

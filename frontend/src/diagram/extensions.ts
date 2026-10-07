@@ -2,14 +2,17 @@ import {
   ActorShape,
   CylinderShape,
   EdgeMarkerRegistry,
+  ImageShape,
   RectangleShape,
   Shape,
   ShapeRegistry,
   StyleDefaultsConfig,
+  SvgCanvas2D,
   type AbstractCanvas2D,
   type MarkerFactoryFunction,
   type ShapeConstructor,
 } from '@maxgraph/core'
+import { IMAGE_PLACEHOLDER } from './images.ts'
 
 /**
  * A rectangle without fill and with `pointerEvents=0` lets clicks inside it reach the shapes under it, as in
@@ -22,6 +25,67 @@ class ClickThroughRectangleShape extends RectangleShape {
       c.pointerEvents = false
     }
     super.paintBackground(c, x, y, w, h)
+  }
+}
+
+const XLINK_NS = 'http://www.w3.org/1999/xlink'
+
+/** Attribute of a picture shown as a placeholder: the address that did not load, which the browser tries again online. */
+export const PLACEHOLDER_SOURCE = 'data-codraw-src'
+
+/** Shows the placeholder in place of a picture that did not load, keeping its address to try again. */
+function showPlaceholder(image: Element) {
+  if (image.hasAttribute(PLACEHOLDER_SOURCE)) return
+  image.setAttribute(PLACEHOLDER_SOURCE, image.getAttributeNS(XLINK_NS, 'href') ?? image.getAttribute('href') ?? '')
+  image.setAttribute(PLACEHOLDER_ASPECT, image.getAttribute('preserveAspectRatio') ?? '')
+  image.setAttributeNS(XLINK_NS, 'xlink:href', IMAGE_PLACEHOLDER)
+  // Not stretched like the picture: the frame keeps its shape in the middle of the image shape.
+  image.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+}
+
+/** Attribute of a picture shown as a placeholder: how the picture fitted the shape. */
+const PLACEHOLDER_ASPECT = 'data-codraw-aspect'
+
+/** Shows the placeholder once the picture fails to load. */
+function watchPicture(image: Element) {
+  image.addEventListener('error', () => showPlaceholder(image), { once: true })
+}
+
+/** Gives the pictures shown as placeholders their addresses back, so that the browser loads them again. */
+export function retryPictures(page: Document) {
+  for (const image of Array.from(page.querySelectorAll(`image[${PLACEHOLDER_SOURCE}]`))) {
+    const source = image.getAttribute(PLACEHOLDER_SOURCE) ?? ''
+    const aspect = image.getAttribute(PLACEHOLDER_ASPECT)
+    image.removeAttribute(PLACEHOLDER_SOURCE)
+    image.removeAttribute(PLACEHOLDER_ASPECT)
+    if (aspect) image.setAttribute('preserveAspectRatio', aspect)
+    else image.removeAttribute('preserveAspectRatio')
+    watchPicture(image)
+    image.setAttributeNS(XLINK_NS, 'xlink:href', source)
+  }
+}
+
+let retryingOnline = false
+
+/**
+ * The image shape of draw.io, whose picture the browser may fail to load: without a connection, when the browser has
+ * not kept it; at another site, which the Content Security Policy does not let in; on a board without access. It then
+ * shows {@link IMAGE_PLACEHOLDER}, and tries again once the browser is online.
+ */
+class PictureShape extends ImageShape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    super.paintVertexShape(c, x, y, w, h)
+    // Only the picture on the canvas: an image of the page that is being saved has no loading to wait for.
+    if (!(c instanceof SvgCanvas2D) || c.root !== this.node || !this.node) return
+    const pictures = this.node.getElementsByTagName('image')
+    const picture = pictures[pictures.length - 1]
+    if (!picture) return
+    watchPicture(picture)
+    if (!retryingOnline) {
+      retryingOnline = true
+      const page = this.node.ownerDocument
+      page.defaultView?.addEventListener('online', () => retryPictures(page))
+    }
   }
 }
 
@@ -488,6 +552,7 @@ export function registerDiagramExtensions() {
   StyleDefaultsConfig.shadowColor = SHADOW_COLOR
   StyleDefaultsConfig.shadowOpacity = SHADOW_OPACITY
   ShapeRegistry.add('rectangle', ClickThroughRectangleShape)
+  ShapeRegistry.add('image', PictureShape)
   ShapeRegistry.add('document', DocumentShape)
   ShapeRegistry.add('mxgraph.c4.person2', C4PersonShape)
   // The cylinder of the draw.io palette.

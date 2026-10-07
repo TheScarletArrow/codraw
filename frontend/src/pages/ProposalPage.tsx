@@ -14,6 +14,8 @@ import { Minimap } from '../board/Minimap.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { StatusBadges } from '../board/StatusBadges.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
+import { useImageUploads } from '../board/imageUploads.ts'
+import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { usePages } from '../board/usePages.ts'
 import type { Author } from '../diagram/attribution.ts'
 import { PageHistories } from '../diagram/binding.ts'
@@ -89,6 +91,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])
   const pages = usePages(document, !readOnly)
+  // The author adds images to the draft; they are images of the board, which it gets when the proposal is accepted.
+  const imageUploads = useImageUploads(readOnly ? null : { boardId: board.id, proposalId: proposal.id })
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
 
@@ -133,7 +137,14 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
             Только просмотр
           </span>
         )}
-        <DrawioActions document={document} title={proposal.title} onImported={selectPage} readOnly={readOnly} author={author} />
+        <DrawioActions
+          document={document}
+          title={proposal.title}
+          onImported={selectPage}
+          readOnly={readOnly}
+          author={author}
+          images={imageUploads.host}
+        />
         <ImageExportMenu
           editor={editor}
           document={document}
@@ -182,6 +193,10 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
           </ConfirmedAction>
         )}
       </div>
+      <div aria-live="polite">
+        <ImageUploadProgress state={imageUploads.state} />
+      </div>
+      <ImageUploadError state={imageUploads.state} onDismiss={imageUploads.dismiss} />
       {connection.tooLarge && (
         <div
           role="alert"
@@ -209,6 +224,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   participantName={author.name}
                   participantId={author.id}
                   collaboration={false}
+                  images={imageUploads.host}
                   onEditor={setEditor}
                 />
                 <StickySignatures editor={editor} />

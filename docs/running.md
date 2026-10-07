@@ -9,7 +9,7 @@
 ```bash
 git clone https://github.com/TheScarletArrow/codraw.git && cd codraw
 corepack enable && pnpm install
-docker compose up -d postgres
+docker compose up -d postgres s3
 
 # каждый сервис — в отдельном терминале, в таком порядке
 cd backend && GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… ./gradlew bootRun   # API: http://localhost:8080
@@ -27,7 +27,7 @@ pnpm dev:frontend                  # приложение:     http://localhost:
 | JDK | 25 | backend | `java -version` |
 | Node.js | 22.12 или новее, рекомендуется версия из `.nvmrc` | frontend и collab | `node --version` |
 | pnpm | 10, ставится через Corepack из Node.js | зависимости frontend и collab | `pnpm --version` |
-| Docker с Compose v2 | любая актуальная | PostgreSQL; тесты backend | `docker compose version` |
+| Docker с Compose v2 | любая актуальная | PostgreSQL и хранилище изображений; тесты backend | `docker compose version` |
 | Git | любая | получить код | `git --version` |
 
 - JDK 25 подойдёт любой: Temurin, Liberica, Corretto и т. п. Gradle находит его сам, даже если по умолчанию
@@ -48,15 +48,18 @@ pnpm install
 
 `pnpm install` ставит зависимости всех JS-подпроектов: `frontend`, `collab` и `e2e`.
 
-## 3. PostgreSQL
+## 3. PostgreSQL и хранилище изображений
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres s3
 docker compose ps
 ```
 
-В выводе `docker compose ps` у `postgres` должен быть статус `healthy`. База `codraw` (пользователь и пароль
-тоже `codraw`) доступна на `localhost:5432`, данные лежат в Docker-томе и переживают перезапуск.
+В выводе `docker compose ps` у `postgres` и `s3` должен быть статус `healthy`. База `codraw` (пользователь и пароль
+тоже `codraw`) доступна на `localhost:5432`. `s3` — S3-совместимое хранилище картинок досок RustFS
+([ADR-0006](adr/0006-image-storage.md)) на `localhost:9000` с ключами `codraw` / `codraw-secret`; бакет
+`codraw-images` backend создаёт сам. Данные обоих лежат в Docker-томах и переживают перезапуск. Без хранилища backend
+тоже работает, но картинки на доску не добавляются: «Не удалось загрузить изображение».
 
 ## 4. Сервисы
 
@@ -148,7 +151,11 @@ pnpm dev:frontend
     «Предложения (1)». Откройте предложение: добавленное и изменённое отмечены на холсте и в списке. «Принять» сохранит
     доску версией «Перед принятием предложения» и перенесёт правки на доску в обоих окнах, а второе окно получит
     уведомление.
-13. В первом окне откройте DevTools → Network и выберите «Offline»: статус доски — «Нет связи», под шапкой — «Нет связи —
+13. Сделайте скриншот в буфер обмена (Windows — Win+Shift+S, macOS — Cmd+Ctrl+Shift+4) и нажмите Ctrl+V на холсте:
+    под шапкой мелькнёт «Загрузка изображения… N%», картинка встанет в середину холста, и второе окно увидит её.
+    Потяните угол картинки — пропорции сохраняются, с Shift — нет. Перетащите на холст файл PNG или JPEG; «Экспорт в
+    .drawio» положит картинки внутрь файла.
+14. В первом окне откройте DevTools → Network и выберите «Offline»: статус доски — «Нет связи», под шапкой — «Нет связи —
     правки сохраняются на этом устройстве». Добавьте фигуру — там же появится «Не отправлено: есть правки», а во втором
     окне фигуры нет. Закройте вкладку, верните сеть («No throttling») и откройте доску снова: фигура на месте и появится
     во втором окне.
@@ -166,6 +173,7 @@ pnpm dev:frontend
 | Найти доску | на странице досок — поле «Поиск досок»: подходящие названия своих и общих досок остаются сразу при наборе, а с двух букв ищется и текст на досках (названия страниц, подписи, таблицы, поля, индексы) — у доски видна строка с найденным; Escape очищает поле, «Сбросить фильтры» возвращает все доски. Рядом — порядок: «Недавно открытые», «По названию», «Недавно изменённые»; браузер его запоминает |
 | Теги и папки досок | в меню доски в списке — «Теги» (поле «Новый тег» с подсказками из ваших тегов, крестик убирает тег) и «Переместить в папку» («Без папки», ваши папки или «Новая папка»); над списком — теги (выбранные оставляют доски со всеми ними) и «Все доски», «Без папки», папки и «Новая папка»; у выбранной папки — меню «Переименовать папку» и «Удалить папку». Теги и папки видите только вы |
 | Добавить фигуру | перетащить из панели слева на холст или щёлкнуть по ней в панели |
+| Изображение | Ctrl+V (на macOS — Cmd+V) картинки из буфера обмена — скриншота или «Копировать изображение» в браузере — кладёт её в середину видимой части холста, «Вставить» в меню правого щелчка — в точку щелчка; файлы PNG, JPEG, GIF и WebP можно перетащить на холст — в точку, где их отпустили, — или выбрать кнопкой «Изображение» в разделе «Основные» панели фигур. Несколько файлов встают в ряд. Пока файл загружается, под шапкой — «Загрузка изображения… N%», ошибка — красной строкой с «Понятно». Картинка — фигура draw.io `shape=image`: её двигают, поворачивают, закрепляют, подписывают; размер ручками меняется с сохранением пропорций, с Shift — свободно, а в «Размер» вторая сторона следует за первой. Новая картинка — в натуральную величину, но не больше 600 × 600. Файл до 10 МБ, на доске — до 100 МБ картинок; SVG не принимается. В `.drawio`, PNG, SVG и PDF картинки попадают внутрь файла, а импорт `.drawio` загружает их на доску. Копия картинки на другую доску CoDraw загружает её туда же. Картинка, которую браузер не смог загрузить (нет связи, чужой адрес), — серая заглушка. В режиме просмотра изображения не добавляются |
 | Найти фигуру | поле «Поиск фигур» вверху панели: ищет по названию, разделу и словам, которыми фигуру называют разработчики, — «redis» находит «Кэш», «kafka» — «Топик событий», «s3» — «Хранилище объектов», «бд» — «Базу данных»; Enter добавляет первую найденную, Escape очищает поле |
 | Горячие клавиши | `?` на холсте или кнопка с клавиатурой в шапке доски: все клавиши редактора по группам; в режиме просмотра — только доступные |
 | Найти на доске | `Ctrl+F` (на macOS — `Cmd+F`) на странице доски: поле в правом верхнем углу холста ищет по подписям фигур и связей, названиям таблиц, полям и индексам на всех страницах и показывает «N из M»; при наборе холст переходит к первому совпадению, Enter и Shift+Enter — к следующему и предыдущему по кругу, открывая страницу и выделяя элемент; Escape закрывает поле |
@@ -239,6 +247,7 @@ pnpm dev:frontend
 | 8080 | backend |
 | 1234 | collab |
 | 5432 | PostgreSQL |
+| 9000 | хранилище изображений (RustFS, S3) |
 | 4173 | frontend в режиме `vite preview` (сборка и e2e) |
 | 1235 | второй collab в e2e-тесте перезапуска |
 
@@ -254,8 +263,8 @@ pnpm dev:frontend
 ## Остановка и сброс
 
 - Сервисы останавливаются через Ctrl+C в их терминалах.
-- `docker compose stop` останавливает PostgreSQL, данные сохраняются.
-- `docker compose down -v` удаляет контейнер вместе с данными: все доски пропадут.
+- `docker compose stop` останавливает PostgreSQL и хранилище изображений, данные сохраняются.
+- `docker compose down -v` удаляет контейнеры вместе с данными: все доски и картинки пропадут.
 
 ## Запуск собранной версии
 
@@ -273,6 +282,8 @@ pnpm --filter @codraw/collab --filter @codraw/frontend build
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/codraw \
 SPRING_DATASOURCE_USERNAME=codraw SPRING_DATASOURCE_PASSWORD=codraw \
 CODRAW_INTERNAL_TOKEN=local-secret \
+CODRAW_IMAGES_S3_ENDPOINT=http://localhost:9000 \
+CODRAW_IMAGES_S3_ACCESS_KEY=codraw CODRAW_IMAGES_S3_SECRET_KEY=codraw-secret \
 GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… \
 java -jar backend/build/libs/codraw-backend.jar
 
@@ -301,7 +312,7 @@ pnpm --filter @codraw/frontend exec vite preview --port 4173
 
 ```bash
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/codraw-key.pem
-POSTGRES_PASSWORD=local CODRAW_INTERNAL_TOKEN=local-secret \
+POSTGRES_PASSWORD=local CODRAW_S3_SECRET_KEY=local-s3-secret CODRAW_INTERNAL_TOKEN=local-secret \
 CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat /tmp/codraw-key.pem)" \
 docker compose -f docker-compose.prod.yml up -d --build --wait
 # приложение: http://localhost:8080; проверка стека в браузере:
@@ -317,16 +328,18 @@ pnpm typecheck && pnpm lint && pnpm test   # frontend и collab
 cd backend && ./gradlew test               # backend
 ```
 
-Тестам backend нужен запущенный Docker: Testcontainers сам поднимает PostgreSQL 18 в контейнере,
-`docker compose` для них не нужен.
+Тестам backend нужен запущенный Docker: Testcontainers сам поднимает PostgreSQL 18 и хранилище изображений RustFS в
+контейнерах, `docker compose` для них не нужен.
 
-Сквозные тесты (Playwright) запускают собранные сервисы и ходят в PostgreSQL из docker compose. Dev-серверы
+Сквозные тесты (Playwright) запускают собранные сервисы и ходят в PostgreSQL и хранилище изображений из docker
+compose (адрес и ключи хранилища — `CODRAW_IMAGES_S3_ENDPOINT`, `CODRAW_IMAGES_S3_ACCESS_KEY`,
+`CODRAW_IMAGES_S3_SECRET_KEY`, по умолчанию как в `docker-compose.yml`). Dev-серверы
 перед этим нужно остановить: порты 8080, 1234, 1235 и 4173 должны быть свободны. Backend в них работает
 в профиле `e2e`: тесты входят через тестовый эндпоинт, а не через GitHub или Google. В остальных профилях
 этого эндпоинта нет.
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres s3
 (cd backend && ./gradlew bootJar)
 pnpm --filter @codraw/collab --filter @codraw/frontend build
 pnpm --filter @codraw/e2e exec playwright install chromium   # один раз
@@ -367,6 +380,10 @@ cd backend && SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/codraw ./gr
 **Backend не стартует: `Client id of registration 'github' must not be empty`.**
 Backend запущен не в профиле `dev`, а там переменные OAuth-приложений обязательны. Задайте `GITHUB_*`
 и `GOOGLE_*` или запускайте через `./gradlew bootRun`.
+
+**Картинка не добавляется: «Не удалось загрузить изображение».**
+Не запущено хранилище изображений: `docker compose up -d s3`. В логе backend тогда есть `The storage of images is not
+available`; бакет backend создаст при первой картинке, перезапускать его не нужно.
 
 **На доске «Нет связи», а вместо холста «Загрузка доски…».**
 Не запущен collab: `pnpm dev:collab`.

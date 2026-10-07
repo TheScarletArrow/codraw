@@ -15,6 +15,7 @@ import { isFreehandStyle } from '../diagram/freehand.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
+import { isImageStyle } from '../diagram/images.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
 import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
 
@@ -114,12 +115,14 @@ class Kinds {
     if (isTableStyle(cell.style)) return 'Таблица'
     // A group of draw.io and CoDraw: a container without a fill and a border.
     if (this.parents.has(cell.id) && cell.style.fillColor === 'none' && cell.style.strokeColor === 'none') return 'Группа'
+    if (isImageStyle(cell.style)) return 'Изображение'
     return shapeOf(cell.style)?.label ?? 'Фигура'
   }
 }
 
 /** Words for the style keys that CoDraw sets; other keys are «стиль». */
 const STYLE_WORDS: Record<string, string> = {
+  image: 'изображение',
   fillColor: 'заливка',
   gradientColor: 'заливка',
   swimlaneFillColor: 'заливка',

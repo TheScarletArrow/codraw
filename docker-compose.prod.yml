@@ -26,6 +26,21 @@ services:
       timeout: 3s
       retries: 10
 
+  # The S3-compatible storage of images of boards (docs/adr/0006-image-storage.md); only the backend reaches it.
+  s3:
+    <<: *restart
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: ${CODRAW_S3_ACCESS_KEY:-codraw}
+      RUSTFS_SECRET_KEY: ${CODRAW_S3_SECRET_KEY:?set CODRAW_S3_SECRET_KEY, the secret key of the storage of images}
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     <<: *restart
     image: ${CODRAW_IMAGE_PREFIX:-ghcr.io/thescarletarrow/codraw-}backend:${CODRAW_VERSION:-latest}
@@ -64,6 +79,15 @@ services:
       # Above the limit of collab, so that a document that collab accepted is always stored; nginx takes up to 32 MB.
       CODRAW_LIMITS_DOCUMENT_SIZE: ${CODRAW_LIMITS_DOCUMENT_SIZE:-32MB}
       CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD: ${CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD:-64MB}
+      # Below the 32 MB that nginx takes in a request.
+      CODRAW_LIMITS_IMAGE_SIZE: ${CODRAW_LIMITS_IMAGE_SIZE:-10MB}
+      CODRAW_LIMITS_IMAGES_SIZE_PER_BOARD: ${CODRAW_LIMITS_IMAGES_SIZE_PER_BOARD:-100MB}
+      # The storage of images: the service s3 of this stack, or another S3-compatible one, e.g. of a cloud.
+      CODRAW_IMAGES_S3_ENDPOINT: ${CODRAW_IMAGES_S3_ENDPOINT:-http://s3:9000}
+      CODRAW_IMAGES_S3_REGION: ${CODRAW_IMAGES_S3_REGION:-us-east-1}
+      CODRAW_IMAGES_S3_BUCKET: ${CODRAW_IMAGES_S3_BUCKET:-codraw-images}
+      CODRAW_IMAGES_S3_ACCESS_KEY: ${CODRAW_S3_ACCESS_KEY:-codraw}
+      CODRAW_IMAGES_S3_SECRET_KEY: ${CODRAW_S3_SECRET_KEY}
       # Databases whose schemas users may read through the backend; empty turns it off (docs/deploy.md).
       CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS: ${CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS:-}
       CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR: ${CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR:-30}
@@ -71,6 +95,8 @@ services:
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     depends_on:
       postgres:
+        condition: service_healthy
+      s3:
         condition: service_healthy
 
   collab:
@@ -123,4 +149,5 @@ services:
 
 volumes:
   postgres-data:
+  s3-data:
   prometheus-data:

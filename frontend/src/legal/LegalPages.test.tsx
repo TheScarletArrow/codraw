@@ -104,6 +104,13 @@ describe('legal pages', () => {
       'Предложение изменений с его черновиком видят его автор, владелец и редакторы доски',
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Изображения. Картинки, которые участники кладут на доски',
+    )
+    expect(retention).toHaveTextContent('Изображения доски — пока существует доска, даже если на доске их больше нет')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'сервер отдаёт изображение доски только тем, кому доступна доска',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'Теги и папки. Теги, которые пользователь дал своим и общим доскам своего списка, его папки',
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(

@@ -62,6 +62,11 @@ codraw:
     review-request-interval: 10m
     # Every hour; "-" turns the cleanup off.
     cleanup-cron: "0 41 * * * *"
+  images:
+    # Deletes the images of deleted boards from the storage every hour; "-" turns the cleanup off.
+    cleanup-cron: "0 53 * * * *"
+    # The S3-compatible storage of images (codraw.images.s3.endpoint, region, bucket, access-key, secret-key): the
+    # environment of the deployment sets it, see docs/deploy.md.
   schema-import:
     # Host names, addresses and networks (CIDR) of PostgreSQL databases whose schemas users may read through the
     # backend, comma-separated, e.g. "db.internal,10.20.0.0/16" (CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS). Empty turns

@@ -39,6 +39,11 @@ export default defineConfig({
         SPRING_DATASOURCE_USERNAME: env.databaseUser,
         SPRING_DATASOURCE_PASSWORD: env.databasePassword,
         CODRAW_INTERNAL_TOKEN: env.internalToken,
+        CODRAW_IMAGES_S3_ENDPOINT: env.s3Endpoint,
+        CODRAW_IMAGES_S3_ACCESS_KEY: env.s3AccessKey,
+        CODRAW_IMAGES_S3_SECRET_KEY: env.s3SecretKey,
+        // Small enough for a test to go beyond it without megabytes of pictures.
+        CODRAW_LIMITS_IMAGE_SIZE: '1MB',
       },
       timeout: 120_000,
     },

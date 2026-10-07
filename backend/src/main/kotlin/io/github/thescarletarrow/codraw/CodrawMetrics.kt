@@ -24,6 +24,8 @@ enum class Limit(val tag: String) {
     FOLDERS("folders"),
     REVIEW_REQUESTS("review-requests"),
     SCHEMA_IMPORTS("schema-imports"),
+    IMAGE("image"),
+    IMAGES("images"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */
@@ -98,6 +100,15 @@ class CodrawMetrics(registry: MeterRegistry) {
             .register(registry)
     }
 
+    private val imagesStored = DistributionSummary.builder("codraw.images.stored")
+        .description("Sizes of the images that participants put on boards, the same file of a board once")
+        .baseUnit(BaseUnits.BYTES)
+        .register(registry)
+
+    private val imagesDeleted = Counter.builder("codraw.images.cleanup.deleted")
+        .description("Images of deleted boards removed from the storage")
+        .register(registry)
+
     private val clientErrors = ClientErrorKind.entries.associateWith { kind ->
         Counter.builder("codraw.client.errors")
             .description("Errors that browsers of participants reported")
@@ -123,6 +134,10 @@ class CodrawMetrics(registry: MeterRegistry) {
     fun clientError(kind: ClientErrorKind) = clientErrors.getValue(kind).increment()
 
     fun schemaImport(result: SchemaImportResult) = schemaImports.getValue(result).increment()
+
+    fun imageStored(size: Long) = imagesStored.record(size.toDouble())
+
+    fun imagesDeleted(count: Int) = imagesDeleted.increment(count.toDouble())
 
     fun guestCleanupDeleted(boards: Int, guests: Int) {
         cleanupDeleted.getValue("boards").increment(boards.toDouble())

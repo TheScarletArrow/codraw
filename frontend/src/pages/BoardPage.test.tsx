@@ -27,6 +27,7 @@ import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
 import { setPendingImport } from '../drawio/files.ts'
 import { parseDrawio } from '../drawio/parse.ts'
 import { findLocalCopy, loadLocalCopy, openLocalCopy, setUnsentEdits } from '../offline/localCopies.ts'
+import type { ImageHost } from '../diagram/images.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
@@ -39,7 +40,11 @@ vi.mock('@hocuspocus/provider', async () => ({
 // The stand-in hands a fake editor to the page, like the real canvas does.
 // A canvas of another page gets a new fake editor, which becomes `canvas.editor`; `canvas.document` is the document the
 // canvas shows.
-const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null, document: null as Y.Doc | null }))
+const canvas = vi.hoisted(() => ({
+  editor: null as FakeEditor | null,
+  document: null as Y.Doc | null,
+  images: null as ImageHost | null,
+}))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
@@ -50,6 +55,7 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       readOnly = false,
       participantName,
       participantId,
+      images = null,
       onEditor,
     }: {
       document: Y.Doc
@@ -57,8 +63,10 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       readOnly?: boolean
       participantName?: string
       participantId?: string
+      images?: ImageHost | null
       onEditor: (editor: FakeEditor | null) => void
     }) => {
+      canvas.images = images
       useEffect(() => {
         const otherDocument = canvas.document !== null && canvas.document !== document
         if (canvas.editor?.pageId !== pageId || canvas.editor.readOnly !== readOnly || otherDocument) {
@@ -1325,6 +1333,29 @@ describe('BoardPage', () => {
       return canvas.editor!
     }
 
+    it('stores the images of the participant on the board, and tells under the header why one was not added', async () => {
+      await openEditor()
+      const images = canvas.images!
+
+      expect(images.holds(`/api/boards/${boardId}/images/0199a000-0000-7000-8000-0000000000aa`)).toBe(true)
+      await act(() => images.store(new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' })))
+
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent('Формат файла не поддерживается: PNG, JPEG, GIF или WebP')
+      await userEvent.click(within(alert).getByRole('button', { name: 'Понятно' }))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('stores no images of a participant who only views', async () => {
+      canvas.images = createFakeEditor() as never
+      const provider = await openBoard({ [`GET /api/boards/${boardId}`]: { body: boardToView } })
+      initializeDocument(provider.document)
+      act(() => provider.emitSynced())
+
+      expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
+      expect(canvas.images).toBeNull()
+    })
+
     it('shows the shape palette, the toolbar and the participants', async () => {
       await openEditor()
 
@@ -1347,6 +1378,7 @@ describe('BoardPage', () => {
         'Ромб',
         'Текст',
         'Стикер',
+        'Изображение',
       ])
       const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
       expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeDisabled()
@@ -2393,7 +2425,8 @@ describe('BoardPage', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Экспорт в .drawio' }))
 
-      expect(click).toHaveBeenCalled()
+      // The pictures of the board go into the file first.
+      await waitFor(() => expect(click).toHaveBeenCalled())
       const xml = await blobs[0]!.text()
       expect(Array.from(xml.matchAll(/<diagram [^>]*name="([^"]+)"/g), (match) => match[1])).toEqual(['Контекст', 'Контейнеры'])
       click.mockRestore()
@@ -2404,8 +2437,9 @@ describe('BoardPage', () => {
 
       const provider = await openSynced()
 
-      expect(tabNames()).toEqual(['Контекст', 'Слои'])
-      expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page')
+      // The pictures of the file are stored on the board first.
+      await waitFor(() => expect(tabNames()).toEqual(['Контекст', 'Слои']))
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas').dataset.page).toBe('ctx-page'))
       const imported = readAttribution(getCells(provider.document, 'ctx-page').get('db'))
       expect(imported).toMatchObject({ by: ALICE.id, name: ALICE.name })
     })

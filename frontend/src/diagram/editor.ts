@@ -28,6 +28,7 @@ import {
   TooltipHandler,
   ValueChange,
   VertexHandler,
+  eventUtils,
   getDefaultPlugins,
   type CellState,
   type CellStyle,
@@ -85,6 +86,18 @@ import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipb
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { registerDiagramExtensions } from './extensions.ts'
+import {
+  cellImageUrls,
+  fittedImageSize,
+  IMAGE_GAP,
+  imageStyle,
+  needsStoring,
+  pastesAsImage,
+  replaceCellImages,
+  storeImages,
+  type ImageHost,
+  type StoredImage,
+} from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { LINK_KEY, linkOf } from './links.ts'
@@ -411,6 +424,8 @@ export interface EditorState {
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
   attribution: SelectionAttribution | null
+  /** Images can be added: the participant edits the page, and the page stores images (see {@link DiagramEditorOptions.images}). */
+  canAddImages: boolean
   /** The link of the single selected element that may have one, or `null` when no such element is selected alone. */
   link: SelectionLink | null
   /** The selected stickies, or `null` when none is selected or the participant may only view. */
@@ -506,9 +521,17 @@ export interface DiagramEditor {
    * Adds `text` and `html` of the clipboard of the system, or without them the clipboard of the tab, as one undo step:
    * cells of CoDraw (also from the HTML of copied tables) or draw.io shifted further with every paste of the same
    * content, or with their top-left corner at `at`; a flowchart or an ER diagram of Mermaid and tables of DDL laid out,
-   * and other text as a text shape, in the middle of the visible area, or with the top-left corner at `at`.
+   * and other text as a text shape, in the middle of the visible area, or with the top-left corner at `at`. Pictures of
+   * the cells that the board must store (see {@link needsStoring}) are stored first. `files` of the clipboard are added
+   * as images (see {@link addImages}) when the clipboard holds a picture rather than text (see {@link pastesAsImage}).
    */
-  paste(at?: Point, text?: string, html?: string): void
+  paste(at?: Point, text?: string, html?: string, files?: Blob[]): void
+  /**
+   * Stores the image files on the board, then adds an image shape for each stored one as one undo step: in a row whose
+   * middle is at `at`, or in the middle of the visible area, and selects them. Files that were not stored are left out;
+   * the host of images has told why. Without a host it does nothing.
+   */
+  addImages(files: Blob[], at?: Point): Promise<void>
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
   duplicate(): void
   /**
@@ -983,6 +1006,11 @@ export interface DiagramEditorOptions {
    * pointer and the comment tool. `true` by default; a draft of a proposal of changes has neither.
    */
   collaboration?: boolean
+  /**
+   * Where the images of the page are stored. Without it images cannot be added, and pasted cells keep the addresses of
+   * their pictures.
+   */
+  images?: ImageHost | null
   /** The theme of the canvas at first; see {@link DiagramEditor.setTheme}. Light by default, as images of pages are. */
   theme?: CanvasTheme
 }
@@ -1001,6 +1029,7 @@ const CHANGING_COMMANDS = [
   'addConnectedShape',
   'cut',
   'paste',
+  'addImages',
   'duplicate',
   'pasteStyle',
   'insertCells',
@@ -1048,6 +1077,7 @@ export function createDiagramEditor(
     participantName,
     participantId,
     collaboration = true,
+    images = null,
     theme: initialTheme = 'light',
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
@@ -1685,6 +1715,7 @@ export function createDiagramEditor(
       pencilLine: pencilLine.get(),
       lock: selectionLock(),
       attribution: selectionAttribution(),
+      canAddImages: !readOnly && images !== null,
       link: selectionLink(),
       stickies: selectionStickies(),
       status: selectionStatus(),
@@ -1847,7 +1878,8 @@ export function createDiagramEditor(
   const handlePaste = (event: ClipboardEvent) => {
     if (readOnly || !isCanvasEvent(event)) return
     event.preventDefault()
-    editor.paste(undefined, event.clipboardData?.getData('text/plain') ?? '', event.clipboardData?.getData('text/html') ?? '')
+    const data = event.clipboardData
+    editor.paste(undefined, data?.getData('text/plain') ?? '', data?.getData('text/html') ?? '', Array.from(data?.files ?? []))
   }
   page.addEventListener('copy', handleCopy)
   page.addEventListener('cut', handleCut)
@@ -2286,16 +2318,59 @@ export function createDiagramEditor(
     }
     notify()
   }
-  /** Adds copies of clipboard cells: with their top-left corner at `at`, or shifted further with every paste. */
+  /**
+   * Adds copies of clipboard cells: with their top-left corner at `at`, or shifted further with every paste. Pictures
+   * that the board must store are stored first, and the copies point at them; the clipboard keeps the cells as they are.
+   */
   const pasteCells = (cells: Cell[] | null, at?: Point) => {
     if (!cells) return
-    if (at) {
-      const bounds = graph.getBoundingBoxFromGeometry(cells, false)
-      insertCopies(cells, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0))
-    } else {
-      const shift = clipboard.nextPaste() * PASTE_OFFSET
-      insertCopies(cells, shift, shift)
+    // Taken at once, so that pastes keep their shifts while pictures are stored.
+    const shift = at ? 0 : clipboard.nextPaste() * PASTE_OFFSET
+    const insert = (copies: Cell[]) => {
+      if (!at) return insertCopies(copies, shift, shift)
+      const bounds = graph.getBoundingBoxFromGeometry(copies, false)
+      insertCopies(copies, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0))
     }
+    const host = images
+    const pictures = host ? cellImageUrls(cells).filter((url) => needsStoring(url, host)) : []
+    if (!host || pictures.length === 0) {
+      insert(cells)
+      return
+    }
+    void storeImages(pictures, host).then((stored) => {
+      if (destroyed) return
+      const copies = graph.cloneCells(cells, false)
+      // As in the clipboard: without a parent, maxGraph would take an edge for the label of an edge and drop it.
+      const holder = new Cell()
+      copies.forEach((copy) => holder.insert(copy))
+      replaceCellImages(copies, stored)
+      insert(copies)
+      notify()
+    })
+  }
+  /** Adds image shapes of stored images in a row whose middle is at `center`, as one change, and selects them. */
+  const insertImages = (stored: StoredImage[], center: Point) => {
+    const sizes = stored.map((image) => fittedImageSize(image.width, image.height))
+    const rowWidth = sizes.reduce((sum, size) => sum + size.width, 0) + IMAGE_GAP * (sizes.length - 1)
+    const rowHeight = Math.max(...sizes.map((size) => size.height))
+    const gridSize = graph.getGridSize()
+    const snap = (value: number) => Math.round(value / gridSize) * gridSize
+    let x = snap(center.x - rowWidth / 2)
+    const top = snap(center.y - rowHeight / 2)
+    const parent = graph.getDefaultParent()
+    const added: Cell[] = []
+    graph.stopEditing(false)
+    model.batchUpdate(() => {
+      stored.forEach((image, index) => {
+        const { width, height } = sizes[index]!
+        const y = top + Math.round((rowHeight - height) / 2)
+        const style = imageStyle(image.url) as CellStyle
+        added.push(graph.insertVertex({ parent, value: '', position: [x, y], size: [width, height], style }))
+        x += width + IMAGE_GAP
+      })
+    })
+    graph.setSelectionCells(added)
+    container.focus({ preventScroll: true })
   }
   /**
    * Adds a text shape with `text`: with its top-left corner at `at`, or in the middle of the visible area. The height
@@ -2545,7 +2620,11 @@ export function createDiagramEditor(
       copyCells(cells, data)
       graph.removeCells(cells, true)
     },
-    paste(at, text, html) {
+    paste(at, text, html, files = []) {
+      if (files.length > 0 && images && pastesAsImage(text ?? '', html ?? '')) {
+        void editor.addImages(files, at)
+        return
+      }
       if (text === undefined || text === clipboard.text()) {
         pasteCells(clipboard.read(), at)
         return
@@ -2572,6 +2651,14 @@ export function createDiagramEditor(
         pasteCells(content.cells, at)
         notify()
       })
+    },
+    async addImages(files, at) {
+      if (!images || files.length === 0) return
+      const center = at ?? visibleCenter()
+      const stored = await Promise.all(files.map((file) => images.store(file, file instanceof File ? file.name : undefined)))
+      const added = stored.filter((image): image is StoredImage => image !== null)
+      if (destroyed || added.length === 0) return
+      insertImages(added, center)
     },
     duplicate() {
       const cells = cellsToCopy()
@@ -3074,6 +3161,15 @@ export function createDiagramEditor(
             if (width !== undefined) next.width = Math.max(MIN_SHAPE_SIZE, width)
             // The fields of a table set its height.
             if (height !== undefined && !isTable(cell)) next.height = Math.max(MIN_SHAPE_SIZE, height)
+            // A shape that keeps its proportions, e.g. an image, changes the other side with the one that was given.
+            if (keepsProportions(graph, cell) && geometry.width > 0 && geometry.height > 0) {
+              const ratio = geometry.width / geometry.height
+              if (width !== undefined && height === undefined) {
+                next.height = Math.max(MIN_SHAPE_SIZE, Math.round(next.width / ratio))
+              } else if (height !== undefined && width === undefined) {
+                next.width = Math.max(MIN_SHAPE_SIZE, Math.round(next.height * ratio))
+              }
+            }
           }
           if (next.x === geometry.x && next.y === geometry.y && next.width === geometry.width && next.height === geometry.height) {
             continue
@@ -3407,6 +3503,11 @@ function isRotatableShape(cell: Cell): boolean {
   return isFreeShape(cell) && !isTable(cell) && !cell.getChildren().some((child) => child.isVertex())
 }
 
+/** A shape that keeps its proportions when resized, as draw.io marks it: `aspect=fixed`, e.g. an image. */
+function keepsProportions(graph: Pick<Graph, 'getCellStyle'>, cell: Cell): boolean {
+  return graph.getCellStyle(cell).aspect === 'fixed'
+}
+
 /** A sticky: a shape added as one, or one whose text fits it (see {@link isStickyStyle}). */
 function isSticky(cell: Cell): boolean {
   return cell.isVertex() && isStickyStyle(cell.getStyle())
@@ -3613,6 +3714,12 @@ class ShapeHandler extends VertexHandler {
     const handle = this.getRotationHandlePosition()
     const angle = Math.atan2(handle.x - this.state.getCenterX(), this.state.getCenterY() - handle.y)
     this.startAngle = (angle * 180) / Math.PI
+  }
+
+  // Shift keeps the proportions of a shape while it is resized; a shape that keeps them anyway, e.g. an image, is freed.
+  override isConstrainedEvent(me: InternalMouseEvent) {
+    const shift = eventUtils.isShiftDown(me.getEvent())
+    return keepsProportions(this.graph, this.state.cell) ? !shift : shift
   }
 
   override rotateVertex(me: InternalMouseEvent) {

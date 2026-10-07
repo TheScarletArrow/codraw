@@ -11,7 +11,8 @@ describe('ShapePalette', () => {
 
     const sections = screen.getAllByRole('group')
     expect(sections.map((section) => [section.getAttribute('aria-label'), within(section).getAllByRole('button').length])).toEqual([
-      ['Основные', 6],
+      // The shapes, «Стикер» and «Изображение».
+      ['Основные', 7],
       ['База данных', 1],
       ['Архитектура', 8],
       ['Инфраструктура', 8],
@@ -86,5 +87,33 @@ describe('ShapePalette', () => {
     fireEvent.dragStart(screen.getByRole('button', { name: 'Кэш' }), { dataTransfer: { setData, effectAllowed: '' } })
 
     expect(setData).toHaveBeenCalledWith(SHAPE_DRAG_TYPE, 'cache')
+  })
+
+  it('«Изображение» picks image files and adds them, once the canvas stores images', async () => {
+    const editor = createFakeEditor()
+    const { rerender } = render(<ShapePalette editor={editor} />)
+    const button = screen.getByRole('button', { name: 'Изображение' })
+    expect(button).toBeDisabled()
+
+    editor.setState({ canAddImages: true })
+    rerender(<ShapePalette editor={editor} />)
+    expect(button).toBeEnabled()
+    const input = screen.getByLabelText('Файлы изображений')
+    expect(input).toHaveAttribute('accept', 'image/png,image/jpeg,image/gif,image/webp')
+    const files = [new File(['a'], 'a.png', { type: 'image/png' }), new File(['b'], 'b.jpg', { type: 'image/jpeg' })]
+    await userEvent.upload(input, files)
+
+    expect(editor.addImages).toHaveBeenCalledWith(files)
+    // The same files can be picked again.
+    expect(input).toHaveValue('')
+  })
+
+  it('a search for a picture offers «Изображение»', async () => {
+    render(<ShapePalette editor={createFakeEditor()} />)
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Поиск фигур' }), 'картин')
+
+    const found = screen.getByRole('group', { name: 'Найденные фигуры' })
+    expect(within(found).getByRole('button', { name: 'Изображение' })).toBeInTheDocument()
   })
 })

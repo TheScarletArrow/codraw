@@ -6,17 +6,23 @@ import type { Board } from '../api/boards.ts'
 import type { Proposal } from '../api/proposals.ts'
 import { PROPOSALS_CHANGED } from '../board/messages.ts'
 import { getCells, getPages, initializeDocument, LAYER_CELL_ID, writePage } from '../diagram/model.ts'
+import { uploadImage } from '../api/images.ts'
+import type { ImageHost } from '../diagram/images.ts'
 import type { FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
 import { ProposalPage } from './ProposalPage.tsx'
 
+vi.mock('../api/images.ts', async (original) => ({
+  ...(await original<typeof import('../api/images.ts')>()),
+  uploadImage: vi.fn(async () => ({ id: 'i', url: '/api/boards/b/images/i', contentType: 'image/png', size: 3, width: 4, height: 2 })),
+}))
 vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
 // maxGraph needs real SVG layout; the stand-in hands a fake editor to the page, like the real canvas does, and keeps the
-// latest one in `canvas.editor`.
-const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
+// latest one in `canvas.editor` and the host of images that the page gives it in `canvas.images`.
+const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null, images: null as ImageHost | null }))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
@@ -25,13 +31,16 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       pageId,
       readOnly = false,
       collaboration = true,
+      images = null,
       onEditor,
     }: {
       pageId: string
       readOnly?: boolean
       collaboration?: boolean
+      images?: ImageHost | null
       onEditor: (editor: FakeEditor | null) => void
     }) => {
+      canvas.images = images
       useEffect(() => {
         canvas.editor = createFakeEditor({ pageId, readOnly })
         onEditor(canvas.editor)
@@ -123,6 +132,16 @@ describe('ProposalPage', () => {
     act(() => editor.setSignatures([{ cellId: 'sticky', by: ALICE.id, name: 'Алиса', color: '#1f2328' }]))
     expect(screen.getByRole('toolbar', { name: 'Стикеры' })).toBeInTheDocument()
     expect(screen.getByTestId('sticky-signature')).toHaveTextContent('Алиса')
+  })
+
+  it('stores the images that the author adds to the draft on the board, in the name of the proposal', async () => {
+    const provider = await openDraft()
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+
+    await act(() => canvas.images!.store(new File(['png'], 'logo.png', { type: 'image/png' })))
+
+    expect(uploadImage).toHaveBeenCalledWith({ boardId, proposalId }, expect.any(File), expect.any(Function))
   })
 
   it('offers neither the laser pointer nor the comment tool on the draft, which nobody else is on, but the pencil', async () => {

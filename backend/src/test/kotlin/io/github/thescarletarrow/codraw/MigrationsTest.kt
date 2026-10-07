@@ -43,6 +43,7 @@ class MigrationsTest {
         private val documentColumns = setOf("board_id", "state", "updated_at", "editors")
         private val reviewRequestNotificationColumns =
             notificationColumns + setOf("thread_id", "proposal_id", "page_id", "cell_id")
+        private val imagesTables = organizationTables + "board_images"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -54,11 +55,18 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V18 create tables on an empty database and U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(17, flyway().migrate().migrationsExecuted)
-        assertEquals(organizationTables, appTables())
+    fun `V1 to V19 create tables on an empty database and U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(18, flyway().migrate().migrationsExecuted)
+        assertEquals(imagesTables, appTables())
+        assertEquals(
+            setOf("id", "board_id", "sha256", "content_type", "size", "width", "height", "created_at"),
+            columns("board_images"),
+        )
         assertEquals(documentColumns + "search_text", columns("board_documents"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
+
+        revert("U19__claude_eager_tesla_oz6ry8_canvas_images.sql")
+        assertEquals(organizationTables, appTables())
 
         revert("U18__claude_relaxed_euler_o3h2ky_element_status.sql")
         assertEquals(organizationTables, appTables())
@@ -124,8 +132,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(17, flyway().migrate().migrationsExecuted)
-        assertEquals(organizationTables, appTables())
+        assertEquals(18, flyway().migrate().migrationsExecuted)
+        assertEquals(imagesTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
@@ -240,6 +248,27 @@ class MigrationsTest {
     }
 
     @Test
+    fun `V19 keeps a file of a board once, only raster types, and the rows of images of a deleted board`() {
+        assertEquals(18, flyway().migrate().migrationsExecuted)
+        val insert = { board: String, sha: String, type: String ->
+            jdbcClient.sql(
+                """
+                INSERT INTO board_images (board_id, sha256, content_type, size, width, height, created_at)
+                VALUES ('$board'::uuid, decode(repeat('$sha', 32), 'hex'), '$type', 100, 10, 20, now())
+                """,
+            ).update()
+        }
+
+        // No board of that id: the rows wait for the cleanup to delete their objects.
+        insert("0199a000-0000-7000-8000-000000000001", "aa", "image/png")
+        insert("0199a000-0000-7000-8000-000000000002", "aa", "image/webp")
+
+        assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-000000000001", "aa", "image/jpeg") }
+        assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-000000000001", "bb", "image/svg+xml") }
+        assertEquals(2, count("board_images"))
+    }
+
+    @Test
     fun `V18 keeps notifications about reviews with a page and an element, and the other kinds without them`() {
         flyway("17").migrate()
         jdbcClient.sql(
@@ -255,7 +284,7 @@ class MigrationsTest {
             """,
         ).update()
 
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("18").migrate().migrationsExecuted)
         val notification = { kind: String, page: String?, cell: String? ->
             jdbcClient.sql(
                 """
@@ -302,7 +331,7 @@ class MigrationsTest {
         assertFailsWith<DataIntegrityViolationException> {
             jdbcClient.sql("UPDATE notifications SET kind = 'REVIEW_REQUEST'").update()
         }
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("18").migrate().migrationsExecuted)
     }
 
     @Test

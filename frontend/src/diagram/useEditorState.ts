@@ -32,6 +32,7 @@ const NO_EDITOR: EditorState = {
   pencilLine: DEFAULT_PENCIL_LINE,
   lock: null,
   attribution: null,
+  canAddImages: false,
   link: null,
   stickies: null,
   status: null,

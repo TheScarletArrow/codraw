@@ -1,49 +1,77 @@
-import { act, render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
-import { setThemeChoice, THEME_KEY } from '../theme/theme.ts'
-import { DARK_CANVAS_INK } from './canvasTheme.ts'
+import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { DiagramCanvas } from './DiagramCanvas.tsx'
-import type { DiagramEditor } from './editor.ts'
-import { DEFAULT_PAGE_ID, initializeDocument } from './model.ts'
+import { createDiagramEditor } from './editor.ts'
+import type { ImageHost } from './images.ts'
+import { SHAPE_DRAG_TYPE } from './shapes.ts'
+
+vi.mock('./editor.ts', () => ({ createDiagramEditor: vi.fn() }))
+
+const host: ImageHost = { store: vi.fn(), holds: () => false }
+
+function renderCanvas(readOnly = false, images: ImageHost | null = host): FakeEditor {
+  const editor = createFakeEditor({ readOnly })
+  vi.mocked(createDiagramEditor).mockReturnValue(editor)
+  // jsdom has no events of dragging, which would carry the point.
+  vi.mocked(editor.toDiagramPoint).mockReturnValue({ x: 60, y: 80 })
+  render(<DiagramCanvas document={new Y.Doc()} pageId="page-1" readOnly={readOnly} images={images} onEditor={() => {}} />)
+  return editor
+}
+
+/** A drag of files, or of a shape of the palette, over the canvas. */
+function transfer(files: File[], shape?: string) {
+  return {
+    types: [...(files.length > 0 ? ['Files'] : []), ...(shape ? [SHAPE_DRAG_TYPE] : [])],
+    files,
+    getData: (type: string) => (type === SHAPE_DRAG_TYPE ? (shape ?? '') : ''),
+    dropEffect: 'none',
+  }
+}
+
+afterEach(() => vi.mocked(createDiagramEditor).mockReset())
 
 describe('DiagramCanvas', () => {
-  afterEach(() => setThemeChoice('system'))
+  it('gives the editor the host of images of the page', () => {
+    renderCanvas()
 
-  function renderCanvas() {
-    const doc = new Y.Doc()
-    initializeDocument(doc)
-    const onEditor = vi.fn<(editor: DiagramEditor | null) => void>()
-    render(<DiagramCanvas document={doc} pageId={DEFAULT_PAGE_ID} onEditor={onEditor} />)
-    const editor = onEditor.mock.calls[0]![0]!
-    const { graph } = editor
-    const edge = graph.insertEdge({
-      parent: graph.getDefaultParent(),
-      value: '',
-      source: editor.addShape('rectangle', { x: 100, y: 100 }),
-      target: editor.addShape('rectangle', { x: 400, y: 100 }),
-    })
-    const stroke = () => graph.getView().getState(edge)!.style.strokeColor
-    return { onEditor, stroke }
-  }
-
-  it('draws the page in the theme of the app from the start', () => {
-    localStorage.setItem(THEME_KEY, 'dark')
-
-    const { stroke } = renderCanvas()
-
-    expect(stroke()).toBe(DARK_CANVAS_INK)
+    expect(createDiagramEditor).toHaveBeenCalledWith(expect.any(HTMLElement), expect.any(Y.Doc), expect.objectContaining({ images: host }))
   })
 
-  it('follows a change of the theme without creating the canvas again', () => {
-    const { onEditor, stroke } = renderCanvas()
-    expect(stroke()).toBe('#1f2328')
+  it('adds dropped files as images at the point where they are dropped', () => {
+    const editor = renderCanvas()
+    const canvas = screen.getByTestId('diagram-canvas')
+    const files = [new File(['png'], 'logo.png', { type: 'image/png' })]
+    const dataTransfer = transfer(files)
 
-    act(() => setThemeChoice('dark'))
-    expect(stroke()).toBe(DARK_CANVAS_INK)
+    fireEvent.dragOver(canvas, { dataTransfer })
+    expect(dataTransfer.dropEffect).toBe('copy')
+    const dropped = fireEvent.drop(canvas, { dataTransfer })
 
-    act(() => setThemeChoice('light'))
-    expect(stroke()).toBe('#1f2328')
-    expect(onEditor).toHaveBeenCalledTimes(1)
+    expect(dropped).toBe(false)
+    expect(editor.addImages).toHaveBeenCalledWith(files, { x: 60, y: 80 })
+  })
+
+  it('adds a dragged shape of the palette, as before', () => {
+    const editor = renderCanvas()
+
+    fireEvent.drop(screen.getByTestId('diagram-canvas'), { dataTransfer: transfer([], 'ellipse') })
+
+    expect(editor.addShape).toHaveBeenCalledWith('ellipse', { x: 60, y: 80 })
+    expect(editor.addImages).not.toHaveBeenCalled()
+  })
+
+  it('keeps files dropped by a participant who only views from the browser, and adds nothing', () => {
+    const editor = renderCanvas(true, null)
+    const canvas = screen.getByTestId('diagram-canvas')
+    const dataTransfer = transfer([new File(['png'], 'logo.png', { type: 'image/png' })])
+
+    const over = fireEvent.dragOver(canvas, { dataTransfer })
+    expect(over).toBe(false)
+    expect(dataTransfer.dropEffect).toBe('none')
+    expect(fireEvent.drop(canvas, { dataTransfer })).toBe(false)
+
+    expect(editor.addImages).not.toHaveBeenCalled()
   })
 })

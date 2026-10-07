@@ -2,9 +2,10 @@ import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { publishEmbedImage, type Embed } from '../api/embed.ts'
+import { HttpError } from '../api/http.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument } from '../diagram/model.ts'
 import { renderPageSvg } from '../diagram/renderPage.ts'
-import { PUBLISH_INTERVAL, PUBLISH_QUIET, useEmbedPublisher } from './useEmbedPublisher.ts'
+import { publishEmbed, PUBLISH_INTERVAL, PUBLISH_QUIET, useEmbedPublisher } from './useEmbedPublisher.ts'
 
 vi.mock('../diagram/renderPage.ts', () => ({ renderPageSvg: vi.fn(() => '<svg/>') }))
 vi.mock('../api/embed.ts', () => ({ publishEmbedImage: vi.fn(async () => {}) }))
@@ -62,6 +63,24 @@ describe('publishing the live image', () => {
     expect(publishEmbedImage).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(1)
     expect(publishEmbedImage).toHaveBeenCalledTimes(2)
+  })
+
+  it('puts the pictures of image shapes into the image, and goes without them when the backend finds it too large', async () => {
+    vi.useRealTimers()
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">' +
+      '<image width="40" height="20" xlink:href="/api/boards/b/images/i"/></svg>'
+    vi.mocked(renderPageSvg).mockReturnValueOnce(svg)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob(['png'], { type: 'image/png' }) })))
+    vi.mocked(publishEmbedImage).mockRejectedValueOnce(new HttpError(413))
+
+    await publishEmbed('board', document, DEFAULT_PAGE_ID)
+
+    const published = vi.mocked(publishEmbedImage).mock.calls.map(([, , image]) => image)
+    expect(published).toHaveLength(2)
+    expect(published[0]).toContain('xlink:href="data:image/png;base64,cG5n"')
+    expect(published[1]).toBe(svg)
+    vi.unstubAllGlobals()
   })
 
   it('leaves the changes of others to their browsers, and publishes nothing for a viewer or without an image', () => {

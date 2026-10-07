@@ -84,6 +84,17 @@ describe('items of the list of changes', () => {
     ])
   })
 
+  it('names an image shape and the change of its picture', () => {
+    const version = boardWith(shapeData('logo', 'a0', { style: { shape: 'image', image: '/api/boards/b/images/1', aspect: 'fixed' } }))
+    const now = laterState(version, (doc) => {
+      ;(cell(doc, 'logo').get('style') as Y.Map<unknown>).set('image', '/api/boards/b/images/2')
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, kind, details }) => [title, kind, details])).toEqual([
+      ['Изображение', 'Изображение', ['изображение']],
+    ])
+  })
+
   it('says that an element was locked or unlocked', () => {
     const version = boardWith(
       shapeData('a', 'a0', { value: 'API', style: { fillColor: '#ffffff' } }),

@@ -29,7 +29,8 @@ const COMMANDS: Record<
   (editor: DiagramEditor, request: ContextMenuRequest) => void
 > = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
-  paste: (editor, { point }) => void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html)),
+  paste: (editor, { point }) =>
+    void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html, content?.images)),
   selectAll: (editor) => editor.selectAll(),
   // At the point of the click, editing its text at once.
   addSticky: (editor, { point }) => editor.addSticky(point),

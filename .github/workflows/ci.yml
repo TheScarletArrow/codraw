@@ -53,6 +53,19 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # The storage of images, as in docker-compose.yml; it starts without a command, which services cannot pass.
+      s3:
+        image: rustfs/rustfs:1.0.1
+        env:
+          RUSTFS_ACCESS_KEY: codraw
+          RUSTFS_SECRET_KEY: codraw-secret
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -fs http://localhost:9000/health"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -88,6 +101,7 @@ jobs:
       CODRAW_VERSION: ${{ github.sha }}
       # Test secrets of the stack that this job starts.
       POSTGRES_PASSWORD: ci-postgres-password
+      CODRAW_S3_SECRET_KEY: ci-s3-secret-key
       CODRAW_INTERNAL_TOKEN: ci-internal-token
     steps:
       - uses: actions/checkout@v5

@@ -87,7 +87,7 @@ describe('CanvasMenu', () => {
 
     await user.click(screen.getByRole('menuitem', { name: 'Вставить' }))
 
-    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, 'Заметка', ''))
+    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, 'Заметка', '', []))
     expect(screen.queryByRole('menu')).toBeNull()
     expect(editor.focus).toHaveBeenCalled()
   })
@@ -112,7 +112,7 @@ describe('CanvasMenu', () => {
 
     await user.click(screen.getByRole('menuitem', { name: 'Вставить' }))
 
-    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, undefined, undefined))
+    await waitFor(() => expect(editor.paste).toHaveBeenCalledWith({ x: 300, y: 200 }, undefined, undefined, undefined))
     vi.restoreAllMocks()
   })
 

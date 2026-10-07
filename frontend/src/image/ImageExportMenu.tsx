@@ -18,6 +18,7 @@ import {
   type PngScale,
 } from './files.ts'
 import { boardImages, imagesToPdf, pdfPages } from './pdf.ts'
+import { embeddedImages, PDF_IMAGE_TYPES, withInlinedImages } from './inlineImages.ts'
 import { canCopyImages, copyPng, svgToPng } from './png.ts'
 
 interface ImageExportMenuProps {
@@ -76,20 +77,26 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
 
   // SVG and PDF open the links of elements to addresses and boards; a PNG has nothing to click.
   const exportImage = (links: boolean) => editor?.exportSvg({ selectionOnly: onlySelected, transparent, links }) ?? null
-  /** The SVG with the diagram of what it shows, so that CoDraw and draw.io open it for editing. */
-  const editableSvg = (image: ExportedImage) => {
-    const diagram = doc && editor && exportDrawioPage(doc, editor.pageId, image.cellIds ?? undefined)
+  /**
+   * The SVG with the diagram of what it shows, so that CoDraw and draw.io open it for editing; the pictures of the board
+   * are in the diagram too.
+   */
+  const editableSvg = async (image: ExportedImage) => {
+    const pictures = doc && editor ? await embeddedImages(doc, editor.pageId) : undefined
+    const diagram = doc && editor && exportDrawioPage(doc, editor.pageId, image.cellIds ?? undefined, pictures)
     return diagram ? embedDiagram(image.svg, diagram) : image.svg
   }
 
   const save = async (format: ImageFormat) => {
-    const image = exportImage(format !== 'png')
-    if (!image) return
+    const exported = exportImage(format !== 'png')
+    if (!exported) return
     setBusy(true)
     setMessage(null)
     try {
+      // The pictures of image shapes go into the file: it shows them without access to the board.
+      const image = await withInlinedImages(exported)
       const blob =
-        format === 'png' ? await svgToPng(image, scale) : new Blob([editableSvg(image)], { type: 'image/svg+xml' })
+        format === 'png' ? await svgToPng(image, scale) : new Blob([await editableSvg(image)], { type: 'image/svg+xml' })
       downloadBlob(blob, imageFileName(boardTitle, pageName, pageCount, format))
     } catch {
       setMessage('save-failed')
@@ -100,9 +107,9 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
 
   /** The images of the pages of the PDF: of the pages of the board with objects, or of the current page. */
   const pdfImages = async (): Promise<ExportedImage[]> => {
-    if (allPages && doc && editor) return boardImages(doc, editor, { transparent, links: true })
-    const image = exportImage(true)
-    return image ? [image] : []
+    const exported = allPages && doc && editor ? await boardImages(doc, editor, { transparent, links: true }) : [exportImage(true)]
+    const images = exported.filter((image) => image !== null)
+    return Promise.all(images.map((image) => withInlinedImages(image, { types: PDF_IMAGE_TYPES })))
   }
 
   const savePdf = async () => {
@@ -128,7 +135,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
     setBusy(true)
     setMessage(null)
     // Called right in the click handler: the browser lets only it write to the clipboard.
-    copyPng(svgToPng(image, scale))
+    copyPng(withInlinedImages(image).then((inlined) => svgToPng(inlined, scale)))
       .then(
         () => setMessage('copied'),
         () => setMessage('copy-failed'),
