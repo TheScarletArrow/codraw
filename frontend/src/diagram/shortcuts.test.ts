@@ -49,6 +49,9 @@ describe('shortcuts', () => {
     expect(formatKeys('F2', true)).toBe('F2')
     expect(formatKeys('Mod+F', false)).toBe('Ctrl+F')
     expect(formatKeys('Mod+F', true)).toBe('⌘F')
+    expect(formatKeys('Mod+DoubleClick', false)).toBe('Ctrl+двойной щелчок')
+    expect(formatKeys('Mod+DoubleClick', true)).toBe('⌘+двойной щелчок')
+    expect(formatKeys('N', true)).toBe('N')
   })
 
   it('leaves the editing shortcuts out for a participant who may only view', () => {
@@ -62,6 +65,7 @@ describe('shortcuts', () => {
     expect(actions).toContain('Сообщение у курсора')
     expect(actions).not.toContain('Удалить')
     expect(actions).not.toContain('Дублировать')
+    expect(actions).not.toContain('Добавить стикер')
     expect(shortcutGroups(true).map((group) => group.title)).not.toContain('Текст')
   })
 })

@@ -50,6 +50,8 @@ import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
 import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
+import { StickyPanel } from '../diagram/StickyPanel.tsx'
+import { StickySignatures } from '../diagram/StickySignatures.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
@@ -575,6 +577,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     participantId={author.id}
                     onEditor={setEditor}
                   />
+                  <StickySignatures editor={editor} />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
@@ -593,6 +596,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <LockBadges editor={editor} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}
+                  {!readOnly && <StickyPanel editor={editor} />}
                   <CanvasMenu editor={editor} onComment={commentOn} />
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                 </>

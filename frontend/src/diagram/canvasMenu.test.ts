@@ -5,8 +5,10 @@ const all = { canPaste: true, canUndo: true, canRedo: true }
 const labels = (target: MenuTarget, availability: MenuAvailability = all) => menuItems(target, availability).map((item) => item.label)
 
 describe('menuItems', () => {
-  it('offers paste, select all, undo and redo on the empty canvas', () => {
-    expect(labels('canvas')).toEqual(['Вставить', 'Выделить всё', 'Отменить', 'Повторить'])
+  it('offers paste, select all, a sticky, undo and redo on the empty canvas', () => {
+    expect(labels('canvas')).toEqual(['Вставить', 'Выделить всё', 'Добавить стикер', 'Отменить', 'Повторить'])
+    expect(menuItems('canvas', all).find((item) => item.command === 'addSticky')).toMatchObject({ shortcut: 'N', disabled: false })
+    expect(labels('canvas', { ...all, readOnly: true })).not.toContain('Добавить стикер')
   })
 
   it('offers the label, the clipboard, the order and deletion for a shape', () => {
@@ -200,7 +202,14 @@ describe('shortcutLabel', () => {
   it('offers commenting on the point of the click at the end of the menu of the empty canvas, when the page takes comments', () => {
     const items = menuItems('canvas', { ...all, canComment: true })
 
-    expect(items.map((item) => item.label)).toEqual(['Вставить', 'Выделить всё', 'Отменить', 'Повторить', 'Комментировать здесь'])
+    expect(items.map((item) => item.label)).toEqual([
+      'Вставить',
+      'Выделить всё',
+      'Добавить стикер',
+      'Отменить',
+      'Повторить',
+      'Комментировать здесь',
+    ])
     expect(items.at(-1)).toMatchObject({ command: 'commentHere', separatorBefore: true, disabled: false })
     expect(labels('canvas', all)).not.toContain('Комментировать здесь')
     for (const target of ['shape', 'table', 'field', 'index', 'edge', 'group', 'selection'] as const) {

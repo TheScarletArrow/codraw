@@ -21,6 +21,7 @@ import {
   RubberBandHandler,
   SelectionCellsHandler,
   StackLayout,
+  StyleChange,
   StyleDefaultsConfig,
   TooltipHandler,
   ValueChange,
@@ -33,6 +34,7 @@ import {
   type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
+import { latinKeyCode } from '../lib/keyboard.ts'
 import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
 import { fieldText, plainText, renameField, splitField } from '../sql/tableField.ts'
 import { indexText, renameIndex, renameIndexColumn, splitIndex, type IndexParts } from '../sql/tableIndex.ts'
@@ -67,8 +69,12 @@ import {
   MODIFIED_BY_KEY,
   MODIFIED_BY_NAME_KEY,
   readAttribution,
+  readTextAuthor,
+  TEXT_AUTHOR_KEY,
+  TEXT_AUTHOR_NAME_KEY,
   writeAttribution,
   type Attribution,
+  type TextAuthor,
 } from './attribution.ts'
 import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
@@ -93,10 +99,13 @@ import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
+import { fittedFontSize, rememberStickyColor, stickyColor } from './stickies.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
   findShape,
   groupShapes,
+  hasTextFit,
+  isStickyStyle,
   isTableStyle,
   markedStyle,
   shapeGroup,
@@ -106,6 +115,7 @@ import {
   TABLE_HEADER_HEIGHT,
   TABLE_INDEX_GAP,
   TABLE_INDEX_KEY,
+  TEXT_FIT_KEY,
   type ShapeId,
   type ShapeGroup,
   type ShapePreset,
@@ -285,6 +295,24 @@ export interface SelectionAttribution extends Attribution {
   mine: boolean
 }
 
+/** The selected stickies, which the panel of stickies changes; see {@link DiagramEditor.setStickyColor}. */
+export interface SelectedStickies {
+  cellIds: string[]
+  /** Their color; `null` when it differs between them. */
+  color: string | null
+  /** The size of the text fits every one of them (see {@link DiagramEditor.setTextFit}). */
+  textFit: boolean
+  /** Every one of them is locked: the panel changes none of them. */
+  locked: boolean
+}
+
+/** A sticky of the page with who wrote its text, which the canvas shows at its bottom. */
+export interface StickySignature extends TextAuthor {
+  cellId: string
+  /** The color of the text of the sticky, which its signature takes. */
+  color: string
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -339,6 +367,8 @@ export interface EditorState {
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
   attribution: SelectionAttribution | null
+  /** The selected stickies, or `null` when none is selected or the participant may only view. */
+  stickies: SelectedStickies | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -368,8 +398,33 @@ export interface DiagramEditor {
   readonly pageId: string
   /** The participant may only view the page: the commands that would change it do nothing. */
   readonly readOnly: boolean
-  /** Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area. */
+  /**
+   * Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area; a sticky has
+   * the color of new stickies.
+   */
   addShape(shape: ShapeId, center?: Point): Cell | null
+  /**
+   * Adds a sticky of the color of new stickies centred at `center`, without it at the pointer over the canvas or in the
+   * middle of the visible area, selects it and starts editing its text: the text applied in that editing is the undo
+   * step that adds the sticky. Turns the laser pointer and the comment tool off.
+   */
+  addSticky(center?: Point): Cell | null
+  /**
+   * Gives the selected stickies that are not locked the fill `color` as one undo step, and makes it the color of new
+   * stickies, which the browser remembers.
+   */
+  setStickyColor(color: string): void
+  /**
+   * Turns on or off the size of the text that fits the selected stickies that are not locked, as one undo step: the
+   * largest size up to 20 at which their text fits them, taken when their text, size or font changes. On, it turns
+   * their auto width off and fits the size at once; a size set by hand turns it off.
+   */
+  setTextFit(enabled: boolean): void
+  /**
+   * The stickies of the page that keep who wrote their text, but those turned and the one whose text is being edited,
+   * which show no signature.
+   */
+  stickySignatures(): StickySignature[]
   /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
   addTableField(): Cell | null
   /**
@@ -690,6 +745,7 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Mod+Y', editing: true, run: (editor) => editor.redo() },
   { keys: 'Mod+D', editing: true, run: (editor) => editor.duplicate() },
   { keys: 'F2', editing: true, run: (editor) => editor.editLabel() },
+  { keys: 'N', editing: true, run: (editor) => editor.addSticky() },
   { keys: 'Mod+B', editing: true, run: (editor) => editor.toggleFontStyle('bold') },
   { keys: 'Mod+I', editing: true, run: (editor) => editor.toggleFontStyle('italic') },
   { keys: 'Mod+U', editing: true, run: (editor) => editor.toggleFontStyle('underline') },
@@ -728,6 +784,9 @@ const TOOL_CLASSES: Record<CanvasTool, string> = { laser: 'laser-pointer', comme
 
 /** Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes. */
 const TOOL_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
+
+/** Ctrl, or Cmd on macOS: `Mod` of the shortcuts, with a key or with the mouse. */
+const isModDown = (event: KeyboardEvent | MouseEvent) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
 
 /** Bit of the right button in `MouseEvent.buttons`. */
 const RIGHT_BUTTON_BIT = 2
@@ -780,6 +839,9 @@ export interface DiagramEditorOptions {
 /** Commands of the editor that change the page; a read-only editor ignores them. */
 const CHANGING_COMMANDS = [
   'addShape',
+  'addSticky',
+  'setStickyColor',
+  'setTextFit',
   'addTableField',
   'setFieldProps',
   'addTableIndex',
@@ -918,6 +980,8 @@ export function createDiagramEditor(
     editing = next
     editingListeners.forEach((listener) => listener(next))
   }
+  /** A sticky that {@link DiagramEditor.addSticky} added, whose text is being edited, and the undo step that added it. */
+  let newSticky: { cell: Cell; step: unknown } | null = null
   if (cellEditor) {
     const startEditing = cellEditor.startEditing.bind(cellEditor)
     cellEditor.startEditing = (cell: Cell, trigger?: MouseEvent | null) => {
@@ -934,7 +998,22 @@ export function createDiagramEditor(
         delete textarea.dataset.placeholder
         textarea.style.minWidth = ''
       }
-      stopEditing(cancel)
+      // The text applied to a new sticky goes into the undo step that added it while that step is the last one, as
+      // changes within the capture timeout of the undo manager do: one step takes the sticky away with its text.
+      const sticky = newSticky
+      newSticky = null
+      const joining =
+        !cancel &&
+        sticky !== null &&
+        cellEditor.getEditingCell() === sticky.cell &&
+        undoManager.undoStack.at(-1) === sticky.step
+      const captureTimeout = undoManager.captureTimeout
+      if (joining) undoManager.captureTimeout = Number.POSITIVE_INFINITY
+      try {
+        stopEditing(cancel)
+      } finally {
+        undoManager.captureTimeout = captureTimeout
+      }
       if (field) redrawField(field)
       setEditing(null)
     }
@@ -1050,6 +1129,7 @@ export function createDiagramEditor(
   const textWrapCells = () => graph.getSelectionCells().filter((cell) => allowsTextWrap(graph, cell))
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
   const rotationCells = () => graph.getSelectionCells().filter(isRotatableShape)
+  const selectedStickies = () => graph.getSelectionCells().filter(isSticky)
   /** The cell of the page that a cell belongs to: a field to its table, a shape of a group to the group. */
   const pageCell = (cell: Cell): Cell | null => {
     let current: Cell | null = cell
@@ -1148,6 +1228,17 @@ export function createDiagramEditor(
     }
   }
 
+  const selectionStickies = (): SelectedStickies | null => {
+    const stickies = selectedStickies()
+    if (readOnly || stickies.length === 0) return null
+    return {
+      cellIds: stickies.map((cell) => cell.getId()!),
+      color: same(stickies.map((cell) => colorOf(cell, 'fill'))),
+      textFit: stickies.every((cell) => hasTextFit(cell.getStyle())),
+      locked: stickies.every((cell) => !isUnlocked(cell)),
+    }
+  }
+
   /** Sets a style key of cells, or removes it with `undefined`, in one change of the model. */
   const setStyleValue = (cells: Cell[], key: string, value: StyleValue | undefined) => {
     model.batchUpdate(() => {
@@ -1220,13 +1311,15 @@ export function createDiagramEditor(
     })
   }
   /**
-   * Sets text sizes in one change: fields and headers of tables get the height that fits their text, and shapes with
-   * auto width fit their width.
+   * Sets text sizes in one change: fields and headers of tables get the height that fits their text, shapes with
+   * auto width fit their width, and stickies no longer fit the size of their text.
    */
   const applyFontSizes = (cells: Cell[], sizeOf: (cell: Cell) => number) => {
     if (cells.length === 0) return
     graph.stopEditing(false)
     model.batchUpdate(() => {
+      // A size set by hand replaces the size that fits the text.
+      setStyleValue(cells, TEXT_FIT_KEY, undefined)
       for (const cell of cells) {
         const size = sizeOf(cell)
         setStyleValue([cell], 'fontSize', size)
@@ -1285,6 +1378,39 @@ export function createDiagramEditor(
     }
   }
   model.addListener(InternalEvent.END_EDIT, syncBases)
+  // The size of the text of stickies that fit it follows their text, size and font in the change that changes them,
+  // when it is done but not yet written: one undo step for everybody, and one size that every participant, every image
+  // and draw.io show. Changes that the binding brings were fitted by their author, and a restore brings the sizes of
+  // the version.
+  let fittingTexts = false
+  let restoring = false
+  const fitTexts = () => {
+    if (readOnly || fittingTexts || restoring || binding.isApplyingRemote()) return
+    const changed = new Set<Cell>()
+    for (const change of (model.currentEdit as { changes: object[] }).changes) {
+      const lays =
+        change instanceof ValueChange ||
+        (change instanceof GeometryChange && resized(change.previous, change.geometry)) ||
+        (change instanceof StyleChange && FIT_STYLE_KEYS.some((key) => changedKey(change, key)))
+      if (lays) changed.add(change.cell)
+    }
+    const fitted = [...changed].filter((cell) => model.getCell(cell.getId()!) === cell && fitsText(graph, cell))
+    if (fitted.length === 0) return
+    fittingTexts = true
+    try {
+      model.batchUpdate(() => {
+        for (const cell of fitted) {
+          const { width, height } = cell.getGeometry()!
+          const style = graph.getCellStyle(cell)
+          const size = fittedFontSize(String(cell.getValue() ?? ''), style, width, height, hasTextWrap(cell.getStyle()))
+          setStyleValue([cell], 'fontSize', size)
+        }
+      })
+    } finally {
+      fittingTexts = false
+    }
+  }
+  model.addListener(InternalEvent.END_EDIT, fitTexts)
 
   /** The tool that takes the main button, or `null` for selecting and editing; see the listeners of the tools below. */
   let tool: CanvasTool | null = null
@@ -1317,6 +1443,7 @@ export function createDiagramEditor(
       commentTool: tool === 'comment',
       lock: selectionLock(),
       attribution: selectionAttribution(),
+      stickies: selectionStickies(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1345,6 +1472,13 @@ export function createDiagramEditor(
     if (selected && events.some(changed)) notify()
   }
   cells.observeDeep(handleAttribution)
+  // Who wrote a sticky shows on the canvas; it may change without a change of the model, e.g. restored with a version.
+  const handleTextAuthors = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event instanceof Y.YMapEvent &&
+      (event.keysChanged.has(TEXT_AUTHOR_KEY) || event.keysChanged.has(TEXT_AUTHOR_NAME_KEY))
+    if (events.some(changed)) notifyView()
+  }
   // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
   // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
   // handles of edges in English. The single selected element shows who changed it under the canvas already.
@@ -1399,7 +1533,20 @@ export function createDiagramEditor(
   }
   const keyHandler = new KeyHandler(graph)
   // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
-  keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
+  keyHandler.isControlDown = isModDown
+  // maxGraph looks keys up by their key code, which a layout without Latin letters may change: a letter is the letter
+  // of its key on the Latin layout, as the shortcuts of the browser read it, e.g. `N` for the «т» of the Russian one.
+  keyHandler.getFunction = (event) => {
+    if (!event || event.altKey) return null
+    const keys = keyHandler.isControlDown(event)
+      ? event.shiftKey
+        ? keyHandler.controlShiftKeys
+        : keyHandler.controlKeys
+      : event.shiftKey
+        ? keyHandler.shiftKeys
+        : keyHandler.normalKeys
+    return keys[latinKeyCode(event)] ?? null
+  }
   for (const binding of KEY_BINDINGS) {
     // The editor is made below; the keys reach it once it is.
     if ((!readOnly || !binding.editing) && (collaboration || !binding.collaboration)) {
@@ -1468,11 +1615,20 @@ export function createDiagramEditor(
   }
 
   const pointerListeners = new Set<(point: Point | null) => void>()
+  /**
+   * Where the pointer over the canvas is on the screen, or `null` once it leaves, for a sticky added with the keyboard:
+   * in diagram coordinates once the key is pressed, as the canvas may have scrolled since the pointer moved.
+   */
+  let pointer: { clientX: number; clientY: number } | null = null
   const handlePointerMove = (event: PointerEvent) => {
+    pointer = { clientX: event.clientX, clientY: event.clientY }
     const point = toDiagramPoint(event.clientX, event.clientY)
     pointerListeners.forEach((listener) => listener(point))
   }
-  const handlePointerLeave = () => pointerListeners.forEach((listener) => listener(null))
+  const handlePointerLeave = () => {
+    pointer = null
+    pointerListeners.forEach((listener) => listener(null))
+  }
   // Captured: maxGraph stops pointer events on connection points and selection handles from bubbling up.
   container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
@@ -1552,6 +1708,17 @@ export function createDiagramEditor(
   }
   page.addEventListener('keydown', handleToolKey)
 
+  // A double click with Mod on the empty canvas, also inside a frame or a group, which let clicks through, adds a
+  // sticky there. maxGraph does nothing with a double click there, and one on a cell still edits its label; with a tool
+  // on, maxGraph gets no double click at all.
+  const handleDoubleClick = (_sender: unknown, event: EventObject) => {
+    const click = event.getProperty('event') as MouseEvent
+    if (event.getProperty('cell') || !isModDown(click)) return
+    event.consume()
+    editor.addSticky(toDiagramPoint(click.clientX, click.clientY))
+  }
+  graph.addListener(InternalEvent.DOUBLE_CLICK, handleDoubleClick)
+
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const menuTarget = (): MenuTarget => {
     const cells = graph.getSelectionCells()
@@ -1607,6 +1774,7 @@ export function createDiagramEditor(
   graph.getView().addListener(InternalEvent.TRANSLATE, notifyView)
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
   model.addListener(InternalEvent.CHANGE, notifyView)
+  cells.observeDeep(handleTextAuthors)
 
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
@@ -1752,8 +1920,10 @@ export function createDiagramEditor(
     pageId,
     readOnly,
     addShape(shapeId, center = visibleCenter()) {
-      const shape = findShape(shapeId)
-      if (!shape) return null
+      const preset = findShape(shapeId)
+      if (!preset) return null
+      const shape =
+        preset.id === 'sticky' ? { ...preset, style: { ...preset.style, fillColor: stickyColor() } } : preset
       const size = graph.getGridSize()
       const snap = (value: number) => Math.round(value / size) * size
       const parent = graph.getDefaultParent()
@@ -1788,6 +1958,56 @@ export function createDiagramEditor(
       graph.setSelectionCell(cell)
       container.focus({ preventScroll: true })
       return cell
+    },
+    addSticky(center) {
+      graph.stopEditing(false)
+      setTool(null)
+      const at = center ?? (pointer ? toDiagramPoint(pointer.clientX, pointer.clientY) : visibleCenter())
+      const steps = undoManager.undoStack.length
+      const cell = editor.addShape('sticky', at)
+      if (!cell) return null
+      graph.startEditingAtCell(cell)
+      // After the editing started: starting it stops any editing before it.
+      if (graph.isEditing(cell) && undoManager.undoStack.length > steps) {
+        newSticky = { cell, step: undoManager.undoStack.at(-1) }
+      }
+      return cell
+    },
+    setStickyColor(color) {
+      rememberStickyColor(color)
+      const stickies = unlocked(selectedStickies())
+      if (stickies.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue(stickies, 'fillColor', color)
+        // The notes of draw.io may have a gradient, which would keep a part of the old color.
+        setStyleValue(stickies, 'gradientColor', undefined)
+      })
+    },
+    setTextFit(enabled) {
+      const stickies = unlocked(selectedStickies())
+      if (stickies.length === 0) return
+      graph.stopEditing(false)
+      // Fitting the text to the shape and the shape to the text would contend: one turns the other off.
+      model.batchUpdate(() => {
+        setStyleValue(stickies, TEXT_FIT_KEY, enabled ? true : undefined)
+        if (enabled) setStyleValue(stickies, AUTO_WIDTH_KEY, undefined)
+      })
+    },
+    stickySignatures() {
+      const signatures: StickySignature[] = []
+      const visit = (parent: Cell) => {
+        for (const cell of parent.getChildren()) {
+          if (!cell.isVertex()) continue
+          const id = cell.getId()!
+          const shown = isSticky(cell) && rotationOf(cell.getStyle()) === 0 && editing?.cellId !== id
+          const author = shown ? readTextAuthor(cells.get(id)) : null
+          if (author) signatures.push({ ...author, cellId: id, color: colorOf(cell, 'font') })
+          visit(cell)
+        }
+      }
+      visit(graph.getDefaultParent())
+      return signatures
     },
     addTableField() {
       const table = selectedTable()
@@ -1968,48 +2188,54 @@ export function createDiagramEditor(
           return { id, order: orders.get(id) ?? (cells.get(id)?.get('order') as string | undefined) ?? '' }
         }
         // One transaction with what the binding writes, and so one undo step: the cells, the layout of their tables,
-        // the fields of base tables and what the canvas does not hold.
-        document.transact(() => {
-          model.batchUpdate(() => {
-            for (const data of restored) {
-              const existing = model.getCell(data.id) ?? null
-              const holder = (data.parent !== null && model.getCell(data.parent)) || graph.getDefaultParent()
-              // A cell cannot go into one that it holds now, e.g. after groups were nested the other way round.
-              const parent = existing?.isAncestor(holder) ? graph.getDefaultParent() : holder
-              const siblings = parent.getChildren().filter((child) => child !== existing)
-              const after = siblings.findIndex((sibling) => compareCells(data, orderOf(sibling)) < 0)
-              const index = after < 0 ? siblings.length : after
-              if (!existing) {
-                const cell = createCell(data)
-                model.add(parent, cell, index)
-                placed.add(cell)
-                continue
+        // the fields of base tables and what the canvas does not hold. Stickies keep the text sizes of the version.
+        restoring = true
+        try {
+          document.transact(() => {
+            model.batchUpdate(() => {
+              for (const data of restored) {
+                const existing = model.getCell(data.id) ?? null
+                const holder = (data.parent !== null && model.getCell(data.parent)) || graph.getDefaultParent()
+                // A cell cannot go into one that it holds now, e.g. after groups were nested the other way round.
+                const parent = existing?.isAncestor(holder) ? graph.getDefaultParent() : holder
+                const siblings = parent.getChildren().filter((child) => child !== existing)
+                const after = siblings.findIndex((sibling) => compareCells(data, orderOf(sibling)) < 0)
+                const index = after < 0 ? siblings.length : after
+                if (!existing) {
+                  const cell = createCell(data)
+                  model.add(parent, cell, index)
+                  placed.add(cell)
+                  continue
+                }
+                if (existing.getParent() !== parent || parent.getIndex(existing) !== index) {
+                  model.add(parent, existing, index)
+                }
+                if ((existing.getValue() ?? '') !== data.value) model.setValue(existing, data.value)
+                const geometry = toGeometry(data.geometry)
+                if (geometry) model.setGeometry(existing, geometry)
+                model.setStyle(existing, { ...data.style } as CellStyle)
+                placed.add(existing)
               }
-              if (existing.getParent() !== parent || parent.getIndex(existing) !== index) {
-                model.add(parent, existing, index)
+              // Ends once every restored cell is in place: an edge may end at a cell restored after it.
+              for (const data of restored) {
+                if (data.kind !== 'edge') continue
+                const edge = model.getCell(data.id)!
+                model.setTerminal(edge, (data.source !== null && model.getCell(data.source)) || null, true)
+                model.setTerminal(edge, (data.target !== null && model.getCell(data.target)) || null, false)
               }
-              if ((existing.getValue() ?? '') !== data.value) model.setValue(existing, data.value)
-              const geometry = toGeometry(data.geometry)
-              if (geometry) model.setGeometry(existing, geometry)
-              model.setStyle(existing, { ...data.style } as CellStyle)
-              placed.add(existing)
-            }
-            // Ends once every restored cell is in place: an edge may end at a cell restored after it.
+              fitAutoWidth([...placed].filter((cell) => cell.isEdge()).flatMap(tablesShowing))
+            })
+            // The binding marks the cells it wrote as changed by whoever restores; what it does not write is marked
+            // here.
+            const at = Date.now()
             for (const data of restored) {
-              if (data.kind !== 'edge') continue
-              const edge = model.getCell(data.id)!
-              model.setTerminal(edge, (data.source !== null && model.getCell(data.source)) || null, true)
-              model.setTerminal(edge, (data.target !== null && model.getCell(data.target)) || null, false)
+              const entry = cells.get(data.id)
+              if (entry && writeRestoredFields(entry, data) && author) writeAttribution(entry, author, at)
             }
-            fitAutoWidth([...placed].filter((cell) => cell.isEdge()).flatMap(tablesShowing))
-          })
-          // The binding marks the cells it wrote as changed by whoever restores; what it does not write is marked here.
-          const at = Date.now()
-          for (const data of restored) {
-            const entry = cells.get(data.id)
-            if (entry && writeRestoredFields(entry, data) && author) writeAttribution(entry, author, at)
-          }
-        }, LOCAL_ORIGIN)
+          }, LOCAL_ORIGIN)
+        } finally {
+          restoring = false
+        }
       }
 
       // The cells asked for that the page has now: restored, or locked, which shows why they stayed as they are. A copy
@@ -2334,7 +2560,10 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleValue(cells, AUTO_WIDTH_KEY, enabled ? true : undefined)
-        if (enabled) setStyleValue(cells, TEXT_WRAP_KEY, undefined)
+        if (enabled) {
+          setStyleValue(cells, TEXT_WRAP_KEY, undefined)
+          setStyleValue(cells, TEXT_FIT_KEY, undefined)
+        }
         fitAutoWidth(cells)
       })
     },
@@ -2495,6 +2724,8 @@ export function createDiagramEditor(
       graph.removeListener(handleLabelChanged)
       graph.removeListener(handleEditingStarted)
       graph.removeListener(handleCellsAdded)
+      graph.removeListener(handleDoubleClick)
+      model.removeListener(fitTexts)
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
       unwatchTableRows()
@@ -2503,6 +2734,7 @@ export function createDiagramEditor(
       model.removeListener(notifyView)
       model.removeListener(notify)
       cells.unobserveDeep(handleAttribution)
+      cells.unobserveDeep(handleTextAuthors)
       layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()
@@ -2609,6 +2841,40 @@ function isFreeShape(cell: Cell): boolean {
  */
 function isRotatableShape(cell: Cell): boolean {
   return isFreeShape(cell) && !isTable(cell) && !cell.getChildren().some((child) => child.isVertex())
+}
+
+/** A sticky: a shape added as one, or one whose text fits it (see {@link isStickyStyle}). */
+function isSticky(cell: Cell): boolean {
+  return cell.isVertex() && isStickyStyle(cell.getStyle())
+}
+
+/** Keys of the style that lay the text of a shape out, and so change the size that fits it. */
+const FIT_STYLE_KEYS = [
+  TEXT_FIT_KEY,
+  TEXT_WRAP_KEY,
+  AUTO_WIDTH_KEY,
+  'fontFamily',
+  'fontStyle',
+  'spacing',
+  'spacingTop',
+  'spacingBottom',
+  'spacingLeft',
+  'spacingRight',
+] as const
+
+/** A change of a style changed a key, which maxGraph does not type for every key. */
+function changedKey({ previous, style }: StyleChange, key: string): boolean {
+  return (previous as Record<string, unknown> | null)?.[key] !== (style as Record<string, unknown> | null)?.[key]
+}
+
+/** The geometry changed its size, not only its place. */
+function resized(previous: Geometry | null, geometry: Geometry | null): boolean {
+  return previous?.width !== geometry?.width || previous?.height !== geometry?.height
+}
+
+/** A shape whose text size fits it: one whose words may wrap, with fitting on and auto width off. */
+function fitsText(graph: Graph, cell: Cell): boolean {
+  return allowsTextWrap(graph, cell) && hasTextFit(cell.getStyle())
 }
 
 /** A shape whose words may wrap: one that allows auto width, but not a table, whose name and fields are a line each. */

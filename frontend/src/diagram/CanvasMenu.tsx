@@ -19,6 +19,8 @@ const COMMANDS: Record<Exclude<MenuCommand, CommentCommand>, (editor: DiagramEdi
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
   paste: (editor, { point }) => void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html)),
   selectAll: (editor) => editor.selectAll(),
+  // At the point of the click, editing its text at once.
+  addSticky: (editor, { point }) => editor.addSticky(point),
   undo: (editor) => editor.undo(),
   redo: (editor) => editor.redo(),
   editLabel: (editor) => editor.editLabel(),

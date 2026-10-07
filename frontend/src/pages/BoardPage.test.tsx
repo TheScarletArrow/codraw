@@ -427,6 +427,14 @@ describe('BoardPage', () => {
       expect(screen.queryByRole('button', { name: 'Импорт из .drawio' })).toBeNull()
       expect(screen.getByRole('button', { name: 'Экспорт в .drawio' })).toBeEnabled()
       expect(screen.getByRole('button', { name: 'Увеличить' })).toBeEnabled()
+
+      // Stickies show who wrote them, but there is no panel to change them.
+      const editor = canvas.editor!
+      act(() => editor.placeCell('sticky', { x: 100, y: 100, width: 160, height: 160 }))
+      act(() => editor.setState({ stickies: { cellIds: ['sticky'], color: '#fff2cc', textFit: true, locked: false } }))
+      act(() => editor.setSignatures([{ cellId: 'sticky', by: null, name: 'Боб', color: '#1f2328' }]))
+      expect(screen.queryByRole('toolbar', { name: 'Стикеры' })).toBeNull()
+      expect(screen.getByTestId('sticky-signature')).toHaveTextContent('Боб')
     })
 
     it('does not write to the document of a participant who may only view, even when it is empty', async () => {
@@ -1304,6 +1312,7 @@ describe('BoardPage', () => {
         'Эллипс',
         'Ромб',
         'Текст',
+        'Стикер',
       ])
       const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
       expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeDisabled()
@@ -1325,6 +1334,19 @@ describe('BoardPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Эллипс' }))
 
       expect(editor.addShape).toHaveBeenCalledWith('ellipse')
+    })
+
+    it('shows the panel of stickies under the selected stickies, and who wrote the stickies of the page', async () => {
+      const editor = await openEditor()
+      act(() => editor.placeCell('sticky', { x: 100, y: 100, width: 160, height: 160 }))
+      expect(screen.queryByRole('toolbar', { name: 'Стикеры' })).toBeNull()
+
+      act(() => editor.setState({ stickies: { cellIds: ['sticky'], color: '#fff2cc', textFit: true, locked: false } }))
+      act(() => editor.setSignatures([{ cellId: 'sticky', by: ALICE.id, name: 'Алиса', color: '#1f2328' }]))
+
+      await userEvent.click(within(screen.getByRole('toolbar', { name: 'Стикеры' })).getByRole('button', { name: 'Розовый' }))
+      expect(editor.setStickyColor).toHaveBeenCalledWith('#f8cecc')
+      expect(screen.getByTestId('sticky-signature')).toHaveTextContent('Алиса')
     })
 
     it('puts the shape id into the drag data', async () => {

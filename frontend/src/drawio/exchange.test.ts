@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
-import { readAttribution, writeAttribution } from '../diagram/attribution.ts'
+import { readAttribution, readTextAuthor, writeAttribution, writeTextAuthor } from '../diagram/attribution.ts'
+import { fromStyle } from '../diagram/binding.ts'
 import {
   DEFAULT_PAGE_ID,
   getCells,
@@ -15,6 +16,7 @@ import {
   type CellData,
 } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
+import { findShape, markedStyle } from '../diagram/shapes.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
 import { parseDrawio } from './parse.ts'
@@ -181,6 +183,24 @@ describe('exportDrawio', () => {
 
     expect(xml).toContain('style="rotation=45;fontSize=13;"')
     expect(pageCells(copy, DEFAULT_PAGE_ID).turned!.style).toEqual({ rotation: 45, fontSize: 13 })
+  })
+
+  it('keeps a sticky through a file of draw.io without who wrote it', async () => {
+    const doc = board()
+    const style = { ...fromStyle(markedStyle(findShape('sticky')!) as never), fillColor: '#f8cecc', fontSize: 12 }
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('sticky', { value: 'Медленный CI', style }))
+      writeTextAuthor(getCells(doc).get('sticky')!, { id: '0199a000-0000-7000-8000-00000000000a', name: 'Алиса' })
+    })
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain('autosizeText=1;')
+    expect(xml).not.toContain('Алиса')
+    expect(pageCells(copy, DEFAULT_PAGE_ID).sticky).toMatchObject({ value: 'Медленный CI', style })
+    expect(readTextAuthor(getCells(copy).get('sticky'))).toBeNull()
   })
 
   it('writes no file with who changed the elements, and reads none from a file', async () => {

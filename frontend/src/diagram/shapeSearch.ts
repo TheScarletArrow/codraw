@@ -10,6 +10,7 @@ export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
   ellipse: ['ellipse', 'circle', 'круг', 'овал'],
   rhombus: ['rhombus', 'diamond', 'decision', 'условие', 'решение'],
   text: ['text', 'label', 'надпись'],
+  sticky: ['sticky', 'note', 'post-it', 'заметка', 'ретро', 'брейншторм', 'идея'],
   table: ['table', 'entity', 'сущность', 'sql', 'er'],
   service: ['service', 'microservice', 'микросервис', 'backend', 'бэкенд', 'api', 'app', 'приложение'],
   database: ['database', 'db', 'бд', 'postgres', 'postgresql', 'mysql', 'oracle', 'mongodb', 'sql', 'хранилище'],

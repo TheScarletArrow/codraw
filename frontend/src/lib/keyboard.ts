@@ -18,3 +18,14 @@ export function isModLetter(event: KeyboardEvent, letter: string, isMac: boolean
   const key = event.key.toLowerCase()
   return key === letter || (!/^[a-z]$/.test(key) && event.code === `Key${letter.toUpperCase()}`)
 }
+
+/**
+ * The key code of a key as maxGraph looks keys up, with the letter of the key on the Latin layout for a letter of a
+ * layout without Latin letters, e.g. `N` for the «т» of the Russian one, as the shortcuts of the browser read it. Other
+ * keys, and letters of Latin layouts, keep their key code.
+ */
+export function latinKeyCode(event: KeyboardEvent): number {
+  const letter = /^Key([A-Z])$/.exec(event.code)?.[1]
+  const nonLatin = event.key.length === 1 && !/^[a-z]$/i.test(event.key)
+  return letter && nonLatin ? letter.charCodeAt(0) : event.keyCode
+}

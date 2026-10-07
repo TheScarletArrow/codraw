@@ -4,12 +4,16 @@ import type { StyleValue } from '../diagram/model.ts'
 export type Style = Record<string, StyleValue>
 export type CellKind = 'vertex' | 'edge'
 
-/** Boolean keys of maxGraph styles, and `autosize` and `connectable` of draw.io; draw.io writes them as 0 and 1. */
+/**
+ * Boolean keys of maxGraph styles, and `autosize`, `autosizeText` and `connectable` of draw.io; draw.io writes them as
+ * 0 and 1.
+ */
 const BOOLEAN_KEYS = new Set([
   'absoluteArcSize',
   'anchorPointDirection',
   'autoSize',
   'autosize',
+  'autosizeText',
   'backgroundOutline',
   'bendable',
   'cloneable',

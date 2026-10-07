@@ -24,6 +24,8 @@ export interface LabelStyle {
   spacing?: unknown
   spacingLeft?: unknown
   spacingRight?: unknown
+  spacingTop?: unknown
+  spacingBottom?: unknown
 }
 
 export type Align = 'left' | 'center' | 'right'
@@ -88,13 +90,24 @@ export function measureLabel(text: string, style: LabelStyle): number {
   return Math.max(0, ...text.split('\n').map((line) => measuring.measureText(line).width))
 }
 
+/** Width of the room for the text in a shape `width` wide: what {@link fittedWidth} leaves for it. */
+export function textRoomWidth(style: LabelStyle, width: number): number {
+  const spacing = numeric(style.spacing, DEFAULT_SPACING)
+  return width - 2 * spacing - numeric(style.spacingLeft, 0) - numeric(style.spacingRight, 0) - 2 * MARGIN
+}
+
+/** Height of the room for the lines of a label in a shape `height` high, with the same spacing and margins. */
+export function textRoomHeight(style: LabelStyle, height: number): number {
+  const spacing = numeric(style.spacing, DEFAULT_SPACING)
+  return height - 2 * spacing - numeric(style.spacingTop, 0) - numeric(style.spacingBottom, 0) - 2 * MARGIN
+}
+
 /**
  * The label of a shape `width` wide with its words on lines that fit the room {@link fittedWidth} leaves for the text.
  * The lines of the label stay; a word longer than a line is broken between its letters.
  */
 export function wrapLabel(text: string, style: LabelStyle, width: number): string {
-  const spacing = numeric(style.spacing, DEFAULT_SPACING)
-  const room = width - 2 * spacing - numeric(style.spacingLeft, 0) - numeric(style.spacingRight, 0) - 2 * MARGIN
+  const room = textRoomWidth(style, width)
   const fits = (line: string) => measureLabel(line, style) <= room
   return text
     .split('\n')

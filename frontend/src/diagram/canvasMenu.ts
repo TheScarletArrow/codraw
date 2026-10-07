@@ -4,6 +4,7 @@ export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'index' | 'edg
 export type MenuCommand =
   | 'paste'
   | 'selectAll'
+  | 'addSticky'
   | 'undo'
   | 'redo'
   | 'editLabel'
@@ -36,6 +37,7 @@ export type Shortcut =
   | 'Mod+Shift+G'
   | 'Delete'
   | 'F2'
+  | 'N'
 
 export interface MenuItem {
   command: MenuCommand
@@ -106,6 +108,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     [
       ['paste', 'Вставить', 'Mod+V'],
       ['selectAll', 'Выделить всё', 'Mod+A'],
+      ['addSticky', 'Добавить стикер', 'N'],
     ],
     [
       ['undo', 'Отменить', 'Mod+Z'],

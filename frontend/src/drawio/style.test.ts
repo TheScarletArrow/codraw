@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TABLE_FIELD_STYLE, TABLE_STYLE } from '../diagram/shapes.ts'
+import { findShape, markedStyle, TABLE_FIELD_STYLE, TABLE_STYLE } from '../diagram/shapes.ts'
 import { formatStyle, parseStyle, type Style } from './style.ts'
 
 describe('parseStyle', () => {
@@ -146,5 +146,20 @@ describe('rotation in files of draw.io', () => {
     expect(parseStyle('rotation=-30.5;', 'vertex').rotation).toBe(-30.5)
     expect(formatStyle({ rotation: 270 }, 'vertex')).toContain('rotation=270;')
     expect(parseStyle(formatStyle({ rotation: 270 }, 'vertex'), 'vertex').rotation).toBe(270)
+  })
+})
+
+describe('stickies in files of draw.io', () => {
+  it('keeps the fit of the text and the style of a sticky both ways', () => {
+    expect(parseStyle('shape=note;whiteSpace=wrap;html=1;autosizeText=1;fontSize=20;', 'vertex')).toMatchObject({
+      autosizeText: true,
+      fontSize: 20,
+    })
+    const sticky = markedStyle(findShape('sticky')!) as Style
+    const written = formatStyle(sticky, 'vertex')
+    expect(written).toContain('autosizeText=1;')
+    expect(written).toContain('shadow=1;')
+    expect(written).toContain('strokeColor=none;')
+    expect(parseStyle(written, 'vertex')).toEqual(sticky)
   })
 })

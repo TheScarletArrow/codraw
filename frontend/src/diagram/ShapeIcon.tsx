@@ -30,6 +30,7 @@ import {
   SquareDashed,
   SquareFunction,
   StickyNote,
+  StickyNotes,
   Table2,
   Type,
   User,
@@ -41,6 +42,7 @@ import type { ShapeId } from './shapes.ts'
 
 const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
   text: Type,
+  sticky: StickyNotes,
   table: Table2,
   service: Server,
   database: Database,
