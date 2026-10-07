@@ -21,6 +21,7 @@ import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
 import { useFollowing } from '../board/following.ts'
+import { Minimap, MINIMAP_SELECTOR } from '../board/Minimap.tsx'
 import { NoAccess } from '../board/NoAccess.tsx'
 import { useLaserPublisher, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
@@ -228,9 +229,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Following another participant and presenting to everybody.
   const following = useFollowing({ awareness, editor, pages, currentPageId: currentPage?.id ?? null, selectPage })
   const { leader } = following
-  // Moving the canvas on one's own ends following; the buttons of the banner over it are not the canvas.
+  // Moving the canvas on one's own ends following; the banner and the minimap over it are not the canvas: going
+  // somewhere with the minimap ends following on its own.
   const stopFollowing = (event: SyntheticEvent) => {
-    if (!(event.target instanceof Element && event.target.closest(BANNER_SELECTOR))) following.stop()
+    if (!(event.target instanceof Element && event.target.closest(`${BANNER_SELECTOR}, ${MINIMAP_SELECTOR}`))) {
+      following.stop()
+    }
   }
 
   // Going to a thread: switch to its page, then show its element or its point once that page is shown.
@@ -595,6 +599,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <FieldPopover editor={editor} />}
                   <CanvasMenu editor={editor} onComment={commentOn} />
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
+                  <Minimap editor={editor} awareness={awareness} onNavigate={following.stop} />
                 </>
               ) : (
                 <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>

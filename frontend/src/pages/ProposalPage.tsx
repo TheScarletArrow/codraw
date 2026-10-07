@@ -10,6 +10,7 @@ import { fetchProposal, withdrawProposal, type Proposal } from '../api/proposals
 import { useCurrentUser } from '../auth/session.ts'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
+import { Minimap } from '../board/Minimap.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
@@ -206,6 +207,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 {!readOnly && <QuickConnect editor={editor} />}
                 {!readOnly && <FieldPopover editor={editor} />}
                 <CanvasMenu editor={editor} />
+                <Minimap editor={editor} />
               </>
             ) : (
               <Message>{document && readOnly ? 'Черновик пока пуст' : 'Загрузка черновика…'}</Message>

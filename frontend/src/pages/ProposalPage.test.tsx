@@ -14,7 +14,9 @@ import { ProposalPage } from './ProposalPage.tsx'
 vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
-// maxGraph needs real SVG layout; the stand-in hands a fake editor to the page, like the real canvas does.
+// maxGraph needs real SVG layout; the stand-in hands a fake editor to the page, like the real canvas does, and keeps it
+// in `canvas.editor`.
+const canvas = vi.hoisted(() => ({ editor: null as FakeEditor | null }))
 vi.mock('../diagram/DiagramCanvas.tsx', async () => {
   const { useEffect } = await import('react')
   const { createFakeEditor } = await import('../test/fakeEditor.ts')
@@ -31,7 +33,8 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       onEditor: (editor: FakeEditor | null) => void
     }) => {
       useEffect(() => {
-        onEditor(createFakeEditor({ pageId, readOnly }))
+        canvas.editor = createFakeEditor({ pageId, readOnly })
+        onEditor(canvas.editor)
         return () => onEditor(null)
       }, [pageId, readOnly, onEditor])
       return (
@@ -175,6 +178,17 @@ describe('ProposalPage', () => {
 
     expect(within(screen.getByRole('search', { name: 'Поиск на доске' })).getByText('1 из 1')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'queue-page'))
+  })
+
+  it('shows the minimap of a page of the draft, without participants', async () => {
+    const provider = await openDraft()
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+
+    act(() => canvas.editor!.setState({ hasCells: true }))
+
+    expect(screen.getByRole('region', { name: 'Мини-карта' })).toBeInTheDocument()
+    expect(screen.queryByTestId('minimap-participant')).toBeNull()
   })
 
   it('withdraws the proposal and tells the others on the draft', async () => {

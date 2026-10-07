@@ -635,7 +635,7 @@ describe('BoardPage', () => {
       expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
     })
 
-    it('closes the search on the board while a version shows in place of the board, leaving Ctrl+F to the browser', async () => {
+    it('closes the search and the minimap while a version shows in place of the board, leaving Ctrl+F to the browser', async () => {
       await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: versionState() } })
       const pressFind = () => {
         let browserFind = true
@@ -645,12 +645,16 @@ describe('BoardPage', () => {
         return browserFind
       }
       const searchBar = () => screen.queryByRole('search', { name: 'Поиск на доске' })
+      const minimap = () => screen.queryByRole('region', { name: 'Мини-карта' })
+      act(() => canvas.editor!.setState({ hasCells: true }))
+      expect(minimap()).toBeInTheDocument()
       expect(pressFind()).toBe(false)
       expect(searchBar()).toBeInTheDocument()
 
       await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
       const preview = await screen.findByRole('region', { name: /^Версия от / })
 
+      expect(minimap()).toBeNull()
       expect(searchBar()).toBeNull()
       expect(pressFind()).toBe(true)
       expect(searchBar()).toBeNull()
@@ -1590,6 +1594,43 @@ describe('BoardPage', () => {
 
         expect(shownPage()).toBe(second)
         expect(banner()).toBeNull()
+      })
+    })
+
+    describe('minimap', () => {
+      const bob = { name: 'Боб', color: '#dc2626', avatarUrl: null }
+      const minimap = () => screen.queryByRole('region', { name: 'Мини-карта' })
+      const banner = () => screen.queryByRole('region', { name: 'Следование' })
+
+      it('shows the page with shapes small, with the other participants of the page where they look', async () => {
+        const provider = await openPages()
+        expect(minimap()).toBeNull()
+
+        act(() => canvas.editor!.setState({ hasCells: true }))
+        const viewport = { x: 100, y: 50, scale: 1 }
+        act(() => provider.awareness.setState(7, { user: bob, page: DEFAULT_PAGE_ID, viewport }))
+
+        expect(minimap()).toBeInTheDocument()
+        expect(screen.getByTestId('minimap-participant')).toHaveAttribute('data-participant', 'Боб')
+      })
+
+      it('ends following when it moves the canvas, but not when it collapses', async () => {
+        const provider = await openPages()
+        act(() => canvas.editor!.setState({ hasCells: true }))
+        const viewport = { x: 1500, y: 900, scale: 1 }
+        act(() => provider.awareness.setState(7, { user: bob, page: DEFAULT_PAGE_ID, viewport }))
+        const participants = screen.getByRole('list', { name: 'Участники' })
+        await userEvent.click(within(participants).getByRole('button', { name: /Боб/ }))
+        expect(banner()).toHaveTextContent('Вы следуете за Боб')
+
+        await userEvent.click(screen.getByRole('button', { name: 'Свернуть мини-карту' }))
+        await userEvent.click(screen.getByRole('button', { name: 'Развернуть мини-карту' }))
+        expect(banner()).toBeInTheDocument()
+
+        fireEvent.pointerDown(screen.getByTestId('minimap'), { button: 0, pointerId: 1, clientX: 5, clientY: 5 })
+
+        expect(banner()).toBeNull()
+        expect(canvas.editor!.centerOn).toHaveBeenCalled()
       })
     })
 

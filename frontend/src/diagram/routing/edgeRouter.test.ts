@@ -16,7 +16,7 @@ describe('routing of edges in the editor', () => {
   })
 
   /** Two shapes and an edge between them, routed by a worker that the test answers. */
-  async function open() {
+  async function open(onRedraw?: () => void) {
     const doc = new Y.Doc()
     initializeDocument(doc)
     const container = document.createElement('div')
@@ -30,7 +30,7 @@ describe('routing of edges in the editor', () => {
     editor.insertCells(builder.build())
     const postMessage = vi.fn<(request: RoutingRequest) => void>()
     const worker: RoutingWorker = { postMessage, terminate: vi.fn(), onmessage: null }
-    stops.push(startEdgeRouting(editor.graph, worker))
+    stops.push(startEdgeRouting(editor.graph, worker, onRedraw))
     const cell = (value: string) => editor.graph.getDefaultParent().getChildren().find((child) => child.getValue() === value)!
     const requests = () => postMessage.mock.calls.map(([request]) => request)
     const answer = (request: RoutingRequest, routes: Routes) => worker.onmessage!({ data: { id: request.id, routes } } as MessageEvent)
@@ -68,6 +68,19 @@ describe('routing of edges in the editor', () => {
     answer(requests()[0]!, { [cell('ab').getId()!]: ROUTE })
 
     expect(drawn(editor, cell('ab'))).toEqual(ROUTE)
+  })
+
+  it('tells when it has redrawn edges, which changes nothing in the model', async () => {
+    const onRedraw = vi.fn()
+    const { cell, requests, answer, stop } = await open(onRedraw)
+
+    expect(onRedraw).not.toHaveBeenCalled()
+    answer(requests()[0]!, { [cell('ab').getId()!]: ROUTE })
+    expect(onRedraw).toHaveBeenCalledTimes(1)
+
+    // Stopping draws the edge as maxGraph routes it again.
+    stop()
+    expect(onRedraw).toHaveBeenCalledTimes(2)
   })
 
   it('routes again after a shape moves and meanwhile draws the edge as maxGraph routes it', async () => {

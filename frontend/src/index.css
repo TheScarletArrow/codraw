@@ -102,6 +102,11 @@
   outline: none;
 }
 
+/* The minimap shows the page small, on the paper of the canvas. */
+.minimap-sheet {
+  background-color: #ffffff;
+}
+
 /* The laser pointer and the comment tool point with a crosshair, also over shapes and handles, which get pointers of
    their own. */
 .diagram-canvas.laser-pointer,

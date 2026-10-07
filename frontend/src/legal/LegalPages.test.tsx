@@ -100,6 +100,7 @@ describe('legal pages', () => {
     expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')
     expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')
     expect(copies).toHaveTextContent('очисткой данных этого сайта')
+    expect(copies).toHaveTextContent('свёрнута ли мини-карта холста (localStorage, ключ codraw.minimap)')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 
