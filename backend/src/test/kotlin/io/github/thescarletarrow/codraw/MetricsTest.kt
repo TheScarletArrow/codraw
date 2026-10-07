@@ -34,6 +34,10 @@ class MetricsTest(
             for (kind in listOf("error", "unhandledrejection", "render")) {
                 content { string(containsString("codraw_client_errors_total{application=\"codraw-backend\",kind=\"$kind\"} 0.0")) }
             }
+            // So does every way an import of a schema of a database ends, in an installation where it is off too.
+            for (result in listOf("success", "host-not-allowed", "connection-failed", "authentication-failed", "timeout")) {
+                content { string(containsString("codraw_schema_imports_total{application=\"codraw-backend\",result=\"$result\"} 0.0")) }
+            }
         }
     }
 

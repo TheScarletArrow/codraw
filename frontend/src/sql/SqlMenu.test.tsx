@@ -1,3 +1,4 @@
+import { QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -6,8 +7,10 @@ import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { downloadBlob } from '../lib/download.ts'
+import { createQueryClient } from '../queryClient.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
+import { mockFetch, type MockResponse } from '../test/render.tsx'
 import { SqlMenu } from './SqlMenu.tsx'
 
 vi.mock('../lib/download.ts', async (importOriginal) => ({
@@ -28,26 +31,50 @@ function boardWithTables() {
   return document
 }
 
-function renderMenu({ document = boardWithTables(), readOnly = false } = {}) {
+/** The server reads no schemas of databases unless a test says otherwise. */
+const SCHEMA_IMPORT_OFF: Record<string, MockResponse | MockResponse[]> = { 'GET /api/schema-import': { status: 404 } }
+
+function renderMenu({ document = boardWithTables(), readOnly = false, responses = SCHEMA_IMPORT_OFF } = {}) {
+  const fetchMock = mockFetch(responses)
   const editor = createFakeEditor()
+  const queryClient = createQueryClient()
+  // Keep the production retry rules, but do not wait between attempts.
+  queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retryDelay: 0 } })
   render(
-    <SqlMenu
-      editor={editor}
-      document={document}
-      pageId={DEFAULT_PAGE_ID}
-      boardTitle="Схема"
-      pageName="БД"
-      pageCount={2}
-      readOnly={readOnly}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <SqlMenu
+        editor={editor}
+        document={document}
+        pageId={DEFAULT_PAGE_ID}
+        boardTitle="Схема"
+        pageName="БД"
+        pageCount={2}
+        readOnly={readOnly}
+      />
+    </QueryClientProvider>,
   )
-  return { editor, document }
+  return { editor, document, fetchMock }
 }
 
 const menu = () => screen.getByRole('dialog', { name: 'SQL и Mermaid' })
 
+/** The server reads schemas of databases for this user, and answers the import with these responses. */
+const schemaImportOn = (imports: MockResponse | MockResponse[] = []) => ({
+  'GET /api/schema-import': { body: { maxTables: 500 } },
+  'POST /api/schema-import': imports,
+})
+
+async function openConnection(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+  await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+  await user.click(await screen.findByRole('button', { name: 'Подключиться к базе…' }))
+}
+
 describe('SqlMenu', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
 
   it('copies the tables of the page as SQL and as Mermaid', async () => {
     const user = userEvent.setup()
@@ -198,5 +225,106 @@ describe('SqlMenu', () => {
     await user.paste('SELECT 1;')
 
     expect(screen.getByRole('button', { name: 'Добавить на страницу' })).toBeDisabled()
+  })
+
+  it('says how to take the schema of a database to a file, and offers no connection when the server has it off', async () => {
+    const user = userEvent.setup()
+    const { fetchMock } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+
+    expect(menu()).toHaveTextContent('Схему готовой базы снимает pg_dump --schema-only или mysqldump --no-data: откройте полученный файл.')
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/schema-import', expect.anything()))
+    expect(screen.queryByRole('button', { name: 'Подключиться к базе…' })).toBeNull()
+  })
+
+  it('tells a guest that connections to databases are for those who signed in', async () => {
+    const user = userEvent.setup()
+    renderMenu({ responses: { 'GET /api/schema-import': { status: 403, body: { reason: 'sign-in-required' } } } })
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+
+    expect(await within(menu()).findByText(/Подключиться к базе можно после входа через GitHub или Google/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Подключиться к базе…' })).toBeNull()
+  })
+
+  it('reads the schema of a database into the field of DDL, from a connection string and a password', async () => {
+    const user = userEvent.setup()
+    const { fetchMock } = renderMenu({
+      responses: schemaImportOn({ body: { ddl: 'CREATE TABLE users (id bigserial PRIMARY KEY);\nCREATE TABLE orders (user_id bigint REFERENCES users);', tables: 2 } }),
+    })
+    await openConnection(user)
+
+    await user.click(screen.getByRole('textbox', { name: 'Строка подключения' }))
+    await user.paste('postgresql://reader@db.internal:5432/shop?sslmode=require&connect_timeout=3')
+    expect(screen.getByRole('textbox', { name: 'Хост' })).toHaveValue('db.internal')
+    expect(screen.getByRole('textbox', { name: 'Порт' })).toHaveValue('5432')
+    expect(screen.getByRole('textbox', { name: 'База' })).toHaveValue('shop')
+    expect(screen.getByRole('textbox', { name: 'Схема' })).toHaveValue('public')
+    expect(screen.getByRole('textbox', { name: 'Пользователь' })).toHaveValue('reader')
+    expect(screen.getByRole('combobox', { name: 'SSL' })).toHaveValue('require')
+    expect(menu()).toHaveTextContent('Только PostgreSQL, не больше 500 таблиц схемы.')
+    await user.type(screen.getByLabelText('Пароль'), 's3cret')
+    await user.click(screen.getByRole('button', { name: 'Загрузить схему' }))
+
+    expect(await screen.findByRole('textbox', { name: 'DDL' })).toHaveValue(
+      'CREATE TABLE users (id bigserial PRIMARY KEY);\nCREATE TABLE orders (user_id bigint REFERENCES users);',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 2, связей: 1, индексов: 0, пропущено операторов: 0')
+    expect(screen.queryByLabelText('Пароль')).toBeNull()
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(JSON.parse(post[1]!.body as string)).toEqual({
+      host: 'db.internal',
+      port: 5432,
+      database: 'shop',
+      user: 'reader',
+      password: 's3cret',
+      schema: 'public',
+      sslMode: 'require',
+    })
+  })
+
+  it('names why the schema did not load and keeps the connection open', async () => {
+    const user = userEvent.setup()
+    renderMenu({
+      responses: schemaImportOn([
+        { status: 422, body: { reason: 'authentication-failed' } },
+        { status: 422, body: { reason: 'too-large', limit: 500 } },
+        { status: 403, body: { reason: 'host-not-allowed' } },
+        { status: 429 },
+      ]),
+    })
+    await openConnection(user)
+    await user.type(screen.getByRole('textbox', { name: 'Хост' }), 'db.internal')
+    await user.type(screen.getByRole('textbox', { name: 'База' }), 'shop')
+    expect(screen.getByRole('button', { name: 'Загрузить схему' })).toBeDisabled()
+    await user.type(screen.getByRole('textbox', { name: 'Пользователь' }), 'reader')
+
+    for (const message of [
+      'Неверная база, пользователь или пароль',
+      'В схеме больше 500 таблиц — столько за раз не загрузить',
+      'Администратор CoDraw не разрешил подключаться к этому адресу',
+      'Слишком много попыток подключения, попробуйте позже',
+    ]) {
+      await user.click(screen.getByRole('button', { name: 'Загрузить схему' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    }
+    expect(screen.getByRole('heading', { name: 'Подключение к базе' })).toBeInTheDocument()
+  })
+
+  it('forgets the password when the window closes, and keeps it nowhere', async () => {
+    const user = userEvent.setup()
+    renderMenu({ responses: schemaImportOn() })
+    await openConnection(user)
+    await user.type(screen.getByLabelText('Пароль'), 's3cret')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await openConnection(user)
+
+    expect(screen.getByLabelText('Пароль')).toHaveValue('')
+    expect(JSON.stringify({ ...localStorage })).not.toContain('s3cret')
+    await user.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('textbox', { name: 'DDL' })).toBeInTheDocument()
   })
 })

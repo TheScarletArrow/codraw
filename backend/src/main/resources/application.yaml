@@ -62,3 +62,8 @@ codraw:
     review-request-interval: 10m
     # Every hour; "-" turns the cleanup off.
     cleanup-cron: "0 41 * * * *"
+  schema-import:
+    # Host names, addresses and networks (CIDR) of PostgreSQL databases whose schemas users may read through the
+    # backend, comma-separated, e.g. "db.internal,10.20.0.0/16" (CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS). Empty turns
+    # «Подключиться к базе…» off. See docs/deploy.md and docs/adr/0007-live-schema-import.md.
+    allowed-hosts: ""
