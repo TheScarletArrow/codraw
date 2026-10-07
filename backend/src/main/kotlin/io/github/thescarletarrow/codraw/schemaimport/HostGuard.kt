@@ -34,20 +34,26 @@ class HostGuard(
 
     /**
      * The address to connect to for [host], a name or an address by its syntax. Throws [SchemaImportException] with
-     * [SchemaImportResult.HOST_NOT_ALLOWED], or [SchemaImportResult.CONNECTION_FAILED] when a name does not resolve.
+     * [SchemaImportResult.HOST_NOT_ALLOWED], or [SchemaImportResult.CONNECTION_FAILED] when a name of the allowed hosts
+     * does not resolve. Any other name that does not resolve is not allowed, as one that leads outside the allowed
+     * networks is: the answers do not tell which names the DNS of the backend knows.
      */
     fun address(host: String): InetAddress {
         Hosts.literal(host)?.let { address ->
             if (!allowed.allows(address, ownDatabase())) throw SchemaImportException(SchemaImportResult.HOST_NOT_ALLOWED)
             return address
         }
+        val named = allowed.names(host)
         val addresses = try {
             resolver.resolve(host)
         } catch (exception: UnknownHostException) {
+            if (!named) throw SchemaImportException(SchemaImportResult.HOST_NOT_ALLOWED)
             throw SchemaImportException(SchemaImportResult.CONNECTION_FAILED, errorType = exception.javaClass.name)
         }
-        if (addresses.isEmpty()) throw SchemaImportException(SchemaImportResult.CONNECTION_FAILED)
-        if (!allowed.names(host)) {
+        if (addresses.isEmpty()) {
+            throw SchemaImportException(if (named) SchemaImportResult.CONNECTION_FAILED else SchemaImportResult.HOST_NOT_ALLOWED)
+        }
+        if (!named) {
             val ownDatabase = ownDatabase()
             if (addresses.any { !allowed.allows(it, ownDatabase) }) throw SchemaImportException(SchemaImportResult.HOST_NOT_ALLOWED)
         }

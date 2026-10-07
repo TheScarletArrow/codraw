@@ -81,8 +81,9 @@
 - Ошибки — `ProblemDetail` с `reason`: 400 — поле неверно (называется поле, не значение); 403 — `host-not-allowed`;
   422 — `connection-failed`, `authentication-failed`, `schema-not-found`, `timeout`, `too-large` (с `limit`, если
   превышено число таблиц), `unsupported-server`; 429 с `Retry-After`. Ошибки подключения не различают «отказано»,
-  «нет ответа», «не PostgreSQL», «не тот SSL» и «имя не нашлось» — всё это `connection-failed`, так endpoint не
-  становится сканером портов. `timeout` — только после входа в базу (`statement_timeout`, тайм-аут чтения).
+  «нет ответа», «не PostgreSQL», «не тот SSL» и «имя из списка не нашлось» — всё это `connection-failed`, так endpoint
+  не становится сканером портов. Имя не из списка, которое не нашлось, — `host-not-allowed`, как имя вне разрешённых
+  сетей: иначе по разнице 403 и 422 перебирались бы имена, которые знает DNS сети `backend`. `timeout` — только после входа в базу (`statement_timeout`, тайм-аут чтения).
   `authentication-failed` — коды `28xxx`, `3D000` (нет базы) и «сервер просит пароль, а его нет».
 
 ### Разрешённые адреса

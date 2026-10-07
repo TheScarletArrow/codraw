@@ -46,14 +46,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Imports from the PostgreSQL of Testcontainers: `localhost` is a name of the list, the network 10.20.0.0/16 and the
- * address 127.0.0.1 are allowed, and names of [FakeDns] resolve as the tests need.
+ * Imports from the PostgreSQL of Testcontainers: `localhost` and `missing.example.com` are names of the list, the network
+ * 10.20.0.0/16 and the address 127.0.0.1 are allowed, and names of [FakeDns] resolve as the tests need.
  */
 @IntegrationTest
 @Import(SchemaImportApiTest.FakeDns::class)
 @TestPropertySource(
     properties = [
-        "codraw.schema-import.allowed-hosts=localhost, 10.20.0.0/16, 127.0.0.1/32",
+        "codraw.schema-import.allowed-hosts=localhost, missing.example.com, 10.20.0.0/16, 127.0.0.1/32",
         "codraw.schema-import.connect-timeout=1s",
         "codraw.schema-import.read-timeout=3s",
         "codraw.schema-import.statement-timeout=1s",
@@ -81,7 +81,7 @@ class SchemaImportApiTest(
                 "far.example.com" -> listOf(InetAddress.ofLiteral("10.30.0.5"))
                 // The driver cannot resolve it: only the checked address leads to the database.
                 "pinned.example.com" -> listOf(InetAddress.ofLiteral("127.0.0.1"))
-                "missing.example.com" -> throw UnknownHostException(host)
+                "missing.example.com", "nowhere.example.com" -> throw UnknownHostException(host)
                 else -> InetAddress.getAllByName(host).toList()
             }
         }
@@ -262,6 +262,19 @@ class SchemaImportApiTest(
         assertEquals(refused + 6, imports("host-not-allowed"))
         assertTrue(importLines().all { it.level.toString() == "WARN" })
         assertEquals("rebind.example.com", pairs(importLines().last())["server.address"])
+    }
+
+    @Test
+    fun `answers a name outside the list that does not resolve as one that leads outside, so that DNS stays unknown`() {
+        val user = newUser()
+        val bodies = listOf("far.example.com", "nowhere.example.com").map { host ->
+            import(user, connection("host" to host)).andExpect {
+                status { isForbidden() }
+                jsonPath("$.reason") { value("host-not-allowed") }
+            }.andReturn().response.contentAsString
+        }
+
+        assertEquals(1, bodies.distinct().size, bodies.toString())
     }
 
     @Test
