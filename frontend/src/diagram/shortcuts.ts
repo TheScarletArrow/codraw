@@ -35,6 +35,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['N', 'Mod+DoubleClick'], action: 'Добавить стикер', editing: true },
       { keys: ['Mod+G'], action: 'Сгруппировать', editing: true },
       { keys: ['Mod+Shift+G'], action: 'Разгруппировать', editing: true },
+      { keys: ['P'], action: 'Карандаш', editing: true },
     ],
   },
   {

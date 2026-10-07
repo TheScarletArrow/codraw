@@ -194,6 +194,38 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).turned!.style).toEqual({ rotation: 45, fontSize: 13 })
   })
 
+  it('keeps a line drawn by hand through a file of draw.io as a curved edge without ends', async () => {
+    const doc = board()
+    const geometry = {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      relative: true,
+      sourcePoint: { x: 20, y: 40 },
+      points: [
+        { x: 60, y: 10 },
+        { x: 100.5, y: 45 },
+      ],
+      targetPoint: { x: 140, y: 30 },
+    }
+    const style = { codrawFreehand: true, edgeStyle: 'none', curved: true, endArrow: 'none', strokeColor: '#b85450', strokeWidth: 4 }
+    doc.transact(() => writeCell(getCells(doc), cell('line', { kind: 'edge', value: '', geometry, style })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain(
+      'style="codrawFreehand=1;edgeStyle=none;curved=1;endArrow=none;strokeColor=#b85450;strokeWidth=4;labelBackgroundColor=none;" edge="1"',
+    )
+    expect(xml).toContain('<mxPoint x="20" y="40" as="sourcePoint"/><mxPoint x="140" y="30" as="targetPoint"/>')
+    expect(xml).toContain('<Array as="points"><mxPoint x="60" y="10"/><mxPoint x="100.5" y="45"/></Array>')
+    const line = pageCells(copy, DEFAULT_PAGE_ID).line!
+    expect(line).toMatchObject({ kind: 'edge', source: null, target: null, geometry })
+    expect(line.style).toEqual({ ...style, labelBackgroundColor: 'none' })
+  })
+
   it('writes a link alone on a <UserObject>, a link to a page as draw.io does, and reads them back', async () => {
     const doc = board()
     const second = addPage(doc, DEFAULT_PAGE_ID, 'Контейнеры')

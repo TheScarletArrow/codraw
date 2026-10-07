@@ -3,6 +3,7 @@ import {
   CellEditorHandler,
   Client,
   ConnectionHandler,
+  EdgeHandler,
   FitPlugin,
   Geometry,
   GeometryChange,
@@ -14,6 +15,7 @@ import {
   InternalEvent,
   KeyHandler,
   LayoutManager,
+  PolylineShape,
   PopupMenuHandler,
   SelectionHandler,
   Point as GraphPoint,
@@ -83,6 +85,7 @@ import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipb
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { registerDiagramExtensions } from './extensions.ts'
+import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { LINK_KEY, linkOf } from './links.ts'
 import {
@@ -199,7 +202,10 @@ export type Direction = 'horizontal' | 'vertical'
 export interface SelectionLine {
   width: number | null
   dash: LineDash | null
-  /** Shape of the selected edges; `null` without edges, when it differs, or for a routing CoDraw does not offer. */
+  /**
+   * Shape of the selected edges; `null` without edges, when it differs, or for a routing CoDraw does not offer. Lines
+   * drawn by hand are not edges here: they have no shape of an edge.
+   */
   edgeShape: EdgeShape | null
   hasEdges: boolean
 }
@@ -396,6 +402,10 @@ export interface EditorState {
   laser: boolean
   /** The comment tool is on: a click on the canvas places a comment instead of selecting anything. */
   commentTool: boolean
+  /** The pencil is on: dragging on the canvas draws a line by hand instead of selecting or moving anything. */
+  pencil: boolean
+  /** The line that the pencil draws with: the color, width and dash last chosen for lines (see {@link pencilLine}). */
+  pencilLine: PencilLine
   /** How the selection is locked, or `null` when nothing is selected. */
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
@@ -678,6 +688,19 @@ export interface DiagramEditor {
   setCommentTool(on: boolean): void
   /** Reports the point of each click with the comment tool, where the button was released, in diagram coordinates. */
   onCommentPoint(listener: (point: Point) => void): () => void
+  /**
+   * Turns the pencil on or off. While it is on, dragging with the main button, a pen or a finger selects, moves,
+   * connects and edits nothing and draws a line by hand: on release it becomes an edge without ends through the
+   * simplified path (see {@link strokePoints}), on top of the page, as one undo step; the pencil stays on for the next
+   * one. The right button and the wheel work as before. The pencil, the laser pointer and the comment tool take the
+   * main button in turns. A participant who may only view has no pencil.
+   */
+  setPencil(on: boolean): void
+  /**
+   * Sets the color (not `none`), the width (from 1 to 20) or the dash of the line that the pencil draws with. Choosing
+   * the color of lines or their width or dash for the selection ({@link setColor}, {@link setLineStyle}) sets them too.
+   */
+  setPencilLine(changes: Partial<PencilLine>): void
   /** Reports the ids of the selected cells whenever the selection changes. */
   onSelectionChange(listener: (ids: string[]) => void): () => void
   /** Reports that the picture on the screen moved: scrolling, zooming or changed cells. */
@@ -818,6 +841,8 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
     collaboration: true,
     run: (editor) => editor.setCommentTool(!editor.getState().commentTool),
   },
+  // The pencil changes the page: a draft of a proposal has it, a participant who may only view does not.
+  { keys: 'P', editing: true, run: (editor) => editor.setPencil(!editor.getState().pencil) },
   { keys: 'Delete', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Backspace', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Mod+Z', editing: true, run: (editor) => editor.undo() },
@@ -882,11 +907,15 @@ function bindModAltKeys(keyHandler: KeyHandler, modAltKeys: Map<string, () => vo
   }
 }
 
-/** A tool of the canvas that takes the main button from maxGraph: the laser pointer or the comment tool. */
-type CanvasTool = 'laser' | 'comment'
+/** A tool of the canvas that takes the main button from maxGraph: the laser pointer, the comment tool or the pencil. */
+type CanvasTool = 'laser' | 'comment' | 'pencil'
 
 /** Classes of the canvas while a tool is on: its pointer is a crosshair over everything. */
-const TOOL_CLASSES: Record<CanvasTool, string> = { laser: 'laser-pointer', comment: 'comment-tool' }
+const TOOL_CLASSES: Record<CanvasTool, string> = {
+  laser: 'laser-pointer',
+  comment: 'comment-tool',
+  pencil: 'pencil-tool',
+}
 
 /** Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes. */
 const TOOL_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
@@ -995,6 +1024,7 @@ const CHANGING_COMMANDS = [
   'setTableBase',
   'setGeometry',
   'setRotation',
+  'setPencil',
   'setLink',
   'undo',
   'redo',
@@ -1039,6 +1069,7 @@ export function createDiagramEditor(
   configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
+  configureFreehand(graph)
   const unwatchLocks = configureLocks(graph)
   configureSelection(graph)
   configureRegionSelection(graph)
@@ -1344,7 +1375,7 @@ export function createDiagramEditor(
   const selectionLine = (): SelectionLine | null => {
     const cells = graph.getSelectionCells()
     if (cells.length === 0) return null
-    const edges = cells.filter((cell) => cell.isEdge())
+    const edges = cells.filter(isConnector)
     return {
       width: same(cells.map(lineWidthOf)),
       dash: same(cells.map(lineDashOf)),
@@ -1631,12 +1662,14 @@ export function createDiagramEditor(
       canGroup: !readOnly && canGroup(),
       canUngroup: !readOnly && ungroupableCells().length > 0,
       hasCells: graph.getDefaultParent().getChildCount() > 0,
-      canCopy: graph.getSelectionCells().some((cell) => cell.isVertex()),
+      canCopy: graph.getSelectionCells().some((cell) => cell.isVertex() || isFreehand(cell)),
       canCopyStyle: styleSource() !== null,
       canPasteStyle: !readOnly && canPasteStyle(),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser: tool === 'laser',
       commentTool: tool === 'comment',
+      pencil: tool === 'pencil',
+      pencilLine: pencilLine.get(),
       lock: selectionLock(),
       attribution: selectionAttribution(),
       link: selectionLink(),
@@ -1859,11 +1892,11 @@ export function createDiagramEditor(
   container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
 
-  // The tools. While the laser pointer or the comment tool is on, the main button draws a trail or places a comment, and
-  // its presses, releases and double clicks never reach maxGraph, which listens to pointer events, or to mouse events
-  // on macOS: nothing is selected, moved, connected or edited. Moves do not reach it either, so that it shows no
-  // connection points under the pointer; the listener of the cursor above comes first and still gets them. The right
-  // button still pans and opens the menu, and the wheel still scrolls and zooms.
+  // The tools. While the laser pointer, the comment tool or the pencil is on, the main button draws a trail, places a
+  // comment or draws a line, and its presses, releases and double clicks never reach maxGraph, which listens to pointer
+  // events, or to mouse events on macOS: nothing is selected, moved, connected or edited. Moves do not reach it either,
+  // so that it shows no connection points under the pointer; the listener of the cursor above comes first and still
+  // gets them. The right button still pans and opens the menu, and the wheel still scrolls and zooms.
   const laserListeners = new Set<(point: Point | null) => void>()
   let drawingLaser = false
   const drawLaser = (event: PointerEvent) => {
@@ -1887,6 +1920,88 @@ export function createDiagramEditor(
     page.addEventListener('pointercancel', endLaserStroke, true)
     drawLaser(event)
   }
+  /**
+   * The line being drawn with the pencil: the pointer that started it, which alone draws it (a mouse, a pen or a
+   * finger, not a second finger), the points it went through in diagram coordinates, and their trace over the cells,
+   * which maxGraph draws as it will draw the finished line.
+   */
+  let pencilStroke: { pointerId: number; points: Point[]; trace: PolylineShape } | null = null
+  const traceStroke = () => {
+    if (!pencilStroke) return
+    const { points, trace } = pencilStroke
+    const { scale, translate } = graph.getView()
+    trace.scale = scale
+    trace.points = points.map(({ x, y }) => new GraphPoint((x + translate.x) * scale, (y + translate.y) * scale))
+    // A curve needs two points.
+    trace.visible = points.length >= 2
+    trace.redraw()
+  }
+  const drawPencil = (event: PointerEvent) => {
+    if (event.pointerId !== pencilStroke?.pointerId) return
+    const { points } = pencilStroke
+    // A point closer than a pixel of the screen to the last one adds nothing; a pen reports more points than events.
+    const step = 1 / graph.getView().scale
+    const coalesced = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : []
+    for (const moved of coalesced.length > 0 ? coalesced : [event]) {
+      const point = toDiagramPoint(moved.clientX, moved.clientY)
+      const last = points.at(-1)
+      if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= step) points.push(point)
+    }
+    traceStroke()
+  }
+  /** Stops drawing the line and returns its points; `null` when no line is drawn. */
+  const stopPencilStroke = (): Point[] | null => {
+    if (!pencilStroke) return null
+    const { points, trace } = pencilStroke
+    pencilStroke = null
+    page.removeEventListener('pointermove', drawPencil, true)
+    page.removeEventListener('pointerup', finishPencilStroke, true)
+    page.removeEventListener('pointercancel', cancelPencilStroke, true)
+    trace.destroy()
+    return points
+  }
+  // The browser took the pointer, e.g. for a gesture: the line is not added.
+  const cancelPencilStroke = (event: PointerEvent) => {
+    if (event.pointerId === pencilStroke?.pointerId) stopPencilStroke()
+  }
+  const finishPencilStroke = (event: PointerEvent) => {
+    if (event.pointerId !== pencilStroke?.pointerId) return
+    drawPencil(event)
+    const points = strokePoints(stopPencilStroke()!, graph.getView().scale)
+    if (points) addFreehandLine(points)
+  }
+  const startPencilStroke = (event: PointerEvent) => {
+    if (pencilStroke) return
+    const { color, width, dash } = pencilLine.get()
+    const trace = new PolylineShape([], color, width)
+    trace.style = { curved: true, ...(dash === 'dotted' && { dashPattern: DOTTED_PATTERN }) }
+    trace.isDashed = dash !== 'solid'
+    trace.pointerEvents = false
+    trace.init(graph.getView().getOverlayPane())
+    pencilStroke = { pointerId: event.pointerId, points: [], trace }
+    // The line goes on beyond the canvas until the button is released anywhere.
+    page.addEventListener('pointermove', drawPencil, true)
+    page.addEventListener('pointerup', finishPencilStroke, true)
+    page.addEventListener('pointercancel', cancelPencilStroke, true)
+    drawPencil(event)
+  }
+  /**
+   * Adds a line drawn by hand through `points` with the line of the pencil, on top of the page, as one undo step; the
+   * selection stays as it is.
+   */
+  const addFreehandLine = (points: Point[]) => {
+    const [first, ...rest] = points.map(({ x, y }) => new GraphPoint(x, y))
+    const last = rest.pop()!
+    const geometry = new Geometry()
+    geometry.relative = true
+    geometry.setTerminalPoint(first!, true)
+    geometry.setTerminalPoint(last, false)
+    geometry.points = rest
+    const line = new Cell('', geometry, freehandStyle(pencilLine.get()))
+    line.setEdge(true)
+    graph.stopEditing(false)
+    graph.addEdge(line, graph.getDefaultParent(), null, null)
+  }
   const commentListeners = new Set<(point: Point) => void>()
   /** The main button was pressed on the canvas with the comment tool: its release places a comment. */
   let pressedForComment = false
@@ -1896,6 +2011,7 @@ export function createDiagramEditor(
     event.stopImmediatePropagation()
     event.preventDefault()
     if (tool === 'laser') startLaserStroke(event)
+    else if (tool === 'pencil') startPencilStroke(event)
     else pressedForComment = true
   }
   // The release, not the press: the canvas takes the keyboard on the press, and the field of the new comment that the
@@ -1917,10 +2033,11 @@ export function createDiagramEditor(
   // Before the listeners that keep the release from maxGraph, which stop it for the others.
   container.addEventListener('pointerup', placeComment, true)
   for (const type of TOOL_STOPPED_EVENTS) container.addEventListener(type, stopForTool, true)
-  /** Turns a tool on, which turns the other one off, or turns the tools off with `null`. */
+  /** Turns a tool on, which turns the others off, or the tools off with `null`; a line being drawn is not added. */
   const setTool = (next: CanvasTool | null) => {
     if (next === tool) return
     if (tool === 'laser') endLaserStroke()
+    stopPencilStroke()
     pressedForComment = false
     linkClick = null
     tool = next
@@ -1977,8 +2094,9 @@ export function createDiagramEditor(
   for (const type of LINK_STOPPED_EVENTS) container.addEventListener(type, stopLinkClick, true)
 
   // After a button of the toolbar the keyboard is with that button, where the key handler of maxGraph does not look.
+  // An Escape that closed a window of the toolbar, e.g. the colors of the pencil, has done its work there.
   const handleToolKey = (event: KeyboardEvent) => {
-    if (tool && event.key === 'Escape') setTool(null)
+    if (tool && event.key === 'Escape' && !event.defaultPrevented) setTool(null)
   }
   page.addEventListener('keydown', handleToolKey)
 
@@ -2084,7 +2202,10 @@ export function createDiagramEditor(
     return cell
   }
 
-  /** The selection with fields and shapes of groups replaced by their tables and groups, and the edges between them. */
+  /**
+   * The selection with fields and shapes of groups replaced by their tables and groups, and the edges between them. Lines
+   * drawn by hand have no ends: they are copied when they are selected.
+   */
   const cellsToCopy = (): Cell[] => {
     const layer = graph.getDefaultParent()
     // The ancestor on the page: a field belongs to its table, a shape of a group to the group.
@@ -2096,7 +2217,7 @@ export function createDiagramEditor(
     const shapes = new Set(
       graph
         .getSelectionCells()
-        .filter((cell) => cell.isVertex())
+        .filter((cell) => cell.isVertex() || isFreehand(cell))
         .map(owner),
     )
     const copied = (terminal: Cell | null) => terminal !== null && shapes.has(owner(terminal))
@@ -2820,6 +2941,7 @@ export function createDiagramEditor(
       graph.setCellStyles(end === 'start' ? 'startArrow' : 'endArrow', marker as StyleArrowValue, edges)
     },
     setColor(target, color) {
+      if (target === 'stroke') editor.setPencilLine({ color })
       const cells = unlocked(graph.getSelectionCells()).filter((cell) => target !== 'fill' || cell.isVertex())
       if (cells.length === 0) return
       graph.stopEditing(false)
@@ -2872,6 +2994,7 @@ export function createDiagramEditor(
       setStyleValue(cells, 'align', align === 'center' ? undefined : align)
     },
     setLineStyle({ width, dash, edgeShape }) {
+      editor.setPencilLine({ width, dash })
       const cells = unlocked(graph.getSelectionCells())
       if (cells.length === 0) return
       graph.stopEditing(false)
@@ -2885,7 +3008,7 @@ export function createDiagramEditor(
           setStyleValue(cells, 'dashed', dash === 'solid' ? undefined : true)
           setStyleValue(cells, 'dashPattern', dash === 'dotted' ? DOTTED_PATTERN : undefined)
         }
-        const edges = cells.filter((cell) => cell.isEdge())
+        const edges = cells.filter(isConnector)
         if (edgeShape !== undefined && edges.length > 0) {
           // Without edgeStyle an edge follows the orthogonal default of CoDraw.
           setStyleValue(edges, 'edgeStyle', edgeShape === 'straight' ? 'none' : undefined)
@@ -3031,6 +3154,19 @@ export function createDiagramEditor(
       else if (tool === 'comment') setTool(null)
     },
     onCommentPoint: (listener) => listen(commentListeners, listener),
+    setPencil(on) {
+      if (on) setTool('pencil')
+      else if (tool === 'pencil') setTool(null)
+    },
+    setPencilLine({ color, width, dash }) {
+      const changes: Partial<PencilLine> = {}
+      if (color !== undefined && color !== 'none') changes.color = color
+      if (width !== undefined && Number.isFinite(width)) {
+        changes.width = Math.min(MAX_LINE_WIDTH, Math.max(MIN_LINE_WIDTH, width))
+      }
+      if (dash !== undefined) changes.dash = dash
+      if (pencilLine.set(changes)) notify()
+    },
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -3062,6 +3198,7 @@ export function createDiagramEditor(
       container.removeEventListener('pointermove', handlePointerMove, true)
       container.removeEventListener('pointerleave', handlePointerLeave)
       endLaserStroke()
+      stopPencilStroke()
       container.removeEventListener('pointerdown', pressWithTool, true)
       container.removeEventListener('pointerup', placeComment, true)
       for (const type of TOOL_STOPPED_EVENTS) container.removeEventListener(type, stopForTool, true)
@@ -3145,6 +3282,33 @@ function edgeShapeOf(edge: Cell): EdgeShape | null {
   if (style.curved) return 'curved'
   if (style.edgeStyle === 'none') return 'straight'
   return style.edgeStyle === undefined || style.edgeStyle === 'orthogonalEdgeStyle' ? 'orthogonal' : null
+}
+
+/** The edge is a line drawn by hand with the pencil. */
+function isFreehand(cell: Cell): boolean {
+  return cell.isEdge() && isFreehandStyle(cell.getStyle())
+}
+
+/** An edge that connects, or may connect, shapes: not a line drawn by hand, which has no ends and no shape of an edge. */
+function isConnector(cell: Cell): boolean {
+  return cell.isEdge() && !isFreehandStyle(cell.getStyle())
+}
+
+/**
+ * The style of a line drawn by hand: an edge of draw.io without markers, curved through its points, with the color, the
+ * width (1, the default, without the key) and the dash of the pencil.
+ */
+function freehandStyle({ color, width, dash }: PencilLine): CellStyle {
+  return {
+    [FREEHAND_KEY]: true,
+    edgeStyle: 'none',
+    curved: true,
+    endArrow: 'none',
+    strokeColor: color,
+    ...(width !== MIN_LINE_WIDTH && { strokeWidth: width }),
+    ...(dash !== 'solid' && { dashed: true }),
+    ...(dash === 'dotted' && { dashPattern: DOTTED_PATTERN }),
+  } as CellStyle
 }
 
 /** Style keys of where an edge leaves its source and enters its target; reversing the edge swaps them. */
@@ -3429,6 +3593,30 @@ class ShapeHandler extends VertexHandler {
 
   override rotateCell(cell: Cell, angle: number) {
     this.rotate(cell, angle)
+  }
+}
+
+/**
+ * Lines drawn by hand: a selected one shows its outline without handles (see {@link FreehandHandler}), and one without
+ * ends is valid, so that maxGraph clones it when it is copied, pasted or duplicated; dangling edges are not allowed
+ * otherwise.
+ */
+function configureFreehand(graph: Graph) {
+  const createEdgeHandler = graph.createEdgeHandler.bind(graph)
+  graph.createEdgeHandler = (state, edgeStyle) =>
+    isFreehand(state.cell) ? new FreehandHandler(state) : createEdgeHandler(state, edgeStyle)
+  const getEdgeValidationError = graph.getEdgeValidationError.bind(graph)
+  graph.getEdgeValidationError = (edge, source, target) =>
+    edge && isFreehand(edge) && !source && !target ? null : getEdgeValidationError(edge, source, target)
+}
+
+/**
+ * The handles of a selected line drawn by hand: only its dashed outline. A handle at each of its many bends would hide
+ * it, and dragging one would break it; the line moves as a whole, with the selection handler.
+ */
+class FreehandHandler extends EdgeHandler {
+  override isHandleVisible(_index: number) {
+    return false
   }
 }
 

@@ -164,6 +164,38 @@ describe('items of the list of changes', () => {
     ])
   })
 
+  it('names a line drawn by hand and says that it moved', () => {
+    const line = (id: string, order: string, dx: number) =>
+      edgeData(id, order, null, null, {
+        style: { codrawFreehand: true, edgeStyle: 'none', curved: true, endArrow: 'none' },
+        geometry: {
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+          relative: true,
+          sourcePoint: { x: 10 + dx, y: 10 },
+          points: [{ x: 50 + dx, y: 40 }],
+          targetPoint: { x: 90 + dx, y: 10 },
+        },
+      })
+    const version = boardWith(line('moved', 'a0', 0))
+    const now = laterState(version, (doc) => {
+      writeCell(getCells(doc), line('moved', 'a0', 100))
+      writeCell(getCells(doc), line('drawn', 'a1', 0))
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, kind, details }) => [title, kind, details])).toEqual([
+      ['Линия от руки', 'Линия от руки', []],
+      ['Линия от руки', 'Линия от руки', ['положение']],
+    ])
+    expect(edgeLine(cellsOf(now), 'drawn')).toEqual([
+      { x: 10, y: 10 },
+      { x: 50, y: 40 },
+      { x: 90, y: 10 },
+    ])
+  })
+
   it('names a removed element as the version had it', () => {
     const version = boardWith(shapeData('cache', 'a0', { value: 'Кэш', style: { shape: 'cylinder', codrawShape: 'cache' } }))
     const now = laterState(version, (doc) => getCells(doc).delete('cache'))

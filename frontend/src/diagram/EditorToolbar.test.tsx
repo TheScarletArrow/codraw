@@ -455,6 +455,47 @@ describe('EditorToolbar', () => {
     expect(comment).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('turns the pencil on in place of the other tools of the canvas, and shows its line instead of the selection', async () => {
+    act(() =>
+      editor.setState({
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
+        line: { width: 1, dash: 'solid', edgeShape: null, hasEdges: false },
+      }),
+    )
+    const pencil = screen.getByRole('button', { name: 'Карандаш' })
+    await userEvent.click(screen.getByRole('button', { name: 'Указка' }))
+
+    await userEvent.click(pencil)
+
+    expect(editor.setPencil).toHaveBeenCalledWith(true)
+    expect(pencil).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Указка' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('button', { name: 'Цвет заливки' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Цвет текста' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Цвет линии' })).toHaveTextContent('Линия')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Цвет линии' }))
+    expect(screen.queryByRole('button', { name: 'Без линии' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Красный' }))
+    expect(editor.setPencilLine).toHaveBeenCalledWith({ color: '#b85450' })
+    expect(editor.setColor).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
+    const width = screen.getByRole('spinbutton', { name: 'Толщина линии' })
+    expect(width).toHaveValue(2)
+    expect(screen.queryByRole('group', { name: 'Форма связи' })).toBeNull()
+    await userEvent.clear(width)
+    await userEvent.type(width, '6{Enter}')
+    await userEvent.click(screen.getByRole('button', { name: 'Пунктир' }))
+    expect(editor.setPencilLine).toHaveBeenCalledWith({ width: 6 })
+    expect(editor.setPencilLine).toHaveBeenCalledWith({ dash: 'dashed' })
+    expect(editor.setLineStyle).not.toHaveBeenCalled()
+
+    await userEvent.click(pencil)
+    expect(editor.setPencil).toHaveBeenLastCalledWith(false)
+    expect(screen.getByRole('button', { name: 'Цвет заливки' })).toBeInTheDocument()
+  })
+
   it('locks the selection', async () => {
     act(() =>
       editor.setState({
@@ -572,5 +613,6 @@ describe('EditorToolbar', () => {
     expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeInTheDocument()
     expect(within(toolbar).queryByRole('button', { name: 'Указка' })).toBeNull()
     expect(within(toolbar).queryByRole('button', { name: 'Комментарий' })).toBeNull()
+    expect(within(toolbar).getByRole('button', { name: 'Карандаш' })).toBeInTheDocument()
   })
 })

@@ -9,6 +9,7 @@ import type {
   Point,
   StickySignature,
 } from '../diagram/editor.ts'
+import { DEFAULT_PENCIL_LINE, type PencilLine } from '../diagram/freehand.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -76,6 +77,8 @@ export function createFakeEditor({
     layoutSelection: false,
     laser: false,
     commentTool: false,
+    pencil: false,
+    pencilLine: DEFAULT_PENCIL_LINE,
     lock: null,
     attribution: null,
     link: null,
@@ -193,15 +196,24 @@ export function createFakeEditor({
     onPointerMove: (listener) => listen(pointerListeners, listener),
     // The tools turn each other off, like those of the editor.
     setLaser: vi.fn((laser: boolean) => {
-      state = { ...state, laser, commentTool: laser ? false : state.commentTool }
+      state = { ...state, laser, commentTool: laser ? false : state.commentTool, pencil: laser ? false : state.pencil }
       listeners.forEach((listener) => listener())
     }),
     onLaser: (listener) => listen(laserListeners, listener),
     setCommentTool: vi.fn((commentTool: boolean) => {
-      state = { ...state, commentTool, laser: commentTool ? false : state.laser }
+      state = { ...state, commentTool, laser: commentTool ? false : state.laser, pencil: commentTool ? false : state.pencil }
       listeners.forEach((listener) => listener())
     }),
     onCommentPoint: (listener) => listen(commentListeners, listener),
+    setPencil: vi.fn((pencil: boolean) => {
+      state = { ...state, pencil, laser: pencil ? false : state.laser, commentTool: pencil ? false : state.commentTool }
+      listeners.forEach((listener) => listener())
+    }),
+    setPencilLine: vi.fn((changes: Partial<PencilLine>) => {
+      const defined = Object.entries(changes).filter(([, value]) => value !== undefined)
+      state = { ...state, pencilLine: { ...state.pencilLine, ...Object.fromEntries(defined) } }
+      listeners.forEach((listener) => listener())
+    }),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,

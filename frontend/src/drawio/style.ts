@@ -20,6 +20,7 @@ const BOOLEAN_KEYS = new Set([
   'cloneable',
   'codrawBase',
   'codrawBaseDefault',
+  'codrawFreehand',
   'codrawIndex',
   'connectable',
   'curved',
