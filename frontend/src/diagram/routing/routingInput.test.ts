@@ -117,4 +117,37 @@ describe('input of the router', () => {
     const shapes = routingInput(page).shapes.map((shape) => shape.id)
     expect(shapes.sort()).toEqual([cell('a').getId(), cell('b').getId()].sort())
   })
+
+  it('goes around a turned shape by the box around it and ends its edges at the middles of its turned sides', () => {
+    const { page, cell } = open((builder) => {
+      const a = builder.shape('rectangle', 0, 0, { value: 'a', width: 100, height: 60 })
+      const b = builder.shape('rectangle', 600, 0, { value: 'b', width: 100, height: 60 })
+      const turned = builder.shape('rectangle', 300, 0, { value: 'turned', width: 120, height: 60, style: { rotation: 90 } })
+      builder.edge(a, b, { value: 'past' })
+      builder.edge(a, turned, { value: 'to turned' })
+      builder.edge(turned, b, { value: 'from turned', from: 'top' })
+    })
+    const input = routingInput(page)
+    const pinsOf = (value: string, source: boolean) => {
+      const connector = input.connectors.find((each) => each.id === cell(value).getId())!
+      return (source ? connector.source : connector.target).pins
+    }
+
+    expect(input.shapes.find((shape) => shape.id === cell('turned').getId())).toEqual({
+      id: cell('turned').getId(),
+      x: 330,
+      y: -30,
+      width: 60,
+      height: 120,
+    })
+    expect(input.connectors).toHaveLength(3)
+    // Turned by a quarter clockwise: the top side faces right, the right side down.
+    expect(pinsOf('to turned', false)).toEqual([
+      { x: 390, y: 30, side: 'right' },
+      { x: 360, y: 90, side: 'bottom' },
+      { x: 330, y: 30, side: 'left' },
+      { x: 360, y: -30, side: 'top' },
+    ])
+    expect(pinsOf('from turned', true)).toEqual([{ x: 390, y: 30, side: 'right' }])
+  })
 })

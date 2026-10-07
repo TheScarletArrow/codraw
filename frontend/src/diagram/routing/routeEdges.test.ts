@@ -103,4 +103,33 @@ describe('routes of edges', () => {
       for (const [a, b] of segments(route)) expect(a.x === b.x || a.y === b.y).toBe(true)
     }
   })
+
+  it('ends an edge at a pin of a turned shape inside the box around it, going around what is in the way', () => {
+    // A rectangle 120 × 60 around (400, 100) turned by 30°, in the way with the box around it; the middles of its
+    // sides are inside that box.
+    const turned = shape('turned', 333.04, 44.02, 133.92, 111.96)
+    const pins: RoutingEnd = {
+      shape: turned.id,
+      cell: turned.id,
+      pins: [
+        { x: 415, y: 74.02, side: 'top' },
+        { x: 451.96, y: 130, side: 'right' },
+        { x: 385, y: 125.98, side: 'bottom' },
+        { x: 348.04, y: 70, side: 'left' },
+      ],
+    }
+    const a = shape('a', 0, 40, 100, 60)
+    const blocker = shape('blocker', 180, 20, 60, 100)
+    const route = routeEdges(avoid, { shapes: [a, blocker, turned], connectors: [{ id: 'turned', source: sides(a), target: pins }] })
+      .turned!
+
+    expect(pins.pins.map(({ x, y }) => ({ x, y }))).toContainEqual(route.at(-1))
+    for (const [from, to] of segments(route)) {
+      expect(from.x === to.x || from.y === to.y).toBe(true)
+      for (const box of [a, blocker]) expect(crosses(from, to, box)).toBe(false)
+    }
+    // The last segment comes from outside the box around the turned shape.
+    const before = route.at(-2)!
+    expect(before.x <= turned.x || before.y <= turned.y || before.y >= turned.y + turned.height).toBe(true)
+  })
 })

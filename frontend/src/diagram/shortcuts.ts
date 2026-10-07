@@ -41,7 +41,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+Click', 'Mod+Drag'], action: 'Добавить к выделению или убрать из него' },
       { keys: ['Arrows'], action: 'Сдвинуть на 1 пиксель', editing: true },
       { keys: ['Shift+Arrows'], action: 'Сдвинуть на шаг сетки', editing: true },
-      { keys: ['Alt+Drag'], action: 'Перетащить без сетки и направляющих', editing: true },
+      { keys: ['Alt+Drag'], action: 'Перетащить без сетки и направляющих, повернуть по 1°', editing: true },
       { keys: ['Mod+Shift+L'], action: 'Автораскладка слева направо', editing: true },
     ],
   },

@@ -57,6 +57,7 @@ describe('read-only editor', () => {
     viewer.setDefaultBase(true)
     viewer.setTableBase(null)
     viewer.setGeometry({ x: 0, width: 300 })
+    viewer.setRotation(45)
     viewer.editLabel()
     viewer.deleteSelection()
     viewer.undo()

@@ -75,6 +75,29 @@ describe('routing of edges in the editor', () => {
     expect(requests()[1]!.input.shapes.find((shape) => shape.id === cell('b').getId())!.y).toBe(240)
   })
 
+  it('routes again after a shape turns and draws the edge to the middle of its turned side', async () => {
+    const { editor, cell, requests, answer } = await open()
+    answer(requests()[0]!, { [cell('ab').getId()!]: ROUTE })
+
+    editor.graph.setSelectionCell(cell('b'))
+    editor.setRotation(90)
+
+    expect(drawn(editor, cell('ab'))).not.toEqual(ROUTE)
+    await vi.waitFor(() => expect(requests()).toHaveLength(2))
+    const input = requests()[1]!.input
+    expect(input.shapes.find((shape) => shape.id === cell('b').getId())).toMatchObject({ x: 320, y: 180, width: 60, height: 100 })
+    // The bottom of the shape turned by a quarter faces left.
+    expect(input.connectors[0]!.target.pins).toContainEqual({ x: 320, y: 230, side: 'left' })
+    const turned = [
+      { x: 100, y: 30 },
+      { x: 200, y: 30 },
+      { x: 200, y: 230 },
+      { x: 320, y: 230 },
+    ]
+    answer(requests()[1]!, { [cell('ab').getId()!]: turned })
+    expect(drawn(editor, cell('ab'))).toEqual(turned)
+  })
+
   it('draws an edge with bends of the participant through them', async () => {
     const { editor, cell, requests, answer } = await open()
     answer(requests()[0]!, { [cell('ab').getId()!]: ROUTE })

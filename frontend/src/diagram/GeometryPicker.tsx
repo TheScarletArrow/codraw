@@ -7,13 +7,16 @@ import { NumberField } from './NumberField.tsx'
 
 const NAME = 'Размер и положение'
 
-/** A toolbar button that opens the width, the height and the position of the selected shapes. */
+/** A toolbar button that opens the width, the height, the position and the rotation of the selected shapes. */
 export function GeometryPicker({
   geometry,
   onChange,
+  onRotate,
 }: {
   geometry: SelectionGeometry
   onChange: (changes: Partial<Box>) => void
+  /** Receives the typed angle as it is: the editor brings it within 0–359. */
+  onRotate: (angle: number) => void
 }) {
   return (
     <Popover>
@@ -47,6 +50,15 @@ export function GeometryPicker({
         </Field>
         <Field label="Y">
           <NumberField label="Y" value={geometry.y} onCommit={(y) => onChange({ y })} />
+        </Field>
+        <Field label="Поворот, °">
+          <NumberField
+            label="Поворот"
+            value={geometry.rotation}
+            disabled={!geometry.canRotate}
+            title={geometry.canRotate ? 'Поворот по часовой стрелке, градусы' : 'Таблицы и группы не поворачиваются'}
+            onCommit={onRotate}
+          />
         </Field>
       </PopoverContent>
     </Popover>

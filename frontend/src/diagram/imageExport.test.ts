@@ -50,6 +50,18 @@ describe('image export', () => {
     expect(image.svg).toContain('База')
   })
 
+  it('draws a turned shape turned and whole', () => {
+    const { editor } = open()
+    editor.graph.setSelectionCell(shape(editor, 0, 0, 'Сервис'))
+    editor.setRotation(90)
+
+    const image = editor.exportSvg()!
+
+    expect(image.width - 60 - 2 * IMAGE_BORDER).toBeOneOf([0, 1, 2])
+    expect(image.height - 100 - 2 * IMAGE_BORDER).toBeOneOf([0, 1, 2])
+    expect(image.svg).toMatch(/rotate\(90[ ,]/)
+  })
+
   it('leaves the background out of a transparent image', () => {
     const { editor } = open()
     shape(editor, 0, 0, 'Сервис')

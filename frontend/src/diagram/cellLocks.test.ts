@@ -109,6 +109,7 @@ describe('locked cells', () => {
 
     editor.moveSelection(10, 0)
     editor.setGeometry({ x: 0, width: 300 })
+    editor.setRotation(45)
     editor.editLabel()
     graph.dblClick(new MouseEvent('dblclick'), cell)
     editor.setColor('fill', '#ff0000')
@@ -122,6 +123,7 @@ describe('locked cells', () => {
     expect(cell.getStyle()).not.toHaveProperty('fillColor')
     expect(cell.getStyle()).not.toHaveProperty('fontSize', 30)
     expect(cell.getStyle()).not.toHaveProperty('strokeWidth')
+    expect(cell.getStyle()).not.toHaveProperty('rotation')
     expect(children(editor)).toEqual([cell, other])
   })
 

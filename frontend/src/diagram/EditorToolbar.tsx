@@ -216,7 +216,13 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
         )}
         {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
         {text && <TextTools text={text} editor={editor} />}
-        {geometry && <GeometryPicker geometry={geometry} onChange={(changes) => editor?.setGeometry(changes)} />}
+        {geometry && (
+          <GeometryPicker
+            geometry={geometry}
+            onChange={(changes) => editor?.setGeometry(changes)}
+            onRotate={(angle) => editor?.setRotation(angle)}
+          />
+        )}
         {arrange >= 2 && (
           <ArrangePicker
             count={arrange}
