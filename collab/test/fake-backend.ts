@@ -27,9 +27,15 @@ export class FakeBackend {
   /** The stored drafts of the proposals by their ids. */
   readonly drafts = new Map<string, Uint8Array>();
   /** Requests to the internal API; those about a draft name it as collab does, `proposal:<id>`. */
-  readonly requests: { method: string; boardId: string; editors?: string[] }[] = [];
+  readonly requests: { method: string; boardId: string; editors?: string[]; text?: string; onlyIfMissing?: boolean }[] = [];
+  /** The texts for search of the boards by their ids, as collab sent them. */
+  readonly searchTexts = new Map<string, string>();
+  /** How many times collab asked for the boards without a text for search. */
+  listingsWithoutSearchText = 0;
   /** How many of the next stores fail with 500, as when the database is down. */
   failingStores = 0;
+  /** How many of the next stores of a text for search fail with 500. */
+  failingSearchTexts = 0;
   private keys: { kid: string; privateKey: CryptoKey; publicJwk: JWK }[] = [];
   private server?: Server;
 
@@ -84,6 +90,13 @@ export class FakeBackend {
     return this.requests.filter((r) => r.method === "PUT" && r.boardId === boardId).map((r) => r.editors ?? []);
   }
 
+  /** The texts for search that collab sent for the board, in order; `If-None-Match: *` marks one sent only if missing. */
+  searchTextsSent(boardId: string): { text: string; onlyIfMissing: boolean }[] {
+    return this.requests
+      .filter((r) => r.method === "PUT search-text" && r.boardId === boardId)
+      .map((r) => ({ text: r.text ?? "", onlyIfMissing: r.onlyIfMissing ?? false }));
+  }
+
   accessRequestsFor(boardId: string): number {
     return this.requests.filter((r) => r.method === "GET access" && r.boardId === boardId).length;
   }
@@ -101,12 +114,33 @@ export class FakeBackend {
         await this.handleDraft(request, response, decodeURIComponent(draft[1]!), draft[2] === "access");
         return;
       }
-      const match = /^\/internal\/boards\/([^/]+)\/(document|access)$/.exec(request.url ?? "");
+      const url = new URL(request.url ?? "/", "http://fake");
+      if (url.pathname === "/internal/boards/without-search-text") {
+        // Not among the requests about boards: collab asks for these on its own when it starts.
+        this.listingsWithoutSearchText++;
+        if (request.headers["x-internal-token"] !== this.token) {
+          response.writeHead(401).end();
+          return;
+        }
+        const after = url.searchParams.get("after");
+        const limit = Number(url.searchParams.get("limit") ?? 100);
+        const missing = Array.from(this.documents.keys())
+          .filter((id) => !this.searchTexts.has(id) && (after === null || id > after))
+          .sort()
+          .slice(0, limit);
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(missing));
+        return;
+      }
+      const match = /^\/internal\/boards\/([^/]+)\/(document|access|search-text)$/.exec(request.url ?? "");
       if (!match) {
         response.writeHead(404).end();
         return;
       }
       const boardId = decodeURIComponent(match[1]!);
+      if (match[2] === "search-text") {
+        await this.handleSearchText(request, response, boardId);
+        return;
+      }
       const isAccess = match[2] === "access";
       const editors = request.headers["x-editors"];
       this.requests.push({
@@ -152,6 +186,33 @@ export class FakeBackend {
       response.writeHead(405).end();
     });
     await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
+  }
+
+  private async handleSearchText(request: IncomingMessage, response: ServerResponse, boardId: string) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    const text = Buffer.concat(chunks).toString("utf8");
+    const onlyIfMissing = request.headers["if-none-match"] === "*";
+    this.requests.push({ method: `${request.method ?? ""} search-text`, boardId, text, onlyIfMissing });
+    if (request.headers["x-internal-token"] !== this.token) {
+      response.writeHead(401).end();
+      return;
+    }
+    if (this.failingSearchTexts > 0) {
+      this.failingSearchTexts--;
+      response.writeHead(500).end();
+      return;
+    }
+    if (!this.boards.has(boardId) || !this.documents.has(boardId)) {
+      response.writeHead(404).end();
+      return;
+    }
+    if (onlyIfMissing && this.searchTexts.has(boardId)) {
+      response.writeHead(412).end();
+      return;
+    }
+    this.searchTexts.set(boardId, text);
+    response.writeHead(204).end();
   }
 
   private async handleDraft(request: IncomingMessage, response: ServerResponse, proposalId: string, isAccess: boolean) {

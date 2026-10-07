@@ -13,6 +13,7 @@ import {
   type CellMap,
   type PageData,
 } from './model.ts'
+import { clearStatus } from './status.ts'
 
 /** Origin of page operations: they are not undoable. */
 export const PAGES_ORIGIN = 'codraw:pages'
@@ -98,8 +99,10 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
     source.forEach((cell, cellId) => {
       if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID) return
       const copy = copyMap(cell, (key, value) => (REFERENCES.has(key) ? remap(value) : value))
-      // Written into the copy before it is added, so that the document keeps one value of each key.
+      // Written into the copy before it is added, so that the document keeps one value of each key. A copy is a new
+      // element, which nobody has reviewed: it has no status.
       if (author) writeAttribution(copy, author, at)
+      clearStatus(copy)
       target.set(ids.get(cellId)!, copy)
     })
   }, PAGES_ORIGIN)

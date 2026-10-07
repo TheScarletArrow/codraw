@@ -61,6 +61,7 @@ export function createFakeEditor({
     commentTool: false,
     lock: null,
     attribution: null,
+    status: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -114,6 +115,7 @@ export function createFakeEditor({
     group: vi.fn(() => null),
     ungroup: vi.fn(),
     setLocked: vi.fn(),
+    setStatus: vi.fn(() => []),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),

@@ -1,5 +1,5 @@
 import { Ellipsis } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -14,12 +14,22 @@ interface BoardActionsProps {
   onHistory?: () => void
   /** Called once the user has confirmed the deletion; without it, as for anybody but the owner, nothing deletes. */
   onDelete?: () => void
+  /** The editor of the personal tags of the board, which «Теги» opens in the menu; without it there is no such item. */
+  tags?: () => ReactNode
+  /**
+   * The choice of the personal folder of the board, which «Переместить в папку» opens in the menu, given what closes
+   * the menu; without it there is no such item.
+   */
+  folder?: (close: () => void) => ReactNode
   disabled?: boolean
 }
 
+/** What the menu shows: its items, the confirmation of the deletion, the tags or the folder of the board. */
+type View = 'items' | 'confirm' | 'tags' | 'folder'
+
 /**
- * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions. Deleting asks for
- * confirmation, as a deleted board cannot be restored.
+ * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions, and in the list of boards the
+ * user gives it their tags and folder. Deleting asks for confirmation, as a deleted board cannot be restored.
  */
 export function BoardActions({
   title,
@@ -27,10 +37,12 @@ export function BoardActions({
   onRename,
   onHistory,
   onDelete,
+  tags,
+  folder,
   disabled = false,
 }: BoardActionsProps) {
   const [open, setOpen] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const [view, setView] = useState<View>('items')
   const item = 'justify-start font-normal'
 
   return (
@@ -38,7 +50,7 @@ export function BoardActions({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (next) setConfirming(false)
+        if (next) setView('items')
       }}
     >
       <PopoverTrigger asChild>
@@ -53,12 +65,18 @@ export function BoardActions({
           <Ellipsis />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
-        {confirming ? (
+      <PopoverContent
+        align="end"
+        className={cn('p-1', view === 'tags' ? 'w-72' : 'w-64')}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        {view === 'tags' && tags?.()}
+        {view === 'folder' && folder?.(() => setOpen(false))}
+        {view === 'confirm' && (
           <div role="alertdialog" aria-label="Удаление доски" className="flex flex-col gap-2 p-2">
             <p className="text-sm">Удалить доску «{title}»? Её нельзя будет восстановить.</p>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setView('items')}>
                 Отмена
               </Button>
               <Button
@@ -74,7 +92,8 @@ export function BoardActions({
               </Button>
             </div>
           </div>
-        ) : (
+        )}
+        {view === 'items' && (
           <div role="menu" aria-label={`Доска «${title}»`} className="flex flex-col">
             {onRename && (
               <Button
@@ -89,6 +108,30 @@ export function BoardActions({
                 }}
               >
                 Переименовать
+              </Button>
+            )}
+            {tags && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                onClick={() => setView('tags')}
+              >
+                Теги
+              </Button>
+            )}
+            {folder && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                onClick={() => setView('folder')}
+              >
+                Переместить в папку
               </Button>
             )}
             {onHistory && (
@@ -113,7 +156,7 @@ export function BoardActions({
                 variant="ghost"
                 size="sm"
                 className={cn(item, 'text-destructive hover:text-destructive')}
-                onClick={() => setConfirming(true)}
+                onClick={() => setView('confirm')}
               >
                 {deleteLabel}
               </Button>

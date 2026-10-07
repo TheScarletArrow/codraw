@@ -20,6 +20,7 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   notificationRetentionDays: 60,
   notificationsPerUser: 200,
   closedProposalsPerBoard: 10,
+  schemaImport: false,
   ...changes,
 })
 
@@ -55,6 +56,12 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'имя и идентификатор участника, который последним изменил элемент, и время этого изменения',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'статус элемента («Черновик», «Нужно ревью», «Готово») с именем и идентификатором участника, который его поставил, и временем',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'попросил ревью элемента его доски, — с доской, комментарием, веткой, предложением или страницей и элементом',
+    )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent('Участие в досках')
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'кто какой реакцией отметил комментарий и кто назначен ответственным за ветку',
@@ -85,7 +92,7 @@ describe('legal pages', () => {
     )
     expect(retention).toHaveTextContent('Время визитов доски — пока у пользователя есть доступ к ней')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
-      'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов не видит никто, кроме самого пользователя',
+      'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов, теги и папки не видит никто, кроме самого пользователя, — ни владелец, ни другие участники общей доски',
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'Предложения изменений. Автор предложения, его название и описание, черновик доски',
@@ -96,12 +103,46 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Предложение изменений с его черновиком видят его автор, владелец и редакторы доски',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Теги и папки. Теги, которые пользователь дал своим и общим доскам своего списка, его папки',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Для поиска досок рядом с документом доски хранится её текст',
+    )
+    expect(retention).toHaveTextContent('теги и папка общей доски — пока у пользователя есть доступ к ней')
+    expect(retention).toHaveTextContent('Текст доски для поиска — пока есть её документ')
     const copies = screen.getByRole('region', { name: 'Копии досок в браузере' })
+    expect(copies).toHaveTextContent('и выбранный порядок списка досок')
     expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')
     expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')
     expect(copies).toHaveTextContent('очисткой данных этого сайта')
     expect(copies).toHaveTextContent('Тему оформления, выбранную в меню «Тема», — «Светлая» или «Тёмная» — браузер тоже помнит')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+  })
+
+  it('names the connection to a database only when the installation has it on', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ schemaImport: true }) } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent(
+      'Подключение к базе данных. Чтобы загрузить в «Импорт SQL» схему базы PostgreSQL, вы вводите адрес и порт её сервера, имя базы, пользователя и пароль.',
+    )
+    expect(data).toHaveTextContent('и не сохраняет их; в журнал сервера попадают адрес и порт сервера базы и результат')
+    expect(screen.getByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'Учётные данные базы данных — только на время одного подключения к ней; они не хранятся.',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'GitHub и Google узнают о входе через них по своим правилам. Адрес, имя базы, пользователя и пароль, которые вы вводите, чтобы загрузить схему базы данных, сервер CoDraw передаёт только этой базе. Участники доски',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })).not.toHaveTextContent('базе данных')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'GitHub и Google узнают о входе через них по своим правилам. Участники доски',
+    )
   })
 
   it('says when the operator has not named themselves', async () => {
