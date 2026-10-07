@@ -143,18 +143,29 @@ export function indexColumnNames(columns: string): string[] {
   return elements(columns).flatMap(({ tokens }) => columnOf(tokens) ?? [])
 }
 
+/**
+ * The columns of an index with the names of its columns written anew, all at once: `write` gets the name of each element
+ * that is a column, without quotes, and returns how to write it, or `null` to keep it. Expressions stay as they are, and
+ * so do the columns when nothing is written anew.
+ */
+export function mapIndexColumns(columns: string, write: (name: string) => string | null): string {
+  const parts = elements(columns)
+  let changed = false
+  const written = parts.map(({ text, tokens }) => {
+    const name = columnOf(tokens)
+    const rewritten = name === null ? null : write(name)
+    if (rewritten === null) return text
+    changed = true
+    // The text of an element starts with its name.
+    const first = tokens[0]!
+    return rewritten + text.slice(tokenEnd(first, columns) - first.start)
+  })
+  return changed ? written.join(', ') : columns
+}
+
 /** The columns of an index with the column `from` (in any case) written as `to`; expressions stay as they are. */
 export function renameIndexColumn(columns: string, from: string, to: string): string {
-  const parts = elements(columns)
-  if (!parts.some(({ tokens }) => columnOf(tokens)?.toLowerCase() === from.toLowerCase())) return columns
-  return parts
-    .map(({ text, tokens }) => {
-      if (columnOf(tokens)?.toLowerCase() !== from.toLowerCase()) return text
-      // The text of an element starts with its name.
-      const name = tokens[0]!
-      return to + text.slice(tokenEnd(name, columns) - name.start)
-    })
-    .join(', ')
+  return mapIndexColumns(columns, (name) => (name.toLowerCase() === from.toLowerCase() ? to : null))
 }
 
 /** A name as SQL writes it in an index: plain identifiers as they are, others in double quotes. */
