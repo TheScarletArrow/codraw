@@ -73,6 +73,7 @@ import {
 } from './attribution.ts'
 import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
+import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
@@ -93,6 +94,14 @@ import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
+import {
+  commonStatus,
+  readStatus,
+  STATUS_KEYS,
+  writeStatus,
+  type ElementStatus,
+  type SelectionStatus,
+} from './status.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { copyLook, styleChanges, styleClipboard, TABLE_ROW_KEYS, type CopiedStyle, type StyleKind } from './styleCopy.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
@@ -348,6 +357,11 @@ export interface EditorState {
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
   attribution: SelectionAttribution | null
+  /**
+   * The status of the selected elements that may have one (see {@link DiagramEditor.setStatus}), or `null` when none of
+   * them may.
+   */
+  status: SelectionStatus | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -463,14 +477,26 @@ export interface DiagramEditor {
    * unlocks them together with the groups and tables whose locks hold them. One undo step.
    */
   setLocked(locked: boolean): void
+  /**
+   * Sets the status of the selected shapes, tables and groups, a field or an index for its table, in the name of the
+   * participant at this moment, or with `null` takes it off, as one undo step; edges get none, and locked elements get it
+   * too. Elements that have the status already keep it, with who set it and when. Returns the ids of the elements whose
+   * status changed, in the order of the selection; a read-only editor changes none.
+   */
+  setStatus(status: ElementStatus | null): string[]
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
   /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
   focus(): void
   /**
-   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%; `null` when there
-   * is nothing to draw.
+   * Draws the page for the theme of the app: on the dark canvas black lines and text that lie on the canvas are shown
+   * light. Only the canvas of this participant changes; the document and images of the page do not.
+   */
+  setTheme(theme: CanvasTheme): void
+  /**
+   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%, in the colors of the
+   * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
   exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
@@ -823,6 +849,8 @@ export interface DiagramEditorOptions {
    * pointer and the comment tool. `true` by default; a draft of a proposal of changes has neither.
    */
   collaboration?: boolean
+  /** The theme of the canvas at first; see {@link DiagramEditor.setTheme}. Light by default, as images of pages are. */
+  theme?: CanvasTheme
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -881,6 +909,7 @@ export function createDiagramEditor(
     participantName,
     participantId,
     collaboration = true,
+    theme: initialTheme = 'light',
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -904,6 +933,9 @@ export function createDiagramEditor(
   configureStyles(graph)
   configureTableFields(graph)
   configureTextWrap(graph)
+  let theme = initialTheme
+  // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
   const unwatchLocks = configureLocks(graph)
@@ -1151,6 +1183,20 @@ export function createDiagramEditor(
     const attribution = readAttribution(selectedCellMap())
     return attribution && { ...attribution, mine: isMine(attribution) }
   }
+  /**
+   * The elements whose status {@link DiagramEditor.setStatus} sets: the selected shapes, tables and groups and the tables
+   * of selected fields and indexes, each once; not edges and labels of edges.
+   */
+  const statusTargets = (): Cell[] => [
+    ...new Set(
+      graph.getSelectionCells().flatMap((cell) => {
+        const target = lockTarget(cell)
+        return target.isVertex() && !target.getParent()?.isEdge() ? [target] : []
+      }),
+    ),
+  ]
+  const selectionStatus = (): SelectionStatus | null =>
+    commonStatus(statusTargets().map((cell) => readStatus(cells.get(cell.getId() ?? ''))?.status ?? null))
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1422,6 +1468,7 @@ export function createDiagramEditor(
       commentTool: tool === 'comment',
       lock: selectionLock(),
       attribution: selectionAttribution(),
+      status: selectionStatus(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1450,6 +1497,14 @@ export function createDiagramEditor(
     if (selected && events.some(changed)) notify()
   }
   cells.observeDeep(handleAttribution)
+  // Statuses are not in the model either: the status of the selection follows the document when another participant, the
+  // undo of this one or a merged proposal changes it.
+  const handleStatuses = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event instanceof Y.YMapEvent && event.target !== cells && STATUS_KEYS.some((key) => event.keysChanged.has(key))
+    if (!graph.isSelectionEmpty() && events.some(changed)) notify()
+  }
+  cells.observeDeep(handleStatuses)
   // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
   // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
   // handles of edges in English. The single selected element shows who changed it under the canvas already.
@@ -2330,6 +2385,23 @@ export function createDiagramEditor(
         setStyleValue(targets, LOCKED_BY_KEY, locked && participantName ? participantName : undefined)
       })
     },
+    setStatus(status) {
+      if (readOnly) return []
+      const targets = statusTargets()
+      const changed: string[] = []
+      if (targets.length === 0) return changed
+      // One transaction: one undo step, which brings back the statuses and the marks of who set them.
+      document.transact(() => {
+        const at = Date.now()
+        for (const cell of targets) {
+          const id = cell.getId()
+          const entry = id ? cells.get(id) : undefined
+          if (id && entry && writeStatus(entry, status, author, at)) changed.push(id)
+        }
+      }, LOCAL_ORIGIN)
+      if (changed.length > 0) notify()
+      return changed
+    },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
       if (!edge?.isEdge() || !isUnlocked(edge)) return
@@ -2369,6 +2441,11 @@ export function createDiagramEditor(
       if (cell && graph.isCellEditable(cell)) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
+    setTheme(next) {
+      if (next === theme) return
+      theme = next
+      restyle(graph)
+    },
     exportSvg({ selectionOnly = false, ...options } = {}) {
       const copied = selectionOnly ? new Set(cellsToCopy()) : null
       // In the order of the page, so that what lies on top on the canvas lies on top in the image.
@@ -2377,8 +2454,22 @@ export function createDiagramEditor(
         .getChildren()
         .filter((cell) => !copied || copied.has(cell))
       if (copied && cells.length === 0) return null
-      const image = renderSvg(graph, cells, options)
-      return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+      // participant never sees.
+      const shown = theme
+      if (shown !== 'light') {
+        theme = 'light'
+        restyle(graph)
+      }
+      try {
+        const image = renderSvg(graph, cells, options)
+        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      } finally {
+        if (shown !== 'light') {
+          theme = shown
+          restyle(graph)
+        }
+      }
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -2639,6 +2730,7 @@ export function createDiagramEditor(
       model.removeListener(notifyView)
       model.removeListener(notify)
       cells.unobserveDeep(handleAttribution)
+      cells.unobserveDeep(handleStatuses)
       layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()
@@ -3069,6 +3161,36 @@ function configureTextWrap(graph: Graph) {
       ? wrapLabel(label, graph.getCellStyle(cell), cell.getGeometry()!.width)
       : label
   }
+}
+
+/**
+ * Draws the page for the theme of the canvas that `theme` tells: on the dark canvas the black lines and text that lie on
+ * the canvas are drawn light, see {@link darkCanvasStyle}. Only the drawing changes: the document, the colors that the
+ * toolbar shows (the style of the cell with the defaults of the stylesheet) and images of the page keep the colors of the
+ * diagram.
+ */
+function configureCanvasTheme(graph: Graph, theme: () => CanvasTheme) {
+  const getCellStyle = graph.getCellStyle.bind(graph)
+  const view = graph.getView()
+  /** No shape that holds the cell, e.g. a table, fills the area under it. */
+  const onCanvas = (cell: Cell) => {
+    for (let parent = cell.getParent(); parent?.isVertex(); parent = parent.getParent()) {
+      if (coversChildren(view.getState(parent)?.style ?? getCellStyle(parent))) return false
+    }
+    return true
+  }
+  graph.getCellStyle = (cell) => {
+    const style = getCellStyle(cell)
+    return theme() === 'dark' ? darkCanvasStyle(style, cell.isEdge(), onCanvas(cell)) : style
+  }
+}
+
+/** Draws every cell of the page again with its style computed anew, e.g. for another theme of the canvas. */
+function restyle(graph: Graph) {
+  const view = graph.getView()
+  for (const state of view.getStates().values()) state.invalidStyle = true
+  view.invalidate()
+  view.validate()
 }
 
 function configureStyles(graph: Graph) {

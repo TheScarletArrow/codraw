@@ -198,6 +198,58 @@ describe('menuItems', () => {
     }
   })
 
+  it('offers the statuses after locking for shapes, tables, groups and several elements with them', () => {
+    const marked = { ...all, canLock: true, status: { value: null, mixed: false } }
+
+    expect(labels('shape', marked)).toEqual([
+      'Изменить подпись',
+      'Вырезать',
+      'Копировать',
+      'Дублировать',
+      'На передний план',
+      'На задний план',
+      'Закрепить',
+      'Черновик',
+      'Нужно ревью',
+      'Готово',
+      'Без статуса',
+      'Удалить',
+    ])
+    const statuses = menuItems('shape', marked).filter((item) => item.checked !== undefined)
+    expect(statuses.map(({ command, heading, separatorBefore }) => [command, heading, separatorBefore])).toEqual([
+      ['statusDraft', 'Статус', true],
+      ['statusReview', undefined, false],
+      ['statusDone', undefined, false],
+      ['statusNone', undefined, false],
+    ])
+    for (const target of ['table', 'group', 'selection'] as const) expect(labels(target, marked)).toContain('Нужно ревью')
+    for (const target of ['canvas', 'field', 'index', 'edge'] as const) expect(labels(target, marked)).not.toContain('Нужно ревью')
+    // Without elements that may have a status, e.g. edges only.
+    expect(labels('selection', { ...all, status: null })).not.toContain('Нужно ревью')
+  })
+
+  it('chooses the common status of the selection, none for different ones', () => {
+    const chosen = (status: MenuAvailability['status']) =>
+      menuItems('selection', { ...all, status })
+        .filter((item) => item.checked)
+        .map((item) => item.label)
+
+    expect(chosen({ value: 'review', mixed: false })).toEqual(['Нужно ревью'])
+    expect(chosen({ value: null, mixed: false })).toEqual(['Без статуса'])
+    expect(chosen({ value: null, mixed: true })).toEqual([])
+  })
+
+  it('keeps the statuses of locked elements, and offers them no participant who may only view', () => {
+    const status = { value: 'done' as const, mixed: false }
+
+    expect(
+      menuItems('shape', { ...all, canUnlock: true, locked: true, status })
+        .filter((item) => item.checked !== undefined)
+        .every((item) => !item.disabled),
+    ).toBe(true)
+    expect(labels('shape', { ...all, readOnly: true, status })).toEqual(['Копировать'])
+  })
+
   it('maps items to the commands of the editor with their shortcuts', () => {
     expect(menuItems('table', all).map(({ command, shortcut }) => [command, shortcut])).toEqual([
       ['editLabel', 'F2'],

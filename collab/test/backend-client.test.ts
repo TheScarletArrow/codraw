@@ -68,6 +68,37 @@ describe("backend client", () => {
     await expect(unauthorized.loadDocument(board)).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.storeDocument(board, new Uint8Array([1]))).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.loadAccess(board)).rejects.toThrow("backend responded with 401");
+    await expect(unauthorized.storeSearchText(board, "Схема")).rejects.toThrow("backend responded with 401");
+    await expect(unauthorized.boardsWithoutSearchText(null, 10)).rejects.toThrow("backend responded with 401");
+  });
+
+  it("stores the text of a board for search in UTF-8, and only while it has none when asked so", async () => {
+    await client.storeDocument(board, new Uint8Array([1]));
+
+    await expect(client.storeSearchText(board, "Схема\nЁлка 😀")).resolves.toBe(true);
+    await expect(client.storeSearchText(board, "Старее", { onlyIfMissing: true })).resolves.toBe(false);
+
+    expect(backend.searchTexts.get(board)).toBe("Схема\nЁлка 😀");
+    expect(backend.searchTextsSent(board)).toEqual([
+      { text: "Схема\nЁлка 😀", onlyIfMissing: false },
+      { text: "Старее", onlyIfMissing: true },
+    ]);
+  });
+
+  it("reports a board without a stored document when storing its text", async () => {
+    await expect(client.storeSearchText(board, "Схема")).rejects.toBeInstanceOf(BoardNotFoundError);
+  });
+
+  it("lists the boards without a text page by page", async () => {
+    const boards = ["0199a000-0000-7000-8000-000000000003", "0199a000-0000-7000-8000-000000000004"];
+    for (const id of [board, ...boards]) {
+      backend.boards.add(id);
+      await client.storeDocument(id, new Uint8Array([1]));
+    }
+    await client.storeSearchText(board, "Есть");
+
+    await expect(client.boardsWithoutSearchText(null, 1)).resolves.toEqual([boards[0]]);
+    await expect(client.boardsWithoutSearchText(boards[0]!, 5)).resolves.toEqual([boards[1]]);
   });
 });
 

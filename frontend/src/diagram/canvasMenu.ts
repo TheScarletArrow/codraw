@@ -1,3 +1,5 @@
+import type { ElementStatus, SelectionStatus } from './status.ts'
+
 /** What a right click on the canvas is about: nothing selected, one element of a kind, or several elements. */
 export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'index' | 'edge' | 'group' | 'selection'
 
@@ -21,9 +23,23 @@ export type MenuCommand =
   | 'ungroup'
   | 'lock'
   | 'unlock'
+  | StatusCommand
   | 'delete'
   | 'comment'
   | 'commentHere'
+
+/** Items that set the status of the selection. */
+export type StatusCommand = 'statusDraft' | 'statusReview' | 'statusDone' | 'statusNone'
+
+/** The status each item of the status sets; `null` takes it off. */
+export const STATUS_COMMANDS: Record<StatusCommand, ElementStatus | null> = {
+  statusDraft: 'draft',
+  statusReview: 'review',
+  statusDone: 'done',
+  statusNone: null,
+}
+
+export const isStatusCommand = (command: MenuCommand): command is StatusCommand => command in STATUS_COMMANDS
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
 export type Shortcut =
@@ -48,6 +64,10 @@ export interface MenuItem {
   disabled: boolean
   /** The item starts a new group of the menu. */
   separatorBefore: boolean
+  /** The name of the group that the item starts, shown above it, e.g. «Статус». */
+  heading?: string
+  /** The item is one of a choice, chosen or not, e.g. a status; other items are not. */
+  checked?: boolean
 }
 
 export interface MenuAvailability {
@@ -70,6 +90,8 @@ export interface MenuAvailability {
   canUnlock?: boolean
   /** Every selected element is locked: the items that would change them are disabled. */
   locked?: boolean
+  /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
+  status?: SelectionStatus | null
 }
 
 /** Items of a participant who may only view the board. */
@@ -111,6 +133,12 @@ const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
 ]
+const STATUS: Entry[] = [
+  ['statusDraft', 'Черновик'],
+  ['statusReview', 'Нужно ревью'],
+  ['statusDone', 'Готово'],
+  ['statusNone', 'Без статуса'],
+]
 
 /** Groups of the menu of each target, in the order of the menu. */
 const MENUS: Record<MenuTarget, Entry[][]> = {
@@ -125,13 +153,14 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, COMMENT, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, COMMENT, [DELETE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     CLIPBOARD,
     STYLE,
     ORDER,
     LOCK,
+    STATUS,
     COMMENT,
     [DELETE],
   ],
@@ -155,14 +184,15 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   ],
   edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, COMMENT, [DELETE]],
-  selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, COMMENT, [DELETE]],
+  selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, [DELETE]],
 }
 
 /**
  * Items of the context menu for a target; the ones that cannot be done now are disabled, and so are those that would
- * change locked elements. A participant who may only view gets only copying, copying a look, selecting and commenting, so
- * their menu may be empty.
+ * change locked elements. The status of the selection is offered when it has elements that may have one, with its
+ * current status chosen, also for locked elements. A participant who may only view gets only copying, copying a look,
+ * selecting and commenting, so their menu may be empty.
  */
 export function menuItems(
   target: MenuTarget,
@@ -178,6 +208,7 @@ export function menuItems(
     canLock = false,
     canUnlock = false,
     locked = false,
+    status = null,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
@@ -193,6 +224,7 @@ export function menuItems(
     commentHere: canComment,
     lock: canLock,
     unlock: canUnlock,
+    ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]
     .map((group) =>
@@ -200,13 +232,22 @@ export function menuItems(
     )
     .filter((group) => group.length > 0)
   return groups.flatMap((group, groupIndex) =>
-    group.map(([command, label, shortcut], index) => ({
-      command,
-      label,
-      shortcut,
-      disabled: (unavailable[command] ?? false) || (locked && CHANGING_COMMANDS.has(command)),
-      separatorBefore: groupIndex > 0 && index === 0,
-    })),
+    group.map(([command, label, shortcut], index) => {
+      const item: MenuItem = {
+        command,
+        label,
+        shortcut,
+        disabled: (unavailable[command] ?? false) || (locked && CHANGING_COMMANDS.has(command)),
+        separatorBefore: groupIndex > 0 && index === 0,
+      }
+      if (!isStatusCommand(command)) return item
+      // Different statuses choose none of them.
+      return {
+        ...item,
+        ...(index === 0 && { heading: 'Статус' }),
+        checked: status !== null && !status.mixed && STATUS_COMMANDS[command] === status.value,
+      }
+    }),
   )
 }
 

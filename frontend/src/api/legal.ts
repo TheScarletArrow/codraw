@@ -14,6 +14,8 @@ export interface LegalInfo {
   notificationsPerUser: number
   /** The most closed proposals of changes kept of a board. */
   closedProposalsPerBoard: number
+  /** Whether users may read schemas of databases through the server, with the user and the password of a database. */
+  schemaImport: boolean
 }
 
 export function fetchLegal(): Promise<LegalInfo> {
