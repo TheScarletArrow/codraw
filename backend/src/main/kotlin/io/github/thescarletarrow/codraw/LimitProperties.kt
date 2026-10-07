@@ -42,6 +42,9 @@ data class LimitProperties(
     /** The most closed proposals a board keeps; those closed earliest go as others close. */
     @field:Positive
     val closedProposalsPerBoard: Int = 20,
+    /** The most notifications about requests for reviews that the requests of one user give owners of boards in an hour. */
+    @field:Positive
+    val reviewRequestsPerHour: Int = 30,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The largest live image of a board, as the browsers of participants publish it. */

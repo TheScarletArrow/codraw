@@ -21,6 +21,8 @@ import {
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { restoreDocument } from '../diagram/restore.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
+import { writeStatus } from '../diagram/status.ts'
+import { shapeData } from '../diagram/testing.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
 import { setPendingImport } from '../drawio/files.ts'
 import { parseDrawio } from '../drawio/parse.ts'
@@ -2500,6 +2502,129 @@ describe('BoardPage', () => {
 
       expect(await within(provider.review).findByText(/Отозвано: Боб/)).toBeInTheDocument()
       expect(within(provider.review).getByRole('link', { name: 'Открыть черновик' })).toBeInTheDocument()
+    })
+  })
+
+  describe('statuses of elements', () => {
+    const bob = { id: 'bob', name: 'Боб' }
+    const reviewUrl = `${boardUrl}/review-requests`
+    const shownPage = () => screen.getByTestId('diagram-canvas').dataset.page
+    const statuses = () => screen.getByRole('dialog', { name: 'Статусы элементов' })
+    /** «API» on the first page and the table «orders» on the page «Данные», both waiting for a review. */
+    function fill(document: Y.Doc) {
+      document.transact(() => {
+        writePage(document, 'page-2', { name: 'Данные', order: 'a5' })
+        writeCell(getCells(document), shapeData('api', 'a0', { value: 'API' }))
+        writeCell(getCells(document, 'page-2'), shapeData('orders', 'a0', { value: 'orders', style: { childLayout: 'stackLayout' } }))
+        writeStatus(getCells(document).get('api')!, 'review', bob, Date.now())
+        writeStatus(getCells(document, 'page-2').get('orders')!, 'review', bob, Date.now())
+      })
+    }
+    /** Right-clicks a shape on the canvas and chooses a status in the menu. */
+    async function chooseStatus(editor: FakeEditor, name: string) {
+      act(() => editor.rightClick({ x: 10, y: 10, point: { x: 0, y: 0 }, target: 'shape', cellId: 'api' }))
+      await userEvent.click(screen.getByRole('menuitemradio', { name }))
+    }
+
+    it('shows the statuses of the page over the canvas and goes to an element to review on another page', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      act(() => fill(provider.document))
+      act(() => canvas.editor!.placeCell('api', { x: 100, y: 50, width: 120, height: 60 }))
+
+      expect(screen.getByRole('img', { name: /^Нужно ревью — Боб, / })).toHaveAttribute('data-cell', 'api')
+      await userEvent.click(await screen.findByRole('button', { name: '2 на ревью' }))
+      await userEvent.click(within(statuses()).getByRole('button', { name: /orders/ }))
+
+      await waitFor(() => expect(shownPage()).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('orders'))
+      expect(provider.router.state.location.search).toBe('?page=page-2')
+      expect(screen.queryByRole('dialog', { name: 'Статусы элементов' })).toBeNull()
+    })
+
+    it('asks the owner to review what a participant who is not the owner marks «Нужно ревью», once per change', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother }, [`POST ${reviewUrl}`]: { status: 204 } })
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      act(() => editor.setState({ status: { value: null, mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['db', 'api'])
+
+      await chooseStatus(editor, 'Нужно ревью')
+
+      expect(editor.setStatus).toHaveBeenCalledWith('review')
+      const sent = requests(provider.fetchMock, 'POST', reviewUrl)
+      expect(sent).toHaveLength(1)
+      expect(JSON.parse(String(sent[0]![1]!.body))).toEqual({ pageId: DEFAULT_PAGE_ID, cellId: 'db' })
+
+      // Another status, or «Нужно ревью» that changes nothing, asks nobody.
+      await chooseStatus(editor, 'Готово')
+      vi.mocked(editor.setStatus).mockReturnValue([])
+      await chooseStatus(editor, 'Нужно ревью')
+      expect(requests(provider.fetchMock, 'POST', reviewUrl)).toHaveLength(1)
+    })
+
+    it('keeps the status quietly when the request for a review fails', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardOfAnother }, [`POST ${reviewUrl}`]: { status: 429 } })
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      act(() => editor.setState({ status: { value: null, mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['api'])
+
+      await chooseStatus(editor, 'Нужно ревью')
+
+      await waitFor(() => expect(requests(provider.fetchMock, 'POST', reviewUrl)).toHaveLength(1))
+      expect(editor.undo).not.toHaveBeenCalled()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('asks nobody when the owner marks «Нужно ревью»', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+      const editor = canvas.editor!
+      act(() => editor.setState({ status: { value: null, mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['api'])
+
+      await chooseStatus(editor, 'Нужно ревью')
+
+      expect(editor.setStatus).toHaveBeenCalledWith('review')
+      expect(requests(provider.fetchMock, 'POST', reviewUrl)).toHaveLength(0)
+    })
+
+    it('goes to the element of a link once the board is synced, also on a page the local copy lacks', async () => {
+      // An earlier visit left a copy of the board from before the page of the element was added.
+      const stored = new Y.Doc()
+      const persistence = openLocalCopy(ALICE.id, boardId, board.title, stored)!
+      await persistence.whenSynced
+      initializeDocument(stored)
+      await persistence.destroy()
+      const provider = await openBoard({}, '?page=page-2&cell=orders')
+
+      // IndexedDB answers asynchronously, slower when the tests run in parallel.
+      expect(await screen.findByTestId('diagram-canvas', undefined, { timeout: 5_000 })).toBeInTheDocument()
+      expect(canvas.editor!.revealCell).not.toHaveBeenCalled()
+
+      act(() => {
+        fill(provider.document)
+        provider.emitConnected()
+      })
+
+      await waitFor(() => expect(shownPage()).toBe('page-2'))
+      await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('orders'))
+      expect(provider.router.state.location.search).toBe('?page=page-2')
+    })
+
+    it('opens the page of the element of a link when the element is gone', async () => {
+      const provider = await openBoard({}, '?page=page-2&cell=gone')
+      act(() => {
+        // The document of the board as collab gives it, with its first page.
+        initializeDocument(provider.document)
+        fill(provider.document)
+        provider.emitSynced()
+      })
+
+      await waitFor(() => expect(provider.router.state.location.search).toBe('?page=page-2'))
+      await waitFor(() => expect(shownPage()).toBe('page-2'))
+      expect(canvas.editor!.revealCell).toHaveBeenCalledWith('gone')
     })
   })
 

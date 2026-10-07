@@ -92,6 +92,14 @@ import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
+import {
+  commonStatus,
+  readStatus,
+  STATUS_KEYS,
+  writeStatus,
+  type ElementStatus,
+  type SelectionStatus,
+} from './status.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
@@ -339,6 +347,11 @@ export interface EditorState {
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
   attribution: SelectionAttribution | null
+  /**
+   * The status of the selected elements that may have one (see {@link DiagramEditor.setStatus}), or `null` when none of
+   * them may.
+   */
+  status: SelectionStatus | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -442,6 +455,13 @@ export interface DiagramEditor {
    * unlocks them together with the groups and tables whose locks hold them. One undo step.
    */
   setLocked(locked: boolean): void
+  /**
+   * Sets the status of the selected shapes, tables and groups, a field or an index for its table, in the name of the
+   * participant at this moment, or with `null` takes it off, as one undo step; edges get none, and locked elements get it
+   * too. Elements that have the status already keep it, with who set it and when. Returns the ids of the elements whose
+   * status changed, in the order of the selection; a read-only editor changes none.
+   */
+  setStatus(status: ElementStatus | null): string[]
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
@@ -1102,6 +1122,20 @@ export function createDiagramEditor(
     const attribution = readAttribution(selectedCellMap())
     return attribution && { ...attribution, mine: isMine(attribution) }
   }
+  /**
+   * The elements whose status {@link DiagramEditor.setStatus} sets: the selected shapes, tables and groups and the tables
+   * of selected fields and indexes, each once; not edges and labels of edges.
+   */
+  const statusTargets = (): Cell[] => [
+    ...new Set(
+      graph.getSelectionCells().flatMap((cell) => {
+        const target = lockTarget(cell)
+        return target.isVertex() && !target.getParent()?.isEdge() ? [target] : []
+      }),
+    ),
+  ]
+  const selectionStatus = (): SelectionStatus | null =>
+    commonStatus(statusTargets().map((cell) => readStatus(cells.get(cell.getId() ?? ''))?.status ?? null))
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1317,6 +1351,7 @@ export function createDiagramEditor(
       commentTool: tool === 'comment',
       lock: selectionLock(),
       attribution: selectionAttribution(),
+      status: selectionStatus(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1345,6 +1380,14 @@ export function createDiagramEditor(
     if (selected && events.some(changed)) notify()
   }
   cells.observeDeep(handleAttribution)
+  // Statuses are not in the model either: the status of the selection follows the document when another participant, the
+  // undo of this one or a merged proposal changes it.
+  const handleStatuses = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event instanceof Y.YMapEvent && event.target !== cells && STATUS_KEYS.some((key) => event.keysChanged.has(key))
+    if (!graph.isSelectionEmpty() && events.some(changed)) notify()
+  }
+  cells.observeDeep(handleStatuses)
   // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
   // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
   // handles of edges in English. The single selected element shows who changed it under the canvas already.
@@ -2194,6 +2237,23 @@ export function createDiagramEditor(
         setStyleValue(targets, LOCKED_BY_KEY, locked && participantName ? participantName : undefined)
       })
     },
+    setStatus(status) {
+      if (readOnly) return []
+      const targets = statusTargets()
+      const changed: string[] = []
+      if (targets.length === 0) return changed
+      // One transaction: one undo step, which brings back the statuses and the marks of who set them.
+      document.transact(() => {
+        const at = Date.now()
+        for (const cell of targets) {
+          const id = cell.getId()
+          const entry = id ? cells.get(id) : undefined
+          if (id && entry && writeStatus(entry, status, author, at)) changed.push(id)
+        }
+      }, LOCAL_ORIGIN)
+      if (changed.length > 0) notify()
+      return changed
+    },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
       if (!edge?.isEdge() || !isUnlocked(edge)) return
@@ -2503,6 +2563,7 @@ export function createDiagramEditor(
       model.removeListener(notifyView)
       model.removeListener(notify)
       cells.unobserveDeep(handleAttribution)
+      cells.unobserveDeep(handleStatuses)
       layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()

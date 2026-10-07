@@ -9,6 +9,7 @@ import { mergeConflicts, mergeProposal, MERGE_ORIGIN } from './merge.ts'
 import { DEFAULT_PAGE_ID, getCells, LAYER_CELL_ID, readAttrs, writeAttrs, writeCell, type CellData } from './model.ts'
 import { addPage, deletePage, listPages, movePage, renamePage } from './pages.ts'
 import { TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
+import { readStatus, writeStatus } from './status.ts'
 import { boardWith, edgeData, laterState, shapeData } from './testing.ts'
 
 const BOB = { id: 'bob', name: 'Боб' }
@@ -157,6 +158,20 @@ describe('mergeProposal', () => {
         style: { fillColor: '#ff0000', fontSize: 12 },
         geometry: { x: 300, y: 20, width: 200, height: 60 },
       })
+    })
+
+    it('get the status the draft set, with who set it, and keep the statuses the draft left', () => {
+      const base = boardWith(shape('api'), shape('db'))
+      const { board, accept } = proposal(
+        base,
+        (draft) => draft.transact(() => writeStatus(getCells(draft).get('api')!, 'done', BOB, 1000)),
+        (board) => board.transact(() => writeStatus(getCells(board).get('db')!, 'review', ALICE, 2000)),
+      )
+
+      accept()
+
+      expect(readStatus(getCells(board).get('api'))).toEqual({ status: 'done', by: 'bob', name: 'Боб', at: 1000 })
+      expect(readStatus(getCells(board).get('db'))).toEqual({ status: 'review', by: 'alice', name: 'Алиса', at: 2000 })
     })
 
     it('take the key of the draft where both changed it', () => {

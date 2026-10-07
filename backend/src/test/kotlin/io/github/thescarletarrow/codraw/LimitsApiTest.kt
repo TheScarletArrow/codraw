@@ -40,6 +40,7 @@ import kotlin.test.assertEquals
         "codraw.limits.proposals-per-board=3",
         "codraw.limits.proposals-per-author=2",
         "codraw.limits.closed-proposals-per-board=2",
+        "codraw.limits.review-requests-per-hour=2",
     ],
 )
 class LimitsApiTest(
@@ -332,6 +333,29 @@ class LimitsApiTest(
     }
 
     @Test
+    fun `a user asks for as many reviews in an hour as the limit, on all boards, then waits for the hour to pass`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val other = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val bob = users.gitHubUser("Bob")
+        val reached = limitsReached("review-requests")
+
+        askForReview(board, bob, "orders").andExpect { status { isNoContent() } }
+        // A request that notifies nobody, as the owner heard of the element a moment ago, does not count.
+        askForReview(board, bob, "orders").andExpect { status { isNoContent() } }
+        askForReview(other, bob, "orders").andExpect { status { isNoContent() } }
+        askForReview(board, bob, "users").andExpect {
+            status { isTooManyRequests() }
+            jsonPath("$.limit") { value(2) }
+        }
+
+        assertEquals(reached + 1, limitsReached("review-requests"))
+        mockMvc.get("/api/notifications/unread-count") { with(alice.session()) }.andExpect { jsonPath("$.count") { value(2) } }
+        clock.advance(Duration.ofHours(1))
+        askForReview(board, bob, "users").andExpect { status { isNoContent() } }
+        mockMvc.get("/api/notifications/unread-count") { with(alice.session()) }.andExpect { jsonPath("$.count") { value(3) } }
+    }
+
+    @Test
     fun `a board has at most as many open proposals as the limits allow, per board and per author`() {
         val board = createBoard(alice).andExpect { status { isCreated() } }.id()
         val (bob, carol) = listOf("Bob", "Carol").map { users.gitHubUser(it) }
@@ -428,6 +452,14 @@ class LimitsApiTest(
         with(user.session())
         with(csrf())
     }
+
+    private fun askForReview(board: String, user: User, cellId: String): ResultActionsDsl =
+        mockMvc.post("/api/boards/$board/review-requests") {
+            with(user.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"pageId": "page-1", "cellId": "$cellId"}"""
+        }
 
     private fun limitsReached(limit: String) = registry.get("codraw.limits.reached").tag("limit", limit).counter().count()
 

@@ -50,9 +50,10 @@
 
 ## Impact
 
-- `frontend`: модуль статусов `diagram/status.ts` и порядок обхода страницы `diagram/readingOrder.ts` (его же берёт
-  поиск на доске), `editor.setStatus` и состояние `status`, пункты меню (`diagram/canvasMenu.ts`, `CanvasMenu.tsx`),
-  значки `diagram/StatusBadges.tsx`, сводка `board/StatusSummary.tsx`, страница доски (кнопка, переход, ссылка
+- `frontend`: модуль статусов `diagram/status.ts`, список статусов доски `board/statusList.ts` и порядок обхода
+  страницы `diagram/readingOrder.ts` (его же берёт поиск на доске), `editor.setStatus` и состояние `status`, пункты меню
+  (`diagram/canvasMenu.ts`, `CanvasMenu.tsx`), знак статуса `diagram/StatusIcon.tsx`, значки
+  `board/StatusBadges.tsx`, сводка `board/StatusSummary.tsx`, страница доски (кнопка, переход, ссылка
   `?cell=`, запрос ревью), черновик предложения и просмотр версии (значки), слова списка изменений
   (`board/changes.ts`), копия страницы без статусов (`diagram/pages.ts`), уведомления (`api/notifications.ts`,
   `notifications/notifications.ts`), «Что нового» 0.6.0, политика конфиденциальности.
