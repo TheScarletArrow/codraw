@@ -6,6 +6,7 @@ import * as Y from 'yjs'
 import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
+import { SHOP_COMPOSE } from '../infra/testCompose.ts'
 import { downloadBlob } from '../lib/download.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -120,6 +121,7 @@ describe('SqlMenu', () => {
     expect(screen.queryByRole('button', { name: 'Импорт SQL…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Mermaid…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт OpenAPI / AsyncAPI…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт docker-compose…' })).toBeNull()
   })
 
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
@@ -211,6 +213,24 @@ describe('SqlMenu', () => {
     const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
     const shapes = cells.filter((cell) => cell.parent === '1' && cell.kind === 'vertex')
     expect(shapes.map((cell) => cell.value)).toEqual(['Petstore\nGET /pets\nPOST /pets\nGET /pets/{petId}', 'Pet', 'Error'])
+    expect(Math.min(...shapes.map((cell) => cell.geometry!.x))).toBe(700)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('adds the services of a docker-compose file to the right of the page, as one insertion', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт docker-compose…' }))
+
+    await user.upload(screen.getByLabelText('Файлы docker-compose'), new File([SHOP_COMPOSE], 'docker-compose.yml'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Сервисов: 3, связей: 2, сетей: 0'))
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    const shapes = cells.filter((cell) => cell.parent === '1' && cell.kind === 'vertex')
+    expect(shapes.map((cell) => cell.value)).toEqual(['postgres\npostgres:18-alpine', 'backend\n./backend', 'frontend\nnginx:1.29\n:8080'])
     expect(Math.min(...shapes.map((cell) => cell.geometry!.x))).toBe(700)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
