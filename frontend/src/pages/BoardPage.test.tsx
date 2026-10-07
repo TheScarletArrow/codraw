@@ -635,6 +635,32 @@ describe('BoardPage', () => {
       expect(screen.getByRole('complementary', { name: 'Фигуры' })).toBeInTheDocument()
     })
 
+    it('closes the search on the board while a version shows in place of the board, leaving Ctrl+F to the browser', async () => {
+      await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: versionState() } })
+      const pressFind = () => {
+        let browserFind = true
+        act(() => {
+          browserFind = fireEvent.keyDown(window.document.body, { key: 'f', code: 'KeyF', ctrlKey: true })
+        })
+        return browserFind
+      }
+      const searchBar = () => screen.queryByRole('search', { name: 'Поиск на доске' })
+      expect(pressFind()).toBe(false)
+      expect(searchBar()).toBeInTheDocument()
+
+      await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+      const preview = await screen.findByRole('region', { name: /^Версия от / })
+
+      expect(searchBar()).toBeNull()
+      expect(pressFind()).toBe(true)
+      expect(searchBar()).toBeNull()
+
+      await userEvent.click(within(preview).getByRole('button', { name: 'Закрыть' }))
+      expect(searchBar()).toBeNull()
+      expect(pressFind()).toBe(false)
+      expect(searchBar()).toBeInTheDocument()
+    })
+
     it('keeps the current state as a version, then restores the selected one for everybody', async () => {
       const provider = await openHistory({
         [`GET ${versionsUrl}/v1`]: { bytes: versionState() },
@@ -1564,6 +1590,118 @@ describe('BoardPage', () => {
 
         expect(shownPage()).toBe(second)
         expect(banner()).toBeNull()
+      })
+    })
+
+    describe('search on the board', () => {
+      const searchBar = () => screen.queryByRole('search', { name: 'Поиск на доске' })
+      const searchField = () => screen.getByRole('searchbox', { name: 'Найти на доске' })
+      /** Presses Ctrl+F on the page; `false` when the browser would not open its own find. */
+      const pressFind = () => {
+        let browserFind = true
+        act(() => {
+          browserFind = fireEvent.keyDown(window.document.body, { key: 'f', code: 'KeyF', ctrlKey: true })
+        })
+        return browserFind
+      }
+      const element = (id: string, value: string, parent = LAYER_CELL_ID): CellData => ({
+        id,
+        kind: 'vertex',
+        parent,
+        order: 'a0',
+        value,
+        geometry: { x: 0, y: 30, width: 220, height: 26 },
+        source: null,
+        target: null,
+        style: {},
+      })
+      /** «Customer API» on the first page, the field `customer_id uuid` of the table `orders` on the page «Данные». */
+      function fill(document: Y.Doc) {
+        document.transact(() => {
+          writePage(document, 'page-2', { name: 'Данные', order: 'a5' })
+          writeCell(getCells(document), element('api', 'Customer API'))
+          writeCell(getCells(document, 'page-2'), element('orders', 'orders'))
+          writeCell(getCells(document, 'page-2'), element('customer-id', 'customer_id uuid', 'orders'))
+        })
+      }
+
+      it('finds texts on every page with Ctrl+F and goes to the page of a match with Enter, and back', async () => {
+        const provider = await openPages()
+        act(() => fill(provider.document))
+
+        expect(pressFind()).toBe(false)
+        await userEvent.type(searchField(), 'customer')
+
+        expect(within(searchBar()!).getByText('1 из 2')).toBeInTheDocument()
+        expect(canvas.editor!.revealCell).toHaveBeenLastCalledWith('api')
+
+        await userEvent.keyboard('{Enter}')
+
+        await waitFor(() => expect(shownPage()).toBe('page-2'))
+        await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('customer-id'))
+        expect(canvas.editor!.pageId).toBe('page-2')
+        expect(currentTab()).toHaveTextContent('Данные')
+        expect(provider.router.state.location.search).toBe('?page=page-2')
+        expect(within(searchBar()!).getByText('2 из 2')).toBeInTheDocument()
+        expect(searchField()).toHaveFocus()
+
+        await userEvent.keyboard('{Shift>}{Enter}{/Shift}')
+
+        await waitFor(() => expect(shownPage()).toBe(DEFAULT_PAGE_ID))
+        await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('api'))
+        expect(within(searchBar()!).getByText('1 из 2')).toBeInTheDocument()
+
+        const canvasOfPage = canvas.editor!
+        await userEvent.keyboard('{Escape}')
+        expect(searchBar()).toBeNull()
+        expect(canvasOfPage.focus).toHaveBeenCalled()
+      })
+
+      it('ends following another participant when it goes to a match, but not when the field is pressed', async () => {
+        const provider = await openPages()
+        act(() => fill(provider.document))
+        const banner = () => screen.queryByRole('region', { name: 'Следование' })
+        act(() =>
+          provider.awareness.setState(7, {
+            user: { name: 'Боб', color: '#dc2626', avatarUrl: null },
+            page: DEFAULT_PAGE_ID,
+            viewport: { x: 1500, y: 900, scale: 1.5 },
+          }),
+        )
+        await userEvent.click(within(screen.getByRole('list', { name: 'Участники' })).getByRole('button', { name: /Боб/ }))
+        expect(banner()).toHaveTextContent('Вы следуете за Боб')
+
+        pressFind()
+        await userEvent.click(searchField())
+        expect(banner()).toBeInTheDocument()
+
+        await userEvent.type(searchField(), 'customer_id')
+
+        expect(banner()).toBeNull()
+        await waitFor(() => expect(shownPage()).toBe('page-2'))
+        await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('customer-id'))
+      })
+
+      it('lets a participant who may only view search the board, changing nothing', async () => {
+        const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+        const stored = new Y.Doc()
+        initializeDocument(stored)
+        fill(stored)
+        act(() => {
+          Y.applyUpdate(provider.document, Y.encodeStateAsUpdate(stored))
+          provider.emitSynced()
+        })
+        const updates = vi.fn()
+        provider.document.on('update', updates)
+
+        pressFind()
+        await userEvent.type(searchField(), 'customer_id')
+
+        expect(within(searchBar()!).getByText('1 из 1')).toBeInTheDocument()
+        await waitFor(() => expect(shownPage()).toBe('page-2'))
+        await waitFor(() => expect(canvas.editor!.revealCell).toHaveBeenCalledWith('customer-id'))
+        expect(canvas.editor!.readOnly).toBe(true)
+        expect(updates).not.toHaveBeenCalled()
       })
     })
 

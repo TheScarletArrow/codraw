@@ -1,9 +1,6 @@
-# keyboard-shortcuts Specification
+# Spec Delta
 
-## Purpose
-Собирает горячие клавиши редактора в одной справке на странице доски, чтобы их можно было узнать, не уходя с доски.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Справка по горячим клавишам
 

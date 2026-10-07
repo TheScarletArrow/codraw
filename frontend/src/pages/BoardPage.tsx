@@ -12,6 +12,7 @@ import { fetchProposals, type Proposal } from '../api/proposals.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
+import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
@@ -555,7 +556,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onClose={() => setShowingVisit(false)}
           />
         ) : (
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-w-0 flex-1 flex-col">
             <div
               className="relative min-h-0 flex-1"
               onPointerDownCapture={leader ? stopFollowing : undefined}
@@ -599,6 +600,17 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                 <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>
               )}
             </div>
+            {/* Over the canvas but not on it: pressing on the search does not end following, going to a match does. */}
+            {document && currentPage && (
+              <CanvasSearch
+                document={document}
+                pages={pages}
+                pageId={currentPage.id}
+                editor={editor}
+                onSelectPage={selectPage}
+                onNavigate={following.stop}
+              />
+            )}
             {document && (
               <PageTabs
                 pages={pages}
