@@ -7,6 +7,7 @@ import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { SHOP_COMPOSE } from '../infra/testCompose.ts'
+import { SHOP_GRAPH } from '../infra/testGradle.ts'
 import { SHOP_MANIFESTS } from '../infra/testKubernetes.ts'
 import { downloadBlob } from '../lib/download.ts'
 import { createQueryClient } from '../queryClient.ts'
@@ -124,6 +125,7 @@ describe('SqlMenu', () => {
     expect(screen.queryByRole('button', { name: 'Импорт OpenAPI / AsyncAPI…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт docker-compose…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Kubernetes…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт Gradle…' })).toBeNull()
   })
 
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
@@ -256,6 +258,22 @@ describe('SqlMenu', () => {
     await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
     const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
     expect(cells.find((cell) => cell.value === 'shop' && cell.style.codrawShape === 'kubernetes-cluster')).toBeDefined()
+    expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
+  })
+
+  it('adds the modules of a graph of Gradle to the right of the page', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт Gradle…' }))
+
+    await user.upload(screen.getByLabelText('Файлы графа Gradle'), new File([SHOP_GRAPH], 'modules.json'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Модулей: 4, связей: 4, групп: 1, пропущено: 0'))
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells.filter((cell) => cell.style.codrawShape === 'uml-component')).toHaveLength(4)
     expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
   })
 

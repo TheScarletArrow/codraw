@@ -9,6 +9,7 @@ import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
 import { COMPOSE, KUBERNETES } from '../infra/formats.ts'
+import { GradleImport } from '../infra/GradleImport.tsx'
 import { InfraImport } from '../infra/InfraImport.tsx'
 import { downloadBlob, fileName } from '../lib/download.ts'
 import { mermaidCells, mermaidSummary } from '../mermaid/mermaidCells.ts'
@@ -67,12 +68,12 @@ const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) =>
 
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
- * a flowchart or an ER diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose and manifests of
- * Kubernetes become a diagram of the page.
+ * a flowchart or an ER diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose, manifests of
+ * Kubernetes and builds of Gradle become a diagram of the page.
  */
 export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
   const [open, setOpen] = useState(false)
-  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | null>(null)
+  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | 'gradle' | null>(null)
   // «Подключение к базе» over «Импорт SQL».
   const [connecting, setConnecting] = useState(false)
   const [text, setText] = useState('')
@@ -153,7 +154,7 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           variant="ghost"
           size="icon-sm"
           aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose и Kubernetes"
+          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes и Gradle"
           disabled={!doc || !pageId}
         >
           <Database />
@@ -171,6 +172,8 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           <InfraImport format={COMPOSE} {...infraProps} />
         ) : importing === 'kubernetes' ? (
           <InfraImport format={KUBERNETES} {...infraProps} />
+        ) : importing === 'gradle' ? (
+          <GradleImport {...infraProps} />
         ) : importing === 'mermaid' && mermaid ? (
           <>
             <div className="flex items-center gap-1">
@@ -306,6 +309,9 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                   onClick={() => setImporting('kubernetes')}
                 >
                   Импорт Kubernetes…
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('gradle')}>
+                  Импорт Gradle…
                 </Button>
               </>
             )}

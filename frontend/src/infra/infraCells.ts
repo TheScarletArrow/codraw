@@ -18,6 +18,9 @@ const textWidth = (lines: string[]) => Math.ceil(Math.max(...lines.map((line) =>
 /** The depth of the top and the right side of a `cube`; see `CubeShape` of `diagram/extensions.ts`. */
 const CUBE_DEPTH = 20
 
+/** The width of the small boxes on the left side of a UML `component`, with room between them and the label. */
+const COMPONENT_BOXES = 24
+
 /** The end of a `cylinder` that its label keeps clear of: a fifth of its length, as maxGraph draws it, 40 px at most. */
 const cylinderEnd = (length: number) => Math.min(40, Math.round(length / 5))
 
@@ -40,6 +43,8 @@ function measure(node: InfraNode): Measured {
     const shape = { width: Math.min(MAX_WIDTH, Math.max(preset.width, width)), height: Math.max(preset.height, height), style }
     return { shape, box: shape }
   }
+  // The label of a component keeps clear of the two small boxes on its left side.
+  if (preset.style.shape === 'component') return fit(text.width + COMPONENT_BOXES, text.height, { spacingLeft: COMPONENT_BOXES })
   // The label of a cube is on its front, below its top and left of its right side.
   if (preset.style.shape === 'cube') {
     return fit(text.width + CUBE_DEPTH, text.height + CUBE_DEPTH, { spacingTop: CUBE_DEPTH, spacingRight: CUBE_DEPTH })
@@ -57,8 +62,9 @@ function measure(node: InfraNode): Measured {
 }
 
 /**
- * Cells of the graph laid out from left to right along its edges, with the top-left corner at `origin`: a shape of the
- * palette per node, a frame around the nodes of each frame, drawn under them, and an edge per link.
+ * Cells of the graph laid out along its edges in its direction, from left to right by default, with the top-left corner
+ * at `origin`: a shape of the palette per node, a frame around the nodes of each frame, drawn under them, and an edge
+ * per link.
  */
 export async function infraCells(graph: InfraGraph, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>): Promise<CellData[]> {
   const builder = new DiagramBuilder()
@@ -87,7 +93,7 @@ export async function infraCells(graph: InfraGraph, origin: { x: number; y: numb
       target: nodes[edge.target]!,
       ...(edge.label && { label: { width: textWidth([edge.label]) + 8, height: LINE_HEIGHT } }),
     })),
-    'right',
+    graph.direction ?? 'right',
     engine,
   )
   const byId = new Map(cells.map((cell) => [cell.id, cell]))

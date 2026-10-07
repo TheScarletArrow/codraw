@@ -1,3 +1,4 @@
+import type { LayoutDirection } from '../diagram/layout.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
 
 /** A frame around nodes: a network of compose. */
@@ -26,6 +27,8 @@ export interface InfraGraph {
   nodes: InfraNode[]
   frames: InfraFrame[]
   edges: InfraEdge[]
+  /** Where the layout puts the target of a link: right of its source, as by default, or under it. */
+  direction?: LayoutDirection
 }
 
 export interface InfraOptions {

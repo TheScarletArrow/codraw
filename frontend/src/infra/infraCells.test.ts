@@ -77,6 +77,14 @@ describe('infraCells', () => {
     expect(lying!.style.spacingRight).toBe(Math.min(40, Math.round(lying!.geometry!.width / 5)))
   })
 
+  it('keeps the label of a component clear of the boxes on its left side', async () => {
+    const graph: InfraGraph = { nodes: [{ shape: 'uml-component', lines: [':services:orders', 'Java'], frame: null }], frames: [], edges: [] }
+    const [component] = await infraCells(graph, { x: 0, y: 0 })
+
+    expect(component!.style.spacingLeft).toBe(24)
+    expect(component!.geometry!.width).toBeGreaterThanOrEqual(':services:orders'.length * 7.5 + 32 + 24)
+  })
+
   it('puts the services of each network into its frame, drawn under them', async () => {
     const cells = await infraCells(await graphOf(NETWORKS_COMPOSE), { x: 0, y: 0 })
 

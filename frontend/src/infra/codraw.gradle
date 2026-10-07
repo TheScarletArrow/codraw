@@ -1,0 +1,37 @@
+// The graph of the modules of a Gradle build for «Импорт Gradle…» of CoDraw. Run it in the root of the build:
+//
+//   ./gradlew -q -I codraw.gradle codrawGraph > modules.json
+//
+// and open modules.json in CoDraw. It reads the projects of the build, the plugins CoDraw knows and the dependencies
+// between the projects, and changes nothing in the build. It works with the configuration cache too.
+def known = [
+    'org.jetbrains.kotlin.jvm', 'org.jetbrains.kotlin.multiplatform', 'org.jetbrains.kotlin.android',
+    'org.springframework.boot', 'io.quarkus', 'io.micronaut.application', 'io.micronaut.library', 'io.ktor.plugin',
+    'com.android.application', 'com.android.library', 'org.jetbrains.compose', 'com.google.protobuf',
+    'application', 'java-library', 'java-platform', 'java', 'war',
+]
+gradle.projectsEvaluated { build ->
+    def projects = build.rootProject.allprojects.collect { project ->
+        def dependencies = []
+        project.configurations.each { configuration ->
+            configuration.dependencies.withType(ProjectDependency).each { dependency ->
+                // `path` came with Gradle 8.11, and `dependencyProject` went away with Gradle 9.
+                def path = dependency.hasProperty('path') ? dependency.path : dependency.dependencyProject.path
+                dependencies << [configuration: configuration.name, project: path]
+            }
+        }
+        [
+            path: project.path,
+            name: project.name,
+            plugins: known.findAll { project.pluginManager.hasPlugin(it) },
+            dependencies: dependencies,
+        ]
+    }
+    // Built while the build is configured, so that the task prints text alone and keeps to the configuration cache.
+    def json = groovy.json.JsonOutput.toJson([format: 'codraw-gradle', version: 1, projects: projects])
+    build.rootProject.tasks.register('codrawGraph') {
+        group = 'help'
+        description = 'Prints the graph of the modules of the build for CoDraw.'
+        doLast { println json }
+    }
+}
