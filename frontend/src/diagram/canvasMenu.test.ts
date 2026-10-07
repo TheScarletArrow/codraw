@@ -206,6 +206,8 @@ describe('menuItems', () => {
       'Вырезать',
       'Копировать',
       'Дублировать',
+      'Копировать стиль',
+      'Вставить стиль',
       'На передний план',
       'На задний план',
       'Закрепить',
@@ -247,7 +249,7 @@ describe('menuItems', () => {
         .filter((item) => item.checked !== undefined)
         .every((item) => !item.disabled),
     ).toBe(true)
-    expect(labels('shape', { ...all, readOnly: true, status })).toEqual(['Копировать'])
+    expect(labels('shape', { ...all, readOnly: true, status })).toEqual(['Копировать', 'Копировать стиль'])
   })
 
   it('maps items to the commands of the editor with their shortcuts', () => {
