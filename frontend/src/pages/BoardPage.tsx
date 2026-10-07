@@ -577,6 +577,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <VersionPreview
             key={preview.id}
             boardId={board.id}
+            boardTitle={board.title}
             version={preview}
             document={document}
             comparing={comparing}
@@ -595,6 +596,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <ProposalReview
             key={review}
             boardId={board.id}
+            boardTitle={board.title}
             proposalId={review}
             userId={user.id}
             document={document}
