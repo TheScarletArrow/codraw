@@ -20,6 +20,7 @@ import {
   compareCells,
   deleteCell,
   dropUnusedElements,
+  ELEMENT_KEY,
   getCells,
   getElements,
   LAYER_CELL_ID,
@@ -59,8 +60,8 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  *   cell is re-read from Yjs, so the model ends up equal to the document whatever the order of events; a changed
  *   element re-reads the cells of the page that name it.
  *
- * The cells of elements carry their properties as style keys (see `model.ts`); deleting such cells deletes, in the same
- * transaction, the elements that no cell names any longer.
+ * The cells of elements carry their properties as style keys (see `model.ts`); deleting such cells, or naming another
+ * element, deletes in the same transaction the elements that no cell names any longer.
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
  * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.
@@ -184,6 +185,9 @@ export class DiagramBinding {
       const at = Date.now()
       for (const cell of alive) {
         const data = this.toCellData(cell)
+        // A cell that names another element now leaves the one it named.
+        const named = cellElementId(this.cells.get(data.id))
+        if (named !== null && named !== data.style[ELEMENT_KEY]) removedElements.push(named)
         // Cells the change touched but left as they were keep who changed them last, and so do those it only locked.
         const write = writeCell(this.cells, data)
         const entry = this.cells.get(data.id)!

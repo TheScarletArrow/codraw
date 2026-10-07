@@ -381,9 +381,11 @@ describe('exportDrawio', () => {
     expect(xml).toContain('<object label="Читает" technology="JDBC" interaction="sync" id="flow">')
     const cells = pageCells(copy, DEFAULT_PAGE_ID)
     expect(cells.api!.value).toBe('API\n[Container: Spring Boot]\nЗаказы')
-    expect(cells.api!.style).toMatchObject(element)
+    const { [ELEMENT_KEY]: _id, ...properties } = element
+    expect(cells.api!.style).toMatchObject(properties)
     expect(cells.api!.attrs).toEqual({})
-    expect(getElements(copy).get('e-api')!.toJSON()).toMatchObject({ name: 'API', technology: 'Spring Boot', tags: ['core', 'pci'] })
+    const imported = cells.api!.style[ELEMENT_KEY] as string
+    expect(getElements(copy).get(imported)!.toJSON()).toMatchObject({ name: 'API', technology: 'Spring Boot', tags: ['core', 'pci'] })
     expect(cells.flow!.style).toMatchObject({ codrawTechnology: 'JDBC', codrawInteraction: 'sync' })
   })
 
@@ -485,24 +487,23 @@ describe('importPages', () => {
     expect(getCells(doc, DEFAULT_PAGE_ID).size).toBe(0)
   })
 
-  it('keeps the elements of the file whose ids are free, and gives the others new ids', async () => {
+  it('gives the elements of a file new ids, one for the cells that name one element', async () => {
     const doc = board()
-    doc.transact(() =>
-      writeCell(getCells(doc), cell('api', { style: { [ELEMENT_KEY]: 'e-api', codrawName: 'API', codrawTechnology: 'Go' } })),
-    )
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('api', { style: { [ELEMENT_KEY]: 'e-api', codrawName: 'API', codrawTechnology: 'Go' } }))
+      writeCell(getCells(doc), cell('again', { style: { [ELEMENT_KEY]: 'e-api', codrawName: 'API', codrawTechnology: 'Go' } }))
+    })
     const file = await parseDrawio(exportDrawio(doc))
 
-    const [first] = importPages(doc, file)
-    const [second] = importPages(doc, file)
-
-    const elementOf = (pageId: string) => readCell('api', getCells(doc, pageId).get('api')!).style[ELEMENT_KEY]
-    expect(elementOf(first!)).not.toBe('e-api')
-    expect(elementOf(second!)).not.toBe(elementOf(first!))
-    expect(getElements(doc).size).toBe(3)
-
+    // The element of the board may be gone now and come back with undo or a version: the import never takes its id.
     const fresh = new Y.Doc()
     const [page] = importPages(fresh, file)
-    expect(readCell('api', getCells(fresh, page!).get('api')!).style).toMatchObject({ [ELEMENT_KEY]: 'e-api', codrawTechnology: 'Go' })
+
+    const elementOf = (id: string) => readCell(id, getCells(fresh, page!).get(id)!).style[ELEMENT_KEY]
+    expect(elementOf('api')).not.toBe('e-api')
+    expect(elementOf('again')).toBe(elementOf('api'))
+    expect(readCell('api', getCells(fresh, page!).get('api')!).style).toMatchObject({ codrawTechnology: 'Go' })
+    expect(getElements(fresh).size).toBe(1)
   })
 
   it('writes the import in one transaction that undo does not track', async () => {

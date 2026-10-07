@@ -207,6 +207,18 @@ describe('pages', () => {
     expect(readCell('a', cells.get('a')!).style.codrawTechnology).toBe('Kotlin')
   })
 
+  it('gives a copy of a cell whose element is gone a new element id, not the one the original names', () => {
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('a', { style: { [ELEMENT_KEY]: 'e1', codrawName: 'A' } })))
+    doc.transact(() => getElements(doc).delete('e1'))
+
+    const copy = duplicatePage(doc, DEFAULT_PAGE_ID)!
+
+    const copied = Array.from(getCells(doc, copy).entries()).find(([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID)![1]
+    expect(readCell('x', copied).style[ELEMENT_KEY]).not.toBe('e1')
+    expect(getElements(doc).size).toBe(0)
+  })
+
   it('deletes the elements that only the deleted page shows', () => {
     const doc = board()
     const second = addPage(doc, DEFAULT_PAGE_ID)

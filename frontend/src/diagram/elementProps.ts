@@ -12,7 +12,7 @@ import {
   type ElementProperties,
 } from './elementKinds.ts'
 import { isImageStyle } from './images.ts'
-import { ELEMENT_STYLE_KEYS, elementIdOf, getCells, getElements, getPages } from './model.ts'
+import { cellElementId, ELEMENT_STYLE_KEYS, elementIdOf, getCells, getElements, getPages } from './model.ts'
 import {
   findShape,
   isStickyStyle,
@@ -118,21 +118,29 @@ export interface ParsedLabel {
  * for none. Plain: the name on the first line, `[technology]` on the second, and the other lines as they are.
  */
 export function parseLabel(value: string, format: LabelFormat, style: Record<string, unknown> = {}): ParsedLabel {
+  const lines = labelText(value, style).split('\n')
   if (format === 'c4') {
-    const lines = labelLines(value, style)
-    const typed = C4_TYPE.exec(lines[1] ?? '')
-    const technology = typed?.[2]?.trim() ?? ''
-    const description = lines.slice(typed ? 2 : 1).join('\n')
+    // The name is the first line, even an empty one; the type is on the next line with text.
+    const at = lines.findIndex((line, index) => index > 0 && line.trim() !== '')
+    const second = at > 0 ? lines[at]!.trim() : ''
+    const typed = C4_TYPE.exec(second)
+    // `[Kotlin]` names no type of C4: it is the technology.
+    const untyped = typed && typed[2] === undefined && c4KindOfType(typed[1]!) === null
+    const technology = untyped ? typed[1]!.trim() : (typed?.[2]?.trim() ?? '')
+    // The description keeps its lines as they are written, blank ones and indents too.
+    const description = lines
+      .slice(typed ? at + 1 : 1)
+      .join('\n')
+      .trim()
     return {
-      name: lines[0] ?? '',
-      c4Type: typed ? typed[1]!.trim() : null,
+      name: lines[0]?.trim() ?? '',
+      c4Type: typed && !untyped ? typed[1]!.trim() : null,
       technology: technology === C4_PLACEHOLDERS.technology ? '' : technology,
-      technologyShown: typed?.[2] !== undefined,
+      technologyShown: typed !== null && (untyped || typed[2] !== undefined),
       description: description === C4_PLACEHOLDERS.description ? '' : description,
       rest: [],
     }
   }
-  const lines = labelText(value, style).split('\n')
   const bracketed = BRACKETS.exec(lines[1]?.trim() ?? '')
   return {
     name: lines[0]?.trim() ?? '',
@@ -142,6 +150,12 @@ export function parseLabel(value: string, format: LabelFormat, style: Record<str
     description: '',
     rest: lines.slice(bracketed ? 2 : 1),
   }
+}
+
+/** The lines of its own of a plain label: those after the name and the technology the cell shows. */
+export function ownLines(style: Record<string, unknown>, value: string): string[] {
+  if (hasProperties(style) && !showsTechnology(style, value)) return labelText(value, style).split('\n').slice(1)
+  return parseLabel(value, 'plain', style).rest
 }
 
 /** The kind a shape stands for when nobody chose one: its own shape, the boundary of C4 by the type of its label. */
@@ -157,6 +171,13 @@ export function defaultKind(style: Record<string, unknown>, value = ''): ShapeId
 /** The element of a cell has its properties of its own: somebody changed them, or a template or an import set them. */
 export const hasElement = (style: Record<string, unknown>) => elementIdOf(style) !== null
 
+/**
+ * The style holds the properties of the element of the cell. A cell that names an element the document lacks, e.g.
+ * removed by another participant at the same time, has none of them: its label tells them.
+ */
+const hasProperties = (style: Record<string, unknown>) =>
+  hasElement(style) && Object.values(ELEMENT_STYLE_KEYS).some((key) => style[key] !== undefined)
+
 const styleText = (style: Record<string, unknown>, key: string) => (typeof style[key] === 'string' ? (style[key] as string) : '')
 
 /**
@@ -164,7 +185,7 @@ const styleText = (style: Record<string, unknown>, key: string) => (typeof style
  * {@link parseLabel}), with the kind of its shape.
  */
 export function elementProperties(style: Record<string, unknown>, value: string): ElementProperties {
-  if (hasElement(style)) {
+  if (hasProperties(style)) {
     const kindValue = style[ELEMENT_STYLE_KEYS.kind]
     const format = labelFormat(style, isElementKind(kindValue) ? kindValue : null)
     return normalizeProperties({
@@ -189,7 +210,7 @@ export function elementProperties(style: Record<string, unknown>, value: string)
 /** The cell shows the technology on the second line of its plain label; a label of C4 shows it its own way. */
 export function showsTechnology(style: Record<string, unknown>, value: string): boolean {
   if (labelFormat(style, elementProperties(style, value).kind) === 'c4') return false
-  if (hasElement(style)) return style[SHOW_TECHNOLOGY_KEY] === true || style[SHOW_TECHNOLOGY_KEY] === 1 || style[SHOW_TECHNOLOGY_KEY] === '1'
+  if (hasProperties(style)) return style[SHOW_TECHNOLOGY_KEY] === true || style[SHOW_TECHNOLOGY_KEY] === 1 || style[SHOW_TECHNOLOGY_KEY] === '1'
   return parseLabel(value, 'plain', style).technologyShown
 }
 
@@ -218,26 +239,22 @@ export function composeLabel(
  */
 export function relabel(properties: ElementProperties, style: Record<string, unknown>, value: string, showTechnology: boolean): string {
   const before = labelFormat(style, elementProperties(style, value).kind)
-  // A label that was of C4 has no lines of its own; the second line of an element that shows no technology is one.
-  const rest =
-    before !== 'plain'
-      ? []
-      : hasElement(style) && !showsTechnology(style, value)
-        ? labelText(value, style).split('\n').slice(1)
-        : parseLabel(value, 'plain', style).rest
+  // A label that was of C4 has no lines of its own.
+  const rest = before === 'plain' ? ownLines(style, value) : []
   return composeLabel(properties, style, { showTechnology, rest })
 }
 
 /**
  * The properties a label written on the canvas gives an element that had `current`: of C4 the name, the type, the
  * technology and the description (the boundary keeps its description); plain the name, and the technology with the
- * second line in brackets, which also tells whether it is shown.
+ * second line in brackets, which also tells whether it is shown (`shown` tells whether it was), and the lines of its own.
  */
 export function propertiesOfLabel(
   label: string,
   current: ElementProperties,
   style: Record<string, unknown>,
-): { properties: ElementProperties; showTechnology: boolean } {
+  shown: boolean,
+): { properties: ElementProperties; showTechnology: boolean; rest: string[] } {
   if (labelFormat(style, current.kind) === 'c4') {
     const parsed = parseLabel(label, 'c4')
     const kind = parsed.c4Type === null ? current.kind : kindOfC4Type(parsed.c4Type, current.kind ?? defaultKind(style))
@@ -245,11 +262,18 @@ export function propertiesOfLabel(
     return {
       properties: normalizeProperties({ ...current, name: parsed.name, kind, technology: parsed.technology, description }),
       showTechnology: false,
+      rest: [],
     }
   }
   const parsed = parseLabel(label, 'plain')
-  const technology = parsed.technologyShown ? parsed.technology : current.technology
-  return { properties: normalizeProperties({ ...current, name: parsed.name, technology }), showTechnology: parsed.technologyShown }
+  // A second line in brackets is the technology while the cell shows it, or when it is the technology; otherwise it is a
+  // line of its own, as {@link ownLines} reads it.
+  const technology = parsed.technologyShown && (shown || parsed.technology === current.technology)
+  return {
+    properties: normalizeProperties({ ...current, name: parsed.name, technology: technology ? parsed.technology : current.technology }),
+    showTechnology: technology,
+    rest: technology ? parsed.rest : label.split('\n').slice(1),
+  }
 }
 
 /**
@@ -314,21 +338,27 @@ export function technologySuggestions(kind: ShapeId | null, used: readonly strin
 export function usedProperties(doc: Y.Doc): { technologies: string[]; owners: string[] } {
   const technologies = new Set<string>()
   const owners = new Set<string>()
-  getElements(doc).forEach((element) => {
-    if (!(element instanceof Y.Map)) return
+  // Elements that cells of the pages name: one that no cell shows any longer suggests nothing.
+  const named = new Set<string>()
+  for (const pageId of getPages(doc).keys()) {
+    getCells(doc, pageId).forEach((cell) => {
+      if (!(cell instanceof Y.Map)) return
+      const element = cellElementId(cell)
+      if (element !== null) named.add(element)
+      const style = cell.get('style')
+      if (cell.get('kind') !== 'edge' || !(style instanceof Y.Map)) return
+      const technology = propertyLine(style.get(TECHNOLOGY_KEY), PROPERTY_LIMITS.technology)
+      if (technology) technologies.add(technology)
+    })
+  }
+  const elements = getElements(doc)
+  for (const id of named) {
+    const element = elements.get(id)
+    if (!(element instanceof Y.Map)) continue
     const technology = propertyLine(element.get('technology'), PROPERTY_LIMITS.technology)
     const owner = propertyLine(element.get('owner'), PROPERTY_LIMITS.owner)
     if (technology) technologies.add(technology)
     if (owner) owners.add(owner)
-  })
-  for (const pageId of getPages(doc).keys()) {
-    getCells(doc, pageId).forEach((cell) => {
-      if (!(cell instanceof Y.Map) || cell.get('kind') !== 'edge') return
-      const style = cell.get('style')
-      if (!(style instanceof Y.Map)) return
-      const technology = propertyLine(style.get(TECHNOLOGY_KEY), PROPERTY_LIMITS.technology)
-      if (technology) technologies.add(technology)
-    })
   }
   const sorted = (values: Set<string>) => [...values].sort((a, b) => a.localeCompare(b, 'ru'))
   return { technologies: sorted(technologies), owners: sorted(owners) }

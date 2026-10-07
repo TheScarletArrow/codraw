@@ -95,6 +95,27 @@ describe('properties of elements in the editor', () => {
     expect(editor.getState().properties).toMatchObject({ showTechnology: false, properties: { technology: 'Go' } })
   })
 
+  it('keeps an emptied name empty, and the line of the type a type', () => {
+    const { doc, editor } = open()
+    const cell = shape(editor, 'c4-container', 'API\n[Container: Java]\nЗаказы')
+
+    editor.setElementProperties(cell.getId()!, { name: '' })
+    editor.setElementProperties(cell.getId()!, { technology: 'Go' })
+
+    expect(cell.getValue()).toBe('\n[Container: Go]\nЗаказы')
+    expect(elementOf(doc, cell)).toEqual({ kind: 'c4-container', technology: 'Go', description: 'Заказы' })
+  })
+
+  it('makes the lines of its own of a plain label the description when the element becomes of a kind of C4', () => {
+    const { doc, editor } = open()
+    const cell = shape(editor, 'service', 'Petstore\nGET /pets\nPOST /pets')
+
+    editor.setElementProperties(cell.getId()!, { kind: 'c4-container' })
+
+    expect(cell.getValue()).toBe('Petstore\n[Container]\nGET /pets\nPOST /pets')
+    expect(elementOf(doc, cell)).toMatchObject({ kind: 'c4-container', description: 'GET /pets\nPOST /pets' })
+  })
+
   it('changes nothing without a change, and makes no element of it', () => {
     const { doc, editor } = open()
     const cell = shape(editor, 'c4-container', 'API\n[Container: Java]')

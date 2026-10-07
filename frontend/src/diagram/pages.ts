@@ -95,18 +95,21 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
   for (const cellId of source.keys()) if (!ids.has(cellId)) ids.set(cellId, newId())
   const remap = (value: unknown) => (typeof value === 'string' ? (ids.get(value) ?? value) : value)
   const elements = getElements(doc)
-  // One copy of each element, should several cells of the page show it.
+  // One copy of each element, should several cells of the page show it; an element the document lacks gets a new id too.
   const elementCopies = new Map<string, string>()
   source.forEach((cell) => {
     const element = cellElementId(cell)
-    if (element !== null && elements.has(element) && !elementCopies.has(element)) elementCopies.set(element, newId())
+    if (element !== null && !elementCopies.has(element)) elementCopies.set(element, newId())
   })
 
   const copyId = newId()
   const at = Date.now()
   doc.transact(() => {
     writePage(doc, copyId, { name: `${pages[index]!.name} (копия)`, order: orderAfter(pages[index], pages[index + 1]) })
-    elementCopies.forEach((copy, element) => elements.set(copy, copyMap(elements.get(element)!)))
+    elementCopies.forEach((copy, element) => {
+      const original = elements.get(element)
+      if (original instanceof Y.Map) elements.set(copy, copyMap(original))
+    })
     const target = getCells(doc, copyId)
     source.forEach((cell, cellId) => {
       if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID) return

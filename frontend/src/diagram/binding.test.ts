@@ -497,6 +497,15 @@ describe('elements', () => {
     expect(alice.model.getCell(kept.getId()!)).toBeTruthy()
   })
 
+  it('deletes the element a cell no longer names', () => {
+    const alice = createClient()
+    const cell = addVertex(alice.model, 'Payments', elementStyle())
+
+    alice.model.setStyle(cell, { ...elementStyle(), [ELEMENT_KEY]: 'e2' } as CellStyle)
+
+    expect([...getElements(alice.doc).keys()]).toEqual(['e2'])
+  })
+
   it('undoes a change of the properties as one step', () => {
     const alice = createClient()
     const history = createUndoManager(getCells(alice.doc))

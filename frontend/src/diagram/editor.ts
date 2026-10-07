@@ -105,7 +105,7 @@ import {
   elementProperties,
   hasElement,
   labelFormat,
-  parseLabel,
+  ownLines,
   propertiesOfLabel,
   relabel,
   showsTechnology,
@@ -3347,7 +3347,11 @@ export function createDiagramEditor(
       const value = String(cell.getValue() ?? '')
       const current = elementProperties(style, value)
       const { showTechnology, ...properties } = changes
-      const next = normalizeProperties({ ...current, ...properties })
+      let next = normalizeProperties({ ...current, ...properties })
+      // A label of C4 has no lines of its own: those of a plain label become the description, unless it has one.
+      if (labelFormat(style, current.kind) === 'plain' && labelFormat(style, next.kind) === 'c4' && !next.description) {
+        next = normalizeProperties({ ...next, description: ownLines(style, value).join('\n') })
+      }
       const shown = showsTechnology(style, value)
       const show = labelFormat(style, next.kind) === 'plain' && (showTechnology ?? shown)
       if (sameProperties(current, next) && show === shown) return
@@ -4097,10 +4101,11 @@ function configureElementLabels(graph: Graph) {
     const style = cell.getStyle() as Record<string, unknown>
     if (!hasElement(style) || propertiesTarget(cell) !== 'shape') return cellLabelChanged(cell, value, autoSize)
     const text = String(value ?? '')
-    const current = elementProperties(style, String(cell.getValue() ?? ''))
-    const { properties, showTechnology } = propertiesOfLabel(text, current, style)
+    const before = String(cell.getValue() ?? '')
+    const current = elementProperties(style, before)
+    const { properties, showTechnology, rest } = propertiesOfLabel(text, current, style, showsTechnology(style, before))
     const plain = labelFormat(style, properties.kind) === 'plain'
-    const label = composeLabel(properties, style, { showTechnology, rest: plain ? parseLabel(text, 'plain').rest : [] })
+    const label = composeLabel(properties, style, { showTechnology, rest })
     const model = graph.getDataModel()
     model.batchUpdate(() => {
       const next: Record<string, unknown> = { ...style, ...propertiesStyle(properties), [SHOW_TECHNOLOGY_KEY]: (plain && showTechnology) || undefined }

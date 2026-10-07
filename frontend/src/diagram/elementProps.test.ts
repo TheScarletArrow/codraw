@@ -23,7 +23,7 @@ import {
   TECHNOLOGIES,
   usedProperties,
 } from './elementProps.ts'
-import { ELEMENT_KEY, getCells, initializeDocument, writeCell } from './model.ts'
+import { ELEMENT_KEY, getCells, getElements, initializeDocument, writeCell } from './model.ts'
 import { findShape, markedStyle, type ShapeId } from './shapes.ts'
 import { searchShapes } from './shapeSearch.ts'
 import { edgeData, shapeData } from './testing.ts'
@@ -66,6 +66,22 @@ describe('properties of a shape without an element', () => {
     expect(showsTechnology(styleOf('cache'), 'Кэш\n[Redis]')).toBe(true)
     expect(elementProperties(styleOf('service'), 'Petstore\nGET /pets')).toEqual(properties({ name: 'Petstore', kind: 'service' }))
     expect(showsTechnology(styleOf('service'), 'Petstore\nGET /pets')).toBe(false)
+  })
+
+  it('takes a type of C4 that names none for the technology, and an empty first line for an empty name', () => {
+    expect(elementProperties(styleOf('c4-container'), 'API\n[Kotlin]\nЗаказы')).toMatchObject({
+      name: 'API',
+      kind: 'c4-container',
+      technology: 'Kotlin',
+      description: 'Заказы',
+    })
+    expect(elementProperties(styleOf('c4-container'), '\n[Container: Java]\nЗаказы')).toMatchObject({ name: '', technology: 'Java' })
+  })
+
+  it('reads a cell that names an element the document lacks as a shape without one', () => {
+    expect(elementProperties({ ...styleOf('c4-container'), [ELEMENT_KEY]: 'gone' }, 'API\n[Container: Go]')).toEqual(
+      properties({ name: 'API', kind: 'c4-container', technology: 'Go' }),
+    )
   })
 
   it('reads a label of HTML from draw.io as its lines', () => {
@@ -168,25 +184,51 @@ describe('labels', () => {
 
   it('written on the canvas give the properties back', () => {
     const current = properties({ name: 'API', kind: 'c4-container', technology: 'Java', owner: 'Заказы' })
+    const container = styleOf('c4-container')
 
-    expect(propertiesOfLabel('Orders\n[Container:Kotlin]\nЗаказы', current, styleOf('c4-container'))).toEqual({
+    expect(propertiesOfLabel('Orders\n[Container:Kotlin]\nЗаказы', current, container, false)).toEqual({
       properties: { ...current, name: 'Orders', technology: 'Kotlin', description: 'Заказы' },
       showTechnology: false,
+      rest: [],
     })
-    expect(propertiesOfLabel('Orders\n[Component: Kotlin]', current, styleOf('c4-container')).properties.kind).toBe('c4-component')
-    expect(propertiesOfLabel('Orders', current, styleOf('c4-container')).properties).toEqual({ ...current, name: 'Orders', technology: '' })
+    expect(propertiesOfLabel('Orders\n[Component: Kotlin]', current, container, false).properties.kind).toBe('c4-component')
+    expect(propertiesOfLabel('Orders', current, container, false).properties).toEqual({ ...current, name: 'Orders', technology: '' })
+    // A description keeps its blank lines and indents.
+    expect(propertiesOfLabel('Orders\n[Container: Go]\nАбзац\n\n  второй', current, container, false).properties.description).toBe(
+      'Абзац\n\n  второй',
+    )
   })
 
   it('written on the canvas keep the description of a boundary and the technology of a plain shape', () => {
     const boundary = properties({ name: 'Shop', kind: 'c4-system', description: 'Магазин' })
-    expect(propertiesOfLabel('Store\n[Software System]', boundary, styleOf('c4-boundary')).properties).toEqual({ ...boundary, name: 'Store' })
+    expect(propertiesOfLabel('Store\n[Software System]', boundary, styleOf('c4-boundary'), false).properties).toEqual({
+      ...boundary,
+      name: 'Store',
+    })
 
     const cache = properties({ name: 'Кэш', kind: 'cache', technology: 'Redis' })
-    expect(propertiesOfLabel('Cache\n:6379', cache, styleOf('cache'))).toEqual({ properties: { ...cache, name: 'Cache' }, showTechnology: false })
-    expect(propertiesOfLabel('Cache\n[Valkey]', cache, styleOf('cache'))).toEqual({
+    expect(propertiesOfLabel('Cache\n:6379', cache, styleOf('cache'), true)).toEqual({
+      properties: { ...cache, name: 'Cache' },
+      showTechnology: false,
+      rest: [':6379'],
+    })
+    expect(propertiesOfLabel('Cache\n[Valkey]\n:6379', cache, styleOf('cache'), true)).toEqual({
       properties: { ...cache, name: 'Cache', technology: 'Valkey' },
       showTechnology: true,
+      rest: [':6379'],
     })
+  })
+
+  it('written on the canvas read a second line in brackets as a line of its own while the technology is not shown', () => {
+    const api = properties({ name: 'API', kind: 'service', technology: 'Go' })
+
+    expect(propertiesOfLabel('Orders\n[deprecated]', api, styleOf('service'), false)).toEqual({
+      properties: { ...api, name: 'Orders' },
+      showTechnology: false,
+      rest: ['[deprecated]'],
+    })
+    // The technology itself on the second line shows it.
+    expect(propertiesOfLabel('Orders\n[Go]', api, styleOf('service'), false)).toMatchObject({ showTechnology: true, rest: [] })
   })
 
   it('of C4 read back as they were made', () => {
@@ -241,6 +283,8 @@ describe('suggestions', () => {
     const doc = new Y.Doc()
     initializeDocument(doc)
     doc.transact(() => {
+      // An element that no cell names any longer suggests nothing.
+      getElements(doc).set('gone', new Y.Map(Object.entries({ technology: 'Erlang', owner: 'Никто' })))
       writeCell(getCells(doc), shapeData('a', 'a0', { style: { [ELEMENT_KEY]: 'e1', codrawTechnology: 'Kotlin', codrawOwner: 'Платежи' } }))
       writeCell(getCells(doc), shapeData('b', 'a1', { style: { [ELEMENT_KEY]: 'e2', codrawTechnology: 'Go' } }))
       writeCell(getCells(doc), edgeData('e', 'a2', 'a', 'b', { style: { codrawTechnology: 'gRPC' } }))
