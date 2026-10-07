@@ -4,7 +4,9 @@ import { readAttribution, writeAttribution } from './attribution.ts'
 import { LOCKED_KEY } from './locks.ts'
 import {
   DEFAULT_PAGE_ID,
+  ELEMENT_KEY,
   getCells,
+  getElements,
   getMeta,
   getPages,
   initializeDocument,
@@ -198,6 +200,24 @@ describe('restorePage', () => {
     expect(listPages(live).map((page) => page.name)).toEqual(['Страница 1', 'Схема БД', 'Заметки'])
     expect(getCells(live, schema).toJSON()).toEqual(getCells(version, schema).toJSON())
     expect(getPages(live).get(schema)).toBeInstanceOf(Y.Map)
+  })
+
+  it('brings back the elements of the page as the version has them, and drops those only its cells showed', () => {
+    const version = boardWith(
+      shape('api', { style: { [ELEMENT_KEY]: 'e-api', codrawName: 'API', codrawTechnology: 'Java' } }),
+      shape('db', { style: { [ELEMENT_KEY]: 'e-db', codrawName: 'DB' } }),
+    )
+    const live = laterState(version, (doc) => {
+      getElements(doc).get('e-api')!.set('technology', 'Kotlin')
+      getCells(doc).delete('db')
+      getElements(doc).delete('e-db')
+      writeCell(getCells(doc), shape('cache', { style: { [ELEMENT_KEY]: 'e-cache', codrawName: 'Cache' } }))
+    })
+
+    restorePage(live, version, DEFAULT_PAGE_ID)
+
+    expect(getElements(live).toJSON()).toEqual(getElements(version).toJSON())
+    expect(readCell('db', getCells(live).get('db')!).style).toMatchObject({ codrawName: 'DB' })
   })
 
   it('changes nothing for a page that the version does not have', () => {
