@@ -86,7 +86,33 @@ import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipb
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { apiLabel, EDGE_API_KEY, edgeApiOf, writeEdgeApi, type EdgeApi } from './edgeApi.ts'
+import {
+  edgeProperties,
+  edgePropertiesStyle,
+  normalizeProperties,
+  propertiesStyle,
+  propertyLine,
+  PROPERTY_LIMITS,
+  sameProperties,
+  SHOW_TECHNOLOGY_KEY,
+  type EdgeProperties,
+  type ElementProperties,
+} from './elementKinds.ts'
+import {
+  canBeElement,
+  composeLabel,
+  defaultKind,
+  elementProperties,
+  hasElement,
+  labelFormat,
+  parseLabel,
+  propertiesOfLabel,
+  relabel,
+  showsTechnology,
+  type LabelFormat,
+} from './elementProps.ts'
 import { registerDiagramExtensions } from './extensions.ts'
+import { newId } from './ids.ts'
 import {
   cellImageUrls,
   fittedImageSize,
@@ -112,7 +138,7 @@ import {
   unlockCopy,
 } from './locks.ts'
 import { sketchPage, type PageSketch } from './minimap.ts'
-import { compareCells, DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
+import { compareCells, DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
@@ -351,6 +377,35 @@ export interface SelectionEdgeApi {
   canChange: boolean
 }
 
+/**
+ * The properties of the single selected shape that may be an element (see {@link DiagramEditor.setElementProperties}),
+ * or of the single selected edge that is not drawn by hand (see {@link DiagramEditor.setEdgeProperties}).
+ */
+export type SelectionProperties =
+  | {
+      target: 'shape'
+      cellId: string
+      properties: ElementProperties
+      /** The kind the shape stands for when nobody chose one. */
+      defaultKind: ShapeId | null
+      /** The label of C4 is made of the properties; a plain one shows the technology on its second line when asked. */
+      format: LabelFormat
+      showTechnology: boolean
+      /** The shape is a cell of an element of the board, which keeps its properties; otherwise its label tells them. */
+      element: boolean
+      /** The participant may change them: they edit the board and the shape is not locked. */
+      canChange: boolean
+    }
+  | {
+      target: 'edge'
+      cellId: string
+      properties: EdgeProperties
+      canChange: boolean
+    }
+
+/** Changes of the properties of a shape, and whether its plain label shows the technology. */
+export type ElementPropertiesChange = Partial<ElementProperties> & { showTechnology?: boolean }
+
 /** The selected stickies, which the panel of stickies changes; see {@link DiagramEditor.setStickyColor}. */
 export interface SelectedStickies {
   cellIds: string[]
@@ -447,6 +502,8 @@ export interface EditorState {
    * them may.
    */
   status: SelectionStatus | null
+  /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
+  properties: SelectionProperties | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -678,6 +735,15 @@ export interface DiagramEditor {
    * label of the new one; removing the description keeps the label. A locked edge changes nothing.
    */
   setEdgeApi(api: EdgeApi | null): void
+  /**
+   * Changes the properties of the shape `cellId` of the page, as one undo step, unless it may be no element, is locked or
+   * nothing changes. A shape without an element gets one with the properties its label told and the changes. A label
+   * of C4 is made of the new properties; a plain one gets the new name on its first line, the technology in brackets on
+   * the second when `showTechnology`, and keeps its other lines. Values are cut and cleaned as the document keeps them.
+   */
+  setElementProperties(cellId: string, changes: ElementPropertiesChange): void
+  /** Changes the technology or the interaction of the edge `cellId` of the page, as one undo step; the label stays. */
+  setEdgeProperties(cellId: string, changes: Partial<EdgeProperties>): void
   /**
    * The links of the elements of the page that CoDraw opens, in the order of the tree; the same array until the page
    * changes.
@@ -1082,6 +1148,8 @@ const CHANGING_COMMANDS = [
   'setPencil',
   'setLink',
   'setEdgeApi',
+  'setElementProperties',
+  'setEdgeProperties',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -1122,6 +1190,7 @@ export function createDiagramEditor(
   graph.setHtmlLabels(false)
   configureStyles(graph)
   configureTableFields(graph)
+  configureElementLabels(graph)
   configureTextWrap(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
@@ -1403,6 +1472,28 @@ export function createDiagramEditor(
     if (!cell || !isLinkable(cell)) return null
     return { cellId: cell.getId()!, link: linkOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
   }
+  /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
+  const selectionProperties = (): SelectionProperties | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    const target = cell && propertiesTarget(cell)
+    if (!cell || !target) return null
+    const cellId = cell.getId()!
+    const canChange = !readOnly && isUnlocked(cell)
+    const style = cell.getStyle() as Record<string, unknown>
+    if (target === 'edge') return { target, cellId, properties: edgeProperties(style), canChange }
+    const value = String(cell.getValue() ?? '')
+    const properties = elementProperties(style, value)
+    return {
+      target,
+      cellId,
+      properties,
+      defaultKind: defaultKind(style, value),
+      format: labelFormat(style, properties.kind),
+      showTechnology: showsTechnology(style, value),
+      element: hasElement(style),
+      canChange,
+    }
+  }
   /** The description of the call of the single selected edge; see {@link SelectionEdgeApi}. */
   const selectionEdgeApi = (): SelectionEdgeApi | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
@@ -1491,6 +1582,15 @@ export function createDiagramEditor(
         model.setStyle(cell, style as CellStyle)
       }
     })
+  }
+  /** Sets keys of the style of a cell in one change of the model; `undefined` removes a key. */
+  const setStyleKeys = (cell: Cell, changes: Record<string, StyleValue | undefined>) => {
+    const style = cell.getClonedStyle() as Record<string, unknown>
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === undefined) delete style[key]
+      else style[key] = value
+    }
+    model.setStyle(cell, style as CellStyle)
   }
   /** Turns shapes to `angle` degrees in one change of the model; see {@link DiagramEditor.setRotation}. */
   const rotateShapes = (shapes: Cell[], angle: number) => {
@@ -1747,6 +1847,7 @@ export function createDiagramEditor(
       edgeApi: selectionEdgeApi(),
       stickies: selectionStickies(),
       status: selectionStatus(),
+      properties: selectionProperties(),
     }
   }
   // The links of the page, found again after a change of the page, before the listeners below hear of it.
@@ -3237,6 +3338,41 @@ export function createDiagramEditor(
         }
       })
     },
+    setElementProperties(cellId, changes) {
+      const cell = model.getCell(cellId)
+      if (!cell || propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return
+      const style = cell.getStyle() as Record<string, unknown>
+      const value = String(cell.getValue() ?? '')
+      const current = elementProperties(style, value)
+      const { showTechnology, ...properties } = changes
+      const next = normalizeProperties({ ...current, ...properties })
+      const shown = showsTechnology(style, value)
+      const show = labelFormat(style, next.kind) === 'plain' && (showTechnology ?? shown)
+      if (sameProperties(current, next) && show === shown) return
+      const label = relabel(next, style, value, show)
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleKeys(cell, {
+          // A shape without an element becomes one.
+          [ELEMENT_KEY]: (style[ELEMENT_KEY] as string | undefined) || newId(),
+          ...propertiesStyle(next),
+          [SHOW_TECHNOLOGY_KEY]: show || undefined,
+        })
+        if (label !== value) model.setValue(cell, label)
+      })
+    },
+    setEdgeProperties(cellId, changes) {
+      const cell = model.getCell(cellId)
+      if (!cell || propertiesTarget(cell) !== 'edge' || !isUnlocked(cell)) return
+      const current = edgeProperties(cell.getStyle() as Record<string, unknown>)
+      const next: EdgeProperties = {
+        technology: propertyLine(changes.technology ?? current.technology, PROPERTY_LIMITS.technology),
+        interaction: changes.interaction === undefined ? current.interaction : changes.interaction,
+      }
+      if (next.technology === current.technology && next.interaction === current.interaction) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => setStyleKeys(cell, edgePropertiesStyle(next)))
+    },
     getLinks() {
       pageLinks ??= findLinks()
       return pageLinks
@@ -3460,6 +3596,26 @@ function edgeShapeOf(edge: Cell): EdgeShape | null {
 /** The edge is a line drawn by hand with the pencil. */
 function isFreehand(cell: Cell): boolean {
   return cell.isEdge() && isFreehandStyle(cell.getStyle())
+}
+
+/**
+ * Which properties a cell has: a shape that may be an element (not a table nor its row, a group, a label of an edge,
+ * nor what {@link canBeElement} leaves out) those of an element, an edge not drawn by hand those of an edge.
+ */
+function propertiesTarget(cell: Cell): 'shape' | 'edge' | null {
+  if (cell.isEdge()) return isFreehand(cell) ? null : 'edge'
+  if (!cell.isVertex() || cell.getParent()?.isEdge() || isTable(cell) || isTable(cell.getParent()) || isGroup(cell)) return null
+  return canBeElement(cell.getStyle() as Record<string, unknown>) ? 'shape' : null
+}
+
+/**
+ * Gives a copy of cells new elements: the copy and the cells in it that name an element name a new one, and the
+ * properties they carry as style keys become its properties once the copy is added.
+ */
+function renewElements(cell: Cell) {
+  const style = cell.getStyle() as Record<string, unknown>
+  if (typeof style[ELEMENT_KEY] === 'string') cell.setStyle({ ...style, [ELEMENT_KEY]: newId() } as CellStyle)
+  cell.getChildren().forEach(renewElements)
 }
 
 /** An edge that connects, or may connect, shapes: not a line drawn by hand, which has no ends and no shape of an edge. */
@@ -3848,6 +4004,8 @@ function configureLocks(graph: Graph): () => void {
     const clones = cloneCells(...args)
     // maxGraph leaves no clone of an edge that would be invalid without its ends.
     clones.forEach((clone) => clone && unlockCopy(clone))
+    // A copy is an element of its own.
+    clones.forEach((clone) => clone && renewElements(clone))
     return clones
   }
   // The handles of a selected cell are made with it, when it is selected: a cell locked or unlocked since, by the
@@ -3922,6 +4080,31 @@ function configureTableFields(graph: Graph) {
     const text = String(cell.getValue() ?? '')
     if (isIndexRow(cell)) return cellLabelChanged(cell, renameIndex(text, String(value ?? '')), autoSize)
     return cellLabelChanged(cell, isColumnField(cell) ? renameField(text, String(value ?? '')) : value, autoSize)
+  }
+}
+
+/**
+ * The label of a shape of an element that is written on the canvas changes its properties (see
+ * {@link propertiesOfLabel}): of C4 the name, the type, the technology and the description, plain the name and the
+ * technology on the second line. The label is then made of them again, in the same change of the model.
+ */
+function configureElementLabels(graph: Graph) {
+  const cellLabelChanged = graph.cellLabelChanged.bind(graph)
+  graph.cellLabelChanged = (cell, value, autoSize) => {
+    const style = cell.getStyle() as Record<string, unknown>
+    if (!hasElement(style) || propertiesTarget(cell) !== 'shape') return cellLabelChanged(cell, value, autoSize)
+    const text = String(value ?? '')
+    const current = elementProperties(style, String(cell.getValue() ?? ''))
+    const { properties, showTechnology } = propertiesOfLabel(text, current, style)
+    const plain = labelFormat(style, properties.kind) === 'plain'
+    const label = composeLabel(properties, style, { showTechnology, rest: plain ? parseLabel(text, 'plain').rest : [] })
+    const model = graph.getDataModel()
+    model.batchUpdate(() => {
+      const next: Record<string, unknown> = { ...style, ...propertiesStyle(properties), [SHOW_TECHNOLOGY_KEY]: (plain && showTechnology) || undefined }
+      for (const key of Object.keys(next)) if (next[key] === undefined) delete next[key]
+      model.setStyle(cell, next as CellStyle)
+      cellLabelChanged(cell, label, autoSize)
+    })
   }
 }
 
