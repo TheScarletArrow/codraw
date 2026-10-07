@@ -75,7 +75,11 @@ export async function loadDocument({ name, text, size }: ApiSource): Promise<unk
   } catch {
     throw new ApiSpecError(`${name}: не удалось загрузить разбор YAML — проверьте подключение к сети`)
   }
-  const document = parseDocument(source, { prettyErrors: false, uniqueKeys: true })
+  return documentValue(name, source, parseDocument(source, { prettyErrors: false, uniqueKeys: true }))
+}
+
+/** The value of a parsed document of YAML, or the error of its syntax with its line and column in the text. */
+function documentValue(name: string, source: string, document: import('yaml').Document.Parsed): unknown {
   const error = document.errors[0]
   if (error) {
     const { line, column } = position(source, error.pos[0])
@@ -86,4 +90,29 @@ export async function loadDocument({ name, text, size }: ApiSource): Promise<unk
   } catch {
     throw new ApiSpecError(`${name}: слишком много ссылок на якоря YAML`)
   }
+}
+
+/**
+ * The values of the documents of a file of JSON or YAML, which may hold several documents separated by `---`, as
+ * manifests of Kubernetes do; empty documents are left out. Throws {@link ApiSpecError} as {@link loadDocument} does.
+ */
+export async function loadDocuments({ name, text, size }: ApiSource): Promise<unknown[]> {
+  if ((size ?? text.length) > MAX_DOCUMENT_SIZE) throw new ApiSpecError(`${name}: файл больше ${MAX_DOCUMENT_SIZE / 1024 / 1024} МБ`)
+  const source = text.replace(/^﻿/, '')
+  if (/^\s*[{[]/.test(source)) {
+    try {
+      return [JSON.parse(source) as unknown]
+    } catch {
+      // The YAML library below finds where the error is.
+    }
+  }
+  let parseAllDocuments: typeof import('yaml').parseAllDocuments
+  try {
+    ;({ parseAllDocuments } = await loadYaml())
+  } catch {
+    throw new ApiSpecError(`${name}: не удалось загрузить разбор YAML — проверьте подключение к сети`)
+  }
+  return Array.from(parseAllDocuments(source, { prettyErrors: false, uniqueKeys: true }), (document) =>
+    documentValue(name, source, document),
+  ).filter((value) => value !== null && value !== undefined)
 }

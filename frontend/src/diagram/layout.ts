@@ -24,6 +24,8 @@ export interface LayoutEdge {
   id: string
   source: string
   target: string
+  /** The size of the label of the edge: the layout keeps room for it between the layers it joins. */
+  label?: { width: number; height: number }
 }
 
 /** Lays out the graph of ELK; the default loads ELK on first use. */
@@ -32,10 +34,30 @@ export type LayoutEngine = (graph: ElkNode) => Promise<ElkNode>
 /** Space between the edge of a frame and its shapes; the top leaves room for its caption. */
 export const FRAME_PADDING = { top: 40, left: 20, bottom: 20, right: 20 }
 
+/** Space between two layers of shapes along the direction of the layout. */
+const BETWEEN_LAYERS = 80
+
 const SPACING: LayoutOptions = {
   'elk.spacing.nodeNode': '40',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '80',
+  'elk.layered.spacing.nodeNodeBetweenLayers': String(BETWEEN_LAYERS),
   'elk.spacing.componentComponent': '60',
+}
+
+/** Room around a label between the shapes of its edge. */
+const LABEL_MARGIN = 8
+
+/**
+ * The label of ELK that keeps room for the label of an edge, or none when the label fits the space between layers.
+ * ELK puts such a label into a layer of its own, with the space between layers on both sides: the label of ELK is that
+ * much shorter than the label it keeps room for. ELK leaves out labels without text, which this one never shows.
+ */
+function roomForLabel(edge: LayoutEdge, direction: LayoutDirection) {
+  if (!edge.label) return null
+  const { width, height } = edge.label
+  const length = (direction === 'right' ? width : height) + 2 * LABEL_MARGIN
+  if (length <= BETWEEN_LAYERS) return null
+  const room = Math.max(1, length - 2 * BETWEEN_LAYERS)
+  return { id: `${edge.id}:label`, text: edge.id, ...(direction === 'right' ? { width: room, height } : { width, height: room }) }
 }
 
 const area = (box: LayoutBox) => box.width * box.height
@@ -102,6 +124,8 @@ export function layoutGraph(shapes: LayoutShape[], edges: LayoutEdge[], directio
     const common = sourceAncestors.find((id) => targetAncestors.includes(id))
     const container = common ? nodes.get(common)! : root
     const elkEdge: ElkExtendedEdge = { id: edge.id, sources: [edge.source], targets: [edge.target] }
+    const label = roomForLabel(edge, direction)
+    if (label) elkEdge.labels = [label]
     container.edges = [...(container.edges ?? []), elkEdge]
   }
   return root

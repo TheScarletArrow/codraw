@@ -8,6 +8,7 @@ import { fetchSchemaImport } from '../api/schemaImport.ts'
 import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
+import { COMPOSE, KUBERNETES } from '../infra/formats.ts'
 import { InfraImport } from '../infra/InfraImport.tsx'
 import { downloadBlob, fileName } from '../lib/download.ts'
 import { mermaidCells, mermaidSummary } from '../mermaid/mermaidCells.ts'
@@ -66,12 +67,12 @@ const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) =>
 
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
- * a flowchart or an ER diagram of Mermaid, documents of OpenAPI and AsyncAPI, and files of docker-compose become a
- * diagram of the page.
+ * a flowchart or an ER diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose and manifests of
+ * Kubernetes become a diagram of the page.
  */
 export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
   const [open, setOpen] = useState(false)
-  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'infra' | null>(null)
+  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | null>(null)
   // «Подключение к базе» over «Импорт SQL».
   const [connecting, setConnecting] = useState(false)
   const [text, setText] = useState('')
@@ -124,6 +125,14 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
     }
   }
 
+  /** What the windows of the imports of infrastructure share. */
+  const infraProps = {
+    busy,
+    error: message === 'import-failed' ? MESSAGES[message] : null,
+    onBack: reset,
+    onAdd: (cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void insert(cells),
+  }
+
   const addTables = () => {
     const diagram = mermaid?.diagram
     if (imported && imported.tables.length > 0) void insert((origin) => schemaCells(imported, origin))
@@ -144,7 +153,7 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           variant="ghost"
           size="icon-sm"
           aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI и docker-compose"
+          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose и Kubernetes"
           disabled={!doc || !pageId}
         >
           <Database />
@@ -158,13 +167,10 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
             onBack={reset}
             onAdd={(cells) => void insert(cells)}
           />
-        ) : importing === 'infra' ? (
-          <InfraImport
-            busy={busy}
-            error={message === 'import-failed' ? MESSAGES[message] : null}
-            onBack={reset}
-            onAdd={(cells) => void insert(cells)}
-          />
+        ) : importing === 'compose' ? (
+          <InfraImport format={COMPOSE} {...infraProps} />
+        ) : importing === 'kubernetes' ? (
+          <InfraImport format={KUBERNETES} {...infraProps} />
         ) : importing === 'mermaid' && mermaid ? (
           <>
             <div className="flex items-center gap-1">
@@ -289,8 +295,17 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('api')}>
                   Импорт OpenAPI / AsyncAPI…
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('infra')}>
+                <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('compose')}>
                   Импорт docker-compose…
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start font-normal"
+                  onClick={() => setImporting('kubernetes')}
+                >
+                  Импорт Kubernetes…
                 </Button>
               </>
             )}

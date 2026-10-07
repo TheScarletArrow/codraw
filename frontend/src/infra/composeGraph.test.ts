@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { addressedHosts, composeGraph, composeGraphError, composeSummary, imageKind, imageWords } from './composeGraph.ts'
+import { addressedHosts } from './addresses.ts'
+import { composeGraph, composeGraphError, composeSummary } from './composeGraph.ts'
+import { imageKind, imageWords } from './imageKind.ts'
 import type { InfraGraph } from './infraGraph.ts'
 import { MAX_SERVICES, parseCompose, type ComposeService } from './parseCompose.ts'
 import { CODRAW_COMPOSE, NETWORKS_COMPOSE, SHOP_COMPOSE } from './testCompose.ts'

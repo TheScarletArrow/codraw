@@ -81,7 +81,12 @@ export async function infraCells(graph: InfraGraph, origin: { x: number; y: numb
   ]
   const boxes = await layoutShapes(
     shapes,
-    graph.edges.map((edge, index) => ({ id: `edge-${index}`, source: nodes[edge.source]!, target: nodes[edge.target]! })),
+    graph.edges.map((edge, index) => ({
+      id: `edge-${index}`,
+      source: nodes[edge.source]!,
+      target: nodes[edge.target]!,
+      ...(edge.label && { label: { width: textWidth([edge.label]) + 8, height: LINE_HEIGHT } }),
+    })),
     'right',
     engine,
   )
