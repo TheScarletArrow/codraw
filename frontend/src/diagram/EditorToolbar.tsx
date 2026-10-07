@@ -10,6 +10,7 @@ import {
   LockOpen,
   Maximize,
   MessageCirclePlus,
+  Pencil,
   Redo2,
   TextWrap,
   Underline,
@@ -45,7 +46,7 @@ interface EditorToolbarProps {
 }
 
 export function EditorToolbar({ editor, readOnly = false, collaboration = true }: EditorToolbarProps) {
-  const { canUndo, canRedo, scale, laser, commentTool } = useEditorState(editor)
+  const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
 
   return (
     <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
@@ -151,9 +152,48 @@ export function EditorToolbar({ editor, readOnly = false, collaboration = true }
           </Button>
         </>
       )}
+      {!readOnly && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Карандаш"
+          aria-pressed={pencil}
+          title={pencil ? 'Закончить рисовать (P, Esc)' : 'Карандаш: рисовать от руки (P)'}
+          disabled={!editor}
+          className="aria-pressed:bg-accent"
+          onClick={() => editor?.setPencil(!pencil)}
+        >
+          <Pencil />
+        </Button>
+      )}
       {!readOnly && <AutoLayoutPicker editor={editor} />}
-      {!readOnly && <EditingTools editor={editor} />}
+      {!readOnly && (pencil ? <PencilTools editor={editor} /> : <EditingTools editor={editor} />)}
     </div>
+  )
+}
+
+/**
+ * While the pencil is on, the line it draws with, in place of the tools of the selection: «Линия» is its color, «Стиль»
+ * its width and dash. What is chosen for the lines of the selection is the line of the pencil too.
+ */
+function PencilTools({ editor }: { editor: DiagramEditor | null }) {
+  const { pencilLine } = useEditorState(editor)
+
+  return (
+    <>
+      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <ColorPicker
+        label="Линия"
+        name="Цвет линии"
+        value={pencilLine.color}
+        onChange={(color) => editor?.setPencilLine({ color })}
+      />
+      <LineStylePicker
+        line={{ width: pencilLine.width, dash: pencilLine.dash, edgeShape: null, hasEdges: false }}
+        onChange={({ width, dash }) => editor?.setPencilLine({ width, dash })}
+      />
+    </>
   )
 }
 

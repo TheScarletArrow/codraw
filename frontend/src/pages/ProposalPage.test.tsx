@@ -114,7 +114,7 @@ describe('ProposalPage', () => {
     expect(getPages(provider.document).size).toBe(1)
   })
 
-  it('offers neither the laser pointer nor the comment tool on the draft, which nobody else is on', async () => {
+  it('offers neither the laser pointer nor the comment tool on the draft, which nobody else is on, but the pencil', async () => {
     const provider = await openDraft()
     act(() => provider.emitConnected('read-write'))
 
@@ -124,9 +124,10 @@ describe('ProposalPage', () => {
     expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeInTheDocument()
     expect(within(toolbar).queryByRole('button', { name: 'Указка' })).toBeNull()
     expect(within(toolbar).queryByRole('button', { name: 'Комментарий' })).toBeNull()
+    expect(within(toolbar).getByRole('button', { name: 'Карандаш' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Горячие клавиши' }))
     const help = await screen.findByRole('dialog', { name: 'Горячие клавиши' })
-    expect(within(help).getByRole('region', { name: 'Правка' })).toBeInTheDocument()
+    expect(within(within(help).getByRole('region', { name: 'Правка' })).getByText('Карандаш')).toBeInTheDocument()
     expect(within(help).queryByRole('region', { name: 'Совместная работа' })).toBeNull()
   })
 

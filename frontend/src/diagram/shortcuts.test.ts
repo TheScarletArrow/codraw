@@ -62,6 +62,7 @@ describe('shortcuts', () => {
     expect(actions).toContain('Сообщение у курсора')
     expect(actions).not.toContain('Удалить')
     expect(actions).not.toContain('Дублировать')
+    expect(actions).not.toContain('Карандаш')
     expect(shortcutGroups(true).map((group) => group.title)).not.toContain('Текст')
   })
 })

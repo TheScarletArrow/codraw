@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { DiagramEditor, EditorState } from './editor.ts'
+import { DEFAULT_PENCIL_LINE } from './freehand.ts'
 
 const NO_EDITOR: EditorState = {
   canUndo: false,
@@ -25,6 +26,8 @@ const NO_EDITOR: EditorState = {
   layoutSelection: false,
   laser: false,
   commentTool: false,
+  pencil: false,
+  pencilLine: DEFAULT_PENCIL_LINE,
   lock: null,
   attribution: null,
 }

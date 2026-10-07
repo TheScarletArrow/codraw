@@ -11,6 +11,7 @@ import {
 } from '../diagram/diff.ts'
 import type { MergeConflicts } from '../diagram/merge.ts'
 import type { Box, Point } from '../diagram/editor.ts'
+import { isFreehandStyle } from '../diagram/freehand.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
@@ -38,7 +39,7 @@ export interface ChangeItem {
   type: ChangeType
   /** The label of the element as one short line, or its kind when it has none. */
   title: string
-  /** What the element is: «Связь», «Таблица», «Поле», a shape of the palette, … */
+  /** What the element is: «Связь», «Линия от руки», «Таблица», «Поле», a shape of the palette, … */
   kind: string
   /** What changed in a changed element, in words, each once. */
   details: string[]
@@ -106,7 +107,7 @@ class Kinds {
   }
 
   of(cell: CellSnapshot): string {
-    if (cell.kind === 'edge') return 'Связь'
+    if (cell.kind === 'edge') return isFreehandStyle(cell.style) ? 'Линия от руки' : 'Связь'
     if (this.isTableRow(cell)) return isTableIndexStyle(cell.style) ? 'Индекс' : 'Поле'
     if (isTableStyle(cell.style)) return 'Таблица'
     // A group of draw.io and CoDraw: a container without a fill and a border.
@@ -189,9 +190,11 @@ function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Ki
         return 'свойства'
     }
   }
+  // A line drawn by hand moves with its ends and bends together.
+  const geometryWord = (key: string) => (isFreehandStyle(cell.style) ? 'положение' : (GEOMETRY_WORDS[key] ?? 'положение'))
   const words = [
     ...fields.map(fieldWord),
-    ...geometry.map((key) => GEOMETRY_WORDS[key] ?? 'положение'),
+    ...geometry.map(geometryWord),
     ...style.map((key) => STYLE_WORDS[key] ?? 'стиль'),
     ...attrs.map(() => 'свойства'),
   ]
