@@ -3,6 +3,7 @@ import {
   defaultIndexName,
   indexColumnNames,
   indexText,
+  mapIndexColumns,
   renameIndex,
   renameIndexColumn,
   splitIndex,
@@ -73,6 +74,20 @@ describe('columns of an index', () => {
   it('renames a column in any case and keeps the expressions', () => {
     expect(renameIndexColumn('org_id, ORG_ID DESC, lower(org_id)', 'org_id', 'team_id')).toBe('team_id, team_id DESC, lower(org_id)')
     expect(renameIndexColumn('a,b', 'c', 'd')).toBe('a,b')
+  })
+
+  it('writes all columns anew at once, so that two columns may swap their names', () => {
+    const swap = new Map([
+      ['first_name', 'last_name'],
+      ['last_name', 'first_name'],
+    ])
+    expect(mapIndexColumns('first_name, last_name DESC, lower(first_name)', (name) => swap.get(name) ?? null)).toBe(
+      'last_name, first_name DESC, lower(first_name)',
+    )
+    expect(mapIndexColumns('"Full Name" text_pattern_ops, email', (name) => `[${name}]`)).toBe(
+      '[Full Name] text_pattern_ops, [email]',
+    )
+    expect(mapIndexColumns('a,b', () => null)).toBe('a,b')
   })
 
   it('writes names as SQL does and names an index as PostgreSQL does', () => {

@@ -4,6 +4,7 @@ import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import {
   diagramSchema,
+  diagramTables,
   fieldLabel,
   parseFieldLabel,
   placeBeside,
@@ -133,6 +134,28 @@ describe('the schema of a diagram', () => {
     expect(diagramSchema(builder.build()).tables[1]!.foreignKeys).toEqual([
       { name: null, columns: ['owner_id'], table: 'users', references: ['id'] },
     ])
+  })
+
+  it('names the cells of the tables, fields, indexes and references it reads, and the types as the fields write them', () => {
+    const builder = new DiagramBuilder()
+    const users = builder.table('users', 0, 0, ['id NUMBER(19) PK', 'email VARCHAR2(255)'], 220, ['users_email_idx (email)'])
+    const boards = builder.table('boards', 400, 0, ['id NUMBER(19) PK', 'owner_id NUMBER(19)'])
+    const reference = builder.edge(users.fields[0]!, boards.fields[1]!)
+    const cells = builder.build()
+    const index = cells.find((cell) => cell.value === 'users_email_idx (email)')!
+
+    const [first, second] = diagramTables(cells)
+
+    expect(first).toMatchObject({ id: users.id, style: { dbVendor: 'postgresql' } })
+    expect(first!.fields.map((field) => [field.id, field.column.type, field.writtenType])).toEqual([
+      [users.fields[0], 'number(19)', 'NUMBER(19)'],
+      [users.fields[1], 'varchar2(255)', 'VARCHAR2(255)'],
+    ])
+    expect(first!.indexes).toEqual([{ id: index.id, index: first!.table.indexes[0] }])
+    expect(second!.references).toEqual([
+      { id: reference, field: boards.fields[1], referencedTable: users.id, referencedField: users.fields[0] },
+    ])
+    expect(second!.table.foreignKeys).toEqual([{ name: null, columns: ['owner_id'], table: 'users', references: ['id'] }])
   })
 
   it('leaves base tables and their edges out, and writes inherited fields as columns of their tables', () => {

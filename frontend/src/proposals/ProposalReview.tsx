@@ -20,13 +20,16 @@ import { useBoardDiff } from '../board/useBoardDiff.ts'
 import { VersionView } from '../board/VersionView.tsx'
 import { versionsKey } from '../board/versions.ts'
 import { snapshotDocument } from '../diagram/diff.ts'
-import { mergeConflicts, mergeProposal } from '../diagram/merge.ts'
+import { mergeConflicts, mergedSnapshot, mergeProposal } from '../diagram/merge.ts'
 import { timeAgo } from '../notifications/notifications.ts'
+import { SchemaMigrationMenu } from '../sql/SchemaMigrationMenu.tsx'
 import { draftPath, isOpen, proposalBaseKey, proposalKey, proposalsKey, STATUS_LABELS } from './proposals.ts'
 import { useDraftConnection } from './useDraftConnection.ts'
 
 interface ProposalReviewProps {
   boardId: string
+  /** The files of the migration of the schema are named after the board. */
+  boardTitle: string
   proposalId: string
   /** The current user: the author of a proposal edits and withdraws it. */
   userId: string
@@ -50,9 +53,11 @@ interface ProposalReviewProps {
  * A proposal of changes in place of the board, for viewing only: its draft with what it changes since its base, as the
  * comparison of a version shows the board, and the elements that the board changed too since the base marked in the
  * list. Reviewers accept it, merging it into the board, or decline it; its author edits its draft or withdraws it.
+ * Everyone who sees it gets the migration of the schema of the database from the board to the board with it accepted.
  */
 export function ProposalReview({
   boardId,
+  boardTitle,
   proposalId,
   userId,
   document,
@@ -143,6 +148,20 @@ export function ProposalReview({
                 : 'Не удалось отозвать предложение'}
           </span>
         )}
+        <SchemaMigrationMenu
+          // The board as accepting would make it: what the proposal changes, merged into the board as it is now.
+          read={() =>
+            baseDocument && draftDocument
+              ? {
+                  from: snapshotDocument(document),
+                  to: mergedSnapshot(document, snapshotDocument(baseDocument), snapshotDocument(draftDocument)),
+                }
+              : null
+          }
+          states={{ from: 'текущая доска', to: `доска с предложением «${title}»` }}
+          boardTitle={boardTitle}
+          disabled={!baseDocument || !draftDocument}
+        />
         <Button asChild variant="outline" size="sm">
           <Link to={draftPath(boardId, proposalId)}>{mine && open ? 'Править черновик' : 'Открыть черновик'}</Link>
         </Button>

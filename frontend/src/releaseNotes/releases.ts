@@ -22,6 +22,16 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.6.0',
+    date: '2026-10-07',
+    items: [
+      {
+        title: 'Миграция SQL',
+        text: 'При сравнении версии с текущей доской и в предложении изменений кнопка «Миграция SQL» пишет миграцию схемы базы данных: переименованное поле остаётся переименованием, а не удалением. Для PostgreSQL, MySQL, Oracle, SQL Server, SQLite и ClickHouse — SQL, пара файлов Flyway или changeset Liquibase.',
+      },
+    ],
+  },
+  {
     version: '0.5.0',
     date: '2026-10-07',
     items: [

@@ -89,6 +89,21 @@ export function mergeProposal(live: Y.Doc, base: BoardSnapshot, draft: BoardSnap
   }, MERGE_ORIGIN)
 }
 
+/**
+ * The board as accepting the proposal now would make it, as plain data: a copy of the board document with the proposal
+ * merged into it. The board itself does not change.
+ */
+export function mergedSnapshot(live: Y.Doc, base: BoardSnapshot, draft: BoardSnapshot): BoardSnapshot {
+  const copy = new Y.Doc()
+  try {
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(live))
+    mergeProposal(copy, base, draft)
+    return snapshotDocument(copy)
+  } finally {
+    copy.destroy()
+  }
+}
+
 function mergePage(live: Y.Doc, page: PageDiff, current: PageSnapshot | null) {
   const draft = page.after!
   if (!current) {
