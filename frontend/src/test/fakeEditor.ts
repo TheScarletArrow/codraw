@@ -119,6 +119,7 @@ export function createFakeEditor({
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),
+    setTheme: vi.fn(),
     exportSvg: vi.fn(() => null),
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),

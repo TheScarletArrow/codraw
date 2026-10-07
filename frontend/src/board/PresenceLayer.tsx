@@ -178,7 +178,7 @@ function EditingWarning({ editing, bounds, others }: { editing: LabelEditing; bo
     <div
       role="status"
       data-testid="editing-warning"
-      className="absolute flex max-w-72 gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-950 shadow-sm"
+      className="absolute flex max-w-72 gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-950 shadow-sm dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
       style={{
         zIndex: NOTICE_Z_INDEX,
         left: Math.max(EDGE_MARGIN, bounds.x),
@@ -187,7 +187,7 @@ function EditingWarning({ editing, bounds, others }: { editing: LabelEditing; bo
           : { top: bounds.y + bounds.height + TAG_GAP }),
       }}
     >
-      <TriangleAlert aria-hidden className="mt-px size-3.5 shrink-0 text-amber-600" />
+      <TriangleAlert aria-hidden className="mt-px size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
       <div className="flex flex-col gap-0.5">
         {others.length > 0 && (
           <p>
@@ -199,7 +199,7 @@ function EditingWarning({ editing, bounds, others }: { editing: LabelEditing; bo
         {editing.changedRemotely && (
           <p>
             Подпись изменили, пока вы её редактировали.{' '}
-            <span className="text-amber-800">Сохранится ваша правка, Esc отменит её</span>
+            <span className="text-amber-800 dark:text-amber-200">Сохранится ваша правка, Esc отменит её</span>
           </p>
         )}
       </div>

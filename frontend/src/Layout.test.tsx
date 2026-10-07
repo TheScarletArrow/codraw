@@ -65,6 +65,20 @@ describe('Layout', () => {
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
   })
 
+  it('offers the theme in the menu of the user, of a guest too', async () => {
+    mockFetch({
+      'GET /api/me': { body: { id: 'guest-1', name: 'Гость 42', avatarUrl: null, guest: true } },
+      'GET /api/boards': { body: [] },
+      ...unreadCount,
+    })
+
+    renderRoutes(routes)
+
+    const header = await screen.findByRole('banner')
+    await userEvent.click(await within(header).findByRole('button', { name: 'Тема: Как в системе' }))
+    expect(screen.getByRole('radio', { name: 'Тёмная' })).toBeInTheDocument()
+  })
+
   it('shows the notifications of the signed-in user in the header, of a guest too', async () => {
     mockFetch({
       'GET /api/me': { body: { id: 'guest-1', name: 'Гость 42', avatarUrl: null, guest: true } },

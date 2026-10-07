@@ -67,11 +67,11 @@ export function ChangeHighlights({
           const selected = id === selectedId
           return (
             <g key={id} data-testid="change-mark" data-change={type} data-cell={id} data-selected={selected || undefined}>
-              {/* A light halo keeps the line visible over the lines and fills of the diagram. */}
+              {/* A halo in the color of the canvas keeps the line visible over the lines and fills of the diagram. */}
               <polyline
                 points={points}
                 fill="none"
-                stroke="white"
+                className="stroke-canvas"
                 strokeOpacity={0.85}
                 strokeWidth={width + (selected ? 6 : 4)}
                 strokeLinejoin="round"
@@ -119,7 +119,7 @@ export function ChangeHighlights({
           <ChangeIcon
             key={id}
             type={type}
-            className="absolute text-white shadow-sm ring-2 ring-white"
+            className="absolute text-canvas shadow-sm ring-2 ring-canvas"
             style={{ left: at.x - BADGE_SIZE / 2, top: at.y - BADGE_SIZE / 2, width: BADGE_SIZE, height: BADGE_SIZE }}
           />
         )

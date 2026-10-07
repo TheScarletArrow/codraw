@@ -72,6 +72,7 @@ import {
 } from './attribution.ts'
 import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
+import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
@@ -468,8 +469,13 @@ export interface DiagramEditor {
   /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
   focus(): void
   /**
-   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%; `null` when there
-   * is nothing to draw.
+   * Draws the page for the theme of the app: on the dark canvas black lines and text that lie on the canvas are shown
+   * light. Only the canvas of this participant changes; the document and images of the page do not.
+   */
+  setTheme(theme: CanvasTheme): void
+  /**
+   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%, in the colors of the
+   * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
   exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
@@ -795,6 +801,8 @@ export interface DiagramEditorOptions {
    * pointer and the comment tool. `true` by default; a draft of a proposal of changes has neither.
    */
   collaboration?: boolean
+  /** The theme of the canvas at first; see {@link DiagramEditor.setTheme}. Light by default, as images of pages are. */
+  theme?: CanvasTheme
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -852,6 +860,7 @@ export function createDiagramEditor(
     participantName,
     participantId,
     collaboration = true,
+    theme: initialTheme = 'light',
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -875,6 +884,9 @@ export function createDiagramEditor(
   configureStyles(graph)
   configureTableFields(graph)
   configureTextWrap(graph)
+  let theme = initialTheme
+  // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
   const unwatchLocks = configureLocks(graph)
@@ -2293,6 +2305,11 @@ export function createDiagramEditor(
       if (cell && graph.isCellEditable(cell)) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
+    setTheme(next) {
+      if (next === theme) return
+      theme = next
+      restyle(graph)
+    },
     exportSvg({ selectionOnly = false, ...options } = {}) {
       const copied = selectionOnly ? new Set(cellsToCopy()) : null
       // In the order of the page, so that what lies on top on the canvas lies on top in the image.
@@ -2301,8 +2318,22 @@ export function createDiagramEditor(
         .getChildren()
         .filter((cell) => !copied || copied.has(cell))
       if (copied && cells.length === 0) return null
-      const image = renderSvg(graph, cells, options)
-      return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+      // participant never sees.
+      const shown = theme
+      if (shown !== 'light') {
+        theme = 'light'
+        restyle(graph)
+      }
+      try {
+        const image = renderSvg(graph, cells, options)
+        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      } finally {
+        if (shown !== 'light') {
+          theme = shown
+          restyle(graph)
+        }
+      }
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -2994,6 +3025,36 @@ function configureTextWrap(graph: Graph) {
       ? wrapLabel(label, graph.getCellStyle(cell), cell.getGeometry()!.width)
       : label
   }
+}
+
+/**
+ * Draws the page for the theme of the canvas that `theme` tells: on the dark canvas the black lines and text that lie on
+ * the canvas are drawn light, see {@link darkCanvasStyle}. Only the drawing changes: the document, the colors that the
+ * toolbar shows (the style of the cell with the defaults of the stylesheet) and images of the page keep the colors of the
+ * diagram.
+ */
+function configureCanvasTheme(graph: Graph, theme: () => CanvasTheme) {
+  const getCellStyle = graph.getCellStyle.bind(graph)
+  const view = graph.getView()
+  /** No shape that holds the cell, e.g. a table, fills the area under it. */
+  const onCanvas = (cell: Cell) => {
+    for (let parent = cell.getParent(); parent?.isVertex(); parent = parent.getParent()) {
+      if (coversChildren(view.getState(parent)?.style ?? getCellStyle(parent))) return false
+    }
+    return true
+  }
+  graph.getCellStyle = (cell) => {
+    const style = getCellStyle(cell)
+    return theme() === 'dark' ? darkCanvasStyle(style, cell.isEdge(), onCanvas(cell)) : style
+  }
+}
+
+/** Draws every cell of the page again with its style computed anew, e.g. for another theme of the canvas. */
+function restyle(graph: Graph) {
+  const view = graph.getView()
+  for (const state of view.getStates().values()) state.invalidStyle = true
+  view.invalidate()
+  view.validate()
 }
 
 function configureStyles(graph: Graph) {
