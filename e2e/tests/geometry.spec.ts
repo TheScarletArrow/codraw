@@ -282,7 +282,8 @@ test('a shape is turned by a number and by its handle for every participant, and
   const rotationOf = async (page: Page) => (await vertices(page)).find((cell) => cell.id === shape)?.style.rotation
 
   await toolbar(alice).getByRole('button', { name: 'Размер', exact: true }).click()
-  const rotation = alice.getByRole('dialog', { name: 'Размер и положение' }).getByRole('spinbutton', { name: 'Поворот' })
+  const size = alice.getByRole('dialog', { name: 'Размер и положение' })
+  const rotation = size.getByRole('spinbutton', { name: 'Поворот' })
   await expect(rotation).toHaveValue('0')
   await rotation.fill('45')
   await rotation.press('Enter')
@@ -297,6 +298,8 @@ test('a shape is turned by a number and by its handle for every participant, and
   await expect(rotation).toHaveValue('270')
   await expect.poll(() => rotationOf(bob)).toBe(270)
   await alice.keyboard.press('Escape')
+  // The window gives the keyboard back to its button once it has faded out, which would take it from the canvas.
+  await expect(size).toBeHidden()
   await click(alice, await cellBox(alice, shape))
   await alice.keyboard.press('ControlOrMeta+Z')
   await expect.poll(() => rotationOf(bob)).toBe(45)
