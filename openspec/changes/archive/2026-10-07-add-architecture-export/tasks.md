@@ -15,5 +15,5 @@
 
 ## 4. Сквозная проверка и документация
 
-- [ ] 4.1 e2e: шаблон «C4: контейнеры» — текст Structurizr DSL, C4-PlantUML и Mermaid C4, копирование и скачивание; проверка: `architecture-export.spec.ts` зелёный
+- [x] 4.1 e2e: шаблон «C4: контейнеры» — текст Structurizr DSL, C4-PlantUML и Mermaid C4, копирование и скачивание; проверка: `architecture-export.spec.ts` зелёный
 - [x] 4.2 docs: README, `docs/running.md`, «План работ», «Что нового» 0.7.0; проверка: документация описывает выгрузку, тесты «Что нового» зелёные
