@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { fetchSchemaImport } from '../api/schemaImport.ts'
 import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
+import { ArchitectureExport } from '../architecture/ArchitectureExport.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
 import { COMPOSE, KUBERNETES } from '../infra/formats.ts'
@@ -76,6 +77,8 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
   const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | 'gradle' | null>(null)
   // «Подключение к базе» over «Импорт SQL».
   const [connecting, setConnecting] = useState(false)
+  // «Архитектура как код» over the menu.
+  const [exporting, setExporting] = useState(false)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<SqlFile[]>([])
   const [busy, setBusy] = useState(false)
@@ -92,6 +95,7 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
   const reset = () => {
     setImporting(null)
     setConnecting(false)
+    setExporting(false)
     setText('')
     setFiles([])
     setMessage(null)
@@ -154,14 +158,20 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
           variant="ghost"
           size="icon-sm"
           aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes и Gradle"
+          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes и Gradle, архитектура как код"
           disabled={!doc || !pageId}
         >
           <Database />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" aria-label="SQL и Mermaid" className={importing ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}>
-        {importing === 'api' ? (
+      <PopoverContent
+        align="end"
+        aria-label="SQL и Mermaid"
+        className={importing || exporting ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}
+      >
+        {exporting && doc && pageId ? (
+          <ArchitectureExport cells={pageCells(doc, pageId)} title={pageCount > 1 ? `${boardTitle} — ${pageName}` : boardTitle} onBack={reset} />
+        ) : importing === 'api' ? (
           <ApiSpecImport
             busy={busy}
             error={message === 'import-failed' ? MESSAGES[message] : null}
@@ -350,6 +360,9 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
               onClick={() => schema && void copy(schemaMermaid(schema), 'mermaid-copied')}
             >
               Скопировать Mermaid
+            </Button>
+            <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setExporting(true)}>
+              Архитектура как код…
             </Button>
             {message && (
               <p role={message === 'copy-failed' ? 'alert' : 'status'} className="px-2 text-xs text-muted-foreground">

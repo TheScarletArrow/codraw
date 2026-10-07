@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
+import { c4Page } from '../architecture/testPages.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { SHOP_COMPOSE } from '../infra/testCompose.ts'
@@ -126,6 +127,7 @@ describe('SqlMenu', () => {
     expect(screen.queryByRole('button', { name: 'Импорт docker-compose…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Kubernetes…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Gradle…' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Архитектура как код…' })).toBeEnabled()
   })
 
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
@@ -275,6 +277,22 @@ describe('SqlMenu', () => {
     const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
     expect(cells.filter((cell) => cell.style.codrawShape === 'uml-component')).toHaveLength(4)
     expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
+  })
+
+  it('shows the architecture of the page as code to a participant who may only view, and goes back to the menu', async () => {
+    const document = new Y.Doc()
+    initializeDocument(document)
+    const cells = getCells(document, DEFAULT_PAGE_ID)
+    document.transact(() => c4Page().forEach((cell) => writeCell(cells, cell)))
+    renderMenu({ document, readOnly: true })
+
+    await userEvent.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Архитектура как код…' }))
+
+    expect(screen.getByRole('heading', { name: 'Архитектура как код' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Текст выгрузки')).toHaveTextContent('workspace "Схема — БД" {')
+    await userEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(menu()).toHaveTextContent('Таблиц на странице: 0')
   })
 
   it('cannot add anything until the DDL has a table', async () => {
