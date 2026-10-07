@@ -171,7 +171,7 @@ test('a .drawio file carries the picture, and the picture is stored on the board
   await Promise.all([alice.context().close(), eva.context().close()])
 })
 
-test('PNG and SVG of a page carry its pictures', async ({ browser }) => {
+test('PNG, SVG and PDF of a page carry its pictures', async ({ browser }) => {
   const alice = await userPage(browser, 'Алиса')
   await createBoard(alice)
   await addFromPanel(alice, { name: 'red.png', buffer: await picture(alice, 100, 100) })
@@ -206,6 +206,12 @@ test('PNG and SVG of a page carry its pictures', async ({ browser }) => {
   }, png.toString('base64'))
   // 100 × 100 at 2×.
   expect(red).toBeGreaterThan(30_000)
+  await alice.keyboard.press('Escape')
+
+  download = alice.waitForEvent('download')
+  await (await dialog()).getByRole('button', { name: 'Сохранить PDF' }).click()
+  const pdf = await readFile((await (await download).path())!, 'latin1')
+  expect(pdf).toContain('/Subtype /Image')
   await alice.context().close()
 })
 
