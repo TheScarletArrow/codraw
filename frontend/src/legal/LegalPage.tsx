@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { fetchLegal, type LegalInfo } from '../api/legal.ts'
 
 /** When the texts were last changed. */
-export const LEGAL_UPDATED = '6 октября 2026 г.'
+export const LEGAL_UPDATED = '7 октября 2026 г.'
 
 const pluralRules = new Intl.PluralRules('ru')
 

@@ -122,8 +122,12 @@
 - `pg_namespace` по имени схемы (нет — `schema-not-found`), таблицы `pg_class` с `relkind` `r` и `p` без секций
   (`relispartition`); больше 500 — `too-large` до чтения столбцов. Сервер старше 12 — `unsupported-server`.
 - Столбцы: `format_type`, `attnotnull`, `pg_get_expr` значения по умолчанию, identity (`GENERATED … AS IDENTITY`),
-  вычисляемые (`GENERATED ALWAYS AS (…) STORED/VIRTUAL`), `serial` — по `pg_get_serial_sequence` у столбца без identity
-  со значением `nextval` (тип `serial`/`bigserial`/`smallserial` без `DEFAULT`).
+  вычисляемые (`GENERATED ALWAYS AS (…) STORED/VIRTUAL`), `serial` — столбец без identity со значением `nextval`,
+  которому принадлежит последовательность (`pg_depend` с `deptype = 'a'`), пишется `serial`/`bigserial`/
+  `smallserial` без `DEFAULT`.
+- Только каталог: `pg_get_serial_sequence` и `regclass` по имени требуют права `USAGE` на схему, а запросы читают
+  `pg_catalog` по идентификаторам — схему читает пользователь, которому можно только войти. Без `USAGE` PostgreSQL
+  пишет имена схемы в ссылках с ней (`REFERENCES shop.users(id)`) — разбор её отрезает.
 - DDL как у `pg_dump`: заголовок-комментарий с версией сервера и схемой, `CREATE TABLE` по имени (у
   партиционированных — `PARTITION BY` из `pg_get_partkeydef`), затем `ALTER TABLE ONLY … ADD CONSTRAINT …` из
   `pg_get_constraintdef` (первичные, уникальные, `CHECK`), `CREATE INDEX` из `pg_get_indexdef` без индексов

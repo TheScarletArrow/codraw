@@ -62,6 +62,9 @@ services:
       # Above the limit of collab, so that a document that collab accepted is always stored; nginx takes up to 32 MB.
       CODRAW_LIMITS_DOCUMENT_SIZE: ${CODRAW_LIMITS_DOCUMENT_SIZE:-32MB}
       CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD: ${CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD:-64MB}
+      # Databases whose schemas users may read through the backend; empty turns it off (docs/deploy.md).
+      CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS: ${CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS:-}
+      CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR: ${CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR:-30}
       # One line of JSON (ECS) per event; without it the log is plain text.
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     depends_on:

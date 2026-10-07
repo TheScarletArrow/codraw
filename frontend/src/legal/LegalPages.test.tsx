@@ -20,6 +20,7 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   notificationRetentionDays: 60,
   notificationsPerUser: 200,
   closedProposalsPerBoard: 10,
+  schemaImport: false,
   ...changes,
 })
 
@@ -101,6 +102,31 @@ describe('legal pages', () => {
     expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')
     expect(copies).toHaveTextContent('очисткой данных этого сайта')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+  })
+
+  it('names the connection to a database only when the installation has it on', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ schemaImport: true }) } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent(
+      'Подключение к базе данных. Чтобы загрузить в «Импорт SQL» схему базы PostgreSQL, вы вводите адрес и порт её сервера, имя базы, пользователя и пароль.',
+    )
+    expect(data).toHaveTextContent('и не сохраняет их; в журнал сервера попадают адрес и порт сервера базы и результат')
+    expect(screen.getByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'Учётные данные базы данных — только на время одного подключения к ней; они не хранятся.',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'GitHub и Google узнают о входе через них по своим правилам. Адрес, имя базы, пользователя и пароль, которые вы вводите, чтобы загрузить схему базы данных, сервер CoDraw передаёт только этой базе. Участники доски',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })).not.toHaveTextContent('базе данных')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'GitHub и Google узнают о входе через них по своим правилам. Участники доски',
+    )
   })
 
   it('says when the operator has not named themselves', async () => {

@@ -22,6 +22,16 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.6.0',
+    date: '2026-10-07',
+    items: [
+      {
+        title: 'Схема из готовой базы',
+        text: '«Импорт SQL» понимает дампы pg_dump --schema-only и mysqldump --no-data: откройте файл — и таблицы со связями и индексами появятся на странице. Если администратор CoDraw разрешил, схему PostgreSQL можно загрузить и прямо из базы кнопкой «Подключиться к базе…».',
+      },
+    ],
+  },
+  {
     version: '0.5.0',
     date: '2026-10-07',
     items: [

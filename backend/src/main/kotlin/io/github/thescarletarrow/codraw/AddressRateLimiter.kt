@@ -6,8 +6,8 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Counts the requests of each network address in fixed windows of [window] and lets [limit] of them through in a
- * window. The counts live in the memory of this instance of the backend.
+ * Counts the requests of each network address, or of another key such as a user, in fixed windows of [window] and lets
+ * [limit] of them through in a window. The counts live in the memory of this instance of the backend.
  */
 class AddressRateLimiter(private val window: Duration, private val limit: () -> Int, private val clock: Clock) {
 
