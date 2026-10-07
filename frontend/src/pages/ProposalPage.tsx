@@ -8,6 +8,7 @@ import { fetchBoard, type Board } from '../api/boards.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposal, withdrawProposal, type Proposal } from '../api/proposals.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
@@ -187,7 +188,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
       )}
       <div className="flex min-h-0 flex-1">
         {!readOnly && <ShapePalette editor={editor} />}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             {document && currentPage ? (
               <>
@@ -210,6 +211,9 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
               <Message>{document && readOnly ? 'Черновик пока пуст' : 'Загрузка черновика…'}</Message>
             )}
           </div>
+          {document && currentPage && (
+            <CanvasSearch document={document} pages={pages} pageId={currentPage.id} editor={editor} onSelectPage={selectPage} />
+          )}
           {document && (
             <PageTabs
               pages={pages}

@@ -94,6 +94,38 @@ test('the font of a shape reaches the other participant', async ({ browser }) =>
   await close()
 })
 
+/** The font of a table and of each of its fields, `null` for the default one. */
+const tableFonts = (page: Page, id: string) =>
+  page.evaluate((id) => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const table = container.__codrawEditor.graph.getDataModel().getCell(id)
+    return [table, ...table.getChildren().filter((cell: any) => cell.isVertex())].map(
+      (cell: any) => cell.getStyle().fontFamily ?? null,
+    )
+  }, id)
+
+test('the font of a table reaches its name and all its fields for the other participant', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const table = await addShape(alice, 'Таблица')
+  await alice.getByRole('button', { name: 'Добавить поле' }).click()
+  await alice.keyboard.type('email text')
+  await alice.keyboard.press('Enter')
+  await expect.poll(() => tableFonts(bob, table)).toEqual([null, null, null])
+  await alice.evaluate((id) => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const { graph } = container.__codrawEditor
+    graph.setSelectionCell(graph.getDataModel().getCell(id))
+  }, table)
+
+  await alice.getByRole('combobox', { name: 'Шрифт' }).selectOption('Courier New')
+
+  await expect.poll(() => tableFonts(bob, table)).toEqual(['Courier New', 'Courier New', 'Courier New'])
+  await alice.getByTestId('diagram-canvas').click({ position: { x: 5, y: 5 } })
+  await alice.keyboard.press('Control+z')
+  await expect.poll(() => tableFonts(bob, table)).toEqual([null, null, null])
+  await close()
+})
+
 /** Widths of the lines of the label of a cell as drawn, and the width of the cell. */
 function drawnLabel(page: Page, id: string): Promise<{ width: number; lines: number[] }> {
   return page.evaluate((id) => {
