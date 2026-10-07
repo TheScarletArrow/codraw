@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { fromStyle } from '../diagram/binding.ts'
 import { diffDocuments, snapshotDocument, type PageDiff } from '../diagram/diff.ts'
+import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import { DEFAULT_PAGE_ID, getCells, writeCell, type CellData } from '../diagram/model.ts'
 import { TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
@@ -132,6 +133,15 @@ describe('items of the list of changes', () => {
       ['БД', ['ссылка']],
       ['Кэш', ['ссылка']],
     ])
+  })
+
+  it('says that the description of the call of an edge changed', () => {
+    const version = boardWith(shapeData('a', 'a0', { value: 'Оплата' }))
+    const now = laterState(version, (doc) => {
+      ;(cell(doc, 'a').get('style') as Y.Map<unknown>).set(EDGE_API_KEY, '{"v":1,"method":"POST","path":"/payments"}')
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([['Оплата', ['описание API']]])
   })
 
   it('says the status an element got, or that its status was taken off, once', () => {

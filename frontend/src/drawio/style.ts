@@ -1,3 +1,4 @@
+import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
 import type { StyleValue } from '../diagram/model.ts'
@@ -166,9 +167,9 @@ const BOARD_KEYS = new Set([LOCKED_BY_KEY])
 
 /**
  * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its
- * style: the link (see `drawio/serialize.ts`).
+ * style: the link and the description of the call of an edge (see `drawio/serialize.ts`).
  */
-const ATTRIBUTE_KEYS = new Set([LINK_KEY])
+const ATTRIBUTE_KEYS = new Set([LINK_KEY, EDGE_API_KEY])
 
 /** draw.io writes `data:image/png,<base64>`: a `;` would end the style value. */
 const DATA_IMAGE = /^data:image\/([a-z0-9.+-]+),([A-Za-z0-9+/=]+)$/i

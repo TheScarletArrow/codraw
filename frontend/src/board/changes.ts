@@ -11,6 +11,7 @@ import {
 } from '../diagram/diff.ts'
 import type { MergeConflicts } from '../diagram/merge.ts'
 import type { Box, Point } from '../diagram/editor.ts'
+import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
 import { isFreehandStyle } from '../diagram/freehand.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
@@ -159,6 +160,7 @@ const STYLE_WORDS: Record<string, string> = {
   [LOCKED_KEY]: 'закрепление',
   [LOCKED_BY_KEY]: 'закрепление',
   [LINK_KEY]: 'ссылка',
+  [EDGE_API_KEY]: 'описание API',
 }
 
 const GEOMETRY_WORDS: Record<string, string> = {

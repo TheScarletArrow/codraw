@@ -87,6 +87,7 @@ export function createFakeEditor({
     attribution: null,
     canAddImages: false,
     link: null,
+    edgeApi: null,
     stickies: null,
     status: null,
   }
@@ -190,6 +191,7 @@ export function createFakeEditor({
     setGeometry: vi.fn(),
     setRotation: vi.fn(),
     setLink: vi.fn(),
+    setEdgeApi: vi.fn(),
     getLinks: () => links,
     onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),

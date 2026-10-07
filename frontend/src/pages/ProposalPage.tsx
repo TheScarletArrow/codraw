@@ -35,6 +35,7 @@ import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
+import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
@@ -109,6 +110,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
 
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
+  // The description of the call of an edge that its menu asked to edit.
+  const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
 
   const withdraw = useMutation({
     mutationFn: () => withdrawProposal(board.id, proposal.id),
@@ -234,8 +237,10 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 {!readOnly && <QuickConnect editor={editor} />}
                 {!readOnly && <FieldPopover editor={editor} />}
                 {!readOnly && <StickyPanel editor={editor} />}
+                <EdgeApiPanel editor={editor} request={apiRequest} />
                 <CanvasMenu
                   editor={editor}
+                  onEdgeApi={readOnly ? undefined : (cellId) => setApiRequest({ cellId })}
                   onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
                 />
                 {linking && linking.editor === editor && (

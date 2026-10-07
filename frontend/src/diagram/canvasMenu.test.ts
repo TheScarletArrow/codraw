@@ -352,6 +352,19 @@ describe('shortcutLabel', () => {
     expect(labels('shape', { ...linking, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Комментировать'])
   })
 
+  it('offers the description of the call of an edge after its link, when the page shows descriptions', () => {
+    const describing = { ...all, canLink: true, canDescribeApi: true, canComment: true }
+
+    expect(labels('edge', describing).slice(-4)).toEqual(['Ссылка…', 'Описание API…', 'Комментировать', 'Удалить'])
+    expect(menuItems('edge', describing).find((item) => item.command === 'edgeApi')).toMatchObject({ separatorBefore: false, disabled: false })
+    for (const target of ['canvas', 'shape', 'table', 'field', 'index', 'group', 'selection'] as const) {
+      expect(labels(target, describing)).not.toContain('Описание API…')
+    }
+    expect(labels('edge', all)).not.toContain('Описание API…')
+    expect(menuItems('edge', { ...describing, locked: true }).find((item) => item.command === 'edgeApi')).toMatchObject({ disabled: true })
+    expect(labels('edge', { ...describing, readOnly: true })).not.toContain('Описание API…')
+  })
+
   it('lets a participant who may only view comment, also on a field or an edge', () => {
     const viewing = { ...all, readOnly: true, canComment: true }
 

@@ -339,6 +339,35 @@ describe('CanvasMenu', () => {
     })
   })
 
+  describe('with descriptions of calls', () => {
+    const onEdgeApi = vi.fn()
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onEdgeApi.mockReset()
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onEdgeApi={onEdgeApi} />)
+    })
+
+    it('asks the page to edit the description of the call of a single edge, and leaves the keyboard to it', async () => {
+      act(() => editor.setState({ edgeApi: { cellId: 'cell-1', api: null, canChange: true } }))
+      rightClick('edge')
+
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Описание API…' }))
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+      expect(onEdgeApi).toHaveBeenCalledWith('cell-1')
+      expect(screen.queryByRole('menu')).toBeNull()
+      expect(editor.focus).not.toHaveBeenCalled()
+    })
+
+    it('offers no description without a single edge', () => {
+      act(() => editor.setState({ edgeApi: null }))
+      rightClick('shape')
+      expect(screen.queryByRole('menuitem', { name: 'Описание API…' })).toBeNull()
+    })
+  })
+
   describe('for a participant who may only view', () => {
     beforeEach(() => {
       document.body.innerHTML = ''
