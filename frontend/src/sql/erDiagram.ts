@@ -4,9 +4,17 @@ import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, isTableIndexStyle, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
 import { badgeRoom, tableRows } from '../diagram/tableRows.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
-import { tokenize, typeText, type SqlColumn, type SqlForeignKey, type SqlSchema, type SqlTable } from './parseSql.ts'
+import {
+  tokenize,
+  typeText,
+  type SqlColumn,
+  type SqlForeignKey,
+  type SqlIndex,
+  type SqlSchema,
+  type SqlTable,
+} from './parseSql.ts'
 import { vendorOf } from './dbVendors.ts'
-import { FIELD_WORDS, plainText, sourceRefers } from './tableField.ts'
+import { FIELD_WORDS, plainText, sourceRefers, splitField } from './tableField.ts'
 import { indexText, splitIndex } from './tableIndex.ts'
 
 /** A plain identifier needs no quotes: lower case letters, digits and `_`, not starting with a digit. */
@@ -81,14 +89,14 @@ const estimate = (text: string) => text.length * 7.5
  * Width of a table that fits its name beside the badge of its database, the rows of its fields with their references
  * and the rows of its indexes, estimated from the lengths of their texts.
  */
-function tableWidth(table: SqlTable, labels: string[], references: (string | null)[], indexes: string[]): number {
+export function tableWidth(name: string, labels: string[], references: (string | null)[] = [], indexes: string[] = []): number {
   const rows = tableRows(
     labels.map((text, index) => ({ text, font: {}, reference: references[index] ?? null })),
     estimate,
     indexes.map((text) => ({ text, font: {}, reference: null })),
   )
   // Tables get the database of the table of the palette.
-  const header = estimate(table.name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
+  const header = estimate(name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
   return Math.min(560, Math.max(160, Math.ceil(Math.max(header, ...rows.map((row) => row.width)))))
 }
 
@@ -148,7 +156,7 @@ export async function schemaCells(
       const labels = table.columns.map((column) => fieldLabel(column, referencing(table, column.name)))
       const references = table.columns.map((column) => referenceOf(table, column.name))
       const indexes = table.indexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
-      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table, labels, references, indexes), indexes)
+      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table.name, labels, references, indexes), indexes)
       return [table.name, { id, fields: new Map(table.columns.map((column, index) => [column.name, fields[index]!])) }]
     }),
   )
@@ -199,56 +207,106 @@ export function placeBeside(existing: CellData[]): { x: number; y: number } {
   }
 }
 
-/** A reference between fields of two tables of the page. */
-interface DiagramReference {
-  table: string
-  column: string
+/** A field of a table of a page, with the id of its cell. */
+export interface DiagramField {
+  id: string
+  column: SqlColumn & { foreignKey: boolean }
+  /** The type as written, e.g. `VARCHAR2(255)` or `LowCardinality(String)`; the column has it in lower case. */
+  writtenType: string
+}
+
+/** An index of a table of a page, with the id of the cell of its row. */
+export interface DiagramIndex {
+  id: string
+  index: SqlIndex
+}
+
+/** A reference between fields of two tables of a page: the edge between them, from the field that refers. */
+export interface DiagramReference {
+  /** The id of the edge. */
+  id: string
+  /** The id of the field that refers. */
+  field: string
+  /** The ids of the table and of the field that it refers to. */
   referencedTable: string
-  referencedColumn: string
+  referencedField: string
 }
 
 /**
- * The schema of the tables of a page: fields parsed from their text, references from the edges between fields, indexes
- * from the rows of indexes.
+ * A table of a page as {@link diagramSchema} reads it, with the ids of the cells it is read from. `fields`, `indexes`
+ * and `references` go along the columns, indexes and foreign keys of `table`.
  */
-export function diagramSchema(cells: CellData[]): SqlSchema {
-  // A base table is a template of fields rather than a table of the database: its tables have them as their columns.
+export interface DiagramTable {
+  id: string
+  /** The style of the table, e.g. with its database. */
+  style: Record<string, StyleValue>
+  table: SqlTable
+  fields: DiagramField[]
+  indexes: DiagramIndex[]
+  references: DiagramReference[]
+}
+
+/**
+ * The tables of a page in the order of `cells`, with the ids of their cells: fields parsed from their text, references
+ * from the edges between fields, indexes from the rows of indexes. A base table is a template of fields rather than a
+ * table of the database: it is left out with the edges of its fields, and the tables that inherit it have the copies of
+ * its fields as their columns.
+ */
+export function diagramTables(cells: CellData[]): DiagramTable[] {
   const tableCells = cells.filter(
     (cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) && !isBaseStyle(cell.style),
   )
-  const tables: SqlTable[] = []
-  const columnOf = new Map<string, { table: SqlTable; column: SqlColumn & { foreignKey: boolean } }>()
+  const tables: DiagramTable[] = []
+  const fieldOf = new Map<string, { table: DiagramTable; field: DiagramField }>()
   for (const tableCell of tableCells) {
-    const table: SqlTable = { name: plainText(tableCell.value) || 'table', columns: [], foreignKeys: [], indexes: [] }
+    const table: DiagramTable = {
+      id: tableCell.id,
+      style: tableCell.style,
+      table: { name: plainText(tableCell.value) || 'table', columns: [], foreignKeys: [], indexes: [] },
+      fields: [],
+      indexes: [],
+      references: [],
+    }
     const rows = cells.filter((cell) => cell.parent === tableCell.id && cell.kind === 'vertex').sort(compareCells)
     for (const row of rows.filter((cell) => isTableIndexStyle(cell.style))) {
-      const index = splitIndex(row.value)
-      if (index) table.indexes.push({ name: index.name, columns: index.columns, unique: index.unique, method: index.method, rest: index.rest })
+      const parts = splitIndex(row.value)
+      if (!parts) continue
+      const index = { name: parts.name, columns: parts.columns, unique: parts.unique, method: parts.method, rest: parts.rest }
+      table.table.indexes.push(index)
+      table.indexes.push({ id: row.id, index })
     }
-    for (const field of rows.filter((cell) => !isTableIndexStyle(cell.style))) {
-      const column = parseFieldLabel(field.value)
+    for (const row of rows.filter((cell) => !isTableIndexStyle(cell.style))) {
+      const column = parseFieldLabel(row.value)
       if (!column) continue
-      table.columns.push(column)
-      columnOf.set(field.id, { table, column })
+      const field = { id: row.id, column, writtenType: splitField(row.value)?.type || column.type }
+      table.table.columns.push(column)
+      table.fields.push(field)
+      fieldOf.set(row.id, { table, field })
     }
     tables.push(table)
   }
   for (const edge of cells.filter((cell) => cell.kind === 'edge' && cell.source && cell.target)) {
-    const source = columnOf.get(edge.source!)
-    const target = columnOf.get(edge.target!)
+    const source = fieldOf.get(edge.source!)
+    const target = fieldOf.get(edge.target!)
     if (!source || !target) continue
-    const reference = referenceOf(source, target, edge)
-    reference.table.foreignKeys.push({ name: null, columns: [reference.column], table: reference.referencedTable, references: [reference.referencedColumn] })
+    const [from, to] = sourceRefers(source.field.column, target.field.column, edge.style) ? [source, target] : [target, source]
+    from.table.table.foreignKeys.push({
+      name: null,
+      columns: [from.field.column.name],
+      table: to.table.table.name,
+      references: [to.field.column.name],
+    })
+    from.table.references.push({ id: edge.id, field: from.field.id, referencedTable: to.table.id, referencedField: to.field.id })
   }
-  return { tables, skipped: 0 }
+  return tables
 }
 
-type Field = { table: SqlTable; column: SqlColumn & { foreignKey: boolean } }
-
-/** The reference of an edge between fields, from the field that refers, see {@link sourceRefers}. */
-function referenceOf(source: Field, target: Field, edge: CellData): { table: SqlTable } & Omit<DiagramReference, 'table'> {
-  const [from, to] = sourceRefers(source.column, target.column, edge.style) ? [source, target] : [target, source]
-  return { table: from.table, column: from.column.name, referencedTable: to.table.name, referencedColumn: to.column.name }
+/**
+ * The schema of the tables of a page: fields parsed from their text, references from the edges between fields, indexes
+ * from the rows of indexes, see {@link diagramTables}.
+ */
+export function diagramSchema(cells: CellData[]): SqlSchema {
+  return { tables: diagramTables(cells).map((entry) => entry.table), skipped: 0 }
 }
 
 /**

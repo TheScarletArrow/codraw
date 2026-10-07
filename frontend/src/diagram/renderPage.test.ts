@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { DiagramBuilder } from '../templates/builder.ts'
+import { setThemeChoice } from '../theme/theme.ts'
+import { DARK_CANVAS_INK } from './canvasTheme.ts'
 import { createDiagramEditor } from './editor.ts'
 import { DEFAULT_PAGE_ID, initializeDocument } from './model.ts'
 import { addPage } from './pages.ts'
@@ -63,6 +65,19 @@ describe('drawing a page out of sight', () => {
     expect(svg).toContain('Платежи')
     expect(document.body.childElementCount).toBe(before)
     expect(renderPageSvg(doc, DEFAULT_PAGE_ID)).toBeNull()
+  })
+
+  it('draws a page in the colors of the diagram whatever the theme of the app, e.g. for the live picture', () => {
+    const { doc, second } = board()
+    setThemeChoice('dark')
+    try {
+      const svg = renderPageSvg(doc, second)!
+
+      expect(svg).toContain('#1f2328')
+      expect(svg).not.toContain(DARK_CANVAS_INK)
+    } finally {
+      setThemeChoice('system')
+    }
   })
 
   it('draws any page as an image with the options of the export', async () => {

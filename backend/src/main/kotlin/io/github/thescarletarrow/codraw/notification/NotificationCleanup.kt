@@ -11,6 +11,8 @@ import java.time.Duration
 data class NotificationProperties(
     /** A notification is deleted once it is this old, read or not. */
     val retention: Duration = Duration.ofDays(90),
+    /** The owner of a board gets at most one notification about a request to review an element within this time. */
+    val reviewRequestInterval: Duration = Duration.ofMinutes(10),
 )
 
 /**

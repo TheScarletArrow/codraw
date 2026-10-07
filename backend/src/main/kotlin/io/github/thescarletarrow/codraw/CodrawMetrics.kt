@@ -20,6 +20,10 @@ enum class Limit(val tag: String) {
     ACCESS_REQUESTS("access-requests"),
     PROPOSALS("proposals"),
     AUTHOR_PROPOSALS("proposals-per-author"),
+    TAGS("tags"),
+    FOLDERS("folders"),
+    REVIEW_REQUESTS("review-requests"),
+    SCHEMA_IMPORTS("schema-imports"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */
@@ -32,6 +36,34 @@ enum class ClientErrorKind(val tag: String) {
 
     /** An error while React drew the page. */
     RENDER("render"),
+}
+
+/**
+ * How an import of the schema of a database ended; the tag of [CodrawMetrics.schemaImport] and, but for [SUCCESS], the
+ * `reason` of the answer.
+ */
+enum class SchemaImportResult(val tag: String) {
+    SUCCESS("success"),
+
+    /** The host is not among the hosts and networks that the administrator allowed. */
+    HOST_NOT_ALLOWED("host-not-allowed"),
+
+    /** No connection to a PostgreSQL server: refused, no answer, another protocol, SSL or a name that does not resolve. */
+    CONNECTION_FAILED("connection-failed"),
+
+    /** The server refused the user, the password or the database. */
+    AUTHENTICATION_FAILED("authentication-failed"),
+
+    SCHEMA_NOT_FOUND("schema-not-found"),
+
+    /** The server did not answer the queries of the catalog in time. */
+    TIMEOUT("timeout"),
+
+    /** More tables or a longer DDL than an import reads. */
+    TOO_LARGE("too-large"),
+
+    /** A server older than PostgreSQL 12. */
+    UNSUPPORTED_SERVER("unsupported-server"),
 }
 
 /** Metrics of what CoDraw does, next to those of HTTP, the JVM and the database pool that Micrometer collects. */
@@ -73,6 +105,13 @@ class CodrawMetrics(registry: MeterRegistry) {
             .register(registry)
     }
 
+    private val schemaImports = SchemaImportResult.entries.associateWith { result ->
+        Counter.builder("codraw.schema.imports")
+            .description("Imports of the schema of a database by users, by how they ended")
+            .tag("result", result.tag)
+            .register(registry)
+    }
+
     fun boardCreated() = boardsCreated.increment()
 
     fun guestCreated() = guestsCreated.increment()
@@ -82,6 +121,8 @@ class CodrawMetrics(registry: MeterRegistry) {
     fun limitReached(limit: Limit) = limitsReached.getValue(limit).increment()
 
     fun clientError(kind: ClientErrorKind) = clientErrors.getValue(kind).increment()
+
+    fun schemaImport(result: SchemaImportResult) = schemaImports.getValue(result).increment()
 
     fun guestCleanupDeleted(boards: Int, guests: Int) {
         cleanupDeleted.getValue("boards").increment(boards.toDouble())

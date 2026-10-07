@@ -26,14 +26,33 @@ export interface Board {
   role: BoardRole
 }
 
-/** A board of another user that the current user is a member of or opened through its link. */
-export interface SharedBoard extends Board {
-  /** When the user last opened it; `null` for a board they are a member of and never opened. */
+/** A board in a list of boards of the current user, with how the user organized it: only they see it. */
+export interface ListedBoard extends Board {
+  /**
+   * When the user last opened the board: when they were last on their own board, when they opened a shared one; `null`
+   * while they never did.
+   */
   openedAt: string | null
+  /** The personal tags of the user on the board. */
+  tags: string[]
+  /** The personal folder of the user that the board is in; `null` for none. */
+  folderId: string | null
 }
+
+/** A board of another user that the current user is a member of or opened through its link. */
+export type SharedBoard = ListedBoard
+
+/** Query key of the boards of the user. */
+export const OWN_BOARDS_QUERY_KEY = ['boards'] as const
 
 /** Query key of the boards of other users that are shared with the user. */
 export const SHARED_BOARDS_QUERY_KEY = ['shared-boards'] as const
+
+/** Where a board of the text search was found: the line of its text around the match. */
+export interface BoardTextMatch {
+  boardId: string
+  fragment: string
+}
 
 /** Short-lived token that lets the user connect to the shared document of one board. */
 export interface CollabToken {
@@ -41,7 +60,8 @@ export interface CollabToken {
   expiresAt: string
 }
 
-export function fetchBoards(): Promise<Board[]> {
+/** The boards of the current user, most recently changed first. */
+export function fetchBoards(): Promise<ListedBoard[]> {
   return request('/api/boards')
 }
 
@@ -96,6 +116,35 @@ export const canEdit = (board: Pick<Board, 'role'>) => board.role !== 'viewer'
  * it back too. The backend checks the same.
  */
 export const canManageVersions = (board: Pick<Board, 'role'>) => canEdit(board)
+
+/** Gives a board of the list of the user their tags instead of those it had; answers the tags as they are kept. */
+export function setBoardTags(id: string, tags: string[]): Promise<{ tags: string[] }> {
+  return request(`/api/boards/${encodeURIComponent(id)}/tags`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  })
+}
+
+/** Puts a board of the list of the user into their folder, or with `null` into none. */
+export function moveBoard(id: string, folderId: string | null): Promise<void> {
+  return request(`/api/boards/${encodeURIComponent(id)}/folder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folderId }),
+  })
+}
+
+/** The limit of tags that a change ran into: of one board or of all tags of the user; `null` for any other failure. */
+export function tagLimitOf(error: unknown): { limit: number; scope: 'board' | 'user' } | null {
+  if (!(error instanceof HttpError) || error.status !== 409 || error.problem?.limit === undefined) return null
+  return { limit: error.problem.limit, scope: error.problem.scope === 'user' ? 'user' : 'board' }
+}
+
+/** Boards that the user can open whose text has the query, with where it was found. */
+export function searchBoards(query: string, signal?: AbortSignal): Promise<BoardTextMatch[]> {
+  return request(`/api/boards/search?q=${encodeURIComponent(query)}`, { signal })
+}
 
 /** Deletes a board of the current user for good, with its document. */
 export function deleteBoard(id: string): Promise<void> {

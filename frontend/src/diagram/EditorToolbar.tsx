@@ -10,6 +10,8 @@ import {
   LockOpen,
   Maximize,
   MessageCirclePlus,
+  Paintbrush,
+  PaintRoller,
   Pencil,
   Redo2,
   TextWrap,
@@ -215,11 +217,14 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     geometry,
     arrange,
     lock,
+    canCopyStyle,
+    canPasteStyle,
   } = useEditorState(editor)
 
   return (
     <>
       {lock && <LockTools editor={editor} lock={lock} />}
+      {lock && <StyleTools editor={editor} canCopy={canCopyStyle} canPaste={canPasteStyle} />}
       <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
         {tableSelected && (
           <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />
@@ -318,6 +323,40 @@ function LockTools({ editor, lock }: { editor: DiagramEditor | null; lock: Selec
           {lockLabel(lock.locks.map((holder) => holder.lockedBy))}
         </span>
       )}
+    </>
+  )
+}
+
+/**
+ * «Копировать стиль» and «Вставить стиль», before the colors: outside the tools that a lock disables, as the look of
+ * a locked element can be copied.
+ */
+function StyleTools({ editor, canCopy, canPaste }: { editor: DiagramEditor | null; canCopy: boolean; canPaste: boolean }) {
+  return (
+    <>
+      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Копировать стиль"
+        title="Копировать стиль: заливку, линию и текст выделенного элемента (Ctrl+Alt+C)"
+        disabled={!canCopy}
+        onClick={() => editor?.copyStyle()}
+      >
+        <Paintbrush />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Вставить стиль"
+        title="Вставить стиль: оформить выделенное как образец (Ctrl+Alt+V)"
+        disabled={!canPaste}
+        onClick={() => editor?.pasteStyle()}
+      >
+        <PaintRoller />
+      </Button>
     </>
   )
 }

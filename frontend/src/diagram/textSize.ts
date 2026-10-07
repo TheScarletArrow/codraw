@@ -10,7 +10,7 @@ export const MAX_FONT_SIZE = FONT_SIZES[FONT_SIZES.length - 1]
 export const DEFAULT_FONT_SIZE = 13
 
 /** Line height of maxGraph labels relative to the text size. */
-const LINE_HEIGHT = 1.2
+export const LINE_HEIGHT = 1.2
 
 export function clampFontSize(size: number): number {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(size)))

@@ -23,6 +23,7 @@ import {
   RubberBandHandler,
   SelectionCellsHandler,
   StackLayout,
+  StyleChange,
   StyleDefaultsConfig,
   TooltipHandler,
   ValueChange,
@@ -35,6 +36,7 @@ import {
   type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
+import { latinKeyCode, latinLetter } from '../lib/keyboard.ts'
 import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
 import { fieldText, plainText, renameField, splitField } from '../sql/tableField.ts'
 import { indexText, renameIndex, renameIndexColumn, splitIndex, type IndexParts } from '../sql/tableIndex.ts'
@@ -69,17 +71,23 @@ import {
   MODIFIED_BY_KEY,
   MODIFIED_BY_NAME_KEY,
   readAttribution,
+  readTextAuthor,
+  TEXT_AUTHOR_KEY,
+  TEXT_AUTHOR_NAME_KEY,
   writeAttribution,
   type Attribution,
+  type TextAuthor,
 } from './attribution.ts'
 import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
+import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
+import { LINK_KEY, linkOf } from './links.ts'
 import {
   hasLockedDescendant,
   LOCKED_BY_KEY,
@@ -95,11 +103,23 @@ import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
+import {
+  commonStatus,
+  readStatus,
+  STATUS_KEYS,
+  writeStatus,
+  type ElementStatus,
+  type SelectionStatus,
+} from './status.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
+import { fittedFontSize, rememberStickyColor, stickyColor } from './stickies.ts'
+import { copyLook, styleChanges, styleClipboard, TABLE_ROW_KEYS, type CopiedStyle, type StyleKind } from './styleCopy.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
   findShape,
   groupShapes,
+  hasTextFit,
+  isStickyStyle,
   isTableStyle,
   markedStyle,
   shapeGroup,
@@ -109,6 +129,7 @@ import {
   TABLE_HEADER_HEIGHT,
   TABLE_INDEX_GAP,
   TABLE_INDEX_KEY,
+  TEXT_FIT_KEY,
   type ShapeId,
   type ShapeGroup,
   type ShapePreset,
@@ -291,6 +312,39 @@ export interface SelectionAttribution extends Attribution {
   mine: boolean
 }
 
+/** The link of an element of the page; see {@link linkOf}. */
+export interface CellLink {
+  cellId: string
+  link: string
+}
+
+/** The link of the single selected element that may have one: a shape, a table, a group or an edge. */
+export interface SelectionLink {
+  cellId: string
+  /** Its link, or `null` without one or with one that CoDraw does not open. */
+  link: string | null
+  /** The participant may change it: they edit the board and the element is not locked. */
+  canChange: boolean
+}
+
+/** The selected stickies, which the panel of stickies changes; see {@link DiagramEditor.setStickyColor}. */
+export interface SelectedStickies {
+  cellIds: string[]
+  /** Their color; `null` when it differs between them. */
+  color: string | null
+  /** The size of the text fits every one of them (see {@link DiagramEditor.setTextFit}). */
+  textFit: boolean
+  /** Every one of them is locked: the panel changes none of them. */
+  locked: boolean
+}
+
+/** A sticky of the page with who wrote its text, which the canvas shows at its bottom. */
+export interface StickySignature extends TextAuthor {
+  cellId: string
+  /** The color of the text of the sticky, which its signature takes. */
+  color: string
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -335,6 +389,13 @@ export interface EditorState {
   hasCells: boolean
   /** The selection has a shape, so copying takes something. */
   canCopy: boolean
+  /** A single element that has a look of its own is selected: a shape, a table, a field, an index or an edge, not a group. */
+  canCopyStyle: boolean
+  /**
+   * A look is copied in the tab, and the selection has an element that is not locked to paste it into; never for a
+   * participant who may only view.
+   */
+  canPasteStyle: boolean
   /** {@link DiagramEditor.autoLayout} lays out the selection: it has two shapes, tables or groups at least. */
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
@@ -349,6 +410,15 @@ export interface EditorState {
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
   attribution: SelectionAttribution | null
+  /** The link of the single selected element that may have one, or `null` when no such element is selected alone. */
+  link: SelectionLink | null
+  /** The selected stickies, or `null` when none is selected or the participant may only view. */
+  stickies: SelectedStickies | null
+  /**
+   * The status of the selected elements that may have one (see {@link DiagramEditor.setStatus}), or `null` when none of
+   * them may.
+   */
+  status: SelectionStatus | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -378,8 +448,33 @@ export interface DiagramEditor {
   readonly pageId: string
   /** The participant may only view the page: the commands that would change it do nothing. */
   readonly readOnly: boolean
-  /** Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area. */
+  /**
+   * Adds a palette shape centred at `center` (diagram coordinates) or in the middle of the visible area; a sticky has
+   * the color of new stickies.
+   */
   addShape(shape: ShapeId, center?: Point): Cell | null
+  /**
+   * Adds a sticky of the color of new stickies centred at `center`, without it at the pointer over the canvas or in the
+   * middle of the visible area, selects it and starts editing its text: the text applied in that editing is the undo
+   * step that adds the sticky. Turns the laser pointer and the comment tool off.
+   */
+  addSticky(center?: Point): Cell | null
+  /**
+   * Gives the selected stickies that are not locked the fill `color` as one undo step, and makes it the color of new
+   * stickies, which the browser remembers.
+   */
+  setStickyColor(color: string): void
+  /**
+   * Turns on or off the size of the text that fits the selected stickies that are not locked, as one undo step: the
+   * largest size up to 20 at which their text fits them, taken when their text, size or font changes. On, it turns
+   * their auto width off and fits the size at once; a size set by hand turns it off.
+   */
+  setTextFit(enabled: boolean): void
+  /**
+   * The stickies of the page that keep who wrote their text, but those turned and the one whose text is being edited,
+   * which show no signature.
+   */
+  stickySignatures(): StickySignature[]
   /** Adds a field under the selected field (or at the end of the selected table) and starts editing it. */
   addTableField(): Cell | null
   /**
@@ -415,6 +510,18 @@ export interface DiagramEditor {
   paste(at?: Point, text?: string, html?: string): void
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
   duplicate(): void
+  /**
+   * Keeps the look of the single selected element in the tab (see {@link styleClipboard}): its fill, line and text, as
+   * far as it has them. Changes neither the board nor the clipboards; a group has no look of its own.
+   */
+  copyStyle(): void
+  /**
+   * Gives the selected elements the copied look, as one undo step: only the parts that both the copied element and each
+   * of them have, the keys the copied one lacks back to their defaults (see {@link styleChanges}). A table gets it as a
+   * shape, and its fields its font and text size; a group gives it to its shapes and edges. Locked elements stay as
+   * they are.
+   */
+  pasteStyle(): void
   /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
   insertCells(cells: CellData[]): void
   /**
@@ -452,14 +559,26 @@ export interface DiagramEditor {
    * unlocks them together with the groups and tables whose locks hold them. One undo step.
    */
   setLocked(locked: boolean): void
+  /**
+   * Sets the status of the selected shapes, tables and groups, a field or an index for its table, in the name of the
+   * participant at this moment, or with `null` takes it off, as one undo step; edges get none, and locked elements get it
+   * too. Elements that have the status already keep it, with who set it and when. Returns the ids of the elements whose
+   * status changed, in the order of the selection; a read-only editor changes none.
+   */
+  setStatus(status: ElementStatus | null): string[]
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
   /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
   focus(): void
   /**
-   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%; `null` when there
-   * is nothing to draw.
+   * Draws the page for the theme of the app: on the dark canvas black lines and text that lie on the canvas are shown
+   * light. Only the canvas of this participant changes; the document and images of the page do not.
+   */
+  setTheme(theme: CanvasTheme): void
+  /**
+   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%, in the colors of the
+   * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
   exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
@@ -512,6 +631,21 @@ export interface DiagramEditor {
    * locked shapes do not turn.
    */
   setRotation(angle: number): void
+  /**
+   * Sets the link of the single selected shape, table, group or edge, or removes it with `null`, as one undo step. A
+   * locked element, a field or an index, and a link that CoDraw would not open (see {@link linkOf}) change nothing.
+   */
+  setLink(link: string | null): void
+  /**
+   * The links of the elements of the page that CoDraw opens, in the order of the tree; the same array until the page
+   * changes.
+   */
+  getLinks(): readonly CellLink[]
+  /**
+   * Reports a click with Ctrl, or Cmd on macOS, on an element with a link, or on a field, a shape or a label inside a
+   * table, a group or an edge with one: the link to follow. Such a click selects, moves and edits nothing.
+   */
+  onLinkOpen(listener: (link: CellLink) => void): () => void
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
   /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
@@ -661,9 +795,10 @@ const FONT_STYLE_BITS: Record<FontStyleFlag, number> = { bold: 1, italic: 2, und
 export const EDITOR_PROPERTY = '__codrawEditor'
 
 /**
- * A key the canvas responds to, in the notation of shortcuts: `Mod` is Ctrl, or Cmd on macOS; then `Shift`; then a
- * letter, `Delete`, `Backspace`, `F2` or an arrow. `collaboration` keys turn on a tool of working on a board with others,
- * which a canvas without them does not bind (see {@link DiagramEditorOptions.collaboration}).
+ * A key the canvas responds to, in the notation of shortcuts: `Mod` is Ctrl, or Cmd on macOS; then `Alt` (with `Mod`
+ * and a letter only) or `Shift`; then a letter, `Delete`, `Backspace`, `F2` or an arrow. `collaboration` keys turn on a
+ * tool of working on a board with others, which a canvas without them does not bind (see
+ * {@link DiagramEditorOptions.collaboration}).
  */
 export type KeyBinding = {
   keys: string
@@ -714,7 +849,11 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Mod+Shift+Z', editing: true, run: (editor) => editor.redo() },
   { keys: 'Mod+Y', editing: true, run: (editor) => editor.redo() },
   { keys: 'Mod+D', editing: true, run: (editor) => editor.duplicate() },
+  // As «Копировать», copying a look changes nothing: a participant who may only view pastes it on a board of their own.
+  { keys: 'Mod+Alt+C', editing: false, run: (editor) => editor.copyStyle() },
+  { keys: 'Mod+Alt+V', editing: true, run: (editor) => editor.pasteStyle() },
   { keys: 'F2', editing: true, run: (editor) => editor.editLabel() },
+  { keys: 'N', editing: true, run: (editor) => editor.addSticky() },
   { keys: 'Mod+B', editing: true, run: (editor) => editor.toggleFontStyle('bold') },
   { keys: 'Mod+I', editing: true, run: (editor) => editor.toggleFontStyle('italic') },
   { keys: 'Mod+U', editing: true, run: (editor) => editor.toggleFontStyle('underline') },
@@ -731,18 +870,41 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Shift+ArrowDown', editing: true, run: nudge(0, 1, true) },
 ]
 
-/** Binds a key of {@link KEY_BINDINGS} in the key handler of maxGraph to the editor that `editor` returns. */
-function bindKey(keyHandler: KeyHandler, { keys, run }: KeyBinding, editor: () => DiagramEditor) {
+/**
+ * Binds a key of {@link KEY_BINDINGS} in the key handler of maxGraph to the editor that `editor` returns; a key with
+ * Alt goes to `modAltKeys` by its letter in lower case (see {@link bindModAltKeys}).
+ */
+function bindKey(
+  keyHandler: KeyHandler,
+  { keys, run }: KeyBinding,
+  editor: () => DiagramEditor,
+  modAltKeys: Map<string, () => void>,
+) {
   const parts = keys.split('+')
   const key = parts.at(-1)!
   const code = KEY_CODES[key] ?? key.charCodeAt(0)
   const action = () => run(editor())
   const mod = parts.includes('Mod')
   const shift = parts.includes('Shift')
-  if (mod && shift) keyHandler.bindControlShiftKey(code, action)
+  if (parts.includes('Alt')) modAltKeys.set(key.toLowerCase(), action)
+  else if (mod && shift) keyHandler.bindControlShiftKey(code, action)
   else if (mod) keyHandler.bindControlKey(code, action)
   else if (shift) keyHandler.bindShiftKey(code, action)
   else keyHandler.bindKey(code, action)
+}
+
+/**
+ * The key handler of maxGraph reads no keys with Alt; with `Mod` and without Shift, it finds them in `modAltKeys` by the
+ * Latin letter of the key, so that they work in any layout and with Option on macOS, where the key types `ç` for C.
+ * The handler consumes the key, so the browser neither copies or pastes nor does a shortcut of its own.
+ */
+function bindModAltKeys(keyHandler: KeyHandler, modAltKeys: Map<string, () => void>) {
+  const getFunction = keyHandler.getFunction.bind(keyHandler)
+  keyHandler.getFunction = (event) => {
+    if (!event.altKey) return getFunction(event)
+    if (!keyHandler.isControlDown(event) || event.shiftKey) return null
+    return modAltKeys.get(latinLetter(event) ?? '') ?? null
+  }
 }
 
 /** A tool of the canvas that takes the main button from maxGraph: the laser pointer, the comment tool or the pencil. */
@@ -757,6 +919,15 @@ const TOOL_CLASSES: Record<CanvasTool, string> = {
 
 /** Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes. */
 const TOOL_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
+
+/**
+ * Events of the canvas that a click following a link keeps from maxGraph besides its press and release: those of the main
+ * button, and moves until the button is released.
+ */
+const LINK_STOPPED_EVENTS = ['pointermove', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
+
+/** Ctrl, or Cmd on macOS: `Mod` of the shortcuts, with a key or with the mouse. */
+const isModDown = (event: KeyboardEvent | MouseEvent) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
 
 /** Bit of the right button in `MouseEvent.buttons`. */
 const RIGHT_BUTTON_BIT = 2
@@ -804,11 +975,16 @@ export interface DiagramEditorOptions {
    * pointer and the comment tool. `true` by default; a draft of a proposal of changes has neither.
    */
   collaboration?: boolean
+  /** The theme of the canvas at first; see {@link DiagramEditor.setTheme}. Light by default, as images of pages are. */
+  theme?: CanvasTheme
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
 const CHANGING_COMMANDS = [
   'addShape',
+  'addSticky',
+  'setStickyColor',
+  'setTextFit',
   'addTableField',
   'setFieldProps',
   'addTableIndex',
@@ -818,6 +994,7 @@ const CHANGING_COMMANDS = [
   'cut',
   'paste',
   'duplicate',
+  'pasteStyle',
   'insertCells',
   'restoreCells',
   'moveSelection',
@@ -848,6 +1025,7 @@ const CHANGING_COMMANDS = [
   'setGeometry',
   'setRotation',
   'setPencil',
+  'setLink',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -862,6 +1040,7 @@ export function createDiagramEditor(
     participantName,
     participantId,
     collaboration = true,
+    theme: initialTheme = 'light',
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -885,6 +1064,9 @@ export function createDiagramEditor(
   configureStyles(graph)
   configureTableFields(graph)
   configureTextWrap(graph)
+  let theme = initialTheme
+  // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
   configureFreehand(graph)
@@ -949,6 +1131,8 @@ export function createDiagramEditor(
     editing = next
     editingListeners.forEach((listener) => listener(next))
   }
+  /** A sticky that {@link DiagramEditor.addSticky} added, whose text is being edited, and the undo step that added it. */
+  let newSticky: { cell: Cell; step: unknown } | null = null
   if (cellEditor) {
     const startEditing = cellEditor.startEditing.bind(cellEditor)
     cellEditor.startEditing = (cell: Cell, trigger?: MouseEvent | null) => {
@@ -965,7 +1149,22 @@ export function createDiagramEditor(
         delete textarea.dataset.placeholder
         textarea.style.minWidth = ''
       }
-      stopEditing(cancel)
+      // The text applied to a new sticky goes into the undo step that added it while that step is the last one, as
+      // changes within the capture timeout of the undo manager do: one step takes the sticky away with its text.
+      const sticky = newSticky
+      newSticky = null
+      const joining =
+        !cancel &&
+        sticky !== null &&
+        cellEditor.getEditingCell() === sticky.cell &&
+        undoManager.undoStack.at(-1) === sticky.step
+      const captureTimeout = undoManager.captureTimeout
+      if (joining) undoManager.captureTimeout = Number.POSITIVE_INFINITY
+      try {
+        stopEditing(cancel)
+      } finally {
+        undoManager.captureTimeout = captureTimeout
+      }
       if (field) redrawField(field)
       setEditing(null)
     }
@@ -1081,6 +1280,7 @@ export function createDiagramEditor(
   const textWrapCells = () => graph.getSelectionCells().filter((cell) => allowsTextWrap(graph, cell))
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
   const rotationCells = () => graph.getSelectionCells().filter(isRotatableShape)
+  const selectedStickies = () => graph.getSelectionCells().filter(isSticky)
   /** The cell of the page that a cell belongs to: a field to its table, a shape of a group to the group. */
   const pageCell = (cell: Cell): Cell | null => {
     let current: Cell | null = cell
@@ -1133,6 +1333,26 @@ export function createDiagramEditor(
     const attribution = readAttribution(selectedCellMap())
     return attribution && { ...attribution, mine: isMine(attribution) }
   }
+  /** The link of the single selected element that may have one; see {@link SelectionLink}. */
+  const selectionLink = (): SelectionLink | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    if (!cell || !isLinkable(cell)) return null
+    return { cellId: cell.getId()!, link: linkOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
+  }
+  /**
+   * The elements whose status {@link DiagramEditor.setStatus} sets: the selected shapes, tables and groups and the tables
+   * of selected fields and indexes, each once; not edges and labels of edges.
+   */
+  const statusTargets = (): Cell[] => [
+    ...new Set(
+      graph.getSelectionCells().flatMap((cell) => {
+        const target = lockTarget(cell)
+        return target.isVertex() && !target.getParent()?.isEdge() ? [target] : []
+      }),
+    ),
+  ]
+  const selectionStatus = (): SelectionStatus | null =>
+    commonStatus(statusTargets().map((cell) => readStatus(cells.get(cell.getId() ?? ''))?.status ?? null))
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1176,6 +1396,17 @@ export function createDiagramEditor(
       canSetHeight: cells.some((cell) => !isTable(cell)),
       rotation: turning.length > 0 ? same(turning.map((cell) => rotationOf(cell.getStyle()))) : null,
       canRotate: turning.length > 0,
+    }
+  }
+
+  const selectionStickies = (): SelectedStickies | null => {
+    const stickies = selectedStickies()
+    if (readOnly || stickies.length === 0) return null
+    return {
+      cellIds: stickies.map((cell) => cell.getId()!),
+      color: same(stickies.map((cell) => colorOf(cell, 'fill'))),
+      textFit: stickies.every((cell) => hasTextFit(cell.getStyle())),
+      locked: stickies.every((cell) => !isUnlocked(cell)),
     }
   }
 
@@ -1251,22 +1482,78 @@ export function createDiagramEditor(
     })
   }
   /**
-   * Sets text sizes in one change: fields and headers of tables get the height that fits their text, and shapes with
-   * auto width fit their width.
+   * Sets text sizes in one change: fields and headers of tables get the height that fits their text, shapes with
+   * auto width fit their width, and stickies no longer fit the size of their text.
    */
   const applyFontSizes = (cells: Cell[], sizeOf: (cell: Cell) => number) => {
     if (cells.length === 0) return
     graph.stopEditing(false)
     model.batchUpdate(() => {
-      for (const cell of cells) {
-        const size = sizeOf(cell)
-        setStyleValue([cell], 'fontSize', size)
-        if (isTable(cell)) setStyleValue([cell], 'startSize', tableHeaderHeight(size))
-        else if (isTable(cell.getParent())) setHeight(cell, tableFieldHeight(size))
-      }
+      // A size set by hand replaces the size that fits the text.
+      setStyleValue(cells, TEXT_FIT_KEY, undefined)
+      for (const cell of cells) writeFontSize(cell, sizeOf(cell))
       fitAutoWidth(cells)
     })
   }
+  /** Sets the text size of a cell; the header of a table and a field get the height that fits it. Inside a change. */
+  const writeFontSize = (cell: Cell, size: number) => {
+    setStyleValue([cell], 'fontSize', size)
+    if (isTable(cell)) setStyleValue([cell], 'startSize', tableHeaderHeight(size))
+    else if (isTable(cell.getParent())) setHeight(cell, tableFieldHeight(size))
+  }
+
+  /**
+   * What a cell is as to its look (see {@link StyleKind}), or `null` for a group: a container without a fill and a line,
+   * which a fill or a line would make a container that cannot be ungrouped. Fields, indexes and the labels of edges are
+   * labels, and so are shapes without a fill and a line, e.g. «Текст».
+   */
+  const styleKindOf = (cell: Cell): StyleKind | null => {
+    if (cell.isEdge()) return 'edge'
+    if (isGroup(cell)) return null
+    const parent = cell.getParent()
+    if (isTable(parent) || parent?.isEdge()) return 'label'
+    return colorOf(cell, 'fill') === 'none' && colorOf(cell, 'stroke') === 'none' ? 'label' : 'shape'
+  }
+  /** The style of a cell with its text size as drawn: the defaults of shapes and edges differ, 13 and 11. */
+  const lookOf = (cell: Cell): Record<string, unknown> => ({ ...cell.getStyle(), fontSize: fontSizeOf(cell) })
+  /** The single selected cell whose look can be copied. */
+  const styleSource = (): Cell | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    return cell && styleKindOf(cell) ? cell : null
+  }
+  /**
+   * The cells that a pasted look goes to, with the keys they take at most: the selected cells, the shapes and edges of
+   * selected groups in place of the groups, and the fields and indexes of selected tables, which take the font and the
+   * text size of their table unless they are selected themselves. Locked ones too.
+   */
+  const styleTargets = (): Map<Cell, readonly string[] | undefined> => {
+    const targets = new Map<Cell, readonly string[] | undefined>()
+    const add = (cell: Cell) => {
+      if (isGroup(cell)) {
+        cell.getChildren().forEach(add)
+        return
+      }
+      targets.set(cell, undefined)
+      if (!isTable(cell)) return
+      for (const row of cell.getChildren()) if (!targets.has(row)) targets.set(row, TABLE_ROW_KEYS)
+    }
+    graph.getSelectionCells().forEach(add)
+    return targets
+  }
+  /** The changes of the style of each cell that pasting `copied` changes; locked cells stay as they are. */
+  const pastedStyles = (copied: CopiedStyle): Map<Cell, Record<string, StyleValue | undefined>> => {
+    const changes = new Map<Cell, Record<string, StyleValue | undefined>>()
+    for (const [cell, only] of styleTargets()) {
+      const kind = styleKindOf(cell)
+      if (!kind || !isUnlocked(cell)) continue
+      const keys = styleChanges(copied, lookOf(cell), kind, only)
+      if (Object.keys(keys).length > 0) changes.set(cell, keys)
+    }
+    return changes
+  }
+  /** A look is copied, and the selection has a cell that is not locked to paste it into. */
+  const canPasteStyle = () =>
+    styleClipboard.read() !== null && [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
 
   // The label of a shape with auto width changes inside this event, so the new width is a part of the same change; a
   // field or a table also changes the references that the fields of other tables show.
@@ -1316,6 +1603,39 @@ export function createDiagramEditor(
     }
   }
   model.addListener(InternalEvent.END_EDIT, syncBases)
+  // The size of the text of stickies that fit it follows their text, size and font in the change that changes them,
+  // when it is done but not yet written: one undo step for everybody, and one size that every participant, every image
+  // and draw.io show. Changes that the binding brings were fitted by their author, and a restore brings the sizes of
+  // the version.
+  let fittingTexts = false
+  let restoring = false
+  const fitTexts = () => {
+    if (readOnly || fittingTexts || restoring || binding.isApplyingRemote()) return
+    const changed = new Set<Cell>()
+    for (const change of (model.currentEdit as { changes: object[] }).changes) {
+      const lays =
+        change instanceof ValueChange ||
+        (change instanceof GeometryChange && resized(change.previous, change.geometry)) ||
+        (change instanceof StyleChange && FIT_STYLE_KEYS.some((key) => changedKey(change, key)))
+      if (lays) changed.add(change.cell)
+    }
+    const fitted = [...changed].filter((cell) => model.getCell(cell.getId()!) === cell && fitsText(graph, cell))
+    if (fitted.length === 0) return
+    fittingTexts = true
+    try {
+      model.batchUpdate(() => {
+        for (const cell of fitted) {
+          const { width, height } = cell.getGeometry()!
+          const style = graph.getCellStyle(cell)
+          const size = fittedFontSize(String(cell.getValue() ?? ''), style, width, height, hasTextWrap(cell.getStyle()))
+          setStyleValue([cell], 'fontSize', size)
+        }
+      })
+    } finally {
+      fittingTexts = false
+    }
+  }
+  model.addListener(InternalEvent.END_EDIT, fitTexts)
 
   /** The tool that takes the main button, or `null` for selecting and editing; see the listeners of the tools below. */
   let tool: CanvasTool | null = null
@@ -1343,6 +1663,8 @@ export function createDiagramEditor(
       canUngroup: !readOnly && ungroupableCells().length > 0,
       hasCells: graph.getDefaultParent().getChildCount() > 0,
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex() || isFreehand(cell)),
+      canCopyStyle: styleSource() !== null,
+      canPasteStyle: !readOnly && canPasteStyle(),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser: tool === 'laser',
       commentTool: tool === 'comment',
@@ -1350,7 +1672,28 @@ export function createDiagramEditor(
       pencilLine: pencilLine.get(),
       lock: selectionLock(),
       attribution: selectionAttribution(),
+      link: selectionLink(),
+      stickies: selectionStickies(),
+      status: selectionStatus(),
     }
+  }
+  // The links of the page, found again after a change of the page, before the listeners below hear of it.
+  let pageLinks: CellLink[] | null = null
+  const forgetLinks = () => {
+    pageLinks = null
+  }
+  model.addListener(InternalEvent.CHANGE, forgetLinks)
+  const findLinks = (): CellLink[] => {
+    const links: CellLink[] = []
+    const visit = (parent: Cell) => {
+      for (const child of parent.getChildren()) {
+        const link = isLinkable(child) ? linkOf(child.getStyle()) : null
+        if (link) links.push({ cellId: child.getId()!, link })
+        visit(child)
+      }
+    }
+    visit(graph.getDefaultParent())
+    return links
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
   let state = readState()
@@ -1378,6 +1721,21 @@ export function createDiagramEditor(
     if (selected && events.some(changed)) notify()
   }
   cells.observeDeep(handleAttribution)
+  // Who wrote a sticky shows on the canvas; it may change without a change of the model, e.g. restored with a version.
+  const handleTextAuthors = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event instanceof Y.YMapEvent &&
+      (event.keysChanged.has(TEXT_AUTHOR_KEY) || event.keysChanged.has(TEXT_AUTHOR_NAME_KEY))
+    if (events.some(changed)) notifyView()
+  }
+  // Statuses are not in the model either: the status of the selection follows the document when another participant, the
+  // undo of this one or a merged proposal changes it.
+  const handleStatuses = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event instanceof Y.YMapEvent && event.target !== cells && STATUS_KEYS.some((key) => event.keysChanged.has(key))
+    if (!graph.isSelectionEmpty() && events.some(changed)) notify()
+  }
+  cells.observeDeep(handleStatuses)
   // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
   // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
   // handles of edges in English. The single selected element shows who changed it under the canvas already.
@@ -1432,13 +1790,28 @@ export function createDiagramEditor(
   }
   const keyHandler = new KeyHandler(graph)
   // maxGraph reads only Ctrl; on macOS the shortcuts are Cmd.
-  keyHandler.isControlDown = (event) => event.ctrlKey || (Client.IS_MAC && event.metaKey)
+  keyHandler.isControlDown = isModDown
+  // maxGraph looks keys up by their key code, which a layout without Latin letters may change: a letter is the letter
+  // of its key on the Latin layout, as the shortcuts of the browser read it, e.g. `N` for the «т» of the Russian one.
+  keyHandler.getFunction = (event) => {
+    if (!event || event.altKey) return null
+    const keys = keyHandler.isControlDown(event)
+      ? event.shiftKey
+        ? keyHandler.controlShiftKeys
+        : keyHandler.controlKeys
+      : event.shiftKey
+        ? keyHandler.shiftKeys
+        : keyHandler.normalKeys
+    return keys[latinKeyCode(event)] ?? null
+  }
+  const modAltKeys = new Map<string, () => void>()
   for (const binding of KEY_BINDINGS) {
     // The editor is made below; the keys reach it once it is.
     if ((!readOnly || !binding.editing) && (collaboration || !binding.collaboration)) {
-      bindKey(keyHandler, binding, () => editor)
+      bindKey(keyHandler, binding, () => editor, modAltKeys)
     }
   }
+  bindModAltKeys(keyHandler, modAltKeys)
 
   // The browser fires clipboard events at the focused element, or at the body when nothing has the focus; maxGraph
   // takes keys from both. While a label is edited, the browser copies and pastes its text.
@@ -1501,11 +1874,20 @@ export function createDiagramEditor(
   }
 
   const pointerListeners = new Set<(point: Point | null) => void>()
+  /**
+   * Where the pointer over the canvas is on the screen, or `null` once it leaves, for a sticky added with the keyboard:
+   * in diagram coordinates once the key is pressed, as the canvas may have scrolled since the pointer moved.
+   */
+  let pointer: { clientX: number; clientY: number } | null = null
   const handlePointerMove = (event: PointerEvent) => {
+    pointer = { clientX: event.clientX, clientY: event.clientY }
     const point = toDiagramPoint(event.clientX, event.clientY)
     pointerListeners.forEach((listener) => listener(point))
   }
-  const handlePointerLeave = () => pointerListeners.forEach((listener) => listener(null))
+  const handlePointerLeave = () => {
+    pointer = null
+    pointerListeners.forEach((listener) => listener(null))
+  }
   // Captured: maxGraph stops pointer events on connection points and selection handles from bubbling up.
   container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
@@ -1657,18 +2039,77 @@ export function createDiagramEditor(
     if (tool === 'laser') endLaserStroke()
     stopPencilStroke()
     pressedForComment = false
+    linkClick = null
     tool = next
     for (const [name, className] of Object.entries(TOOL_CLASSES)) container.classList.toggle(className, name === next)
     // A tool takes the pointer: who changed an element is not told over the canvas meanwhile.
     if (next) tooltips?.hide()
     notify()
   }
+  // Following a link. A press of the main button with Ctrl, or Cmd on macOS, where Ctrl with a click is a right click,
+  // over an element with a link never reaches maxGraph, nor do the moves and the release of that click, nor a double
+  // click: nothing is selected, moved or edited. The release follows the link, unless the pointer went away meanwhile;
+  // the browser lets a page open a tab there. A tool keeps the main button, and the editor of a label its clicks.
+  const linkListeners = new Set<(link: CellLink) => void>()
+  /** The click that follows a link, from its press until the next press; `released` once its button is up. */
+  let linkClick: { link: CellLink; x: number; y: number; released: boolean } | null = null
+  const isLinkClick = (event: MouseEvent) => event.button === 0 && (Client.IS_MAC ? event.metaKey : event.ctrlKey)
+  /** The element with a link under the pointer, or the nearest one above the element there, e.g. the table of a field. */
+  const linkAt = (event: MouseEvent): CellLink | null => {
+    const rect = container.getBoundingClientRect()
+    const x = event.clientX - rect.left + container.scrollLeft
+    const y = event.clientY - rect.top + container.scrollTop
+    for (let cell = graph.getCellAt(x, y); cell && cell !== graph.getDefaultParent(); cell = cell.getParent()) {
+      const link = isLinkable(cell) ? linkOf(cell.getStyle()) : null
+      if (link) return { cellId: cell.getId()!, link }
+    }
+    return null
+  }
+  const pressLink = (event: PointerEvent) => {
+    linkClick = null
+    if (tool || !isLinkClick(event) || (event.target instanceof HTMLElement && event.target.isContentEditable)) return
+    const link = linkAt(event)
+    if (!link) return
+    // Cancelling the press also keeps the browser from firing the mouse events of the click and from selecting text.
+    event.stopImmediatePropagation()
+    event.preventDefault()
+    linkClick = { link, x: event.clientX, y: event.clientY, released: false }
+  }
+  const releaseLink = (event: PointerEvent) => {
+    if (!linkClick || linkClick.released || event.button !== 0) return
+    event.stopImmediatePropagation()
+    linkClick.released = true
+    const { link, x, y } = linkClick
+    if (Math.hypot(event.clientX - x, event.clientY - y) <= graph.getEventTolerance()) {
+      linkListeners.forEach((listener) => listener(link))
+    }
+  }
+  const stopLinkClick = (event: MouseEvent) => {
+    if (!linkClick) return
+    const move = event.type === 'pointermove' || event.type === 'mousemove'
+    if (move ? !linkClick.released : event.button === 0) event.stopImmediatePropagation()
+  }
+  container.addEventListener('pointerdown', pressLink, true)
+  container.addEventListener('pointerup', releaseLink, true)
+  for (const type of LINK_STOPPED_EVENTS) container.addEventListener(type, stopLinkClick, true)
+
   // After a button of the toolbar the keyboard is with that button, where the key handler of maxGraph does not look.
   // An Escape that closed a window of the toolbar, e.g. the colors of the pencil, has done its work there.
   const handleToolKey = (event: KeyboardEvent) => {
     if (tool && event.key === 'Escape' && !event.defaultPrevented) setTool(null)
   }
   page.addEventListener('keydown', handleToolKey)
+
+  // A double click with Mod on the empty canvas, also inside a frame or a group, which let clicks through, adds a
+  // sticky there. maxGraph does nothing with a double click there, and one on a cell still edits its label; with a tool
+  // on, maxGraph gets no double click at all.
+  const handleDoubleClick = (_sender: unknown, event: EventObject) => {
+    const click = event.getProperty('event') as MouseEvent
+    if (event.getProperty('cell') || !isModDown(click)) return
+    event.consume()
+    editor.addSticky(toDiagramPoint(click.clientX, click.clientY))
+  }
+  graph.addListener(InternalEvent.DOUBLE_CLICK, handleDoubleClick)
 
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const menuTarget = (): MenuTarget => {
@@ -1725,6 +2166,7 @@ export function createDiagramEditor(
   graph.getView().addListener(InternalEvent.TRANSLATE, notifyView)
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
   model.addListener(InternalEvent.CHANGE, notifyView)
+  cells.observeDeep(handleTextAuthors)
 
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
@@ -1873,8 +2315,10 @@ export function createDiagramEditor(
     pageId,
     readOnly,
     addShape(shapeId, center = visibleCenter()) {
-      const shape = findShape(shapeId)
-      if (!shape) return null
+      const preset = findShape(shapeId)
+      if (!preset) return null
+      const shape =
+        preset.id === 'sticky' ? { ...preset, style: { ...preset.style, fillColor: stickyColor() } } : preset
       const size = graph.getGridSize()
       const snap = (value: number) => Math.round(value / size) * size
       const parent = graph.getDefaultParent()
@@ -1909,6 +2353,56 @@ export function createDiagramEditor(
       graph.setSelectionCell(cell)
       container.focus({ preventScroll: true })
       return cell
+    },
+    addSticky(center) {
+      graph.stopEditing(false)
+      setTool(null)
+      const at = center ?? (pointer ? toDiagramPoint(pointer.clientX, pointer.clientY) : visibleCenter())
+      const steps = undoManager.undoStack.length
+      const cell = editor.addShape('sticky', at)
+      if (!cell) return null
+      graph.startEditingAtCell(cell)
+      // After the editing started: starting it stops any editing before it.
+      if (graph.isEditing(cell) && undoManager.undoStack.length > steps) {
+        newSticky = { cell, step: undoManager.undoStack.at(-1) }
+      }
+      return cell
+    },
+    setStickyColor(color) {
+      rememberStickyColor(color)
+      const stickies = unlocked(selectedStickies())
+      if (stickies.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleValue(stickies, 'fillColor', color)
+        // The notes of draw.io may have a gradient, which would keep a part of the old color.
+        setStyleValue(stickies, 'gradientColor', undefined)
+      })
+    },
+    setTextFit(enabled) {
+      const stickies = unlocked(selectedStickies())
+      if (stickies.length === 0) return
+      graph.stopEditing(false)
+      // Fitting the text to the shape and the shape to the text would contend: one turns the other off.
+      model.batchUpdate(() => {
+        setStyleValue(stickies, TEXT_FIT_KEY, enabled ? true : undefined)
+        if (enabled) setStyleValue(stickies, AUTO_WIDTH_KEY, undefined)
+      })
+    },
+    stickySignatures() {
+      const signatures: StickySignature[] = []
+      const visit = (parent: Cell) => {
+        for (const cell of parent.getChildren()) {
+          if (!cell.isVertex()) continue
+          const id = cell.getId()!
+          const shown = isSticky(cell) && rotationOf(cell.getStyle()) === 0 && editing?.cellId !== id
+          const author = shown ? readTextAuthor(cells.get(id)) : null
+          if (author) signatures.push({ ...author, cellId: id, color: colorOf(cell, 'font') })
+          visit(cell)
+        }
+      }
+      visit(graph.getDefaultParent())
+      return signatures
     },
     addTableField() {
       const table = selectedTable()
@@ -2063,6 +2557,35 @@ export function createDiagramEditor(
       const cells = cellsToCopy()
       if (cells.length > 0) insertCopies(cells, PASTE_OFFSET, PASTE_OFFSET)
     },
+    copyStyle() {
+      const cell = styleSource()
+      if (!cell) return
+      styleClipboard.put(copyLook(lookOf(cell), styleKindOf(cell)!))
+      notify()
+    },
+    pasteStyle() {
+      const copied = styleClipboard.read()
+      const changes = copied ? pastedStyles(copied) : null
+      if (!changes || changes.size === 0) return
+      graph.stopEditing(false)
+      // One change: one undo step, and one transaction that the other participants get.
+      model.batchUpdate(() => {
+        for (const [cell, keys] of changes) {
+          const { fontSize, ...rest } = keys
+          if (Object.keys(rest).length > 0) {
+            const style = cell.getClonedStyle() as Record<string, unknown>
+            for (const [key, value] of Object.entries(rest)) {
+              if (value === undefined) delete style[key]
+              else style[key] = value
+            }
+            model.setStyle(cell, style as CellStyle)
+          }
+          // The size of the text sets the height of the header and the fields of a table.
+          if (typeof fontSize === 'number') writeFontSize(cell, fontSize)
+        }
+        fitAutoWidth([...changes.keys()])
+      })
+    },
     insertCells(data) {
       const cells = dataToCells(data)
       if (cells.length === 0) return
@@ -2089,48 +2612,54 @@ export function createDiagramEditor(
           return { id, order: orders.get(id) ?? (cells.get(id)?.get('order') as string | undefined) ?? '' }
         }
         // One transaction with what the binding writes, and so one undo step: the cells, the layout of their tables,
-        // the fields of base tables and what the canvas does not hold.
-        document.transact(() => {
-          model.batchUpdate(() => {
-            for (const data of restored) {
-              const existing = model.getCell(data.id) ?? null
-              const holder = (data.parent !== null && model.getCell(data.parent)) || graph.getDefaultParent()
-              // A cell cannot go into one that it holds now, e.g. after groups were nested the other way round.
-              const parent = existing?.isAncestor(holder) ? graph.getDefaultParent() : holder
-              const siblings = parent.getChildren().filter((child) => child !== existing)
-              const after = siblings.findIndex((sibling) => compareCells(data, orderOf(sibling)) < 0)
-              const index = after < 0 ? siblings.length : after
-              if (!existing) {
-                const cell = createCell(data)
-                model.add(parent, cell, index)
-                placed.add(cell)
-                continue
+        // the fields of base tables and what the canvas does not hold. Stickies keep the text sizes of the version.
+        restoring = true
+        try {
+          document.transact(() => {
+            model.batchUpdate(() => {
+              for (const data of restored) {
+                const existing = model.getCell(data.id) ?? null
+                const holder = (data.parent !== null && model.getCell(data.parent)) || graph.getDefaultParent()
+                // A cell cannot go into one that it holds now, e.g. after groups were nested the other way round.
+                const parent = existing?.isAncestor(holder) ? graph.getDefaultParent() : holder
+                const siblings = parent.getChildren().filter((child) => child !== existing)
+                const after = siblings.findIndex((sibling) => compareCells(data, orderOf(sibling)) < 0)
+                const index = after < 0 ? siblings.length : after
+                if (!existing) {
+                  const cell = createCell(data)
+                  model.add(parent, cell, index)
+                  placed.add(cell)
+                  continue
+                }
+                if (existing.getParent() !== parent || parent.getIndex(existing) !== index) {
+                  model.add(parent, existing, index)
+                }
+                if ((existing.getValue() ?? '') !== data.value) model.setValue(existing, data.value)
+                const geometry = toGeometry(data.geometry)
+                if (geometry) model.setGeometry(existing, geometry)
+                model.setStyle(existing, { ...data.style } as CellStyle)
+                placed.add(existing)
               }
-              if (existing.getParent() !== parent || parent.getIndex(existing) !== index) {
-                model.add(parent, existing, index)
+              // Ends once every restored cell is in place: an edge may end at a cell restored after it.
+              for (const data of restored) {
+                if (data.kind !== 'edge') continue
+                const edge = model.getCell(data.id)!
+                model.setTerminal(edge, (data.source !== null && model.getCell(data.source)) || null, true)
+                model.setTerminal(edge, (data.target !== null && model.getCell(data.target)) || null, false)
               }
-              if ((existing.getValue() ?? '') !== data.value) model.setValue(existing, data.value)
-              const geometry = toGeometry(data.geometry)
-              if (geometry) model.setGeometry(existing, geometry)
-              model.setStyle(existing, { ...data.style } as CellStyle)
-              placed.add(existing)
-            }
-            // Ends once every restored cell is in place: an edge may end at a cell restored after it.
+              fitAutoWidth([...placed].filter((cell) => cell.isEdge()).flatMap(tablesShowing))
+            })
+            // The binding marks the cells it wrote as changed by whoever restores; what it does not write is marked
+            // here.
+            const at = Date.now()
             for (const data of restored) {
-              if (data.kind !== 'edge') continue
-              const edge = model.getCell(data.id)!
-              model.setTerminal(edge, (data.source !== null && model.getCell(data.source)) || null, true)
-              model.setTerminal(edge, (data.target !== null && model.getCell(data.target)) || null, false)
+              const entry = cells.get(data.id)
+              if (entry && writeRestoredFields(entry, data) && author) writeAttribution(entry, author, at)
             }
-            fitAutoWidth([...placed].filter((cell) => cell.isEdge()).flatMap(tablesShowing))
-          })
-          // The binding marks the cells it wrote as changed by whoever restores; what it does not write is marked here.
-          const at = Date.now()
-          for (const data of restored) {
-            const entry = cells.get(data.id)
-            if (entry && writeRestoredFields(entry, data) && author) writeAttribution(entry, author, at)
-          }
-        }, LOCAL_ORIGIN)
+          }, LOCAL_ORIGIN)
+        } finally {
+          restoring = false
+        }
       }
 
       // The cells asked for that the page has now: restored, or locked, which shows why they stayed as they are. A copy
@@ -2315,6 +2844,23 @@ export function createDiagramEditor(
         setStyleValue(targets, LOCKED_BY_KEY, locked && participantName ? participantName : undefined)
       })
     },
+    setStatus(status) {
+      if (readOnly) return []
+      const targets = statusTargets()
+      const changed: string[] = []
+      if (targets.length === 0) return changed
+      // One transaction: one undo step, which brings back the statuses and the marks of who set them.
+      document.transact(() => {
+        const at = Date.now()
+        for (const cell of targets) {
+          const id = cell.getId()
+          const entry = id ? cells.get(id) : undefined
+          if (id && entry && writeStatus(entry, status, author, at)) changed.push(id)
+        }
+      }, LOCAL_ORIGIN)
+      if (changed.length > 0) notify()
+      return changed
+    },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
       if (!edge?.isEdge() || !isUnlocked(edge)) return
@@ -2354,6 +2900,11 @@ export function createDiagramEditor(
       if (cell && graph.isCellEditable(cell)) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
+    setTheme(next) {
+      if (next === theme) return
+      theme = next
+      restyle(graph)
+    },
     exportSvg({ selectionOnly = false, ...options } = {}) {
       const copied = selectionOnly ? new Set(cellsToCopy()) : null
       // In the order of the page, so that what lies on top on the canvas lies on top in the image.
@@ -2362,8 +2913,22 @@ export function createDiagramEditor(
         .getChildren()
         .filter((cell) => !copied || copied.has(cell))
       if (copied && cells.length === 0) return null
-      const image = renderSvg(graph, cells, options)
-      return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+      // participant never sees.
+      const shown = theme
+      if (shown !== 'light') {
+        theme = 'light'
+        restyle(graph)
+      }
+      try {
+        const image = renderSvg(graph, cells, options)
+        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      } finally {
+        if (shown !== 'light') {
+          theme = shown
+          restyle(graph)
+        }
+      }
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -2457,7 +3022,10 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleValue(cells, AUTO_WIDTH_KEY, enabled ? true : undefined)
-        if (enabled) setStyleValue(cells, TEXT_WRAP_KEY, undefined)
+        if (enabled) {
+          setStyleValue(cells, TEXT_WRAP_KEY, undefined)
+          setStyleValue(cells, TEXT_FIT_KEY, undefined)
+        }
         fitAutoWidth(cells)
       })
     },
@@ -2502,6 +3070,19 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       rotateShapes(shapes, angle)
     },
+    setLink(link) {
+      const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+      if (!cell || !isLinkable(cell) || !isUnlocked(cell)) return
+      const value = link === null ? undefined : linkOf({ [LINK_KEY]: link })
+      if (value === null) return
+      graph.stopEditing(false)
+      setStyleValue([cell], LINK_KEY, value)
+    },
+    getLinks() {
+      pageLinks ??= findLinks()
+      return pageLinks
+    },
+    onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint,
     toCanvasPoint({ x, y }) {
       const { scale, translate } = graph.getView()
@@ -2621,6 +3202,9 @@ export function createDiagramEditor(
       container.removeEventListener('pointerdown', pressWithTool, true)
       container.removeEventListener('pointerup', placeComment, true)
       for (const type of TOOL_STOPPED_EVENTS) container.removeEventListener(type, stopForTool, true)
+      container.removeEventListener('pointerdown', pressLink, true)
+      container.removeEventListener('pointerup', releaseLink, true)
+      for (const type of LINK_STOPPED_EVENTS) container.removeEventListener(type, stopLinkClick, true)
       page.removeEventListener('keydown', handleToolKey)
       container.removeEventListener('scroll', notifyView)
       page.removeEventListener('copy', handleCopy)
@@ -2632,6 +3216,8 @@ export function createDiagramEditor(
       graph.removeListener(handleLabelChanged)
       graph.removeListener(handleEditingStarted)
       graph.removeListener(handleCellsAdded)
+      graph.removeListener(handleDoubleClick)
+      model.removeListener(fitTexts)
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
       unwatchTableRows()
@@ -2639,7 +3225,10 @@ export function createDiagramEditor(
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
       model.removeListener(notify)
+      model.removeListener(forgetLinks)
       cells.unobserveDeep(handleAttribution)
+      cells.unobserveDeep(handleTextAuthors)
+      cells.unobserveDeep(handleStatuses)
       layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()
@@ -2649,6 +3238,7 @@ export function createDiagramEditor(
       menuListeners.clear()
       viewListeners.clear()
       editingListeners.clear()
+      linkListeners.clear()
       InternalEvent.removeAllListeners(container)
       keyHandler.onDestroy()
       undoManager.off('stack-item-added', notify)
@@ -2768,11 +3358,53 @@ function isFreeShape(cell: Cell): boolean {
 }
 
 /**
+ * An element that may have a link: a shape with a size of its own, a table, a group or an edge, but not a field or an
+ * index, which are rows of their table, nor a label of an edge of draw.io, which is a part of its edge.
+ */
+function isLinkable(cell: Cell): boolean {
+  return cell.isEdge() || isFreeShape(cell)
+}
+
+/**
  * A shape that turns: a shape with a size of its own and without shapes inside, so neither a table, which lays out its
  * fields in its box, nor a group or a container of draw.io.
  */
 function isRotatableShape(cell: Cell): boolean {
   return isFreeShape(cell) && !isTable(cell) && !cell.getChildren().some((child) => child.isVertex())
+}
+
+/** A sticky: a shape added as one, or one whose text fits it (see {@link isStickyStyle}). */
+function isSticky(cell: Cell): boolean {
+  return cell.isVertex() && isStickyStyle(cell.getStyle())
+}
+
+/** Keys of the style that lay the text of a shape out, and so change the size that fits it. */
+const FIT_STYLE_KEYS = [
+  TEXT_FIT_KEY,
+  TEXT_WRAP_KEY,
+  AUTO_WIDTH_KEY,
+  'fontFamily',
+  'fontStyle',
+  'spacing',
+  'spacingTop',
+  'spacingBottom',
+  'spacingLeft',
+  'spacingRight',
+] as const
+
+/** A change of a style changed a key, which maxGraph does not type for every key. */
+function changedKey({ previous, style }: StyleChange, key: string): boolean {
+  return (previous as Record<string, unknown> | null)?.[key] !== (style as Record<string, unknown> | null)?.[key]
+}
+
+/** The geometry changed its size, not only its place. */
+function resized(previous: Geometry | null, geometry: Geometry | null): boolean {
+  return previous?.width !== geometry?.width || previous?.height !== geometry?.height
+}
+
+/** A shape whose text size fits it: one whose words may wrap, with fitting on and auto width off. */
+function fitsText(graph: Graph, cell: Cell): boolean {
+  return allowsTextWrap(graph, cell) && hasTextFit(cell.getStyle())
 }
 
 /** A shape whose words may wrap: one that allows auto width, but not a table, whose name and fields are a line each. */
@@ -3121,6 +3753,36 @@ function configureTextWrap(graph: Graph) {
       ? wrapLabel(label, graph.getCellStyle(cell), cell.getGeometry()!.width)
       : label
   }
+}
+
+/**
+ * Draws the page for the theme of the canvas that `theme` tells: on the dark canvas the black lines and text that lie on
+ * the canvas are drawn light, see {@link darkCanvasStyle}. Only the drawing changes: the document, the colors that the
+ * toolbar shows (the style of the cell with the defaults of the stylesheet) and images of the page keep the colors of the
+ * diagram.
+ */
+function configureCanvasTheme(graph: Graph, theme: () => CanvasTheme) {
+  const getCellStyle = graph.getCellStyle.bind(graph)
+  const view = graph.getView()
+  /** No shape that holds the cell, e.g. a table, fills the area under it. */
+  const onCanvas = (cell: Cell) => {
+    for (let parent = cell.getParent(); parent?.isVertex(); parent = parent.getParent()) {
+      if (coversChildren(view.getState(parent)?.style ?? getCellStyle(parent))) return false
+    }
+    return true
+  }
+  graph.getCellStyle = (cell) => {
+    const style = getCellStyle(cell)
+    return theme() === 'dark' ? darkCanvasStyle(style, cell.isEdge(), onCanvas(cell)) : style
+  }
+}
+
+/** Draws every cell of the page again with its style computed anew, e.g. for another theme of the canvas. */
+function restyle(graph: Graph) {
+  const view = graph.getView()
+  for (const state of view.getStates().values()) state.invalidStyle = true
+  view.invalidate()
+  view.validate()
 }
 
 function configureStyles(graph: Graph) {

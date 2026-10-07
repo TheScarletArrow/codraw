@@ -9,6 +9,7 @@ import type { BoardVersion } from '../api/versions.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposals, type Proposal } from '../api/proposals.ts'
+import { requestReview } from '../api/reviews.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
@@ -24,6 +25,9 @@ import { useFollowing } from '../board/following.ts'
 import { NoAccess } from '../board/NoAccess.tsx'
 import { useLaserPublisher, usePresencePublisher } from '../board/presence.ts'
 import { ShareButton } from '../board/ShareButton.tsx'
+import { StatusBadges } from '../board/StatusBadges.tsx'
+import type { StatusItem } from '../board/statusList.ts'
+import { StatusSummary } from '../board/StatusSummary.tsx'
 import { VersionHistory } from '../board/VersionHistory.tsx'
 import { VersionPreview, type CellsRestore } from '../board/VersionPreview.tsx'
 import { useBoardVisit } from '../board/visit.ts'
@@ -44,14 +48,17 @@ import { PageHistories } from '../diagram/binding.ts'
 import type { Author } from '../diagram/attribution.ts'
 import { CanvasMenu, type CommentTarget } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
-import type { DiagramEditor } from '../diagram/editor.ts'
+import type { ContextMenuRequest, DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
 import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
+import { StickyPanel } from '../diagram/StickyPanel.tsx'
+import { StickySignatures } from '../diagram/StickySignatures.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
+import type { ElementStatus } from '../diagram/status.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { takePendingImport } from '../drawio/files.ts'
 import { importPages } from '../drawio/importPages.ts'
@@ -60,6 +67,8 @@ import { SqlMenu } from '../sql/SqlMenu.tsx'
 import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
+import { LinkDialog } from '../links/LinkDialog.tsx'
+import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
 import { draftPath, PROPOSALS_POLL_INTERVAL, proposalsKey } from '../proposals/proposals.ts'
 import { ProposalReview } from '../proposals/ProposalReview.tsx'
@@ -274,6 +283,44 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     restoring.current = null
     editor.restoreCells(request.cells, request.ids)
   }, [editor])
+  // Going to an element, e.g. from the list of statuses or from a link: switch to its page, then select it in the middle of
+  // the canvas once that page is shown.
+  const revealingElement = useRef<{ pageId: string; cellId: string } | null>(null)
+  /** Shows the element of a page, at once or once that page is on the canvas; `true` when that page is another one. */
+  const revealElement = useCallback(
+    (pageId: string, cellId: string) => {
+      if (editor && editor.pageId === pageId) {
+        revealingElement.current = null
+        editor.revealCell(cellId)
+        return false
+      }
+      revealingElement.current = { pageId, cellId }
+      return true
+    },
+    [editor],
+  )
+  useEffect(() => {
+    const target = revealingElement.current
+    if (!editor || !target || editor.pageId !== target.pageId) return
+    editor.revealCell(target.cellId)
+    revealingElement.current = null
+  }, [editor])
+  /** Goes to an element of the list of statuses: on the board itself, in place of a version, a proposal or the changes. */
+  const showElement = (item: StatusItem) => {
+    if (!pages.some((page) => page.id === item.pageId)) return
+    following.stop()
+    setPreviewed(null)
+    setReviewed(null)
+    setShowingVisit(false)
+    if (revealElement(item.pageId, item.cellId)) selectPage(item.pageId)
+  }
+  // A participant who is not the owner asks the owner to review what they marked «Нужно ревью»: one request for the first
+  // element of the change, the others are in the list of statuses. The notification is extra: the status stays whatever
+  // the request gets.
+  const statusChanged = (status: ElementStatus | null, cellIds: string[]) => {
+    if (status !== 'review' || isOwner || !editor || cellIds.length === 0) return
+    requestReview(board.id, editor.pageId, cellIds[0]!).catch(() => {})
+  }
   /** Starts a new thread about an element of the current page or at a point of it, in the panel. */
   const commentOn = useCallback(
     (target: CommentTarget) => {
@@ -291,6 +338,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   )
   // A click with the comment tool of the canvas starts a thread at its point.
   useEffect(() => editor?.onCommentPoint((point) => commentOn({ point })), [editor, commentOn])
+  // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
+  const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   const showThreadsOf = (cellId: string) => {
     if (!editor) return
     openComments()
@@ -328,6 +377,23 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
       if (shown) params.set('page', shown.pageId)
     })
   }, [linkedThread, threads.data, linkable, pages, revealThread, changeParams])
+
+  // `?cell=` goes to that element of the page `?page=` once the board is synced, e.g. from a notification about a review,
+  // and is taken out of the address. The page is taken from the address at once: a local copy shown before the board is
+  // synced may lack the page, and the address would get the first page meanwhile. An element that is gone opens its page.
+  const linkedCell = searchParams.get('cell')
+  const [cellLink, setCellLink] = useState<{ pageId: string | null; cellId: string | null }>({ pageId: null, cellId: null })
+  if (linkedCell !== cellLink.cellId) setCellLink({ pageId: requestedPage, cellId: linkedCell })
+  useEffect(() => {
+    const { pageId, cellId } = cellLink
+    if (!cellId || !linkable) return
+    const page = pages.find((candidate) => candidate.id === pageId)
+    if (page) revealElement(page.id, cellId)
+    changeParams((params) => {
+      params.delete('cell')
+      if (page) params.set('page', page.id)
+    })
+  }, [cellLink, linkable, pages, revealElement, changeParams])
 
   // `?proposal=` opens the proposals with the review of that proposal, e.g. from a notification.
   const linkedProposal = searchParams.get('proposal')
@@ -427,6 +493,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           disabled={!awareness}
           onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
         />
+        <StatusSummary document={document} onSelect={showElement} />
         <CommentsButton
           threads={threads.data}
           open={commentsOpen}
@@ -516,6 +583,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <VersionPreview
             key={preview.id}
             boardId={board.id}
+            boardTitle={board.title}
             version={preview}
             document={document}
             comparing={comparing}
@@ -534,6 +602,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <ProposalReview
             key={review}
             boardId={board.id}
+            boardTitle={board.title}
             proposalId={review}
             userId={user.id}
             document={document}
@@ -575,6 +644,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     participantId={author.id}
                     onEditor={setEditor}
                   />
+                  <StickySignatures editor={editor} />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
@@ -590,10 +660,28 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onOpen={showThreadAtPoint}
                     onChanged={notifyCommentsChanged}
                   />
+                  <StatusBadges editor={editor} document={document} />
                   <LockBadges editor={editor} />
+                  <ShapeLinks editor={editor} pages={pages} onSelectPage={selectPage} onNavigate={following.stop} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}
-                  <CanvasMenu editor={editor} onComment={commentOn} />
+                  {!readOnly && <StickyPanel editor={editor} />}
+                  <CanvasMenu
+                    editor={editor}
+                    onComment={commentOn}
+                    onStatusChange={statusChanged}
+                    onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                  />
+                  {linking && linking.editor === editor && (
+                    <LinkDialog
+                      editor={linking.editor}
+                      request={linking.request}
+                      pages={pages}
+                      currentPageId={currentPage.id}
+                      boardId={board.id}
+                      onClose={() => setLinking(null)}
+                    />
+                  )}
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                 </>
               ) : (

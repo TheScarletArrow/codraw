@@ -1,5 +1,6 @@
 import { useEffect, useRef, type DragEvent } from 'react'
 import * as Y from 'yjs'
+import { currentTheme, useTheme } from '../theme/theme.ts'
 import type { PageHistories } from './binding.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { SHAPE_DRAG_TYPE, type ShapeId } from './shapes.ts'
@@ -31,7 +32,10 @@ interface DiagramCanvasProps {
   onEditor: (editor: DiagramEditor | null) => void
 }
 
-/** maxGraph canvas bound to one page of the board document. The graph is created once per page. */
+/**
+ * maxGraph canvas bound to one page of the board document. The graph is created once per page; it follows the theme of
+ * the app without being created again.
+ */
 export function DiagramCanvas({
   document,
   pageId,
@@ -44,6 +48,7 @@ export function DiagramCanvas({
 }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<DiagramEditor | null>(null)
+  const theme = useTheme()
 
   useEffect(() => {
     const editor = createDiagramEditor(containerRef.current!, document, {
@@ -53,6 +58,8 @@ export function DiagramCanvas({
       participantName,
       participantId,
       collaboration,
+      // The theme of the moment: a change of the theme does not create the canvas again.
+      theme: currentTheme(),
     })
     editorRef.current = editor
     onEditor(editor)
@@ -62,6 +69,10 @@ export function DiagramCanvas({
       editor.destroy()
     }
   }, [document, pageId, histories, readOnly, participantName, participantId, collaboration, onEditor])
+
+  useEffect(() => {
+    editorRef.current?.setTheme(theme)
+  }, [theme])
 
   const handleDragOver = (event: DragEvent) => {
     if (!readOnly && event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {

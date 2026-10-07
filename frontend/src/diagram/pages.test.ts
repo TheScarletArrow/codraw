@@ -24,6 +24,7 @@ import {
   PAGES_ORIGIN,
   renamePage,
 } from './pages.ts'
+import { readStatus, STATUS_KEYS, writeStatus } from './status.ts'
 
 function board() {
   const doc = new Y.Doc()
@@ -162,6 +163,22 @@ describe('pages', () => {
     for (const [, map] of copied) expect(readAttribution(map)).toMatchObject({ by: 'bob', name: 'Боб' })
     expect(readAttribution(cells.get('a'))).toEqual({ by: 'alice', name: 'Алиса', at: 1000 })
     expect(readAttribution(cells.get('b'))).toBeNull()
+  })
+
+  it('gives the copies no status, and the original keeps its status', () => {
+    const doc = board()
+    const cells = getCells(doc)
+    doc.transact(() => {
+      writeCell(cells, cell('a'))
+      writeStatus(cells.get('a')!, 'done', { id: 'alice', name: 'Алиса' }, 1000)
+    })
+
+    const copy = duplicatePage(doc, DEFAULT_PAGE_ID, { id: 'bob', name: 'Боб' })!
+
+    const copied = Array.from(getCells(doc, copy).entries()).find(([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID)![1]
+    expect(readStatus(copied)).toBeNull()
+    expect(STATUS_KEYS.filter((key) => copied.has(key))).toEqual([])
+    expect(readStatus(cells.get('a'))).toEqual({ status: 'done', by: 'alice', name: 'Алиса', at: 1000 })
   })
 
   it('deletes a page with its cells but never the last page', () => {

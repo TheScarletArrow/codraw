@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { orderSqlFiles, parseSql, parseSqlFiles, type SqlSchema } from './parseSql.ts'
+import { orderSqlFiles, parseSql, parseSqlFiles, tokenize, type SqlSchema } from './parseSql.ts'
 
 /** Columns of a table as `name type flags`, for short expectations. */
 const columns = (schema: SqlSchema, table: string) =>
@@ -98,7 +98,7 @@ describe('parsing DDL', () => {
     expect(keys(schema, 'boards')).toEqual([])
   })
 
-  it('skips other statements, also functions with semicolons in their bodies, and counts them', () => {
+  it('skips what it does not draw, also functions with semicolons in their bodies, and counts them', () => {
     const schema = parseSql(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
       CREATE TABLE notes (id serial PRIMARY KEY, body text);
@@ -106,10 +106,173 @@ describe('parsing DDL', () => {
       CREATE FUNCTION touch() RETURNS trigger AS $$ BEGIN NEW.body := 'x;y'; RETURN NEW; END; $$ LANGUAGE plpgsql;
       INSERT INTO notes (body) VALUES ('a; b');
       CREATE TABLE copy AS SELECT * FROM notes;
+      ALTER TABLE missing ADD COLUMN x int;
     `)
 
     expect(schema.tables.map((table) => table.name)).toEqual(['notes'])
-    expect(schema.skipped).toBe(5)
+    // The view, the function, the copy of a query and the change of a table that is not there; the extension and the
+    // data describe no table.
+    expect(schema.skipped).toBe(4)
+  })
+
+  it('passes over statements that describe no table without counting them', () => {
+    const schema = parseSql(`
+      SET search_path = public;
+      SELECT pg_catalog.set_config('search_path', '', false);
+      CREATE EXTENSION pgcrypto;
+      CREATE SCHEMA app;
+      CREATE SEQUENCE notes_seq;
+      CREATE TABLE notes (id serial PRIMARY KEY);
+      COMMENT ON TABLE notes IS 'Заметки';
+      ALTER TABLE notes OWNER TO app;
+      ALTER SEQUENCE notes_seq OWNED BY notes.id;
+      GRANT SELECT ON notes TO reporting;
+      BEGIN;
+      INSERT INTO notes DEFAULT VALUES;
+      COMMIT;
+      DROP VIEW IF EXISTS old_notes;
+    `)
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['notes'])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('leaves out lines of meta-commands of psql, which have no semicolon', () => {
+    const schema = parseSql('\\restrict 4fGh7\n\nSET statement_timeout = 0;\nCREATE TABLE users (id int PRIMARY KEY);\n  \\connect shop\nCREATE TABLE boards (id int);\n\\unrestrict 4fGh7\n')
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['users', 'boards'])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('ends statements at the delimiter that DELIMITER of the MySQL client sets', () => {
+    const schema = parseSql(`
+      CREATE TABLE orders (
+        id int NOT NULL,
+        delimiter varchar(8)
+      );
+      DELIMITER ;;
+      CREATE PROCEDURE add_order(IN p_user INT)
+      BEGIN
+        INSERT INTO orders (id) VALUES (p_user);
+        SELECT LAST_INSERT_ID();
+      END ;;
+      DELIMITER ;
+      CREATE TABLE users (id int);
+      DELIMITER //
+      CREATE TRIGGER t BEFORE INSERT ON orders FOR EACH ROW BEGIN SET NEW.id = 1; END //
+      delimiter $$
+      CREATE FUNCTION f() RETURNS int RETURN 1; $$
+      DELIMITER ;
+      CREATE TABLE items (id int);
+    `)
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['orders', 'users', 'items'])
+    expect(columns(schema, 'orders')).toEqual(['id int NN', 'delimiter varchar(8)'])
+    // The procedure, the trigger and the function.
+    expect(schema.skipped).toBe(3)
+  })
+
+  it('leaves out the data of COPY FROM stdin up to the line \\.', () => {
+    const schema = parseSql(
+      [
+        'CREATE TABLE users (id bigint NOT NULL, name text);',
+        'COPY public.users (id, name) FROM stdin;',
+        "1\tO'Brien; \"the\" builder",
+        '2\t\\N',
+        '\\.',
+        '',
+        'ALTER TABLE ONLY users ADD CONSTRAINT users_pkey PRIMARY KEY (id);',
+      ].join('\n'),
+    )
+
+    expect(columns(schema, 'users')).toEqual(['id bigint PK NN', 'name text'])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('makes an integer serial when ALTER TABLE gives it the next value of a sequence, as pg_dump writes serial', () => {
+    const schema = parseSql(`
+      CREATE TABLE users (id bigint NOT NULL, code integer DEFAULT nextval('codes'::regclass), rank smallint, note text);
+      ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+      ALTER TABLE ONLY public.users ALTER COLUMN rank SET DEFAULT nextval('public.users_rank_seq'::regclass);
+      ALTER TABLE ONLY public.users ALTER COLUMN note SET DEFAULT nextval('public.users_note_seq'::regclass);
+    `)
+
+    expect(columns(schema, 'users')).toEqual(['id bigserial NN', 'code integer', 'rank smallserial', 'note text'])
+  })
+
+  it('does not draw partitions, and does not skip statements about them', () => {
+    const schema = parseSql(`
+      CREATE TABLE measurements (id bigint NOT NULL, taken_on date NOT NULL) PARTITION BY RANGE (taken_on);
+      CREATE TABLE measurements_2025 PARTITION OF measurements FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+      CREATE TABLE public.measurements_2026 (id bigint NOT NULL, taken_on date NOT NULL);
+      ALTER TABLE public.measurements_2026 OWNER TO app;
+      ALTER TABLE ONLY public.measurements ATTACH PARTITION public.measurements_2026 FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+      ALTER TABLE ONLY public.measurements ADD CONSTRAINT measurements_pkey PRIMARY KEY (id, taken_on);
+      ALTER TABLE ONLY public.measurements_2026 ADD CONSTRAINT measurements_2026_pkey PRIMARY KEY (id, taken_on);
+      CREATE INDEX measurements_2026_taken_on_idx ON public.measurements_2026 (taken_on);
+      ALTER INDEX public.measurements_pkey ATTACH PARTITION public.measurements_2026_pkey;
+    `)
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['measurements'])
+    expect(columns(schema, 'measurements')).toEqual(['id bigint PK NN', 'taken_on date PK NN'])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('keeps partitions apart across files of migrations', () => {
+    const schema = parseSqlFiles([
+      { name: 'V1__events.sql', text: 'CREATE TABLE events (id int) PARTITION BY LIST (id); CREATE TABLE events_1 PARTITION OF events FOR VALUES IN (1);' },
+      { name: 'V2__index.sql', text: 'CREATE INDEX events_1_id_idx ON events_1 (id);' },
+    ])
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['events'])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('writes types without their schema and without the character set of MySQL', () => {
+    const schema = parseSql(`
+      CREATE TABLE orders (status public.order_status NOT NULL, tags "app"."tag"[], name varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL, code char(2) CHARSET latin1, title character varying(20));
+      ALTER TABLE orders ALTER COLUMN status TYPE app.order_state USING status::text::app.order_state;
+    `)
+
+    expect(columns(schema, 'orders')).toEqual(['status order_state NN', 'tags tag[]', 'name varchar(100)', 'code char(2)', 'title character varying(20)'])
+  })
+
+  it('reads the first name of each column of a key, without the prefix of a key of MySQL', () => {
+    const schema = parseSql(`
+      CREATE TABLE products (
+        id int NOT NULL, title varchar(200), code varchar(10),
+        PRIMARY KEY (id),
+        KEY products_title_idx (title(50)),
+        UNIQUE KEY products_code_title_key (code(4), title)
+      );
+    `)
+
+    expect(schema.tables[0]!.indexes).toEqual([
+      { name: 'products_title_idx', columns: 'title', unique: false, method: '', rest: '' },
+      { name: 'products_code_title_key', columns: 'code, title', unique: true, method: '', rest: '' },
+    ])
+  })
+
+  it('reads what clients of databases read only in scripts, not in the text of a field', () => {
+    expect(tokenize('delimiter text').map((token) => token.value)).toEqual(['DELIMITER', 'TEXT'])
+    expect(tokenize('\\x; y').map((token) => [token.kind, token.value])).toEqual([
+      ['symbol', '\\'],
+      ['word', 'X'],
+      ['symbol', ';'],
+      ['word', 'Y'],
+    ])
+    expect(tokenize('a; b', { script: true }).map((token) => token.kind)).toEqual(['word', 'end', 'word'])
+  })
+
+  it('keeps the keys of tables to tables that a dump of mysqldump drops before it creates them', () => {
+    const schema = parseSql(`
+      DROP TABLE IF EXISTS \`order_items\`;
+      CREATE TABLE \`order_items\` (\`order_id\` int NOT NULL, CONSTRAINT \`order_items_order_fk\` FOREIGN KEY (\`order_id\`) REFERENCES \`orders\` (\`id\`));
+      DROP TABLE IF EXISTS \`orders\`;
+      CREATE TABLE \`orders\` (\`id\` int NOT NULL, PRIMARY KEY (\`id\`));
+    `)
+
+    expect(keys(schema, 'order_items')).toEqual([{ columns: ['order_id'], table: 'orders', references: ['id'] }])
   })
 
   it('reads the common part of MySQL: backticks, AUTO_INCREMENT and keys of the table', () => {
