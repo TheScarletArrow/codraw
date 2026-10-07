@@ -5,3 +5,10 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+
+# jsPDF needs these only for html() and addSvgAsImage(), which CoDraw does not call.
+ignoredOptionalDependencies:
+  - canvg
+  - core-js
+  - dompurify
+  - html2canvas

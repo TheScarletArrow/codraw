@@ -49,9 +49,10 @@ export function renderSvg(
   root.setAttribute('height', String(height))
   root.setAttribute('viewBox', `0 0 ${width} ${height}`)
   if (!transparent) {
+    // Of the size of the image, in numbers: renderers of PDF do not resolve percentages.
     const backdrop = document.createElementNS(SVG_NS, 'rect')
-    backdrop.setAttribute('width', '100%')
-    backdrop.setAttribute('height', '100%')
+    backdrop.setAttribute('width', String(width))
+    backdrop.setAttribute('height', String(height))
     backdrop.setAttribute('fill', IMAGE_BACKGROUND)
     root.append(backdrop)
   }
@@ -65,6 +66,9 @@ export function renderSvg(
   try {
     const canvas = new SvgCanvas2D(content, false)
     canvas.pointerEvents = false
+    // Clips of labels and gradients refer to the image itself, not to the address of the board, which a saved file
+    // and the PDF do not have.
+    canvas.getBaseUrl = () => ''
     // Shapes scale the canvas by the zoom of the view and draw in coordinates without it: undo the zoom,
     // and move the top-left corner of the cells to the margin.
     canvas.scale(1 / scale)

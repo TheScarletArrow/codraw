@@ -21,11 +21,13 @@
     "clsx": "^2.1.1",
     "elkjs": "0.12.0",
     "fractional-indexing": "^4.0.0",
+    "jspdf": "4.2.1",
     "libavoid-js": "0.4.5",
     "lucide-react": "^1.51.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.4.0",
+    "svg2pdf.js": "2.8.1",
     "tailwind-merge": "^3.7.0",
     "y-indexeddb": "^9.0.12",
     "yjs": "^13.6.33"
