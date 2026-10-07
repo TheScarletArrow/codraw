@@ -52,12 +52,16 @@ describe('shortcuts', () => {
     expect(formatKeys('Mod+DoubleClick', false)).toBe('Ctrl+двойной щелчок')
     expect(formatKeys('Mod+DoubleClick', true)).toBe('⌘+двойной щелчок')
     expect(formatKeys('N', true)).toBe('N')
+    expect(formatKeys('Mod+Alt+C', false)).toBe('Ctrl+Alt+C')
+    expect(formatKeys('Mod+Alt+V', true)).toBe('⌥⌘V')
   })
 
   it('leaves the editing shortcuts out for a participant who may only view', () => {
     const actions = shortcutGroups(true).flatMap((group) => group.entries.map((entry) => entry.action))
 
     expect(actions).toContain('Копировать')
+    expect(actions).toContain('Копировать стиль')
+    expect(actions).not.toContain('Вставить стиль')
     expect(actions).toContain('Показать всё')
     expect(actions).toContain('Найти на доске')
     expect(actions).toContain('Указка')

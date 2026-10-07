@@ -6,6 +6,7 @@ import { diffDocuments, snapshotDocument, type PageDiff } from '../diagram/diff.
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import { DEFAULT_PAGE_ID, getCells, writeCell, type CellData } from '../diagram/model.ts'
 import { TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
+import { writeStatus } from '../diagram/status.ts'
 import { boardWith, edgeData, laterState, shapeData } from '../diagram/testing.ts'
 import { absoluteBounds, changeItems, edgeLine, ghostCenter, lineMiddle } from './changes.ts'
 
@@ -101,6 +102,24 @@ describe('items of the list of changes', () => {
       ['API', ['закрепление']],
       ['БД', ['закрепление']],
     ])
+  })
+
+  it('says the status an element got, or that its status was taken off, once', () => {
+    const version = boardWith(shapeData('a', 'a0', { value: 'API' }), shapeData('b', 'a1', { value: 'БД' }))
+    const alice = { id: 'alice', name: 'Алиса' }
+    const bob = { id: 'bob', name: 'Боб' }
+    version.transact(() => writeStatus(cell(version, 'b'), 'review', alice, 1000))
+    const now = laterState(version, (doc) => {
+      writeStatus(cell(doc, 'a'), 'done', bob, 2000)
+      writeStatus(cell(doc, 'b'), null, bob, 2000)
+    })
+    const remarked = laterState(version, (doc) => writeStatus(cell(doc, 'b'), 'draft', bob, 2000))
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([
+      ['API', ['статус «Готово»']],
+      ['БД', ['статус снят']],
+    ])
+    expect(changeItems(firstPage(version, remarked)).map(({ details }) => details)).toEqual([['статус «Черновик»']])
   })
 
   it('says what changed in a table, a field, an index and an edge in their words', () => {

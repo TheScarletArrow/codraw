@@ -27,7 +27,11 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/boards")
-class BoardController(private val boards: BoardService, private val users: UserService) {
+class BoardController(
+    private val boards: BoardService,
+    private val organization: BoardOrganizationService,
+    private val users: UserService,
+) {
 
     @PostMapping
     fun create(
@@ -39,23 +43,43 @@ class BoardController(private val boards: BoardService, private val users: UserS
         return ResponseEntity.created(URI.create("/api/boards/${board.id}")).body(board)
     }
 
+    /** The boards of the user, most recently changed first, with when they were on each and how they organized it. */
     @GetMapping
-    fun list(@AuthenticationPrincipal principal: OAuth2User): List<BoardResponse> {
+    fun list(@AuthenticationPrincipal principal: OAuth2User): List<OwnBoardResponse> {
         val user = currentUser(principal)
-        return boards.list(user.id).map { it.toResponse(user, BoardRole.OWNER) }
+        val own = boards.list(user.id)
+        val seen = boards.seenAt(user.id, own)
+        val organized = organization.of(user.id)
+        return own.map { board ->
+            val id = checkNotNull(board.id)
+            OwnBoardResponse(
+                id = id,
+                title = board.title,
+                createdAt = board.createdAt,
+                updatedAt = board.updatedAt,
+                linkAccess = board.linkAccess,
+                owner = BoardOwner(user.id, user.name, user.avatarUrl),
+                role = BoardRole.OWNER,
+                openedAt = seen[id],
+                tags = organized.tagsOf(id),
+                folderId = organized.folderOf(id),
+            )
+        }
     }
 
     /**
      * Boards of other users that the user is a member of, or opened through their links and can still open through
-     * them.
+     * them, with how the user organized each.
      */
     @GetMapping("/shared")
-    fun shared(@AuthenticationPrincipal principal: OAuth2User): List<SharedBoardResponse> =
-        boards.sharedWith(principal.userId).mapNotNull { shared ->
+    fun shared(@AuthenticationPrincipal principal: OAuth2User): List<SharedBoardResponse> {
+        val organized = organization.of(principal.userId)
+        return boards.sharedWith(principal.userId).mapNotNull { shared ->
             val board = shared.board
+            val id = checkNotNull(board.id)
             val role = board.roleOf(principal.userId, shared.memberRole) ?: return@mapNotNull null
             SharedBoardResponse(
-                id = checkNotNull(board.id),
+                id = id,
                 title = board.title,
                 createdAt = board.createdAt,
                 updatedAt = board.updatedAt,
@@ -63,8 +87,11 @@ class BoardController(private val boards: BoardService, private val users: UserS
                 owner = BoardOwner(board.ownerId, shared.ownerName, shared.ownerAvatarUrl),
                 role = role,
                 openedAt = shared.visitedAt,
+                tags = organized.tagsOf(id),
+                folderId = organized.folderOf(id),
             )
         }
+    }
 
     /**
      * Any board by its id, as far as the role of the user gives access to it: the owner closes it to all but the
@@ -158,6 +185,23 @@ data class BoardResponse(
     val role: BoardRole,
 )
 
+/** A board of the user in their list of boards. */
+data class OwnBoardResponse(
+    val id: UUID,
+    val title: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val linkAccess: LinkAccess,
+    val owner: BoardOwner,
+    val role: BoardRole,
+    /** When the user was last on the board; `null` while they never were. */
+    val openedAt: Instant?,
+    /** The personal tags of the user on the board. */
+    val tags: List<String>,
+    /** The personal folder of the user that the board is in; `null` for none. */
+    val folderId: UUID?,
+)
+
 data class SharedBoardResponse(
     val id: UUID,
     val title: String,
@@ -168,6 +212,10 @@ data class SharedBoardResponse(
     val role: BoardRole,
     /** When the user last opened the board; `null` for a board they are a member of and never opened. */
     val openedAt: Instant?,
+    /** The personal tags of the user on the board. */
+    val tags: List<String>,
+    /** The personal folder of the user that the board is in; `null` for none. */
+    val folderId: UUID?,
 )
 
 /** The board as the user with the [role] on it sees it. */

@@ -11,6 +11,7 @@ import { useCurrentUser } from '../auth/session.ts'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
+import { StatusBadges } from '../board/StatusBadges.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import type { Author } from '../diagram/attribution.ts'
@@ -205,6 +206,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   onEditor={setEditor}
                 />
                 <StickySignatures editor={editor} />
+                <StatusBadges editor={editor} document={document} />
                 <LockBadges editor={editor} />
                 {!readOnly && <QuickConnect editor={editor} />}
                 {!readOnly && <FieldPopover editor={editor} />}

@@ -31,13 +31,15 @@ describe('CanvasMenu', () => {
       'Вырезать',
       'Копировать',
       'Дублировать',
+      'Копировать стиль',
+      'Вставить стиль',
       'На передний план',
       'На задний план',
       'Удалить',
     ])
     const anchor = screen.getByTestId('canvas-menu-anchor')
     expect([anchor.style.left, anchor.style.top]).toEqual(['100px', '50px'])
-    expect(within(screen.getByRole('menu')).getAllByRole('separator')).toHaveLength(3)
+    expect(within(screen.getByRole('menu')).getAllByRole('separator')).toHaveLength(4)
   })
 
   it('shows the shortcut of an item', () => {
@@ -46,6 +48,25 @@ describe('CanvasMenu', () => {
     const copy = screen.getByRole('menuitem', { name: 'Копировать' })
     expect(copy).toHaveTextContent('Ctrl+C')
     expect(copy).toHaveAttribute('aria-keyshortcuts', 'Control+C')
+  })
+
+  it('copies the look of an element and pastes it into the selection once it is copied', async () => {
+    act(() => editor.setState({ canCopyStyle: true }))
+    rightClick('shape')
+
+    const copyStyle = screen.getByRole('menuitem', { name: 'Копировать стиль' })
+    expect(copyStyle).toHaveTextContent('Ctrl+Alt+C')
+    expect(copyStyle).toHaveAttribute('aria-keyshortcuts', 'Control+Alt+C')
+    expect(screen.getByRole('menuitem', { name: 'Вставить стиль' })).toBeDisabled()
+    await userEvent.click(copyStyle)
+    expect(editor.copyStyle).toHaveBeenCalled()
+
+    act(() => editor.setState({ canCopyStyle: false, canPasteStyle: true }))
+    rightClick('selection')
+    expect(screen.queryByRole('menuitem', { name: 'Копировать стиль' })).toBeNull()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Вставить стиль' }))
+    expect(editor.pasteStyle).toHaveBeenCalled()
+    expect(editor.focus).toHaveBeenCalled()
   })
 
   it('disables paste while the clipboard is empty', () => {
@@ -165,9 +186,70 @@ describe('CanvasMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Удалить' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Изменить подпись' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Копировать' })).toBeEnabled()
+    expect(screen.getByRole('menuitem', { name: 'Вставить стиль' })).toBeDisabled()
     expect(screen.queryByRole('menuitem', { name: 'Закрепить' })).toBeNull()
     await userEvent.click(screen.getByRole('menuitem', { name: 'Открепить' }))
     expect(editor.setLocked).toHaveBeenCalledWith(false)
+  })
+
+  describe('with statuses', () => {
+    const onStatusChange = vi.fn()
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onStatusChange.mockReset()
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onStatusChange={onStatusChange} />)
+    })
+
+    it('offers the statuses with the current one chosen, and sets the chosen one', async () => {
+      act(() => editor.setState({ status: { value: 'draft', mixed: false } }))
+      vi.mocked(editor.setStatus).mockReturnValue(['cell-1'])
+      rightClick('table')
+
+      const statuses = within(screen.getByRole('menu')).getAllByRole('menuitemradio')
+      expect(statuses.map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')])).toEqual([
+        ['Черновик', 'true'],
+        ['Нужно ревью', 'false'],
+        ['Готово', 'false'],
+        ['Без статуса', 'false'],
+      ])
+      expect(within(screen.getByRole('menu')).getByText('Статус')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('menuitemradio', { name: 'Нужно ревью' }))
+
+      expect(editor.setStatus).toHaveBeenCalledWith('review')
+      expect(onStatusChange).toHaveBeenCalledWith('review', ['cell-1'])
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+
+    it('takes the status off, and tells nothing when no status changed', async () => {
+      act(() => editor.setState({ status: { value: null, mixed: true } }))
+      rightClick('selection')
+      expect(screen.queryByRole('menuitemradio', { checked: true })).toBeNull()
+      await userEvent.click(screen.getByRole('menuitemradio', { name: 'Без статуса' }))
+
+      expect(editor.setStatus).toHaveBeenCalledWith(null)
+      expect(onStatusChange).not.toHaveBeenCalled()
+    })
+
+    it('keeps the statuses of locked elements', () => {
+      act(() =>
+        editor.setState({
+          status: { value: 'done', mixed: false },
+          lock: { all: true, canLock: false, locks: [{ cellId: 'cell-1', lockedBy: 'Алиса' }] },
+        }),
+      )
+      rightClick('shape')
+
+      expect(screen.getByRole('menuitemradio', { name: 'Готово', checked: true })).toBeEnabled()
+      expect(screen.getByRole('menuitemradio', { name: 'Черновик' })).toBeEnabled()
+    })
+
+    it('offers no statuses without elements that may have one', () => {
+      rightClick('edge')
+
+      expect(screen.queryByRole('menuitemradio')).toBeNull()
+    })
   })
 
   describe('with comments', () => {
@@ -186,6 +268,8 @@ describe('CanvasMenu', () => {
       expect(items().map((item) => item.getAttribute('aria-label'))).toEqual([
         'Изменить подпись',
         'Развернуть направление',
+        'Копировать стиль',
+        'Вставить стиль',
         'Комментировать',
         'Удалить',
       ])
@@ -226,23 +310,33 @@ describe('CanvasMenu', () => {
     it('offers copying a shape', async () => {
       rightClick('shape')
 
-      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать', 'Копировать стиль'])
       await userEvent.click(screen.getByRole('menuitem', { name: 'Копировать' }))
       expect(editor.copy).toHaveBeenCalled()
+    })
+
+    it('offers no statuses', () => {
+      act(() => editor.setState({ status: { value: 'review', mixed: false } }))
+      rightClick('shape')
+
+      expect(screen.queryByRole('menuitemradio')).toBeNull()
     })
 
     it('offers neither locking nor unlocking', () => {
       act(() => editor.setState({ lock: { all: true, canLock: false, locks: [{ cellId: 'cell-1', lockedBy: 'Алиса' }] } }))
       rightClick('shape')
 
-      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать'])
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать', 'Копировать стиль'])
       expect(screen.getByRole('menu')).not.toHaveAccessibleDescription()
     })
 
-    it('does not open for an edge, which they cannot do anything with', () => {
+    it('offers copying the look of an edge, but not pasting one', async () => {
+      act(() => editor.setState({ canCopyStyle: true }))
       rightClick('edge')
 
-      expect(screen.queryByRole('menu')).toBeNull()
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать стиль'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Копировать стиль' }))
+      expect(editor.copyStyle).toHaveBeenCalled()
     })
 
     it('comments on an edge when the page takes comments', async () => {
@@ -251,7 +345,7 @@ describe('CanvasMenu', () => {
       render(<CanvasMenu editor={editor} onComment={onComment} />)
       rightClick('edge', 'edge-7')
 
-      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Комментировать'])
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать стиль', 'Комментировать'])
       await userEvent.click(screen.getByRole('menuitem', { name: 'Комментировать' }))
       expect(onComment).toHaveBeenCalledWith({ cellId: 'edge-7' })
     })

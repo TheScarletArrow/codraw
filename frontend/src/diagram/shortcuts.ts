@@ -28,6 +28,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+X'], action: 'Вырезать', editing: true },
       { keys: ['Mod+V'], action: 'Вставить', editing: true },
       { keys: ['Mod+D'], action: 'Дублировать', editing: true },
+      { keys: ['Mod+Alt+C'], action: 'Копировать стиль' },
+      { keys: ['Mod+Alt+V'], action: 'Вставить стиль', editing: true },
       { keys: ['Delete', 'Backspace'], action: 'Удалить', editing: true },
       { keys: ['F2'], action: 'Изменить подпись', editing: true },
       { keys: ['N', 'Mod+DoubleClick'], action: 'Добавить стикер', editing: true },

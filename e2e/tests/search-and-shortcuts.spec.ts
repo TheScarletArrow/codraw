@@ -69,6 +69,8 @@ test('a participant who may only view sees only the shortcuts they have', async 
   const help = bob.getByRole('dialog', { name: 'Горячие клавиши' })
   await expect(help).toContainText('Копировать')
   await expect(help).toContainText('Показать всё')
+  await expect(help).toContainText('Копировать стиль')
+  await expect(help).not.toContainText('Вставить стиль')
   await expect(help).not.toContainText('Удалить')
   await expect(help).not.toContainText('Дублировать')
 

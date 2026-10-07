@@ -1,3 +1,4 @@
+import { isServiceStatement } from './statementKinds.ts'
 import { defaultIndexName, indexColumnNames, renameIndexColumn, tokenEnd, writtenName } from './tableIndex.ts'
 
 /** A column of a table, as DDL declares it. */
@@ -43,15 +44,22 @@ export interface SqlTable {
 /** Tables of a database, in the order DDL creates them. */
 export interface SqlSchema {
   tables: SqlTable[]
-  /** Statements that change no table, e.g. `CREATE VIEW` or `INSERT`, and those not understood. */
+  /**
+   * Statements about what is not drawn, e.g. `CREATE VIEW` or `CREATE FUNCTION`, and those not understood; not those
+   * that describe no table, e.g. `SET` or `INSERT`.
+   */
   skipped: number
 }
 
-type TokenKind = 'word' | 'identifier' | 'string' | 'number' | 'symbol'
+/**
+ * `end` closes a statement of a script: `;`, or the delimiter that `DELIMITER` of the MySQL client set; only
+ * {@link tokenize} of a script makes it.
+ */
+type TokenKind = 'word' | 'identifier' | 'string' | 'number' | 'symbol' | 'end'
 
 export interface Token {
   kind: TokenKind
-  /** A word in upper case; an identifier, a string or a number as written; a symbol itself. */
+  /** A word in upper case; an identifier, a string or a number as written; a symbol itself; `;` for an end. */
   value: string
   /** A word as written. */
   text: string
@@ -62,25 +70,66 @@ export interface Token {
 const WORD = /[A-Za-z_\u0080-￿][\w$\u0080-￿]*/y
 const NUMBER = /\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y
 const DOLLAR_TAG = /\$([A-Za-z_]\w*)?\$/y
+/** `DELIMITER ;;` of the MySQL client, which mysqldump writes around routines and triggers. */
+const DELIMITER_COMMAND = /DELIMITER[ \t]+(\S+)/iy
+/** The line `\.` that ends the data of `COPY … FROM stdin` in a dump of pg_dump. */
+const END_OF_COPY = /^\\\.[ \t]*\r?$/gm
 
-/** Splits DDL into tokens without comments; quoted identifiers keep their case, words are compared in upper case. */
-export function tokenize(sql: string): Token[] {
+/** Whether a statement is `COPY … FROM stdin`, whose data follows it up to the line `\.`. */
+const copiesFromStdin = (statement: Token[]) =>
+  statement[0]?.kind === 'word' &&
+  statement[0].value === 'COPY' &&
+  statement.some((token, index) => token.value === 'FROM' && statement[index + 1]?.value === 'STDIN')
+
+/**
+ * Splits DDL into tokens without comments; quoted identifiers keep their case, words are compared in upper case.
+ *
+ * A `script` is a file or a text of statements, e.g. a dump: its statements end with `end` tokens, and it may have what
+ * clients of databases read rather than the server — lines of meta-commands of psql (`\restrict …`, `\connect …`),
+ * `DELIMITER` of the MySQL client and the data of `COPY … FROM stdin` up to `\.`, which are left out.
+ */
+export function tokenize(sql: string, { script = false }: { script?: boolean } = {}): Token[] {
   const tokens: Token[] = []
   let at = 0
+  let delimiter = ';'
+  // Where the tokens of the statement being read start.
+  let statementStart = 0
   const match = (pattern: RegExp) => {
     pattern.lastIndex = at
     return pattern.exec(sql)
+  }
+  const atLineStart = () => /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, sql.lastIndexOf('\n', at - 1)), at))
+  const skipLine = () => {
+    const end = sql.indexOf('\n', at)
+    at = end === -1 ? sql.length : end + 1
+  }
+  const endStatement = (length: number) => {
+    tokens.push({ kind: 'end', value: ';', text: sql.slice(at, at + length), start: at })
+    at += length
+    const statement = tokens.slice(statementStart, -1)
+    statementStart = tokens.length
+    if (copiesFromStdin(statement)) {
+      END_OF_COPY.lastIndex = at
+      const end = END_OF_COPY.exec(sql)
+      at = end ? end.index + end[0].length : sql.length
+    }
   }
   while (at < sql.length) {
     const char = sql[at]!
     if (/\s/.test(char)) {
       at++
+    } else if (script && char === '\\' && atLineStart()) {
+      skipLine()
+    } else if (script && tokens.length === statementStart && atLineStart() && match(DELIMITER_COMMAND)) {
+      delimiter = match(DELIMITER_COMMAND)![1]!
+      skipLine()
     } else if (sql.startsWith('--', at)) {
-      const end = sql.indexOf('\n', at)
-      at = end === -1 ? sql.length : end + 1
+      skipLine()
     } else if (sql.startsWith('/*', at)) {
       const end = sql.indexOf('*/', at + 2)
       at = end === -1 ? sql.length : end + 2
+    } else if (script && sql.startsWith(delimiter, at)) {
+      endStatement(delimiter.length)
     } else if (char === "'") {
       let end = at + 1
       // '' inside a string is a quote.
@@ -190,15 +239,17 @@ class Reader {
     return token.kind === 'word' ? token.text.toLowerCase() : token.value
   }
 
-  /** `(a, b)`: the names in parentheses; empty when there are none. */
+  /**
+   * `(a, b)`: the names in parentheses, the first name of each element, so that a prefix of a key of MySQL
+   * (`title(50)`) or an order (`a DESC`) is left out; empty when there are none.
+   */
   names(): string[] {
     if (!this.take('(')) return []
     const names: string[] = []
     while (!this.done && !this.take(')')) {
-      const name = this.identifier()
-      if (name !== null) names.push(name)
-      else this.next()
-      this.take(',')
+      const [first] = this.element()
+      if (first?.kind === 'word') names.push(first.text.toLowerCase())
+      else if (first?.kind === 'identifier') names.push(first.value)
     }
     return names
   }
@@ -236,15 +287,30 @@ class Reader {
   }
 }
 
-/** Splits the tokens into statements at the semicolons. */
+/** Splits the tokens of a script into statements at their ends. */
 function statements(tokens: Token[]): Token[][] {
   const result: Token[][] = [[]]
   for (const token of tokens) {
-    if (token.kind === 'symbol' && token.value === ';') result.push([])
+    if (token.kind === 'end') result.push([])
     else result.at(-1)!.push(token)
   }
   return result.filter((statement) => statement.length > 0)
 }
+
+/**
+ * The tokens of a type without its schema, as names of tables are: `public.order_status` is `order_status`.
+ */
+function unqualified(type: Token[]): Token[] {
+  let tokens = type
+  const isName = (token: Token | undefined) => token?.kind === 'word' || token?.kind === 'identifier'
+  while (isName(tokens[0]) && tokens[1]?.kind === 'symbol' && tokens[1].value === '.' && isName(tokens[2])) tokens = tokens.slice(2)
+  return tokens
+}
+
+/** Whether the type of a column ends at this token: a constraint, or `CHARACTER SET` and `CHARSET` of MySQL. */
+const endsType = (token: Token, next: Token | undefined) =>
+  token.kind === 'word' &&
+  (COLUMN_CONSTRAINTS.has(token.value) || token.value === 'CHARSET' || (token.value === 'CHARACTER' && next?.kind === 'word' && next.value === 'SET'))
 
 /** The type of a column as written: words with spaces between them, arguments in parentheses without. */
 export function typeText(tokens: Token[]): string {
@@ -274,12 +340,12 @@ function columnDefinition(tokens: Token[]): ColumnDefinition | null {
   let depth = 0
   while (!reader.done) {
     const token = reader.peek()!
-    if (depth === 0 && token.kind === 'word' && COLUMN_CONSTRAINTS.has(token.value)) break
+    if (depth === 0 && endsType(token, reader.peek(1))) break
     if (token.kind === 'symbol' && token.value === '(') depth++
     if (token.kind === 'symbol' && token.value === ')') depth--
     type.push(reader.next()!)
   }
-  const column: SqlColumn = { name, type: typeText(type) || 'text', notNull: false, primaryKey: false, unique: false }
+  const column: SqlColumn = { name, type: typeText(unqualified(type)) || 'text', notNull: false, primaryKey: false, unique: false }
   let foreignKey: SqlForeignKey | null = null
   let constraint: string | null = null
   while (!reader.done) {
@@ -303,6 +369,36 @@ function columnDefinition(tokens: Token[]): ColumnDefinition | null {
 
 function findTable(schema: SqlSchema, name: string): SqlTable | undefined {
   return schema.tables.find((table) => table.name === name)
+}
+
+/**
+ * Names of the partitions of tables of each schema being parsed: a partition is part of its table, not a table of its
+ * own, and statements of dumps about it are not skipped. Kept beside the schema, since migrations are parsed into it
+ * file by file.
+ */
+const partitionNames = new WeakMap<SqlSchema, Set<string>>()
+
+function partitions(schema: SqlSchema): Set<string> {
+  let names = partitionNames.get(schema)
+  if (!names) partitionNames.set(schema, (names = new Set()))
+  return names
+}
+
+/** A table is a partition from now on: it is no longer drawn. */
+function addPartition(schema: SqlSchema, name: string) {
+  partitions(schema).add(name)
+  schema.tables = schema.tables.filter((table) => table.name !== name)
+}
+
+/** Types of integers and the serial types that pg_dump writes as them with a default from a sequence. */
+const SERIAL_TYPES: Record<string, string> = {
+  integer: 'serial',
+  int: 'serial',
+  int4: 'serial',
+  bigint: 'bigserial',
+  int8: 'bigserial',
+  smallint: 'smallserial',
+  int2: 'smallserial',
 }
 
 /** A constraint of a table: primary key, foreign key, unique columns, or an index of MySQL (`INDEX`, `KEY`). */
@@ -356,6 +452,10 @@ function addColumn(table: SqlTable, tokens: Token[]) {
 function createTable(schema: SqlSchema, reader: Reader): boolean {
   reader.take('IF', 'NOT', 'EXISTS')
   const name = reader.name()
+  if (name !== null && reader.take('PARTITION', 'OF')) {
+    addPartition(schema, name)
+    return true
+  }
   if (name === null || !reader.take('(')) return false
   const table: SqlTable = { name, columns: [], foreignKeys: [], indexes: [] }
   const constraints: Token[][] = []
@@ -378,10 +478,13 @@ function alterTable(schema: SqlSchema, reader: Reader): boolean {
   reader.take('ONLY')
   const name = reader.name()
   const table = name === null ? undefined : findTable(schema, name)
-  if (!table) return false
+  if (!table) return name !== null && partitions(schema).has(name)
   while (!reader.done) {
     const action = new Reader(reader.element())
-    if (action.take('ADD')) {
+    if (action.take('ATTACH', 'PARTITION')) {
+      const partition = action.name()
+      if (partition !== null) addPartition(schema, partition)
+    } else if (action.take('ADD')) {
       const next = action.peek()
       if (next?.kind === 'word' && TABLE_CONSTRAINTS.has(next.value)) {
         tableConstraint(table, rest(action))
@@ -423,10 +526,12 @@ function alterTable(schema: SqlSchema, reader: Reader): boolean {
       if (!column) continue
       if (action.take('SET', 'NOT', 'NULL')) column.notNull = true
       else if (action.take('DROP', 'NOT', 'NULL')) column.notNull = false
+      // pg_dump writes a serial column as an integer that gets its default from its own sequence after the table.
+      else if (action.take('SET', 'DEFAULT', 'NEXTVAL', '(')) column.type = SERIAL_TYPES[column.type] ?? column.type
       else if (action.take('SET', 'DATA', 'TYPE') || action.take('TYPE')) {
         const type: Token[] = []
         while (!action.done && !action.sees('USING') && !action.sees('COLLATE')) type.push(action.next()!)
-        column.type = typeText(type) || column.type
+        column.type = typeText(unqualified(type)) || column.type
       }
     }
   }
@@ -475,7 +580,8 @@ function createIndex(schema: SqlSchema, reader: Reader, unique: boolean, sql: st
   reader.take('ONLY')
   const tableName = reader.name()
   const table = tableName === null ? undefined : findTable(schema, tableName)
-  if (!table) return false
+  // An index of a partition is part of an index of its table.
+  if (!table) return tableName !== null && partitions(schema).has(tableName)
   const method = reader.take('USING') ? (reader.next()?.text ?? '') : ''
   const tokens = rest(reader)
   if (tokens[0]?.kind !== 'symbol' || tokens[0].value !== '(') return false
@@ -506,6 +612,8 @@ function dropIndexes(schema: SqlSchema, reader: Reader): boolean {
 function alterIndex(schema: SqlSchema, reader: Reader): boolean {
   reader.take('IF', 'EXISTS')
   const name = reader.name()
+  // pg_dump attaches the indexes of partitions to the index of their table, which has its row already.
+  if (name !== null && reader.take('ATTACH', 'PARTITION')) return true
   if (name === null || !reader.take('RENAME', 'TO')) return false
   const renamed = reader.name()
   if (renamed === null) return false
@@ -522,9 +630,12 @@ function dropTables(schema: SqlSchema, reader: Reader): boolean {
     const name = reader.name()
     if (name !== null) names.add(name)
   } while (reader.take(','))
-  schema.tables = schema.tables.filter((table) => !names.has(table.name))
+  // A dump of mysqldump drops every table before it creates it, after tables that refer to it: keys to a table that is
+  // not there yet stay.
+  const dropped = new Set(schema.tables.filter((table) => names.has(table.name)).map((table) => table.name))
+  schema.tables = schema.tables.filter((table) => !dropped.has(table.name))
   for (const table of schema.tables) {
-    table.foreignKeys = table.foreignKeys.filter((foreignKey) => !names.has(foreignKey.table))
+    table.foreignKeys = table.foreignKeys.filter((foreignKey) => !dropped.has(foreignKey.table))
   }
   return names.size > 0
 }
@@ -538,12 +649,10 @@ function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
     if (unique) return false
     for (const word of ['GLOBAL', 'LOCAL', 'TEMPORARY', 'TEMP', 'UNLOGGED']) reader.take(word)
     if (!reader.take('TABLE')) return false
-    // `CREATE TABLE … AS SELECT` and partitions copy another table: they are not drawn.
-    if (tokens.some((token) => token.kind === 'word' && (token.value === 'AS' || token.value === 'PARTITION'))) {
-      const parenthesis = tokens.findIndex((token) => token.kind === 'symbol' && token.value === '(')
-      const as = tokens.findIndex((token) => token.kind === 'word' && (token.value === 'AS' || token.value === 'PARTITION'))
-      if (parenthesis === -1 || as < parenthesis) return false
-    }
+    // `CREATE TABLE … AS SELECT` copies the rows of a query: it is not drawn.
+    const parenthesis = tokens.findIndex((token) => token.kind === 'symbol' && token.value === '(')
+    const as = tokens.findIndex((token) => token.kind === 'word' && token.value === 'AS')
+    if (as !== -1 && (parenthesis === -1 || as < parenthesis)) return false
     return createTable(schema, reader)
   }
   if (reader.take('ALTER', 'TABLE')) return alterTable(schema, reader)
@@ -556,11 +665,12 @@ function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
 /**
  * Applies the DDL of PostgreSQL (and the common part of MySQL) to the schema: `CREATE TABLE`, `ALTER TABLE` that adds,
  * drops, renames and changes columns and constraints, `DROP TABLE`, `CREATE INDEX`, `DROP INDEX` and renaming an index.
- * Other statements are counted as skipped.
+ * Dumps of pg_dump, mysqldump and mariadb-dump are DDL too. Statements that describe no table, e.g. `SET`, `GRANT` or
+ * `INSERT` (see {@link isServiceStatement}), are passed over; others are counted as skipped.
  */
 export function parseSql(sql: string, schema: SqlSchema = { tables: [], skipped: 0 }): SqlSchema {
-  for (const tokens of statements(tokenize(sql))) {
-    if (!statement(schema, tokens, sql)) schema.skipped++
+  for (const tokens of statements(tokenize(sql, { script: true }))) {
+    if (!isServiceStatement(tokens) && !statement(schema, tokens, sql)) schema.skipped++
   }
   return schema
 }

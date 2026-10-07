@@ -22,12 +22,15 @@ const NO_EDITOR: EditorState = {
   canUngroup: false,
   hasCells: false,
   canCopy: false,
+  canCopyStyle: false,
+  canPasteStyle: false,
   layoutSelection: false,
   laser: false,
   commentTool: false,
   lock: null,
   attribution: null,
   stickies: null,
+  status: null,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

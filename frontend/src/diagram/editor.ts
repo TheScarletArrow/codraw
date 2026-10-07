@@ -34,7 +34,7 @@ import {
   type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
-import { latinKeyCode } from '../lib/keyboard.ts'
+import { latinKeyCode, latinLetter } from '../lib/keyboard.ts'
 import { vendorOf, VENDOR_KEY, type DbVendorId } from '../sql/dbVendors.ts'
 import { fieldText, plainText, renameField, splitField } from '../sql/tableField.ts'
 import { indexText, renameIndex, renameIndexColumn, splitIndex, type IndexParts } from '../sql/tableIndex.ts'
@@ -78,6 +78,7 @@ import {
 } from './attribution.ts'
 import { createCell, createUndoManager, DiagramBinding, LOCAL_ORIGIN, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
+import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
@@ -98,8 +99,17 @@ import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
+import {
+  commonStatus,
+  readStatus,
+  STATUS_KEYS,
+  writeStatus,
+  type ElementStatus,
+  type SelectionStatus,
+} from './status.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { fittedFontSize, rememberStickyColor, stickyColor } from './stickies.ts'
+import { copyLook, styleChanges, styleClipboard, TABLE_ROW_KEYS, type CopiedStyle, type StyleKind } from './styleCopy.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
 import {
   findShape,
@@ -357,6 +367,13 @@ export interface EditorState {
   hasCells: boolean
   /** The selection has a shape, so copying takes something. */
   canCopy: boolean
+  /** A single element that has a look of its own is selected: a shape, a table, a field, an index or an edge, not a group. */
+  canCopyStyle: boolean
+  /**
+   * A look is copied in the tab, and the selection has an element that is not locked to paste it into; never for a
+   * participant who may only view.
+   */
+  canPasteStyle: boolean
   /** {@link DiagramEditor.autoLayout} lays out the selection: it has two shapes, tables or groups at least. */
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
@@ -369,6 +386,11 @@ export interface EditorState {
   attribution: SelectionAttribution | null
   /** The selected stickies, or `null` when none is selected or the participant may only view. */
   stickies: SelectedStickies | null
+  /**
+   * The status of the selected elements that may have one (see {@link DiagramEditor.setStatus}), or `null` when none of
+   * them may.
+   */
+  status: SelectionStatus | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -460,6 +482,18 @@ export interface DiagramEditor {
   paste(at?: Point, text?: string, html?: string): void
   /** Adds a shifted copy of what {@link copy} would copy, without changing the clipboard. */
   duplicate(): void
+  /**
+   * Keeps the look of the single selected element in the tab (see {@link styleClipboard}): its fill, line and text, as
+   * far as it has them. Changes neither the board nor the clipboards; a group has no look of its own.
+   */
+  copyStyle(): void
+  /**
+   * Gives the selected elements the copied look, as one undo step: only the parts that both the copied element and each
+   * of them have, the keys the copied one lacks back to their defaults (see {@link styleChanges}). A table gets it as a
+   * shape, and its fields its font and text size; a group gives it to its shapes and edges. Locked elements stay as
+   * they are.
+   */
+  pasteStyle(): void
   /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
   insertCells(cells: CellData[]): void
   /**
@@ -497,14 +531,26 @@ export interface DiagramEditor {
    * unlocks them together with the groups and tables whose locks hold them. One undo step.
    */
   setLocked(locked: boolean): void
+  /**
+   * Sets the status of the selected shapes, tables and groups, a field or an index for its table, in the name of the
+   * participant at this moment, or with `null` takes it off, as one undo step; edges get none, and locked elements get it
+   * too. Elements that have the status already keep it, with who set it and when. Returns the ids of the elements whose
+   * status changed, in the order of the selection; a read-only editor changes none.
+   */
+  setStatus(status: ElementStatus | null): string[]
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
   /** Gives the keyboard to the canvas, so that its shortcuts work, unless a label is being edited. */
   focus(): void
   /**
-   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%; `null` when there
-   * is nothing to draw.
+   * Draws the page for the theme of the app: on the dark canvas black lines and text that lie on the canvas are shown
+   * light. Only the canvas of this participant changes; the document and images of the page do not.
+   */
+  setTheme(theme: CanvasTheme): void
+  /**
+   * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%, in the colors of the
+   * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
   exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
@@ -693,9 +739,10 @@ const FONT_STYLE_BITS: Record<FontStyleFlag, number> = { bold: 1, italic: 2, und
 export const EDITOR_PROPERTY = '__codrawEditor'
 
 /**
- * A key the canvas responds to, in the notation of shortcuts: `Mod` is Ctrl, or Cmd on macOS; then `Shift`; then a
- * letter, `Delete`, `Backspace`, `F2` or an arrow. `collaboration` keys turn on a tool of working on a board with others,
- * which a canvas without them does not bind (see {@link DiagramEditorOptions.collaboration}).
+ * A key the canvas responds to, in the notation of shortcuts: `Mod` is Ctrl, or Cmd on macOS; then `Alt` (with `Mod`
+ * and a letter only) or `Shift`; then a letter, `Delete`, `Backspace`, `F2` or an arrow. `collaboration` keys turn on a
+ * tool of working on a board with others, which a canvas without them does not bind (see
+ * {@link DiagramEditorOptions.collaboration}).
  */
 export type KeyBinding = {
   keys: string
@@ -744,6 +791,9 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Mod+Shift+Z', editing: true, run: (editor) => editor.redo() },
   { keys: 'Mod+Y', editing: true, run: (editor) => editor.redo() },
   { keys: 'Mod+D', editing: true, run: (editor) => editor.duplicate() },
+  // As «Копировать», copying a look changes nothing: a participant who may only view pastes it on a board of their own.
+  { keys: 'Mod+Alt+C', editing: false, run: (editor) => editor.copyStyle() },
+  { keys: 'Mod+Alt+V', editing: true, run: (editor) => editor.pasteStyle() },
   { keys: 'F2', editing: true, run: (editor) => editor.editLabel() },
   { keys: 'N', editing: true, run: (editor) => editor.addSticky() },
   { keys: 'Mod+B', editing: true, run: (editor) => editor.toggleFontStyle('bold') },
@@ -762,18 +812,41 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   { keys: 'Shift+ArrowDown', editing: true, run: nudge(0, 1, true) },
 ]
 
-/** Binds a key of {@link KEY_BINDINGS} in the key handler of maxGraph to the editor that `editor` returns. */
-function bindKey(keyHandler: KeyHandler, { keys, run }: KeyBinding, editor: () => DiagramEditor) {
+/**
+ * Binds a key of {@link KEY_BINDINGS} in the key handler of maxGraph to the editor that `editor` returns; a key with
+ * Alt goes to `modAltKeys` by its letter in lower case (see {@link bindModAltKeys}).
+ */
+function bindKey(
+  keyHandler: KeyHandler,
+  { keys, run }: KeyBinding,
+  editor: () => DiagramEditor,
+  modAltKeys: Map<string, () => void>,
+) {
   const parts = keys.split('+')
   const key = parts.at(-1)!
   const code = KEY_CODES[key] ?? key.charCodeAt(0)
   const action = () => run(editor())
   const mod = parts.includes('Mod')
   const shift = parts.includes('Shift')
-  if (mod && shift) keyHandler.bindControlShiftKey(code, action)
+  if (parts.includes('Alt')) modAltKeys.set(key.toLowerCase(), action)
+  else if (mod && shift) keyHandler.bindControlShiftKey(code, action)
   else if (mod) keyHandler.bindControlKey(code, action)
   else if (shift) keyHandler.bindShiftKey(code, action)
   else keyHandler.bindKey(code, action)
+}
+
+/**
+ * The key handler of maxGraph reads no keys with Alt; with `Mod` and without Shift, it finds them in `modAltKeys` by the
+ * Latin letter of the key, so that they work in any layout and with Option on macOS, where the key types `ç` for C.
+ * The handler consumes the key, so the browser neither copies or pastes nor does a shortcut of its own.
+ */
+function bindModAltKeys(keyHandler: KeyHandler, modAltKeys: Map<string, () => void>) {
+  const getFunction = keyHandler.getFunction.bind(keyHandler)
+  keyHandler.getFunction = (event) => {
+    if (!event.altKey) return getFunction(event)
+    if (!keyHandler.isControlDown(event) || event.shiftKey) return null
+    return modAltKeys.get(latinLetter(event) ?? '') ?? null
+  }
 }
 
 /** A tool of the canvas that takes the main button from maxGraph: the laser pointer or the comment tool. */
@@ -834,6 +907,8 @@ export interface DiagramEditorOptions {
    * pointer and the comment tool. `true` by default; a draft of a proposal of changes has neither.
    */
   collaboration?: boolean
+  /** The theme of the canvas at first; see {@link DiagramEditor.setTheme}. Light by default, as images of pages are. */
+  theme?: CanvasTheme
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -851,6 +926,7 @@ const CHANGING_COMMANDS = [
   'cut',
   'paste',
   'duplicate',
+  'pasteStyle',
   'insertCells',
   'restoreCells',
   'moveSelection',
@@ -894,6 +970,7 @@ export function createDiagramEditor(
     participantName,
     participantId,
     collaboration = true,
+    theme: initialTheme = 'light',
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -917,6 +994,9 @@ export function createDiagramEditor(
   configureStyles(graph)
   configureTableFields(graph)
   configureTextWrap(graph)
+  let theme = initialTheme
+  // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
   const unwatchLocks = configureLocks(graph)
@@ -1182,6 +1262,20 @@ export function createDiagramEditor(
     const attribution = readAttribution(selectedCellMap())
     return attribution && { ...attribution, mine: isMine(attribution) }
   }
+  /**
+   * The elements whose status {@link DiagramEditor.setStatus} sets: the selected shapes, tables and groups and the tables
+   * of selected fields and indexes, each once; not edges and labels of edges.
+   */
+  const statusTargets = (): Cell[] => [
+    ...new Set(
+      graph.getSelectionCells().flatMap((cell) => {
+        const target = lockTarget(cell)
+        return target.isVertex() && !target.getParent()?.isEdge() ? [target] : []
+      }),
+    ),
+  ]
+  const selectionStatus = (): SelectionStatus | null =>
+    commonStatus(statusTargets().map((cell) => readStatus(cells.get(cell.getId() ?? ''))?.status ?? null))
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1320,15 +1414,69 @@ export function createDiagramEditor(
     model.batchUpdate(() => {
       // A size set by hand replaces the size that fits the text.
       setStyleValue(cells, TEXT_FIT_KEY, undefined)
-      for (const cell of cells) {
-        const size = sizeOf(cell)
-        setStyleValue([cell], 'fontSize', size)
-        if (isTable(cell)) setStyleValue([cell], 'startSize', tableHeaderHeight(size))
-        else if (isTable(cell.getParent())) setHeight(cell, tableFieldHeight(size))
-      }
+      for (const cell of cells) writeFontSize(cell, sizeOf(cell))
       fitAutoWidth(cells)
     })
   }
+  /** Sets the text size of a cell; the header of a table and a field get the height that fits it. Inside a change. */
+  const writeFontSize = (cell: Cell, size: number) => {
+    setStyleValue([cell], 'fontSize', size)
+    if (isTable(cell)) setStyleValue([cell], 'startSize', tableHeaderHeight(size))
+    else if (isTable(cell.getParent())) setHeight(cell, tableFieldHeight(size))
+  }
+
+  /**
+   * What a cell is as to its look (see {@link StyleKind}), or `null` for a group: a container without a fill and a line,
+   * which a fill or a line would make a container that cannot be ungrouped. Fields, indexes and the labels of edges are
+   * labels, and so are shapes without a fill and a line, e.g. «Текст».
+   */
+  const styleKindOf = (cell: Cell): StyleKind | null => {
+    if (cell.isEdge()) return 'edge'
+    if (isGroup(cell)) return null
+    const parent = cell.getParent()
+    if (isTable(parent) || parent?.isEdge()) return 'label'
+    return colorOf(cell, 'fill') === 'none' && colorOf(cell, 'stroke') === 'none' ? 'label' : 'shape'
+  }
+  /** The style of a cell with its text size as drawn: the defaults of shapes and edges differ, 13 and 11. */
+  const lookOf = (cell: Cell): Record<string, unknown> => ({ ...cell.getStyle(), fontSize: fontSizeOf(cell) })
+  /** The single selected cell whose look can be copied. */
+  const styleSource = (): Cell | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    return cell && styleKindOf(cell) ? cell : null
+  }
+  /**
+   * The cells that a pasted look goes to, with the keys they take at most: the selected cells, the shapes and edges of
+   * selected groups in place of the groups, and the fields and indexes of selected tables, which take the font and the
+   * text size of their table unless they are selected themselves. Locked ones too.
+   */
+  const styleTargets = (): Map<Cell, readonly string[] | undefined> => {
+    const targets = new Map<Cell, readonly string[] | undefined>()
+    const add = (cell: Cell) => {
+      if (isGroup(cell)) {
+        cell.getChildren().forEach(add)
+        return
+      }
+      targets.set(cell, undefined)
+      if (!isTable(cell)) return
+      for (const row of cell.getChildren()) if (!targets.has(row)) targets.set(row, TABLE_ROW_KEYS)
+    }
+    graph.getSelectionCells().forEach(add)
+    return targets
+  }
+  /** The changes of the style of each cell that pasting `copied` changes; locked cells stay as they are. */
+  const pastedStyles = (copied: CopiedStyle): Map<Cell, Record<string, StyleValue | undefined>> => {
+    const changes = new Map<Cell, Record<string, StyleValue | undefined>>()
+    for (const [cell, only] of styleTargets()) {
+      const kind = styleKindOf(cell)
+      if (!kind || !isUnlocked(cell)) continue
+      const keys = styleChanges(copied, lookOf(cell), kind, only)
+      if (Object.keys(keys).length > 0) changes.set(cell, keys)
+    }
+    return changes
+  }
+  /** A look is copied, and the selection has a cell that is not locked to paste it into. */
+  const canPasteStyle = () =>
+    styleClipboard.read() !== null && [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
 
   // The label of a shape with auto width changes inside this event, so the new width is a part of the same change; a
   // field or a table also changes the references that the fields of other tables show.
@@ -1438,12 +1586,15 @@ export function createDiagramEditor(
       canUngroup: !readOnly && ungroupableCells().length > 0,
       hasCells: graph.getDefaultParent().getChildCount() > 0,
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex()),
+      canCopyStyle: styleSource() !== null,
+      canPasteStyle: !readOnly && canPasteStyle(),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser: tool === 'laser',
       commentTool: tool === 'comment',
       lock: selectionLock(),
       attribution: selectionAttribution(),
       stickies: selectionStickies(),
+      status: selectionStatus(),
     }
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -1479,6 +1630,14 @@ export function createDiagramEditor(
       (event.keysChanged.has(TEXT_AUTHOR_KEY) || event.keysChanged.has(TEXT_AUTHOR_NAME_KEY))
     if (events.some(changed)) notifyView()
   }
+  // Statuses are not in the model either: the status of the selection follows the document when another participant, the
+  // undo of this one or a merged proposal changes it.
+  const handleStatuses = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
+    const changed = (event: Y.YEvent<Y.AbstractType<unknown>>) =>
+      event instanceof Y.YMapEvent && event.target !== cells && STATUS_KEYS.some((key) => event.keysChanged.has(key))
+    if (!graph.isSelectionEmpty() && events.some(changed)) notify()
+  }
+  cells.observeDeep(handleStatuses)
   // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
   // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
   // handles of edges in English. The single selected element shows who changed it under the canvas already.
@@ -1547,12 +1706,14 @@ export function createDiagramEditor(
         : keyHandler.normalKeys
     return keys[latinKeyCode(event)] ?? null
   }
+  const modAltKeys = new Map<string, () => void>()
   for (const binding of KEY_BINDINGS) {
     // The editor is made below; the keys reach it once it is.
     if ((!readOnly || !binding.editing) && (collaboration || !binding.collaboration)) {
-      bindKey(keyHandler, binding, () => editor)
+      bindKey(keyHandler, binding, () => editor, modAltKeys)
     }
   }
+  bindModAltKeys(keyHandler, modAltKeys)
 
   // The browser fires clipboard events at the focused element, or at the body when nothing has the focus; maxGraph
   // takes keys from both. While a label is edited, the browser copies and pastes its text.
@@ -2162,6 +2323,35 @@ export function createDiagramEditor(
       const cells = cellsToCopy()
       if (cells.length > 0) insertCopies(cells, PASTE_OFFSET, PASTE_OFFSET)
     },
+    copyStyle() {
+      const cell = styleSource()
+      if (!cell) return
+      styleClipboard.put(copyLook(lookOf(cell), styleKindOf(cell)!))
+      notify()
+    },
+    pasteStyle() {
+      const copied = styleClipboard.read()
+      const changes = copied ? pastedStyles(copied) : null
+      if (!changes || changes.size === 0) return
+      graph.stopEditing(false)
+      // One change: one undo step, and one transaction that the other participants get.
+      model.batchUpdate(() => {
+        for (const [cell, keys] of changes) {
+          const { fontSize, ...rest } = keys
+          if (Object.keys(rest).length > 0) {
+            const style = cell.getClonedStyle() as Record<string, unknown>
+            for (const [key, value] of Object.entries(rest)) {
+              if (value === undefined) delete style[key]
+              else style[key] = value
+            }
+            model.setStyle(cell, style as CellStyle)
+          }
+          // The size of the text sets the height of the header and the fields of a table.
+          if (typeof fontSize === 'number') writeFontSize(cell, fontSize)
+        }
+        fitAutoWidth([...changes.keys()])
+      })
+    },
     insertCells(data) {
       const cells = dataToCells(data)
       if (cells.length === 0) return
@@ -2420,6 +2610,23 @@ export function createDiagramEditor(
         setStyleValue(targets, LOCKED_BY_KEY, locked && participantName ? participantName : undefined)
       })
     },
+    setStatus(status) {
+      if (readOnly) return []
+      const targets = statusTargets()
+      const changed: string[] = []
+      if (targets.length === 0) return changed
+      // One transaction: one undo step, which brings back the statuses and the marks of who set them.
+      document.transact(() => {
+        const at = Date.now()
+        for (const cell of targets) {
+          const id = cell.getId()
+          const entry = id ? cells.get(id) : undefined
+          if (id && entry && writeStatus(entry, status, author, at)) changed.push(id)
+        }
+      }, LOCAL_ORIGIN)
+      if (changed.length > 0) notify()
+      return changed
+    },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
       if (!edge?.isEdge() || !isUnlocked(edge)) return
@@ -2459,6 +2666,11 @@ export function createDiagramEditor(
       if (cell && graph.isCellEditable(cell)) graph.startEditingAtCell(cell)
     },
     deleteSelection: removeSelection,
+    setTheme(next) {
+      if (next === theme) return
+      theme = next
+      restyle(graph)
+    },
     exportSvg({ selectionOnly = false, ...options } = {}) {
       const copied = selectionOnly ? new Set(cellsToCopy()) : null
       // In the order of the page, so that what lies on top on the canvas lies on top in the image.
@@ -2467,8 +2679,22 @@ export function createDiagramEditor(
         .getChildren()
         .filter((cell) => !copied || copied.has(cell))
       if (copied && cells.length === 0) return null
-      const image = renderSvg(graph, cells, options)
-      return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+      // participant never sees.
+      const shown = theme
+      if (shown !== 'light') {
+        theme = 'light'
+        restyle(graph)
+      }
+      try {
+        const image = renderSvg(graph, cells, options)
+        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+      } finally {
+        if (shown !== 'light') {
+          theme = shown
+          restyle(graph)
+        }
+      }
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -2735,6 +2961,7 @@ export function createDiagramEditor(
       model.removeListener(notify)
       cells.unobserveDeep(handleAttribution)
       cells.unobserveDeep(handleTextAuthors)
+      cells.unobserveDeep(handleStatuses)
       layoutManager.destroy()
       listeners.clear()
       pointerListeners.clear()
@@ -3199,6 +3426,36 @@ function configureTextWrap(graph: Graph) {
       ? wrapLabel(label, graph.getCellStyle(cell), cell.getGeometry()!.width)
       : label
   }
+}
+
+/**
+ * Draws the page for the theme of the canvas that `theme` tells: on the dark canvas the black lines and text that lie on
+ * the canvas are drawn light, see {@link darkCanvasStyle}. Only the drawing changes: the document, the colors that the
+ * toolbar shows (the style of the cell with the defaults of the stylesheet) and images of the page keep the colors of the
+ * diagram.
+ */
+function configureCanvasTheme(graph: Graph, theme: () => CanvasTheme) {
+  const getCellStyle = graph.getCellStyle.bind(graph)
+  const view = graph.getView()
+  /** No shape that holds the cell, e.g. a table, fills the area under it. */
+  const onCanvas = (cell: Cell) => {
+    for (let parent = cell.getParent(); parent?.isVertex(); parent = parent.getParent()) {
+      if (coversChildren(view.getState(parent)?.style ?? getCellStyle(parent))) return false
+    }
+    return true
+  }
+  graph.getCellStyle = (cell) => {
+    const style = getCellStyle(cell)
+    return theme() === 'dark' ? darkCanvasStyle(style, cell.isEdge(), onCanvas(cell)) : style
+  }
+}
+
+/** Draws every cell of the page again with its style computed anew, e.g. for another theme of the canvas. */
+function restyle(graph: Graph) {
+  const view = graph.getView()
+  for (const state of view.getStates().values()) state.invalidStyle = true
+  view.invalidate()
+  view.validate()
 }
 
 function configureStyles(graph: Graph) {
