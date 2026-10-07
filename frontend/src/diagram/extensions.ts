@@ -268,6 +268,149 @@ class NoteShape extends Shape {
   }
 }
 
+/** `codraw.triangle`: an upright triangle. */
+class TriangleShape extends ActorShape {
+  override redrawPath(c: AbstractCanvas2D, _x: number, _y: number, w: number, h: number) {
+    c.moveTo(w / 2, 0)
+    c.lineTo(w, h)
+    c.lineTo(0, h)
+    c.close()
+  }
+}
+
+/** `codraw.pentagon`: a regular-looking pentagon. */
+class PentagonShape extends ActorShape {
+  override redrawPath(c: AbstractCanvas2D, _x: number, _y: number, w: number, h: number) {
+    c.moveTo(w / 2, 0)
+    c.lineTo(w, h * 0.38)
+    c.lineTo(w * 0.82, h)
+    c.lineTo(w * 0.18, h)
+    c.lineTo(0, h * 0.38)
+    c.close()
+  }
+}
+
+/** `codraw.star`: a five-point star. */
+class StarShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    const cx = x + w / 2
+    const cy = y + h / 2
+    const outer = Math.min(w, h) / 2
+    const inner = outer * 0.42
+    c.begin()
+    for (let point = 0; point < 10; point++) {
+      const radius = point % 2 === 0 ? outer : inner
+      const angle = -Math.PI / 2 + (point * Math.PI) / 5
+      const px = cx + Math.cos(angle) * radius
+      const py = cy + Math.sin(angle) * radius
+      if (point === 0) c.moveTo(px, py)
+      else c.lineTo(px, py)
+    }
+    c.close()
+    c.fillAndStroke()
+  }
+}
+
+function wholeNumber(value: unknown, fallback: number): number {
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 1 ? Math.round(number) : fallback
+}
+
+function styleValue(style: unknown, key: string): unknown {
+  return style && typeof style === 'object' ? (style as Record<string, unknown>)[key] : undefined
+}
+
+/** `codraw.gridTable`: a simple rows-and-columns table. */
+class GridTableShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    const rows = wholeNumber(styleValue(this.style, 'gridRows'), 4)
+    const columns = wholeNumber(styleValue(this.style, 'gridColumns'), 3)
+    c.rect(x, y, w, h)
+    c.fillAndStroke()
+    c.begin()
+    for (let row = 1; row < rows; row++) {
+      const py = y + (h * row) / rows
+      c.moveTo(x, py)
+      c.lineTo(x + w, py)
+    }
+    for (let column = 1; column < columns; column++) {
+      const px = x + (w * column) / columns
+      c.moveTo(px, y)
+      c.lineTo(px, y + h)
+    }
+    c.stroke()
+  }
+}
+
+/** `codraw.predefinedProcess`: a flowchart subprocess with side bars. */
+class PredefinedProcessShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    const bar = Math.min(18, w / 6)
+    c.rect(x, y, w, h)
+    c.fillAndStroke()
+    c.begin()
+    c.moveTo(x + bar, y)
+    c.lineTo(x + bar, y + h)
+    c.moveTo(x + w - bar, y)
+    c.lineTo(x + w - bar, y + h)
+    c.stroke()
+  }
+}
+
+/** `codraw.bpmnEvent`: a BPMN event with a double border. */
+class BpmnEventShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    const inset = Math.min(w, h) * 0.12
+    c.ellipse(x, y, w, h)
+    c.fillAndStroke()
+    c.ellipse(x + inset, y + inset, Math.max(0, w - 2 * inset), Math.max(0, h - 2 * inset))
+    c.stroke()
+  }
+}
+
+/** `codraw.bpmnGateway`: a BPMN exclusive gateway. */
+class BpmnGatewayShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    c.begin()
+    c.moveTo(x + w / 2, y)
+    c.lineTo(x + w, y + h / 2)
+    c.lineTo(x + w / 2, y + h)
+    c.lineTo(x, y + h / 2)
+    c.close()
+    c.fillAndStroke()
+    const insetX = w * 0.32
+    const insetY = h * 0.32
+    c.begin()
+    c.moveTo(x + insetX, y + insetY)
+    c.lineTo(x + w - insetX, y + h - insetY)
+    c.moveTo(x + w - insetX, y + insetY)
+    c.lineTo(x + insetX, y + h - insetY)
+    c.stroke()
+  }
+}
+
+/** `codraw.bpmnPool`: a BPMN pool with horizontal lanes. */
+class BpmnPoolShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    if (this.style?.pointerEvents === false && (!this.fill || this.fill === 'none')) {
+      c.pointerEvents = false
+    }
+    const title = Math.min(44, Math.max(24, w * 0.14))
+    const lanes = wholeNumber(styleValue(this.style, 'lanes'), 3)
+    c.rect(x, y, w, h)
+    c.fillAndStroke()
+    c.begin()
+    c.moveTo(x + title, y)
+    c.lineTo(x + title, y + h)
+    for (let lane = 1; lane < lanes; lane++) {
+      const py = y + (h * lane) / lanes
+      c.moveTo(x + title, py)
+      c.lineTo(x + w, py)
+    }
+    c.stroke()
+  }
+}
+
 /** A dot in the line color, e.g. a status light. */
 function dot(c: AbstractCanvas2D, shape: Shape, cx: number, cy: number, r: number) {
   c.save()
@@ -518,7 +661,7 @@ const CROWS_FEET: Record<string, CrowsFoot> = {
   ERzeroToMany: { many: true, zero: true },
 }
 
-/** Shapes for system design: draw.io names where draw.io has such a shape, `codraw.*` for the others. */
+/** Shapes for the palette: draw.io names where draw.io has such a shape, `codraw.*` for the others. */
 export const SYSTEM_DESIGN_SHAPES = {
   process: ProcessShape,
   cube: CubeShape,
@@ -529,6 +672,14 @@ export const SYSTEM_DESIGN_SHAPES = {
   component: ComponentShape,
   folder: FolderShape,
   note: NoteShape,
+  'codraw.triangle': TriangleShape,
+  'codraw.pentagon': PentagonShape,
+  'codraw.star': StarShape,
+  'codraw.gridTable': GridTableShape,
+  'codraw.predefinedProcess': PredefinedProcessShape,
+  'codraw.bpmnEvent': BpmnEventShape,
+  'codraw.bpmnGateway': BpmnGatewayShape,
+  'codraw.bpmnPool': BpmnPoolShape,
   'codraw.server': ServerShape,
   'codraw.firewall': FirewallShape,
   'codraw.bucket': BucketShape,

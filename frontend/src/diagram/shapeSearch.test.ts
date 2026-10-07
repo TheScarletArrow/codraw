@@ -18,6 +18,9 @@ describe('searching shapes', () => {
     expect(labels('балансир')).toEqual(['Балансировщик нагрузки'])
     expect(labels('load balancer')).toEqual(['Балансировщик нагрузки'])
     expect(labels('c4 database')).toEqual(['Database'])
+    expect(labels('строки столбцы')).toEqual(['Сетка таблицы'])
+    expect(labels('exclusive gateway')).toEqual(['Шлюз'])
+    expect(labels('блок-схема условие')).toEqual(['Условие'])
   })
 
   it('takes upper and lower case and «ё» and «е» alike', () => {

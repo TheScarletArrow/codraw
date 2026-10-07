@@ -22,8 +22,25 @@ import {
 describe('shape presets', () => {
   it('are grouped into the sections of the palette', () => {
     expect(SHAPE_SECTIONS.map((section) => [section.title, section.shapes.map((shape) => shape.label)])).toEqual([
-      ['Основные', ['Прямоугольник', 'Скруглённый прямоугольник', 'Эллипс', 'Ромб', 'Текст', 'Стикер']],
+      [
+        'Основные',
+        [
+          'Прямоугольник',
+          'Скруглённый прямоугольник',
+          'Эллипс',
+          'Ромб',
+          'Треугольник',
+          'Шестиугольник',
+          'Пятиугольник',
+          'Звезда',
+          'Текст',
+          'Стикер',
+        ],
+      ],
       ['База данных', ['Таблица']],
+      ['Структуры', ['Сетка таблицы', 'Список']],
+      ['Блок-схемы', ['Процесс', 'Терминатор', 'Условие', 'Данные', 'Документ процесса', 'Подпроцесс']],
+      ['BPMN', ['Задача', 'Событие', 'Шлюз', 'Объект данных', 'Пул / дорожки']],
       [
         'Архитектура',
         ['Сервис', 'База данных', 'Очередь', 'Кэш', 'Пользователь', 'Внешняя система', 'Документ', 'Граница'],
@@ -56,6 +73,26 @@ describe('shape presets', () => {
   it('make a text whose width follows the text, as in draw.io', () => {
     expect(findShape('text')!.style).toMatchObject({ autosize: true })
     expect(findShape('rectangle')!.style.autosize).toBeUndefined()
+  })
+
+  it('offer geometry shapes beyond the first four basics', () => {
+    expect(findShape('triangle')!.style.shape).toBe('codraw.triangle')
+    expect(findShape('hexagon')!.style.shape).toBe('hexagon')
+    expect(findShape('pentagon')!.style.shape).toBe('codraw.pentagon')
+    expect(findShape('star')!.style.shape).toBe('codraw.star')
+  })
+
+  it('offer structured elements for tables with cells and lists', () => {
+    expect(findShape('grid-table')).toMatchObject({
+      label: 'Сетка таблицы',
+      value: 'Таблица',
+      style: { shape: 'codraw.gridTable', gridRows: 4, gridColumns: 3 },
+    })
+    expect(findShape('list')).toMatchObject({
+      label: 'Список',
+      value: '• Элемент\n• Элемент\n• Элемент',
+      style: { align: 'left', verticalAlign: 'top' },
+    })
   })
 
   it('make a table with the field «id uuid PK» under its header', () => {
@@ -99,10 +136,20 @@ describe('shape presets', () => {
     expect(findShape('uml-note')!.style).toMatchObject({ shape: 'note', fillColor: '#fff2cc' })
   })
 
+  it('caption flowchart and BPMN shapes with their names and draw them with diagram shapes', () => {
+    expect(findShape('flow-terminator')!.style).toMatchObject({ rounded: true, arcSize: 50 })
+    expect(findShape('flow-data')!.style.shape).toBe('parallelogram')
+    expect(findShape('flow-predefined-process')!.style.shape).toBe('codraw.predefinedProcess')
+    expect(findShape('bpmn-event')!.style).toMatchObject({ shape: 'codraw.bpmnEvent', verticalLabelPosition: 'bottom' })
+    expect(findShape('bpmn-gateway')!.style.shape).toBe('codraw.bpmnGateway')
+    expect(findShape('bpmn-pool')!.style).toMatchObject({ shape: 'codraw.bpmnPool', lanes: 3, pointerEvents: false })
+  })
+
   it('let clicks inside a boundary reach the shapes under it', () => {
     for (const id of ['boundary', 'c4-boundary', 'kubernetes-cluster']) {
       expect(findShape(id)!.style).toMatchObject({ fillColor: 'none', dashed: true, pointerEvents: false })
     }
+    expect(findShape('bpmn-pool')!.style).toMatchObject({ fillColor: 'none', pointerEvents: false })
   })
 })
 
@@ -147,6 +194,9 @@ describe('shape groups', () => {
     expect(SHAPE_SECTIONS.map((section) => section.group)).toEqual([
       'basic',
       'tables',
+      'elements',
+      'flowchart',
+      'bpmn',
       'system',
       'system',
       'system',
@@ -157,7 +207,7 @@ describe('shape groups', () => {
   })
 
   it('hold every shape of the palette but frames, text and stickies, in the group of its section', () => {
-    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'sticky', 'boundary', 'kubernetes-cluster', 'c4-boundary'])
+    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'sticky', 'boundary', 'bpmn-pool', 'kubernetes-cluster', 'c4-boundary'])
     for (const section of SHAPE_SECTIONS) {
       for (const shape of section.shapes) {
         expect(shapeGroup(shape.id)).toBe(UNGROUPED_SHAPES.has(shape.id) ? null : section.group)
@@ -167,7 +217,17 @@ describe('shape groups', () => {
 
   it('list the shapes of a group in the order of the palette', () => {
     expect(ids(groupShapes('tables'))).toEqual(['table'])
-    expect(ids(groupShapes('basic'))).toEqual(['rectangle', 'rounded', 'ellipse', 'rhombus'])
+    expect(ids(groupShapes('basic'))).toEqual(['rectangle', 'rounded', 'ellipse', 'rhombus', 'triangle', 'hexagon', 'pentagon', 'star'])
+    expect(ids(groupShapes('elements'))).toEqual(['grid-table', 'list'])
+    expect(ids(groupShapes('flowchart'))).toEqual([
+      'flow-process',
+      'flow-terminator',
+      'flow-decision',
+      'flow-data',
+      'flow-document',
+      'flow-predefined-process',
+    ])
+    expect(ids(groupShapes('bpmn'))).toEqual(['bpmn-task', 'bpmn-event', 'bpmn-gateway', 'bpmn-data-object'])
     const system = ids(groupShapes('system'))
     expect(system.slice(0, 3)).toEqual(['service', 'database', 'queue'])
     expect(system).toContain('load-balancer')

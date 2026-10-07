@@ -43,7 +43,11 @@ import type { ShapeId } from './shapes.ts'
 const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
   text: Type,
   sticky: StickyNotes,
+  'grid-table': Table2,
+  list: Rows3,
   table: Table2,
+  'flow-document': FileText,
+  'bpmn-data-object': FileText,
   service: Server,
   database: Database,
   queue: Rows3,
@@ -93,6 +97,39 @@ export function ShapeIcon({ shape }: { shape: ShapeId }) {
       {shape === 'rounded' && <rect x="2" y="4" width="16" height="10" rx="3" />}
       {shape === 'ellipse' && <ellipse cx="10" cy="9" rx="8" ry="5.5" />}
       {shape === 'rhombus' && <path d="M10 2 18 9 10 16 2 9Z" />}
+      {shape === 'triangle' && <path d="M10 2 18 16H2Z" />}
+      {shape === 'hexagon' && <path d="M5 3H15L19 9L15 15H5L1 9Z" />}
+      {shape === 'pentagon' && <path d="M10 2 18 8 15 16H5L2 8Z" />}
+      {shape === 'star' && <path d="M10 1.5 12.3 6.4 17.6 7.1 13.7 10.8 14.7 16 10 13.4 5.3 16 6.3 10.8 2.4 7.1 7.7 6.4Z" />}
+      {shape === 'flow-process' && <rect x="2" y="4" width="16" height="10" />}
+      {shape === 'flow-terminator' && <rect x="2" y="4" width="16" height="10" rx="5" />}
+      {shape === 'flow-decision' && <path d="M10 2 18 9 10 16 2 9Z" />}
+      {shape === 'flow-data' && <path d="M6 4H18L14 14H2Z" />}
+      {shape === 'flow-predefined-process' && (
+        <>
+          <rect x="2" y="4" width="16" height="10" />
+          <path d="M6 4V14M14 4V14" />
+        </>
+      )}
+      {shape === 'bpmn-task' && <rect x="2" y="4" width="16" height="10" rx="3" />}
+      {shape === 'bpmn-event' && (
+        <>
+          <circle cx="10" cy="9" r="7" />
+          <circle cx="10" cy="9" r="4.7" />
+        </>
+      )}
+      {shape === 'bpmn-gateway' && (
+        <>
+          <path d="M10 2 18 9 10 16 2 9Z" />
+          <path d="M7.2 6.2 12.8 11.8M12.8 6.2 7.2 11.8" />
+        </>
+      )}
+      {shape === 'bpmn-pool' && (
+        <>
+          <rect x="1.5" y="3" width="17" height="12" />
+          <path d="M5.5 3V15M5.5 7H18.5M5.5 11H18.5" />
+        </>
+      )}
     </svg>
   )
 }
