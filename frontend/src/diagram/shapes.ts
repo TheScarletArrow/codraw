@@ -7,9 +7,26 @@ export type ShapeId =
   | 'rounded'
   | 'ellipse'
   | 'rhombus'
+  | 'triangle'
+  | 'hexagon'
+  | 'pentagon'
+  | 'star'
   | 'text'
   | 'sticky'
+  | 'grid-table'
+  | 'list'
   | 'table'
+  | 'flow-process'
+  | 'flow-terminator'
+  | 'flow-decision'
+  | 'flow-data'
+  | 'flow-document'
+  | 'flow-predefined-process'
+  | 'bpmn-task'
+  | 'bpmn-event'
+  | 'bpmn-gateway'
+  | 'bpmn-data-object'
+  | 'bpmn-pool'
   | 'service'
   | 'database'
   | 'queue'
@@ -63,6 +80,12 @@ export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & {
   dbVendor?: string
   /** The size of the text fits the shape; see {@link TEXT_FIT_KEY}. */
   autosizeText?: boolean | number | string
+  /** Rows of a grid-like shape. */
+  gridRows?: number | string
+  /** Columns of a grid-like shape. */
+  gridColumns?: number | string
+  /** Horizontal lanes of a lane-like shape. */
+  lanes?: number | string
 }
 
 /** A cell created inside the shape, e.g. a field of a table. It spans the width of the shape. */
@@ -83,7 +106,7 @@ export interface ShapePreset {
 }
 
 /** Notation of a shape: quick connect offers only shapes of the same notation. */
-export type ShapeGroup = 'basic' | 'tables' | 'system' | 'uml' | 'c4'
+export type ShapeGroup = 'basic' | 'elements' | 'tables' | 'flowchart' | 'bpmn' | 'system' | 'uml' | 'c4'
 
 export interface ShapeSection {
   title: string
@@ -188,6 +211,38 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         style: { shape: 'rhombus', perimeter: 'rhombusPerimeter' },
       },
       {
+        id: 'triangle',
+        label: 'Треугольник',
+        width: 110,
+        height: 90,
+        value: '',
+        style: { shape: 'codraw.triangle' },
+      },
+      {
+        id: 'hexagon',
+        label: 'Шестиугольник',
+        width: 120,
+        height: 80,
+        value: '',
+        style: { shape: 'hexagon', perimeter: 'hexagonPerimeter' },
+      },
+      {
+        id: 'pentagon',
+        label: 'Пятиугольник',
+        width: 120,
+        height: 90,
+        value: '',
+        style: { shape: 'codraw.pentagon' },
+      },
+      {
+        id: 'star',
+        label: 'Звезда',
+        width: 110,
+        height: 110,
+        value: '',
+        style: { shape: 'codraw.star' },
+      },
+      {
         id: 'text',
         label: 'Текст',
         width: 100,
@@ -227,6 +282,128 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         value: 'Таблица',
         style: { ...TABLE_STYLE, dbVendor: 'postgresql', autosize: true },
         children: [{ value: 'id uuid PK', height: TABLE_FIELD_HEIGHT, style: TABLE_FIELD_STYLE }],
+      },
+    ],
+  },
+  {
+    title: 'Структуры',
+    group: 'elements',
+    shapes: [
+      {
+        id: 'grid-table',
+        label: 'Сетка таблицы',
+        width: 240,
+        height: 150,
+        value: 'Таблица',
+        style: {
+          shape: 'codraw.gridTable',
+          gridRows: 4,
+          gridColumns: 3,
+          fontStyle: 1,
+          verticalAlign: 'top',
+          spacingTop: 8,
+        },
+      },
+      {
+        id: 'list',
+        label: 'Список',
+        width: 180,
+        height: 110,
+        value: '• Элемент\n• Элемент\n• Элемент',
+        style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
+      },
+    ],
+  },
+  {
+    title: 'Блок-схемы',
+    group: 'flowchart',
+    shapes: [
+      { id: 'flow-process', label: 'Процесс', width: 140, height: 70, value: 'Процесс', style: {} },
+      {
+        id: 'flow-terminator',
+        label: 'Терминатор',
+        width: 140,
+        height: 60,
+        value: 'Старт / стоп',
+        style: { rounded: true, arcSize: 50 },
+      },
+      {
+        id: 'flow-decision',
+        label: 'Условие',
+        width: 130,
+        height: 90,
+        value: 'Условие?',
+        style: { shape: 'rhombus', perimeter: 'rhombusPerimeter' },
+      },
+      {
+        id: 'flow-data',
+        label: 'Данные',
+        width: 140,
+        height: 70,
+        value: 'Данные',
+        style: { shape: 'parallelogram' },
+      },
+      {
+        id: 'flow-document',
+        label: 'Документ процесса',
+        width: 120,
+        height: 80,
+        value: 'Документ',
+        style: { shape: 'document' },
+      },
+      {
+        id: 'flow-predefined-process',
+        label: 'Подпроцесс',
+        width: 150,
+        height: 70,
+        value: 'Подпроцесс',
+        style: { shape: 'codraw.predefinedProcess' },
+      },
+    ],
+  },
+  {
+    title: 'BPMN',
+    group: 'bpmn',
+    shapes: [
+      {
+        id: 'bpmn-task',
+        label: 'Задача',
+        width: 150,
+        height: 80,
+        value: 'Задача',
+        style: { rounded: true, arcSize: 12 },
+      },
+      {
+        id: 'bpmn-event',
+        label: 'Событие',
+        width: 54,
+        height: 54,
+        value: 'Событие',
+        style: { shape: 'codraw.bpmnEvent', perimeter: 'ellipsePerimeter', ...captionBelow },
+      },
+      {
+        id: 'bpmn-gateway',
+        label: 'Шлюз',
+        width: 70,
+        height: 70,
+        value: 'Шлюз',
+        style: { shape: 'codraw.bpmnGateway', perimeter: 'rhombusPerimeter', ...captionBelow },
+      },
+      {
+        id: 'bpmn-data-object',
+        label: 'Объект данных',
+        width: 90,
+        height: 110,
+        value: 'Данные',
+        style: { shape: 'note', verticalLabelPosition: 'bottom', verticalAlign: 'top' },
+      },
+      {
+        id: 'bpmn-pool',
+        label: 'Пул / дорожки',
+        width: 360,
+        height: 180,
+        value: 'Пул',
+        style: { shape: 'codraw.bpmnPool', fillColor: 'none', pointerEvents: false, lanes: 3, align: 'left', spacingLeft: 8 },
       },
     ],
   },
@@ -503,6 +680,7 @@ export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>([
   'text',
   'sticky',
   'boundary',
+  'bpmn-pool',
   'kubernetes-cluster',
   'c4-boundary',
 ])
