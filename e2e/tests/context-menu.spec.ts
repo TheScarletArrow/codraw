@@ -84,6 +84,8 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'Вырезать',
     'Копировать',
     'Дублировать',
+    'Копировать стиль',
+    'Вставить стиль',
     'На передний план',
     'На задний план',
     'Закрепить',
@@ -103,7 +105,14 @@ test('a field and the empty canvas get their own menus', async ({ browser }) => 
   const box = await cellBox(page, table)
 
   await rightClick(page, { x: box.x + box.width / 2, y: box.y + 30 + 13 })
-  expect(await menuLabels(page)).toEqual(['Изменить', 'Добавить поле ниже', 'Комментировать', 'Удалить поле'])
+  expect(await menuLabels(page)).toEqual([
+    'Изменить',
+    'Добавить поле ниже',
+    'Копировать стиль',
+    'Вставить стиль',
+    'Комментировать',
+    'Удалить поле',
+  ])
   expect(await selectedIds(page)).toEqual(await fieldIds(page, table))
   await page.keyboard.press('Escape')
 
@@ -275,6 +284,8 @@ test('reversing an edge swaps its ends', async ({ browser }) => {
   expect(await menuLabels(page)).toEqual([
     'Изменить подпись',
     'Развернуть направление',
+    'Копировать стиль',
+    'Вставить стиль',
     'Закрепить',
     'Комментировать',
     'Удалить',

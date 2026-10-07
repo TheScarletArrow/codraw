@@ -45,6 +45,8 @@ describe('read-only editor', () => {
     expect(viewer.addTableField()).toBeNull()
     viewer.paste()
     viewer.duplicate()
+    viewer.copyStyle()
+    viewer.pasteStyle()
     viewer.cut()
     viewer.bringToFront()
     viewer.sendToBack()
