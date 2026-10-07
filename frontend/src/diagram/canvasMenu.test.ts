@@ -349,7 +349,7 @@ describe('shortcutLabel', () => {
     expect(labels('shape', all)).not.toContain('Ссылка…')
     // Locked, the link stays as it is; a participant who may only view follows links without the menu.
     expect(menuItems('shape', { ...linking, locked: true }).find((item) => item.command === 'link')).toMatchObject({ disabled: true })
-    expect(labels('shape', { ...linking, readOnly: true })).toEqual(['Копировать', 'Комментировать'])
+    expect(labels('shape', { ...linking, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Комментировать'])
   })
 
   it('lets a participant who may only view comment, also on a field or an edge', () => {
