@@ -95,7 +95,7 @@ export function createFakeEditor({
     const shapes = [...cells].flatMap(([id, box]) =>
       box ? [{ id, ...box, rotation: 0, ellipse: false, fill: '#ffffff', stroke: '#1f2328', header: null }] : [],
     )
-    const lines = [...edges].flatMap(([id, points]) => (points ? [{ id, points, stroke: '#1f2328' }] : []))
+    const lines = [...edges].flatMap(([id, points]) => (points ? [{ id, points }] : []))
     let bounds: Box | null = null
     for (const box of shapes) bounds = unionBox(bounds, box)
     for (const point of lines.flatMap((line) => line.points)) {

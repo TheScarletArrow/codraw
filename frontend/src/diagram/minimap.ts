@@ -18,12 +18,14 @@ export interface SketchShape extends Box {
   header: { height: number; fill: string | null } | null
 }
 
-/** An edge of a {@link PageSketch}: the points of its line as drawn, in coordinates of the page. */
+/**
+ * An edge of a {@link PageSketch}: the points of its line as drawn, in coordinates of the page. Its color is left out:
+ * a thin line is seen on a minimap of either theme only in a color of the theme.
+ */
 export interface SketchEdge {
   /** The id of its cell. */
   id: string
   points: Point[]
-  stroke: string | null
 }
 
 /**
@@ -77,7 +79,7 @@ export function sketchPage(graph: AbstractGraph): PageSketch {
   const addEdge = (state: CellState) => {
     const points = state.absolutePoints.flatMap((point) => (point ? [toPage(point.x, point.y)] : []))
     if (points.length < 2) return
-    edges.push({ id: state.cell.getId()!, points, stroke: paintColor(state.style.strokeColor) })
+    edges.push({ id: state.cell.getId()!, points })
     for (const point of points) bounds = unionBox(bounds, { ...point, width: 0, height: 0 })
   }
   const addShape = (cell: Cell, state: CellState) => {

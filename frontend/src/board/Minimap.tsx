@@ -34,7 +34,7 @@ const DOT_RADIUS = 4
 
 /** A shape without a fill and a border, e.g. a text, is a gray block. */
 const TEXT_FILL = '#d0d7de'
-/** The color of an edge without one of its own, and of a participant whose color is not one. */
+/** The color of a participant whose color is not one. */
 const DEFAULT_COLOR = '#57606a'
 
 /** Whether the minimap is expanded: as the participant left it in this browser, else unless the screen is narrow. */
@@ -220,7 +220,7 @@ function MinimapView({
       data-testid="minimap"
       aria-hidden
       viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-      className="minimap-sheet block h-32 w-48 cursor-pointer touch-none select-none max-sm:h-24 max-sm:w-36"
+      className="block h-32 w-48 cursor-pointer touch-none bg-background select-none max-sm:h-24 max-sm:w-36"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -298,23 +298,28 @@ function useSketch(editor: DiagramEditor): PageSketch {
   })
 }
 
-/** The shapes and the edges of a sketch in coordinates of the page; lines keep their width at any scale. */
+/**
+ * The shapes and the edges of a sketch in coordinates of the page; lines keep their width at any scale. Edges take the
+ * muted color of the theme, which is seen on the background of the minimap in either theme.
+ */
 const SketchPicture = memo(function SketchPicture({ sketch }: { sketch: PageSketch }) {
   return (
     <>
       {sketch.shapes.map((shape) => (
         <SketchShapeView key={shape.id} shape={shape} />
       ))}
-      {sketch.edges.map((edge) => (
-        <polyline
-          key={edge.id}
-          points={edge.points.map((point) => `${point.x},${point.y}`).join(' ')}
-          fill="none"
-          stroke={edge.stroke ?? DEFAULT_COLOR}
-          strokeWidth={0.75}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
+      <g className="text-muted-foreground">
+        {sketch.edges.map((edge) => (
+          <polyline
+            key={edge.id}
+            points={edge.points.map((point) => `${point.x},${point.y}`).join(' ')}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={0.75}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </g>
     </>
   )
 })

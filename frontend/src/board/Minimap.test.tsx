@@ -35,11 +35,20 @@ describe('Minimap', () => {
   const shown = () => fitMap({ x: 2000, y: 1500, width: 200, height: 100 }, editor.visibleArea())
 
   it('shows the page with the frame of the visible area in the bottom right corner of the canvas', () => {
+    editor.placeEdge('edge', [
+      { x: 0, y: 0 },
+      { x: 2000, y: 1500 },
+    ])
     render(<Minimap editor={editor} />)
 
     const map = screen.getByRole('region', { name: 'Мини-карта' })
     expect(map.parentElement).toHaveClass('absolute', 'right-6', 'bottom-6')
     expect(map.querySelectorAll('g rect')).toHaveLength(1)
+    // Edges take the color of the theme, which is seen on its background.
+    const edge = map.querySelector('polyline')!
+    expect(edge).toHaveAttribute('points', '0,0 2000,1500')
+    expect(edge).toHaveAttribute('stroke', 'currentColor')
+    expect(edge.parentElement).toHaveClass('text-muted-foreground')
     const frame = screen.getByTestId('minimap-frame')
     const corner = toMap(shown(), { x: 0, y: 0 })
     expect(Number(frame.getAttribute('x'))).toBeCloseTo(corner.x)

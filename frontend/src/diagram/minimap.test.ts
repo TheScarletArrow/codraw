@@ -108,7 +108,7 @@ describe('the sketch of a page', () => {
     expect(note).toMatchObject({ fill: null, stroke: null })
   })
 
-  it('draws an edge along the points of its line, in its color', () => {
+  it('draws an edge along the points of its line', () => {
     const editor = open((builder) => {
       const a = builder.shape('rectangle', 0, 0, { value: 'a', width: 100, height: 60 })
       const b = builder.shape('rectangle', 300, 0, { value: 'b', width: 100, height: 60 })
@@ -118,7 +118,7 @@ describe('the sketch of a page', () => {
     const { edges, bounds } = editor.pageSketch()
 
     expect(edges).toHaveLength(1)
-    expect(edges[0]).toMatchObject({ id: cellOf(editor, 'ab').getId(), stroke: '#dc2626' })
+    expect(edges[0]!.id).toBe(cellOf(editor, 'ab').getId())
     const [start, end] = edges[0]!.points
     expect(start!.x).toBeCloseTo(100)
     expect(start!.y).toBeCloseTo(30)
