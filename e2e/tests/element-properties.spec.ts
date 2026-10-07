@@ -40,7 +40,7 @@ test('properties of an element: the panel from the menu, the label of C4 made of
 
   // The owner is one undo step of Алиса; the technology stays.
   await alice.locator('[data-testid=diagram-canvas]').focus()
-  await alice.keyboard.press('ControlOrMeta+z')
+  await alice.keyboard.press('Control+z')
   await expect(panel(bob).getByLabel('Владелец')).toHaveValue('')
   await expect(panel(bob).getByLabel('Технология')).toHaveValue('Go')
 

@@ -3339,6 +3339,8 @@ export function createDiagramEditor(
       })
     },
     setElementProperties(cellId, changes) {
+      // The panel of properties applies what was typed when it goes away, which may be after the editor did.
+      if (destroyed) return
       const cell = model.getCell(cellId)
       if (!cell || propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return
       const style = cell.getStyle() as Record<string, unknown>
@@ -3362,6 +3364,7 @@ export function createDiagramEditor(
       })
     },
     setEdgeProperties(cellId, changes) {
+      if (destroyed) return
       const cell = model.getCell(cellId)
       if (!cell || propertiesTarget(cell) !== 'edge' || !isUnlocked(cell)) return
       const current = edgeProperties(cell.getStyle() as Record<string, unknown>)

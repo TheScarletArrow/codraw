@@ -194,6 +194,16 @@ describe('properties of elements in the editor', () => {
     expect(getElements(doc).size).toBe(0)
   })
 
+  it('changes nothing once destroyed, as when a panel applies what was typed after the page went away', () => {
+    const { doc, editor } = open()
+    const cell = shape(editor, 'service', 'API')
+    editor.destroy()
+
+    expect(() => editor.setElementProperties(cell.getId()!, { technology: 'Go' })).not.toThrow()
+    expect(() => editor.setEdgeProperties(cell.getId()!, { technology: 'Go' })).not.toThrow()
+    expect(getElements(doc).size).toBe(0)
+  })
+
   it('keeps a change of properties out of the history of another page', () => {
     const doc = new Y.Doc()
     initializeDocument(doc)

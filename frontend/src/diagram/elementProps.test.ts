@@ -154,6 +154,12 @@ describe('labels', () => {
     expect(relabel(properties({ name: 'Кэш', technology: 'Redis' }), styleOf('cache'), 'Кэш\n[Valkey]\n:6379', false)).toBe('Кэш\n:6379')
   })
 
+  it('plain ones of an element that shows no technology keep a second line in brackets as a line of their own', () => {
+    const style = { ...styleOf('service'), [ELEMENT_KEY]: 'e1', codrawName: 'API', codrawTechnology: 'Go' }
+
+    expect(relabel(properties({ name: 'Orders', technology: 'Go' }), style, 'API\n[deprecated]', false)).toBe('Orders\n[deprecated]')
+  })
+
   it('of C4 have no lines of their own when the element becomes of a kind of C4', () => {
     expect(relabel(properties({ name: 'API', kind: 'c4-container', technology: 'Go' }), styleOf('service'), 'API\nGET /a', false)).toBe(
       'API\n[Container: Go]',

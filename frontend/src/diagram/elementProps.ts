@@ -218,8 +218,13 @@ export function composeLabel(
  */
 export function relabel(properties: ElementProperties, style: Record<string, unknown>, value: string, showTechnology: boolean): string {
   const before = labelFormat(style, elementProperties(style, value).kind)
-  // A label that was of C4 has no lines of its own.
-  const rest = before === 'plain' ? parseLabel(value, 'plain', style).rest : []
+  // A label that was of C4 has no lines of its own; the second line of an element that shows no technology is one.
+  const rest =
+    before !== 'plain'
+      ? []
+      : hasElement(style) && !showsTechnology(style, value)
+        ? labelText(value, style).split('\n').slice(1)
+        : parseLabel(value, 'plain', style).rest
   return composeLabel(properties, style, { showTechnology, rest })
 }
 
