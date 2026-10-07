@@ -15,6 +15,7 @@ import {
   type CellData,
 } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
+import { readStatus, writeStatus } from '../diagram/status.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
 import { parseDrawio } from './parse.ts'
@@ -198,6 +199,23 @@ describe('exportDrawio', () => {
     expect(xml).not.toContain('0199a000-0000-7000-8000-00000000000a')
     expect(xml).not.toContain('modified')
     expect(readAttribution(getCells(copy).get('api'))).toBeNull()
+  })
+
+  it('writes no status of the elements into a file', async () => {
+    const doc = board()
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('api'))
+      writeStatus(getCells(doc).get('api')!, 'review', { id: '0199a000-0000-7000-8000-00000000000b', name: 'Боб' }, 1)
+    })
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).not.toContain('Боб')
+    expect(xml).not.toContain('review')
+    expect(xml).not.toContain('status')
+    expect(readStatus(getCells(copy).get('api'))).toBeNull()
   })
 })
 

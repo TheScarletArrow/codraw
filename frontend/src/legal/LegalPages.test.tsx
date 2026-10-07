@@ -56,6 +56,12 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'имя и идентификатор участника, который последним изменил элемент, и время этого изменения',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'статус элемента («Черновик», «Нужно ревью», «Готово») с именем и идентификатором участника, который его поставил, и временем',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'попросил ревью элемента его доски, — с доской, комментарием, веткой, предложением или страницей и элементом',
+    )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent('Участие в досках')
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'кто какой реакцией отметил комментарий и кто назначен ответственным за ветку',
@@ -86,7 +92,7 @@ describe('legal pages', () => {
     )
     expect(retention).toHaveTextContent('Время визитов доски — пока у пользователя есть доступ к ней')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
-      'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов не видит никто, кроме самого пользователя',
+      'а кто менял её с прошлого визита участника — сам вернувшийся участник, в том числе с ролью «Просмотр»; время визитов, теги и папки не видит никто, кроме самого пользователя, — ни владелец, ни другие участники общей доски',
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'Предложения изменений. Автор предложения, его название и описание, черновик доски',
@@ -97,7 +103,16 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Предложение изменений с его черновиком видят его автор, владелец и редакторы доски',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Теги и папки. Теги, которые пользователь дал своим и общим доскам своего списка, его папки',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Для поиска досок рядом с документом доски хранится её текст',
+    )
+    expect(retention).toHaveTextContent('теги и папка общей доски — пока у пользователя есть доступ к ней')
+    expect(retention).toHaveTextContent('Текст доски для поиска — пока есть её документ')
     const copies = screen.getByRole('region', { name: 'Копии досок в браузере' })
+    expect(copies).toHaveTextContent('и выбранный порядок списка досок')
     expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')
     expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')
     expect(copies).toHaveTextContent('очисткой данных этого сайта')

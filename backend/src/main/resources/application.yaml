@@ -58,6 +58,8 @@ codraw:
   notifications:
     # A notification is deleted once it is this old, read or not.
     retention: 90d
+    # The owner of a board hears of a request to review an element at most once in this time.
+    review-request-interval: 10m
     # Every hour; "-" turns the cleanup off.
     cleanup-cron: "0 41 * * * *"
   schema-import:

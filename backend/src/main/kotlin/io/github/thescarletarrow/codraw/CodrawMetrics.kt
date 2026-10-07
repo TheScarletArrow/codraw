@@ -20,6 +20,9 @@ enum class Limit(val tag: String) {
     ACCESS_REQUESTS("access-requests"),
     PROPOSALS("proposals"),
     AUTHOR_PROPOSALS("proposals-per-author"),
+    TAGS("tags"),
+    FOLDERS("folders"),
+    REVIEW_REQUESTS("review-requests"),
     SCHEMA_IMPORTS("schema-imports"),
 }
 

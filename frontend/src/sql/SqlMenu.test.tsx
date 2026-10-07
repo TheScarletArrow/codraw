@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
+import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { downloadBlob } from '../lib/download.ts'
@@ -118,6 +119,7 @@ describe('SqlMenu', () => {
     expect(screen.getByRole('button', { name: 'Скопировать Mermaid' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Импорт SQL…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Mermaid…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт OpenAPI / AsyncAPI…' })).toBeNull()
   })
 
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
@@ -191,6 +193,26 @@ describe('SqlMenu', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('CoDraw рисует из Mermaid блок-схемы (flowchart, graph) и ER-диаграммы')
     expect(screen.getByRole('button', { name: 'Добавить на страницу' })).toBeDisabled()
+  })
+
+  it('adds a service and the models of an OpenAPI file to the right of the page, as one insertion', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт OpenAPI / AsyncAPI…' }))
+
+    await user.upload(screen.getByLabelText('Файлы OpenAPI и AsyncAPI'), new File([PETSTORE_YAML], 'petstore.yaml'))
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Сервисов: 1, эндпоинтов: 3, топиков: 0, моделей: 2, связей: 2, пропущено ссылок: 0'),
+    )
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    const shapes = cells.filter((cell) => cell.parent === '1' && cell.kind === 'vertex')
+    expect(shapes.map((cell) => cell.value)).toEqual(['Petstore\nGET /pets\nPOST /pets\nGET /pets/{petId}', 'Pet', 'Error'])
+    expect(Math.min(...shapes.map((cell) => cell.geometry!.x))).toBe(700)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('cannot add anything until the DDL has a table', async () => {

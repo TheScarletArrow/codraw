@@ -39,6 +39,10 @@ class MigrationsTest {
         private val versionAuthorsColumns = setOf("id", "board_id", "state", "reason", "created_at", "authors", "name")
         private val readsTables = reactionsTables + "board_reads"
         private val proposalsTables = readsTables + "proposals"
+        private val organizationTables = proposalsTables + setOf("board_folders", "board_tags", "board_placements")
+        private val documentColumns = setOf("board_id", "state", "updated_at", "editors")
+        private val reviewRequestNotificationColumns =
+            notificationColumns + setOf("thread_id", "proposal_id", "page_id", "cell_id")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -50,14 +54,23 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V15 create tables on an empty database and U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(15, flyway().migrate().migrationsExecuted)
+    fun `V1 to V18 create tables on an empty database and U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(17, flyway().migrate().migrationsExecuted)
+        assertEquals(organizationTables, appTables())
+        assertEquals(documentColumns + "search_text", columns("board_documents"))
+        assertEquals(reviewRequestNotificationColumns, columns("notifications"))
+
+        revert("U18__claude_relaxed_euler_o3h2ky_element_status.sql")
+        assertEquals(organizationTables, appTables())
+        assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
+
+        revert("U17__claude_relaxed_euler_o3h2ky_board_organization.sql")
         assertEquals(proposalsTables, appTables())
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
-        assertEquals(setOf("board_id", "state", "updated_at", "editors"), columns("board_documents"))
+        assertEquals(documentColumns, columns("board_documents"))
         assertEquals(setOf("user_id", "board_id", "seen_at", "previous_seen_at", "present"), columns("board_reads"))
 
         revert("U15__claude_epic_lovelace_pwi6v4_change_proposals.sql")
@@ -111,11 +124,185 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(15, flyway().migrate().migrationsExecuted)
-        assertEquals(proposalsTables, appTables())
+        assertEquals(17, flyway().migrate().migrationsExecuted)
+        assertEquals(organizationTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
-        assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
+        assertEquals(reviewRequestNotificationColumns, columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
+    }
+
+    @Test
+    fun `V17 keeps folders and tags of their user with short trimmed names once regardless of case, which go with their user, board and folder`() {
+        flyway("15").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now()),
+                   ('0199a000-0000-7000-8000-000000000002', 'Другая', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO board_documents (board_id, state, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', '\x01', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("17").migrate().migrationsExecuted)
+        // Documents stored before have no text for search until collab sends it.
+        assertEquals(
+            1,
+            jdbcClient.sql("SELECT count(*) FROM board_documents WHERE search_text IS NULL").query(Int::class.java).single(),
+        )
+        jdbcClient.sql(
+            """
+            INSERT INTO board_folders (id, user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-0000000000a1', 'Работа', now()),
+                   ('0199a000-0000-7000-8000-000000000102', '0199a000-0000-7000-8000-0000000000b1', 'Работа', now()),
+                   ('0199a000-0000-7000-8000-000000000103', '0199a000-0000-7000-8000-0000000000a1', 'Архив', now());
+            INSERT INTO board_tags (user_id, board_id, tag)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000001', 'API'),
+                   ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000002', 'API'),
+                   ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000001', 'api');
+            INSERT INTO board_placements (user_id, board_id, folder_id)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000101'),
+                   ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000002',
+                    '0199a000-0000-7000-8000-000000000103'),
+                   ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-000000000102')
+            """,
+        ).update()
+        val folder = { name: String ->
+            jdbcClient.sql(
+                "INSERT INTO board_folders (user_id, name, created_at) VALUES ('0199a000-0000-7000-8000-0000000000a1', :name, now())",
+            ).param("name", name).update()
+        }
+        val tag = { tag: String ->
+            jdbcClient.sql(
+                """
+                INSERT INTO board_tags (user_id, board_id, tag)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000001', :tag)
+                """,
+            ).param("tag", tag).update()
+        }
+        for (wrong in listOf(
+            { folder("работа") },
+            { folder("") },
+            { folder(" Идеи") },
+            { folder("я".repeat(61)) },
+            { tag("api") },
+            { tag("") },
+            { tag("Тег ") },
+            { tag("я".repeat(31)) },
+            // A board is in one folder of a user, and only in a folder of the same user.
+            {
+                jdbcClient.sql(
+                    """
+                    INSERT INTO board_placements (user_id, board_id, folder_id)
+                    VALUES ('0199a000-0000-7000-8000-0000000000a1', '0199a000-0000-7000-8000-000000000001',
+                            '0199a000-0000-7000-8000-000000000103')
+                    """,
+                ).update()
+            },
+            {
+                jdbcClient.sql(
+                    """
+                    INSERT INTO board_placements (user_id, board_id, folder_id)
+                    VALUES ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000002',
+                            '0199a000-0000-7000-8000-000000000101')
+                    """,
+                ).update()
+            },
+            { jdbcClient.sql("UPDATE board_documents SET search_text = :text").param("text", "я".repeat(100_001)).update() },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        folder("я".repeat(60))
+        tag("я".repeat(30))
+        jdbcClient.sql("UPDATE board_documents SET search_text = :text").param("text", "я".repeat(100_000)).update()
+
+        // Deleting a folder takes its boards out of it.
+        jdbcClient.sql("DELETE FROM board_folders WHERE id = '0199a000-0000-7000-8000-000000000101'").update()
+        assertEquals(2, count("board_placements"))
+        assertEquals(2, count("boards"))
+        jdbcClient.sql("DELETE FROM boards WHERE id = '0199a000-0000-7000-8000-000000000002'").update()
+        assertEquals(1, count("board_placements"))
+        assertEquals(3, count("board_tags"))
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(0, count("board_placements"))
+        assertEquals(2, count("board_tags"))
+        assertEquals(2, count("board_folders"))
+
+        revert("U17__claude_relaxed_euler_o3h2ky_board_organization.sql")
+        assertEquals(proposalsTables, appTables())
+        assertEquals(documentColumns, columns("board_documents"))
+        assertEquals(1, flyway("17").migrate().migrationsExecuted)
+    }
+
+    @Test
+    fun `V18 keeps notifications about reviews with a page and an element, and the other kinds without them`() {
+        flyway("17").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO notifications (user_id, kind, board_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000b1', 'OWNERSHIP', '0199a000-0000-7000-8000-000000000001',
+                    '0199a000-0000-7000-8000-0000000000a1', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway().migrate().migrationsExecuted)
+        val notification = { kind: String, page: String?, cell: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notifications (user_id, kind, board_id, page_id, cell_id, actor_id, created_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000a1', :kind, '0199a000-0000-7000-8000-000000000001', :page,
+                        :cell, '0199a000-0000-7000-8000-0000000000b1', now())
+                """,
+            ).param("kind", kind).param("page", page).param("cell", cell).update()
+        }
+        notification("REVIEW_REQUEST", "page-1", "orders")
+        // Many requests about one element are kept: how often the owner hears of it is up to the backend.
+        notification("REVIEW_REQUEST", "page-1", "orders")
+        notification("REVIEW_REQUEST", "p".repeat(100), "c".repeat(100))
+        for (wrong in listOf(
+            { notification("REVIEW_REQUEST", null, "orders") },
+            { notification("REVIEW_REQUEST", "page-1", null) },
+            { notification("REVIEW_REQUEST", "", "orders") },
+            { notification("REVIEW_REQUEST", "page-1", "c".repeat(101)) },
+            { notification("OWNERSHIP", "page-1", "orders") },
+            { notification("OWNERSHIP", null, "orders") },
+            { notification("REVIEWED", "page-1", "orders") },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        assertEquals(4, count("notifications"))
+
+        // The requester goes: the notification stays without them, like any other.
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(3, count("notifications"))
+        assertEquals(
+            0,
+            jdbcClient.sql("SELECT count(*) FROM notifications WHERE actor_id IS NOT NULL").query(Int::class.java).single(),
+        )
+
+        // The kinds of V15 stay, the requests for reviews go.
+        revert("U18__claude_relaxed_euler_o3h2ky_element_status.sql")
+        assertEquals(0, count("notifications"))
+        jdbcClient.sql(
+            """
+            INSERT INTO notifications (user_id, kind, board_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'OWNERSHIP', '0199a000-0000-7000-8000-000000000001', now())
+            """,
+        ).update()
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE notifications SET kind = 'REVIEW_REQUEST'").update()
+        }
+        assertEquals(1, flyway().migrate().migrationsExecuted)
     }
 
     @Test
@@ -239,7 +426,7 @@ class MigrationsTest {
         assertFailsWith<DataIntegrityViolationException> {
             jdbcClient.sql("UPDATE notifications SET kind = 'PROPOSAL_ACCEPTED'").update()
         }
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("15").migrate().migrationsExecuted)
     }
 
     @Test

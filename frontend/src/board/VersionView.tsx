@@ -9,6 +9,7 @@ import { ChangeHighlights } from './ChangeHighlights.tsx'
 import { ChangeList, type ChangeTarget } from './ChangeList.tsx'
 import { ghostCenter } from './changes.ts'
 import { PageTabs } from './PageTabs.tsx'
+import { StatusBadges } from './StatusBadges.tsx'
 import { useBoardDiff } from './useBoardDiff.ts'
 import { usePages } from './usePages.ts'
 
@@ -43,7 +44,7 @@ interface Revealed extends ChangeTarget {
  * Compared with the board, the canvas shows a page as the board has it now, read-only, with the changes since the
  * earlier state over it and the list of the changes beside it; a page removed since is shown as the earlier state has
  * it. Nothing is written to either document. Under the canvas, as on the board, is who changed the selected element
- * last.
+ * last, and over it the statuses of the elements of the shown state.
  */
 export function VersionView({
   version,
@@ -126,6 +127,7 @@ export function VersionView({
                 participantId={participantId}
                 onEditor={setEditor}
               />
+              <StatusBadges editor={editor} document={shown} />
               {diff && (
                 <ChangeHighlights
                   editor={editor}

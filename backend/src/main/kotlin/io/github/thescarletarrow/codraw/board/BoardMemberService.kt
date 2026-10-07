@@ -71,12 +71,12 @@ class BoardMemberService(
 
     /**
      * Takes the role of a member from the user [userId]; what the link of the [board] gives stays theirs. When it gives
-     * them nothing, the board forgets their visits.
+     * them nothing, the board forgets their visits and their tags and folder of it.
      */
     @Transactional
     fun removeMember(board: Board, userId: UUID) {
         if (!members.remove(board.boardId, userId)) throw MemberNotFoundException()
-        boards.forgetReadersWithoutAccess(board)
+        boards.forgetUsersWithoutAccess(board)
     }
 
     /** The invitations of the [board], oldest first. */
