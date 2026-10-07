@@ -125,7 +125,7 @@ describe('properties of elements in the editor', () => {
     const cell = shape(editor, 'c4-container', 'API\n[Container: Java]')
     editor.setElementProperties(cell.getId()!, { owner: 'Заказы' })
 
-    editor.graph.labelChanged(cell, 'Orders\n[Container:Kotlin]\nЗаказы и оплата', null)
+    editor.graph.labelChanged(cell, 'Orders\n[Container:Kotlin]\nЗаказы и оплата', null as never)
 
     expect(cell.getValue()).toBe('Orders\n[Container: Kotlin]\nЗаказы и оплата')
     expect(elementOf(doc, cell)).toEqual({
@@ -143,7 +143,7 @@ describe('properties of elements in the editor', () => {
     const { doc, editor } = open()
     const cell = shape(editor, 'c4-container', 'API')
 
-    editor.graph.labelChanged(cell, 'Orders\n[Container:Kotlin]', null)
+    editor.graph.labelChanged(cell, 'Orders\n[Container:Kotlin]', null as never)
 
     expect(cell.getValue()).toBe('Orders\n[Container:Kotlin]')
     expect(stored(doc, cell).style).not.toHaveProperty(ELEMENT_KEY)

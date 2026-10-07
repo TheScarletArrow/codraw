@@ -48,7 +48,7 @@ export interface EdgeApiRequest {
 }
 
 /**
- * The description of the HTTP call of the selected edge, at the right of the canvas as Swagger UI shows an operation:
+ * The description of the HTTP call of the selected edge, at the right of the canvas (in `SidePanels`) as Swagger UI shows an operation:
  * shown while a single edge with a description is selected, or one whose description `request` asked to edit. Who edits
  * the board and the edge is not locked changes and removes it; everyone copies it as OpenAPI.
  */
@@ -116,7 +116,7 @@ function EdgePanel({
   return (
     <aside
       aria-label="Описание API"
-      className="pointer-events-auto absolute top-2 right-2 z-20 flex max-h-[calc(100%-1rem)] w-[400px] max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg"
+      className="pointer-events-auto flex min-h-0 w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
         <h2 className="mr-auto text-sm font-semibold">Описание API</h2>

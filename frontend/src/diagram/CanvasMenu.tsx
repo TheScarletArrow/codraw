@@ -22,10 +22,10 @@ import { useEditorState } from './useEditorState.ts'
 export type CommentTarget = { cellId: string } | { point: Point }
 
 /**
- * The items that the page does rather than the editor: those that start a thread, the window of a link and the panel of
- * the description of a call.
+ * The items that the page does rather than the editor: those that start a thread, the window of a link, the panel of
+ * the description of a call and the panel of properties.
  */
-type PageCommand = 'comment' | 'commentHere' | 'link' | 'edgeApi'
+type PageCommand = 'comment' | 'commentHere' | 'link' | 'edgeApi' | 'properties'
 
 const COMMANDS: Record<
   Exclude<MenuCommand, PageCommand | StatusCommand>,
@@ -62,20 +62,23 @@ const COMMANDS: Record<
  * element gets «Комментировать» and the empty canvas «Комментировать здесь», at the point of the click, for viewers
  * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
  * link at the point of the click. With `onEdgeApi`, a single edge gets «Описание API…», which asks the page to open the
- * description of its call for editing. The menu of locked elements says who locked them. The items of the status set it, and
- * `onStatusChange` hears of the elements whose status they changed.
+ * description of its call for editing. With `onProperties`, a single shape or edge that has properties gets «Свойства…»,
+ * for viewers too, which asks the page to show them. The menu of locked elements says who locked them. The items of the
+ * status set it, and `onStatusChange` hears of the elements whose status they changed.
  */
 export function CanvasMenu({
   editor,
   onComment,
   onLink,
   onEdgeApi,
+  onProperties,
   onStatusChange,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
   onLink?: (request: ContextMenuRequest) => void
   onEdgeApi?: (cellId: string) => void
+  onProperties?: (cellId: string) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
 }) {
   const canComment = onComment !== undefined
@@ -84,7 +87,7 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, edgeApi, status } =
+  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, edgeApi, status, properties } =
     useEditorState(editor)
   const lockId = useId()
 
@@ -92,16 +95,23 @@ export function CanvasMenu({
     () =>
       editor?.onContextMenu((next) => {
         // A participant who may only view has nothing to do with, e.g., an edge.
+        const canShowProperties = onProperties !== undefined && editor.getState().properties?.cellId === next.cellId
         if (
-          menuItems(next.target, { canPaste: false, canUndo: false, canRedo: false, readOnly: editor.readOnly, canComment })
-            .length === 0
+          menuItems(next.target, {
+            canPaste: false,
+            canUndo: false,
+            canRedo: false,
+            readOnly: editor.readOnly,
+            canComment,
+            canShowProperties,
+          }).length === 0
         ) {
           return
         }
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment],
+    [editor, canComment, onProperties],
   )
 
   if (!editor || !request) return null
@@ -121,6 +131,12 @@ export function CanvasMenu({
       // The form of the description takes the keyboard.
       focusTaken.current = true
       if (request.cellId) onEdgeApi?.(request.cellId)
+      return
+    }
+    if (command === 'properties') {
+      // The panel of properties takes the keyboard.
+      focusTaken.current = true
+      if (request.cellId) onProperties?.(request.cellId)
       return
     }
     if (isStatusCommand(command)) {
@@ -185,6 +201,7 @@ export function CanvasMenu({
             locked,
             canLink: onLink !== undefined && link !== null && link.cellId === request.cellId,
             canDescribeApi: onEdgeApi !== undefined && edgeApi !== null && edgeApi.cellId === request.cellId,
+            canShowProperties: onProperties !== undefined && properties !== null && properties.cellId === request.cellId,
             status,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined

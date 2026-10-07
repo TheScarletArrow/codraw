@@ -368,6 +368,58 @@ describe('CanvasMenu', () => {
     })
   })
 
+  describe('with properties', () => {
+    const onProperties = vi.fn()
+    const shapeProperties = {
+      target: 'shape' as const,
+      cellId: 'cell-1',
+      properties: { name: 'API', kind: null, technology: '', description: '', owner: '', tags: [] },
+      defaultKind: null,
+      format: 'plain' as const,
+      showTechnology: false,
+      element: false,
+      canChange: true,
+    }
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onProperties.mockReset()
+    })
+
+    it('asks the page to show the properties of a single shape, and leaves the keyboard to it', async () => {
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onProperties={onProperties} />)
+      act(() => editor.setState({ properties: shapeProperties }))
+      rightClick('shape')
+
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Свойства…' }))
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+      expect(onProperties).toHaveBeenCalledWith('cell-1')
+      expect(editor.focus).not.toHaveBeenCalled()
+    })
+
+    it('offers them to a participant who may only view, whose menu has nothing else for an edge', async () => {
+      editor = createFakeEditor({ readOnly: true })
+      render(<CanvasMenu editor={editor} onProperties={onProperties} />)
+      act(() =>
+        editor.setState({ properties: { target: 'edge', cellId: 'cell-1', properties: { technology: 'Kafka', interaction: 'async' }, canChange: false } }),
+      )
+      rightClick('edge')
+
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать стиль', 'Свойства…'])
+    })
+
+    it('offers no properties of a shape that has none', () => {
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onProperties={onProperties} />)
+      act(() => editor.setState({ properties: null }))
+      rightClick('shape')
+
+      expect(screen.queryByRole('menuitem', { name: 'Свойства…' })).toBeNull()
+    })
+  })
+
   describe('for a participant who may only view', () => {
     beforeEach(() => {
       document.body.innerHTML = ''

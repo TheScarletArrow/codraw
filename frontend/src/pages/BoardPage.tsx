@@ -72,6 +72,7 @@ import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
+import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
@@ -356,6 +357,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
+  // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
+  const [propertiesOpen, setPropertiesOpen] = useState(false)
+  const [propertiesRequest, setPropertiesRequest] = useState<PropertiesRequest | null>(null)
   const showThreadsOf = (cellId: string) => {
     if (!editor) return
     openComments()
@@ -511,6 +515,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
         />
         <StatusSummary document={document} onSelect={showElement} />
+        <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
         <CommentsButton
           threads={threads.data}
           open={commentsOpen}
@@ -686,10 +691,27 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}
                   {!readOnly && <StickyPanel editor={editor} />}
-                  <EdgeApiPanel editor={editor} request={apiRequest} />
+                  <SidePanels>
+                    <EdgeApiPanel editor={editor} request={apiRequest} />
+                    {propertiesOpen && (
+                      <PropertiesPanel
+                        editor={editor}
+                        document={document}
+                        request={propertiesRequest}
+                        onClose={() => {
+                          setPropertiesOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
+                  </SidePanels>
                   <CanvasMenu
                     editor={editor}
                     onEdgeApi={readOnly ? undefined : (cellId) => setApiRequest({ cellId })}
+                    onProperties={(cellId) => {
+                      setPropertiesOpen(true)
+                      setPropertiesRequest({ cellId })
+                    }}
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
