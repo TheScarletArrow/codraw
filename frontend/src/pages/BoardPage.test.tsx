@@ -1917,6 +1917,55 @@ describe('BoardPage', () => {
     })
   })
 
+  describe('links', () => {
+    const shownPage = () => screen.getByTestId('diagram-canvas').dataset.page
+
+    it('sets the link of an element in the window that its menu opens', async () => {
+      const provider = await openBoard({ 'GET /api/boards': { body: [] }, 'GET /api/boards/shared': { body: [] } })
+      act(() => provider.emitConnected())
+      let containers = ''
+      act(() => {
+        containers = addPage(provider.document, DEFAULT_PAGE_ID)
+        renamePage(provider.document, containers, 'Контейнеры')
+      })
+      const editor = canvas.editor!
+      act(() => editor.setState({ link: { cellId: 'api', link: null, canChange: true } }))
+
+      act(() => editor.rightClick({ x: 10, y: 10, point: { x: 10, y: 10 }, target: 'shape', cellId: 'api' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Ссылка…' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Ссылка' })
+      expect(within(dialog).getByRole('combobox', { name: 'Страница' })).toHaveValue(containers)
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }))
+
+      expect(editor.setLink).toHaveBeenCalledWith(`data:page/id,${containers}`)
+      expect(screen.queryByRole('dialog', { name: 'Ссылка' })).toBeNull()
+    })
+
+    it('goes to the page of a link with the badge and with Ctrl+click, a viewer too', async () => {
+      const provider = await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
+      const document = new Y.Doc()
+      initializeDocument(document)
+      const containers = addPage(document, DEFAULT_PAGE_ID)
+      act(() => {
+        Y.applyUpdate(provider.document, Y.encodeStateAsUpdate(document))
+        provider.emitSynced()
+      })
+      await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true'))
+      const editor = canvas.editor!
+      editor.placeCell('api', { x: 100, y: 50, width: 120, height: 60 })
+      act(() => editor.placeLinks([{ cellId: 'api', link: `data:page/id,${containers}` }]))
+
+      act(() => editor.rightClick({ x: 10, y: 10, point: { x: 10, y: 10 }, target: 'shape', cellId: 'api' }))
+      expect(screen.queryByRole('menuitem', { name: 'Ссылка…' })).toBeNull()
+      await userEvent.keyboard('{Escape}')
+      await userEvent.click(screen.getByRole('button', { name: 'Перейти по ссылке: Страница «Страница 2»' }))
+      await waitFor(() => expect(shownPage()).toBe(containers))
+
+      act(() => canvas.editor!.clickLink({ cellId: 'back', link: `data:page/id,${DEFAULT_PAGE_ID}` }))
+      await waitFor(() => expect(shownPage()).toBe(DEFAULT_PAGE_ID))
+    })
+  })
+
   describe('comments', () => {
     const threadsUrl = `${boardUrl}/threads`
     const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread => ({

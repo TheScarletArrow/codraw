@@ -22,6 +22,7 @@ export type MenuCommand =
   | 'delete'
   | 'comment'
   | 'commentHere'
+  | 'link'
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
 export type Shortcut =
@@ -62,6 +63,8 @@ export interface MenuAvailability {
   canUnlock?: boolean
   /** Every selected element is locked: the items that would change them are disabled. */
   locked?: boolean
+  /** The page sets links, and the single selected element may have one: «Ссылка…» is offered. */
+  canLink?: boolean
 }
 
 /** Items of a participant who may only view the board. */
@@ -78,6 +81,7 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'reverseEdge',
   'group',
   'ungroup',
+  'link',
   'delete',
 ])
 
@@ -95,6 +99,7 @@ const ORDER: Entry[] = [
 const DELETE: Entry = ['delete', 'Удалить', 'Delete']
 const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
 const COMMENT: Entry[] = [['comment', 'Комментировать']]
+const LINK: Entry[] = [['link', 'Ссылка…']]
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -113,12 +118,13 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, ORDER, LOCK, COMMENT, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, ORDER, LOCK, LINK, COMMENT, [DELETE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     CLIPBOARD,
     ORDER,
     LOCK,
+    LINK,
     COMMENT,
     [DELETE],
   ],
@@ -138,15 +144,15 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], LOCK, COMMENT, [DELETE]],
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, LOCK, COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], LOCK, LINK, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, ORDER, LOCK, LINK, COMMENT, [DELETE]],
   selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, ORDER, LOCK, [DELETE]],
 }
 
 /**
  * Items of the context menu for a target; the ones that cannot be done now are disabled, and so are those that would
  * change locked elements. A participant who may only view gets only copying, selecting and commenting, so their menu may
- * be empty.
+ * be empty: following a link needs no menu.
  */
 export function menuItems(
   target: MenuTarget,
@@ -160,6 +166,7 @@ export function menuItems(
     canLock = false,
     canUnlock = false,
     locked = false,
+    canLink = false,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
@@ -173,6 +180,7 @@ export function menuItems(
     commentHere: canComment,
     lock: canLock,
     unlock: canUnlock,
+    link: canLink,
   }
   const groups = MENUS[target]
     .map((group) =>

@@ -205,6 +205,45 @@ describe('CanvasMenu', () => {
     })
   })
 
+  describe('with links', () => {
+    const onLink = vi.fn()
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onLink.mockReset()
+      editor = createFakeEditor()
+      render(<CanvasMenu editor={editor} onLink={onLink} />)
+    })
+
+    it('opens the window of the link of a single element, and leaves the keyboard to it', async () => {
+      act(() => editor.setState({ link: { cellId: 'cell-1', link: null, canChange: true } }))
+      rightClick('shape')
+
+      expect(items().map((item) => item.getAttribute('aria-label')).slice(-2)).toEqual(['Ссылка…', 'Удалить'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Ссылка…' }))
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+      expect(onLink).toHaveBeenCalledWith({ x: 100, y: 50, point: { x: 300, y: 200 }, target: 'shape', cellId: 'cell-1' })
+      expect(screen.queryByRole('menu')).toBeNull()
+      expect(editor.focus).not.toHaveBeenCalled()
+    })
+
+    it('offers no link for an element that cannot have one, and a disabled one for a locked element', () => {
+      act(() => editor.setState({ link: null }))
+      rightClick('field')
+      expect(screen.queryByRole('menuitem', { name: 'Ссылка…' })).toBeNull()
+
+      act(() =>
+        editor.setState({
+          link: { cellId: 'cell-1', link: 'https://example.com', canChange: false },
+          lock: { all: true, canLock: false, locks: [{ cellId: 'cell-1', lockedBy: 'Алиса' }] },
+        }),
+      )
+      rightClick('shape')
+      expect(screen.getByRole('menuitem', { name: 'Ссылка…' })).toBeDisabled()
+    })
+  })
+
   describe('for a participant who may only view', () => {
     beforeEach(() => {
       document.body.innerHTML = ''

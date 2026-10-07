@@ -74,7 +74,8 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   const canSavePdf = allPages ? boardHasCells : hasCells
   const clipboardSupported = canCopyImages()
 
-  const exportImage = () => editor?.exportSvg({ selectionOnly: onlySelected, transparent }) ?? null
+  // SVG and PDF open the links of elements to addresses and boards; a PNG has nothing to click.
+  const exportImage = (links: boolean) => editor?.exportSvg({ selectionOnly: onlySelected, transparent, links }) ?? null
   /** The SVG with the diagram of what it shows, so that CoDraw and draw.io open it for editing. */
   const editableSvg = (image: ExportedImage) => {
     const diagram = doc && editor && exportDrawioPage(doc, editor.pageId, image.cellIds ?? undefined)
@@ -82,7 +83,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   }
 
   const save = async (format: ImageFormat) => {
-    const image = exportImage()
+    const image = exportImage(format !== 'png')
     if (!image) return
     setBusy(true)
     setMessage(null)
@@ -99,8 +100,8 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
 
   /** The images of the pages of the PDF: of the pages of the board with objects, or of the current page. */
   const pdfImages = async (): Promise<ExportedImage[]> => {
-    if (allPages && doc && editor) return boardImages(doc, editor, { transparent })
-    const image = exportImage()
+    if (allPages && doc && editor) return boardImages(doc, editor, { transparent, links: true })
+    const image = exportImage(true)
     return image ? [image] : []
   }
 
@@ -122,7 +123,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   }
 
   const copy = () => {
-    const image = exportImage()
+    const image = exportImage(false)
     if (!image) return
     setBusy(true)
     setMessage(null)

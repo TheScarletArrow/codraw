@@ -44,7 +44,7 @@ import { PageHistories } from '../diagram/binding.ts'
 import type { Author } from '../diagram/attribution.ts'
 import { CanvasMenu, type CommentTarget } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
-import type { DiagramEditor } from '../diagram/editor.ts'
+import type { ContextMenuRequest, DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
@@ -60,6 +60,8 @@ import { SqlMenu } from '../sql/SqlMenu.tsx'
 import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
+import { LinkDialog } from '../links/LinkDialog.tsx'
+import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
 import { draftPath, PROPOSALS_POLL_INTERVAL, proposalsKey } from '../proposals/proposals.ts'
 import { ProposalReview } from '../proposals/ProposalReview.tsx'
@@ -291,6 +293,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   )
   // A click with the comment tool of the canvas starts a thread at its point.
   useEffect(() => editor?.onCommentPoint((point) => commentOn({ point })), [editor, commentOn])
+  // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
+  const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   const showThreadsOf = (cellId: string) => {
     if (!editor) return
     openComments()
@@ -591,9 +595,24 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onChanged={notifyCommentsChanged}
                   />
                   <LockBadges editor={editor} />
+                  <ShapeLinks editor={editor} pages={pages} onSelectPage={selectPage} onNavigate={following.stop} />
                   {!readOnly && <QuickConnect editor={editor} />}
                   {!readOnly && <FieldPopover editor={editor} />}
-                  <CanvasMenu editor={editor} onComment={commentOn} />
+                  <CanvasMenu
+                    editor={editor}
+                    onComment={commentOn}
+                    onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                  />
+                  {linking && linking.editor === editor && (
+                    <LinkDialog
+                      editor={linking.editor}
+                      request={linking.request}
+                      pages={pages}
+                      currentPageId={currentPage.id}
+                      boardId={board.id}
+                      onClose={() => setLinking(null)}
+                    />
+                  )}
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                 </>
               ) : (

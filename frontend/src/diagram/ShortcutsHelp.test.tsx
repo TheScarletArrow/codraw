@@ -15,6 +15,7 @@ describe('ShortcutsHelp', () => {
     const view = within(help).getByRole('region', { name: 'Вид' })
     expect(within(view).getByText('Показать всё').nextElementSibling).toHaveTextContent('Ctrl+Shift+H')
     expect(within(view).getByText('Найти на доске').nextElementSibling).toHaveTextContent('Ctrl+F')
+    expect(within(view).getByText('Перейти по ссылке элемента').nextElementSibling).toHaveTextContent('Ctrl+щелчок')
     const together = within(help).getByRole('region', { name: 'Совместная работа' })
     expect(within(together).getByText('Указка').nextElementSibling).toHaveTextContent('K')
     expect(within(together).getByText('Комментарий').nextElementSibling).toHaveTextContent('C')
@@ -28,6 +29,7 @@ describe('ShortcutsHelp', () => {
     const help = screen.getByRole('dialog', { name: 'Горячие клавиши' })
     expect(within(help).getByText('Дублировать').nextElementSibling).toHaveTextContent('⌘D')
     expect(within(help).getByText('Найти на доске').nextElementSibling).toHaveTextContent('⌘F')
+    expect(within(help).getByText('Перейти по ссылке элемента').nextElementSibling).toHaveTextContent('⌘+щелчок')
     fireEvent.keyDown(document.body, { key: '?' })
     expect(screen.queryByRole('dialog')).toBeNull()
 
@@ -51,6 +53,7 @@ describe('ShortcutsHelp', () => {
     const help = screen.getByRole('dialog', { name: 'Горячие клавиши' })
     expect(within(help).getByText('Копировать')).toBeInTheDocument()
     expect(within(help).getByText('Найти на доске')).toBeInTheDocument()
+    expect(within(help).getByText('Перейти по ссылке элемента')).toBeInTheDocument()
     expect(within(help).getByText('Указка')).toBeInTheDocument()
     expect(within(help).getByText('Комментарий')).toBeInTheDocument()
     expect(within(help).queryByText('Удалить')).toBeNull()

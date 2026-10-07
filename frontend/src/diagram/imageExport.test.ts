@@ -1,9 +1,10 @@
-import { Geometry, type Cell } from '@maxgraph/core'
+import { Geometry, type Cell, type CellStyle } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { parseDrawio } from '../drawio/parse.ts'
 import { exportDrawioPage } from '../drawio/serialize.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
+import { boardLink } from './links.ts'
 import { DEFAULT_PAGE_ID, initializeDocument } from './model.ts'
 import { embedDiagram, IMAGE_BACKGROUND, IMAGE_BORDER } from './svgExport.ts'
 
@@ -48,6 +49,37 @@ describe('image export', () => {
     expect(image.svg).toMatch(new RegExp(`<svg[^>]*><rect width="${image.width}" height="${image.height}" fill="${IMAGE_BACKGROUND}"/>`))
     expect(image.svg).toContain('Сервис')
     expect(image.svg).toContain('База')
+  })
+
+  it('makes elements with a link to an address or a board links of an image that asks for them, but none of a page', () => {
+    const { editor } = open()
+    const links = [
+      ['Документация', 'https://docs.example.com/payments'],
+      ['Почта', 'mailto:team@example.com'],
+      ['Доска', boardLink('b-1')],
+      ['Страница', 'data:page/id,containers'],
+      ['Скрипт', 'javascript:alert(1)'],
+    ]
+    links.forEach(([label, link], index) => {
+      const cell = shape(editor, index * 150, 0, label!)
+      editor.graph.getDataModel().setStyle(cell, { ...cell.getStyle(), link } as CellStyle)
+    })
+
+    const image = new DOMParser().parseFromString(editor.exportSvg({ links: true })!.svg, 'image/svg+xml')
+
+    const anchors = Array.from(image.getElementsByTagName('a'))
+    expect(anchors.map((anchor) => [anchor.textContent, anchor.getAttribute('href')])).toEqual([
+      ['Документация', 'https://docs.example.com/payments'],
+      ['Почта', 'mailto:team@example.com'],
+      ['Доска', boardLink('b-1')],
+    ])
+    for (const anchor of anchors) {
+      expect(anchor.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe(anchor.getAttribute('href'))
+      expect(anchor.getAttribute('target')).toBe('_blank')
+      expect(anchor.getAttribute('rel')).toBe('noopener noreferrer')
+    }
+    expect(image.documentElement.textContent).toContain('Страница')
+    expect(editor.exportSvg()!.svg).not.toContain('<a')
   })
 
   it('draws a turned shape turned and whole', () => {

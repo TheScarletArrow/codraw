@@ -60,6 +60,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+Shift+H'], action: 'Показать всё' },
       { keys: ['RightDrag'], action: 'Прокрутить холст' },
       { keys: ['Mod+F'], action: 'Найти на доске' },
+      { keys: ['Mod+Click'], action: 'Перейти по ссылке элемента' },
       { keys: ['?'], action: 'Горячие клавиши' },
     ],
   },

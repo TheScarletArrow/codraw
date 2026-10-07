@@ -77,6 +77,7 @@ import { clipboardContent, dataToCells, readClipboardText } from './clipboardFor
 import type { CellSnapshot } from './diff.ts'
 import { registerDiagramExtensions } from './extensions.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
+import { LINK_KEY, linkOf } from './links.ts'
 import {
   hasLockedDescendant,
   LOCKED_BY_KEY,
@@ -285,6 +286,21 @@ export interface SelectionAttribution extends Attribution {
   mine: boolean
 }
 
+/** The link of an element of the page; see {@link linkOf}. */
+export interface CellLink {
+  cellId: string
+  link: string
+}
+
+/** The link of the single selected element that may have one: a shape, a table, a group or an edge. */
+export interface SelectionLink {
+  cellId: string
+  /** Its link, or `null` without one or with one that CoDraw does not open. */
+  link: string | null
+  /** The participant may change it: they edit the board and the element is not locked. */
+  canChange: boolean
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -339,6 +355,8 @@ export interface EditorState {
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
   attribution: SelectionAttribution | null
+  /** The link of the single selected element that may have one, or `null` when no such element is selected alone. */
+  link: SelectionLink | null
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -502,6 +520,21 @@ export interface DiagramEditor {
    * locked shapes do not turn.
    */
   setRotation(angle: number): void
+  /**
+   * Sets the link of the single selected shape, table, group or edge, or removes it with `null`, as one undo step. A
+   * locked element, a field or an index, and a link that CoDraw would not open (see {@link linkOf}) change nothing.
+   */
+  setLink(link: string | null): void
+  /**
+   * The links of the elements of the page that CoDraw opens, in the order of the tree; the same array until the page
+   * changes.
+   */
+  getLinks(): readonly CellLink[]
+  /**
+   * Reports a click with Ctrl, or Cmd on macOS, on an element with a link, or on a field, a shape or a label inside a
+   * table, a group or an edge with one: the link to follow. Such a click selects, moves and edits nothing.
+   */
+  onLinkOpen(listener: (link: CellLink) => void): () => void
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
   /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
@@ -729,6 +762,12 @@ const TOOL_CLASSES: Record<CanvasTool, string> = { laser: 'laser-pointer', comme
 /** Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes. */
 const TOOL_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
 
+/**
+ * Events of the canvas that a click following a link keeps from maxGraph besides its press and release: those of the main
+ * button, and moves until the button is released.
+ */
+const LINK_STOPPED_EVENTS = ['pointermove', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
+
 /** Bit of the right button in `MouseEvent.buttons`. */
 const RIGHT_BUTTON_BIT = 2
 
@@ -818,6 +857,7 @@ const CHANGING_COMMANDS = [
   'setTableBase',
   'setGeometry',
   'setRotation',
+  'setLink',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -1102,6 +1142,12 @@ export function createDiagramEditor(
     const attribution = readAttribution(selectedCellMap())
     return attribution && { ...attribution, mine: isMine(attribution) }
   }
+  /** The link of the single selected element that may have one; see {@link SelectionLink}. */
+  const selectionLink = (): SelectionLink | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    if (!cell || !isLinkable(cell)) return null
+    return { cellId: cell.getId()!, link: linkOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
+  }
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -1317,7 +1363,26 @@ export function createDiagramEditor(
       commentTool: tool === 'comment',
       lock: selectionLock(),
       attribution: selectionAttribution(),
+      link: selectionLink(),
     }
+  }
+  // The links of the page, found again after a change of the page, before the listeners below hear of it.
+  let pageLinks: CellLink[] | null = null
+  const forgetLinks = () => {
+    pageLinks = null
+  }
+  model.addListener(InternalEvent.CHANGE, forgetLinks)
+  const findLinks = (): CellLink[] => {
+    const links: CellLink[] = []
+    const visit = (parent: Cell) => {
+      for (const child of parent.getChildren()) {
+        const link = isLinkable(child) ? linkOf(child.getStyle()) : null
+        if (link) links.push({ cellId: child.getId()!, link })
+        visit(child)
+      }
+    }
+    visit(graph.getDefaultParent())
+    return links
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
   let state = readState()
@@ -1540,12 +1605,60 @@ export function createDiagramEditor(
     if (next === tool) return
     if (tool === 'laser') endLaserStroke()
     pressedForComment = false
+    linkClick = null
     tool = next
     for (const [name, className] of Object.entries(TOOL_CLASSES)) container.classList.toggle(className, name === next)
     // A tool takes the pointer: who changed an element is not told over the canvas meanwhile.
     if (next) tooltips?.hide()
     notify()
   }
+  // Following a link. A press of the main button with Ctrl, or Cmd on macOS, where Ctrl with a click is a right click,
+  // over an element with a link never reaches maxGraph, nor do the moves and the release of that click, nor a double
+  // click: nothing is selected, moved or edited. The release follows the link, unless the pointer went away meanwhile;
+  // the browser lets a page open a tab there. A tool keeps the main button, and the editor of a label its clicks.
+  const linkListeners = new Set<(link: CellLink) => void>()
+  /** The click that follows a link, from its press until the next press; `released` once its button is up. */
+  let linkClick: { link: CellLink; x: number; y: number; released: boolean } | null = null
+  const isLinkClick = (event: MouseEvent) => event.button === 0 && (Client.IS_MAC ? event.metaKey : event.ctrlKey)
+  /** The element with a link under the pointer, or the nearest one above the element there, e.g. the table of a field. */
+  const linkAt = (event: MouseEvent): CellLink | null => {
+    const rect = container.getBoundingClientRect()
+    const x = event.clientX - rect.left + container.scrollLeft
+    const y = event.clientY - rect.top + container.scrollTop
+    for (let cell = graph.getCellAt(x, y); cell && cell !== graph.getDefaultParent(); cell = cell.getParent()) {
+      const link = isLinkable(cell) ? linkOf(cell.getStyle()) : null
+      if (link) return { cellId: cell.getId()!, link }
+    }
+    return null
+  }
+  const pressLink = (event: PointerEvent) => {
+    linkClick = null
+    if (tool || !isLinkClick(event) || (event.target instanceof HTMLElement && event.target.isContentEditable)) return
+    const link = linkAt(event)
+    if (!link) return
+    // Cancelling the press also keeps the browser from firing the mouse events of the click and from selecting text.
+    event.stopImmediatePropagation()
+    event.preventDefault()
+    linkClick = { link, x: event.clientX, y: event.clientY, released: false }
+  }
+  const releaseLink = (event: PointerEvent) => {
+    if (!linkClick || linkClick.released || event.button !== 0) return
+    event.stopImmediatePropagation()
+    linkClick.released = true
+    const { link, x, y } = linkClick
+    if (Math.hypot(event.clientX - x, event.clientY - y) <= graph.getEventTolerance()) {
+      linkListeners.forEach((listener) => listener(link))
+    }
+  }
+  const stopLinkClick = (event: MouseEvent) => {
+    if (!linkClick) return
+    const move = event.type === 'pointermove' || event.type === 'mousemove'
+    if (move ? !linkClick.released : event.button === 0) event.stopImmediatePropagation()
+  }
+  container.addEventListener('pointerdown', pressLink, true)
+  container.addEventListener('pointerup', releaseLink, true)
+  for (const type of LINK_STOPPED_EVENTS) container.addEventListener(type, stopLinkClick, true)
+
   // After a button of the toolbar the keyboard is with that button, where the key handler of maxGraph does not look.
   const handleToolKey = (event: KeyboardEvent) => {
     if (tool && event.key === 'Escape') setTool(null)
@@ -2379,6 +2492,19 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       rotateShapes(shapes, angle)
     },
+    setLink(link) {
+      const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+      if (!cell || !isLinkable(cell) || !isUnlocked(cell)) return
+      const value = link === null ? undefined : linkOf({ [LINK_KEY]: link })
+      if (value === null) return
+      graph.stopEditing(false)
+      setStyleValue([cell], LINK_KEY, value)
+    },
+    getLinks() {
+      pageLinks ??= findLinks()
+      return pageLinks
+    },
+    onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint,
     toCanvasPoint({ x, y }) {
       const { scale, translate } = graph.getView()
@@ -2484,6 +2610,9 @@ export function createDiagramEditor(
       container.removeEventListener('pointerdown', pressWithTool, true)
       container.removeEventListener('pointerup', placeComment, true)
       for (const type of TOOL_STOPPED_EVENTS) container.removeEventListener(type, stopForTool, true)
+      container.removeEventListener('pointerdown', pressLink, true)
+      container.removeEventListener('pointerup', releaseLink, true)
+      for (const type of LINK_STOPPED_EVENTS) container.removeEventListener(type, stopLinkClick, true)
       page.removeEventListener('keydown', handleToolKey)
       container.removeEventListener('scroll', notifyView)
       page.removeEventListener('copy', handleCopy)
@@ -2502,6 +2631,7 @@ export function createDiagramEditor(
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
       model.removeListener(notify)
+      model.removeListener(forgetLinks)
       cells.unobserveDeep(handleAttribution)
       layoutManager.destroy()
       listeners.clear()
@@ -2512,6 +2642,7 @@ export function createDiagramEditor(
       menuListeners.clear()
       viewListeners.clear()
       editingListeners.clear()
+      linkListeners.clear()
       InternalEvent.removeAllListeners(container)
       keyHandler.onDestroy()
       undoManager.off('stack-item-added', notify)
@@ -2601,6 +2732,14 @@ function alignOf(style: CellStyle): Align {
 /** A shape with a size of its own: not a field, which its table places, nor a label of an edge. */
 function isFreeShape(cell: Cell): boolean {
   return cell.isVertex() && !isTable(cell.getParent()) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
+}
+
+/**
+ * An element that may have a link: a shape with a size of its own, a table, a group or an edge, but not a field or an
+ * index, which are rows of their table, nor a label of an edge of draw.io, which is a part of its edge.
+ */
+function isLinkable(cell: Cell): boolean {
+  return cell.isEdge() || isFreeShape(cell)
 }
 
 /**

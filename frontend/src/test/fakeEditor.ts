@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { Box, ContextMenuRequest, DiagramEditor, EditorState, LabelEditing, Point } from '../diagram/editor.ts'
+import type { Box, CellLink, ContextMenuRequest, DiagramEditor, EditorState, LabelEditing, Point } from '../diagram/editor.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -21,6 +21,10 @@ export type FakeEditor = DiagramEditor & {
   drawLaser(point: Point | null): void
   /** Simulates a click with the comment tool at a point (diagram coordinates). */
   placeComment(point: Point): void
+  /** Sets the links of the elements of the page; `getLinks` returns them. */
+  placeLinks(links: CellLink[]): void
+  /** Simulates a click with Ctrl on an element with a link. */
+  clickLink(link: CellLink): void
 }
 
 export interface FakeEditorOptions {
@@ -61,6 +65,7 @@ export function createFakeEditor({
     commentTool: false,
     lock: null,
     attribution: null,
+    link: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -75,6 +80,8 @@ export function createFakeEditor({
   const editingListeners = new Set<(editing: LabelEditing | null) => void>()
   const laserListeners = new Set<(point: Point | null) => void>()
   const commentListeners = new Set<(point: Point) => void>()
+  const linkListeners = new Set<(link: CellLink) => void>()
+  let links: readonly CellLink[] = []
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
     return () => {
@@ -135,6 +142,9 @@ export function createFakeEditor({
     setTableBase: vi.fn(),
     setGeometry: vi.fn(),
     setRotation: vi.fn(),
+    setLink: vi.fn(),
+    getLinks: () => links,
+    onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
     toCanvasPoint: ({ x, y }) => ({ x: x - offset.x, y: y - offset.y }),
     cellBounds: (id) => {
@@ -216,6 +226,13 @@ export function createFakeEditor({
     },
     placeComment(point) {
       commentListeners.forEach((listener) => listener(point))
+    },
+    placeLinks(next) {
+      links = next
+      changeView()
+    },
+    clickLink(link) {
+      linkListeners.forEach((listener) => listener(link))
     },
   }
 }

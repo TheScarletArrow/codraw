@@ -49,6 +49,8 @@ describe('shortcuts', () => {
     expect(formatKeys('F2', true)).toBe('F2')
     expect(formatKeys('Mod+F', false)).toBe('Ctrl+F')
     expect(formatKeys('Mod+F', true)).toBe('⌘F')
+    expect(formatKeys('Mod+Click', false)).toBe('Ctrl+щелчок')
+    expect(formatKeys('Mod+Click', true)).toBe('⌘+щелчок')
   })
 
   it('leaves the editing shortcuts out for a participant who may only view', () => {
@@ -57,6 +59,7 @@ describe('shortcuts', () => {
     expect(actions).toContain('Копировать')
     expect(actions).toContain('Показать всё')
     expect(actions).toContain('Найти на доске')
+    expect(actions).toContain('Перейти по ссылке элемента')
     expect(actions).toContain('Указка')
     expect(actions).toContain('Комментарий')
     expect(actions).toContain('Сообщение у курсора')

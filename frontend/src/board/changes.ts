@@ -11,6 +11,7 @@ import {
 } from '../diagram/diff.ts'
 import type { MergeConflicts } from '../diagram/merge.ts'
 import type { Box, Point } from '../diagram/editor.ts'
+import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import type { PointData } from '../diagram/model.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
@@ -152,6 +153,7 @@ const STYLE_WORDS: Record<string, string> = {
   codrawIndex: 'индекс',
   [LOCKED_KEY]: 'закрепление',
   [LOCKED_BY_KEY]: 'закрепление',
+  [LINK_KEY]: 'ссылка',
 }
 
 const GEOMETRY_WORDS: Record<string, string> = {
