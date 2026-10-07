@@ -8,6 +8,7 @@ import { useCurrentUser } from './auth/session.ts'
 import { NotificationBell } from './notifications/NotificationBell.tsx'
 import { deleteLocalCopiesOf, keepLocalCopiesOf } from './offline/localCopies.ts'
 import { WhatsNew } from './releaseNotes/WhatsNew.tsx'
+import { ThemeMenu } from './theme/ThemeMenu.tsx'
 
 /**
  * Pages of a signed-in user, with their notifications and the novelties of CoDraw in the header; without a session it opens the login page, which
@@ -71,6 +72,7 @@ function UserMenu({ user }: { user: CurrentUser }) {
     <div className="flex items-center gap-2 text-sm">
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
       <span>{user.name}</span>
+      <ThemeMenu />
       {/* Signing out would cut a guest off from their boards; signing in through a provider keeps them. */}
       {user.guest ? (
         <Button asChild variant="ghost" size="sm">
