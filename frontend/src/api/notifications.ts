@@ -13,6 +13,7 @@ export type NotificationKind =
   | 'proposal-created'
   | 'proposal-accepted'
   | 'proposal-declined'
+  | 'review-request'
 
 /** The user who did what a notification tells. */
 export interface NotificationActor {
@@ -23,7 +24,7 @@ export interface NotificationActor {
 
 /**
  * A notification as its recipient sees it. Without a role on the board now (`access` is `false`) it names neither the
- * board nor the comment nor the proposal nor who did it.
+ * board nor the page nor the element nor the comment nor the proposal nor who did it.
  */
 export interface UserNotification {
   id: string
@@ -32,8 +33,10 @@ export interface UserNotification {
   /** Whether the recipient may open the board now. */
   access: boolean
   boardTitle: string | null
-  /** The page of the thread of a mention, an answer or an assignment. */
+  /** The page of the thread of a mention, an answer or an assignment, or of the element of a request for a review. */
   pageId: string | null
+  /** The element that a request for a review is about. */
+  cellId: string | null
   threadId: string | null
   commentId: string | null
   /** The proposal of changes that a notification about one is about. */

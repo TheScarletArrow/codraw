@@ -1,4 +1,5 @@
 import type { CellStyle } from '@maxgraph/core'
+import { STICKY_COLORS } from './colors.ts'
 import { BROWSER_BAR_HEIGHT } from './extensions.ts'
 
 export type ShapeId =
@@ -7,6 +8,7 @@ export type ShapeId =
   | 'ellipse'
   | 'rhombus'
   | 'text'
+  | 'sticky'
   | 'table'
   | 'service'
   | 'database'
@@ -59,6 +61,8 @@ export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & {
   autosize?: boolean | number | string
   /** The database of a table; see `sql/dbVendors.ts`. */
   dbVendor?: string
+  /** The size of the text fits the shape; see {@link TEXT_FIT_KEY}. */
+  autosizeText?: boolean | number | string
 }
 
 /** A cell created inside the shape, e.g. a field of a table. It spans the width of the shape. */
@@ -94,6 +98,20 @@ export const TABLE_FIELD_HEIGHT = 26
 export const TABLE_INDEX_GAP = 20
 /** Style key of a row of a table that is an index, not a field. draw.io keeps keys it does not know, so files keep it. */
 export const TABLE_INDEX_KEY = 'codrawIndex'
+
+/**
+ * Style key of a text whose size fits the shape: the key of draw.io, which picks the size of the font that fits the
+ * shape and writes it as the text size of the shape, as CoDraw does (see `stickies.ts`). draw.io writes it as 0 or 1.
+ */
+export const TEXT_FIT_KEY = 'autosizeText'
+
+/** Width and height of a new sticky. */
+export const STICKY_SIZE = 160
+/** Size of the text of a new sticky, which fitting the text does not exceed. */
+export const STICKY_FONT_SIZE = 20
+
+/** Room under the text of a sticky, for the name of who wrote it; see `StickySignatures.tsx`. */
+export const STICKY_SIGNATURE_ROOM = 14
 
 /** A table of a database schema: a swimlane whose fields are stacked under the name, as in draw.io. */
 export const TABLE_STYLE: ShapeStyle = {
@@ -177,6 +195,23 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         value: 'Текст',
         // As in draw.io, the width of a text follows the text.
         style: { fillColor: 'none', strokeColor: 'none', autosize: true },
+      },
+      {
+        id: 'sticky',
+        label: 'Стикер',
+        width: STICKY_SIZE,
+        height: STICKY_SIZE,
+        value: '',
+        // The keys of the notes of draw.io whose text fits them: words wrap, and the size of the text fits the sticky.
+        style: {
+          fillColor: STICKY_COLORS[0].value,
+          strokeColor: 'none',
+          shadow: true,
+          whiteSpace: 'wrap',
+          [TEXT_FIT_KEY]: true,
+          fontSize: STICKY_FONT_SIZE,
+          spacingBottom: STICKY_SIGNATURE_ROOM,
+        },
       },
     ],
   },
@@ -463,8 +498,14 @@ export function findShape(id: string): ShapePreset | undefined {
   return SHAPES.find((shape) => shape.id === id)
 }
 
-/** Frames and text: they belong to no group, so nothing is connected to them with the arrows. */
-export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>(['text', 'boundary', 'kubernetes-cluster', 'c4-boundary'])
+/** Frames, text and stickies: they belong to no group, so nothing is connected to them with the arrows. */
+export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>([
+  'text',
+  'sticky',
+  'boundary',
+  'kubernetes-cluster',
+  'c4-boundary',
+])
 
 const GROUPS = new Map<ShapeId, ShapeGroup>(
   SHAPE_SECTIONS.flatMap((section) =>
@@ -508,6 +549,22 @@ export function shapeOf(style: ShapeStyle): ShapePreset | null {
 export function shapeGroupOf(style: ShapeStyle): ShapeGroup | null {
   const shape = shapeOf(style)
   return shape ? shapeGroup(shape.id) : null
+}
+
+/** A flag of draw.io in any of its spellings: it writes 1, CoDraw keeps `true`. */
+const isOn = (value: unknown) => value === true || value === 1 || value === '1'
+
+/** The size of the text follows the shape (see {@link TEXT_FIT_KEY}), unless the width of the shape follows its text. */
+export function hasTextFit(style: Record<string, unknown>): boolean {
+  return isOn(style[TEXT_FIT_KEY]) && !isOn(style.autosize)
+}
+
+/**
+ * A sticky: a shape made as one, or a shape whose text fits it, as the notes of draw.io that fit their text are; see
+ * {@link TEXT_FIT_KEY}.
+ */
+export function isStickyStyle(style: Record<string, unknown> | null | undefined): boolean {
+  return !!style && (style.codrawShape === 'sticky' || isOn(style[TEXT_FIT_KEY]))
 }
 
 /** A table is a cell whose children are stacked fields. */

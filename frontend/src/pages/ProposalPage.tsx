@@ -12,13 +12,14 @@ import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { Minimap } from '../board/Minimap.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
+import { StatusBadges } from '../board/StatusBadges.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
 import { usePages } from '../board/usePages.ts'
 import type { Author } from '../diagram/attribution.ts'
 import { PageHistories } from '../diagram/binding.ts'
 import { CanvasMenu } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
-import type { DiagramEditor } from '../diagram/editor.ts'
+import type { ContextMenuRequest, DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
@@ -26,10 +27,14 @@ import { LockBadges } from '../diagram/LockBadges.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
+import { StickyPanel } from '../diagram/StickyPanel.tsx'
+import { StickySignatures } from '../diagram/StickySignatures.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
+import { LinkDialog } from '../links/LinkDialog.tsx'
+import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
 import { useDraftConnection } from '../proposals/useDraftConnection.ts'
 import { SqlMenu } from '../sql/SqlMenu.tsx'
@@ -97,6 +102,9 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
   }, [currentPage, requestedPage, selectPage])
+
+  // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
+  const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
 
   const withdraw = useMutation({
     mutationFn: () => withdrawProposal(board.id, proposal.id),
@@ -203,10 +211,27 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   collaboration={false}
                   onEditor={setEditor}
                 />
+                <StickySignatures editor={editor} />
+                <StatusBadges editor={editor} document={document} />
                 <LockBadges editor={editor} />
+                <ShapeLinks editor={editor} pages={pages} onSelectPage={selectPage} />
                 {!readOnly && <QuickConnect editor={editor} />}
                 {!readOnly && <FieldPopover editor={editor} />}
-                <CanvasMenu editor={editor} />
+                {!readOnly && <StickyPanel editor={editor} />}
+                <CanvasMenu
+                  editor={editor}
+                  onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                />
+                {linking && linking.editor === editor && (
+                  <LinkDialog
+                    editor={linking.editor}
+                    request={linking.request}
+                    pages={pages}
+                    currentPageId={currentPage.id}
+                    boardId={board.id}
+                    onClose={() => setLinking(null)}
+                  />
+                )}
                 <Minimap editor={editor} />
               </>
             ) : (

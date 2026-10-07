@@ -17,3 +17,15 @@ export const PALETTE = [
   { value: '#b85450', name: 'Красный' },
   { value: '#9673a6', name: 'Фиолетовый' },
 ] as const
+
+/**
+ * Colors of stickies: the light colors of the palette, so that «Заливка» shows the color of a sticky as chosen. The
+ * first one is the color of new stickies until another is chosen.
+ */
+export const STICKY_COLORS = [
+  { value: '#fff2cc', name: 'Жёлтый' },
+  { value: '#f8cecc', name: 'Розовый' },
+  { value: '#d5e8d4', name: 'Зелёный' },
+  { value: '#dae8fc', name: 'Голубой' },
+  { value: '#e1d5e7', name: 'Сиреневый' },
+] as const

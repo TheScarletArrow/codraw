@@ -20,6 +20,7 @@ const KIND_LABELS: Record<NotificationKind, string> = {
   'proposal-created': 'Предложение изменений',
   'proposal-accepted': 'Предложение принято',
   'proposal-declined': 'Предложение отклонено',
+  'review-request': 'Запрос ревью',
 }
 
 /**
@@ -70,6 +71,8 @@ export function describeNotification(notification: UserNotification): Notificati
       return { actor, action: `ваше предложение к ${board} принято`, detail: notification.snippet }
     case 'proposal-declined':
       return { actor, action: `ваше предложение к ${board} отклонено`, detail: notification.snippet }
+    case 'review-request':
+      return { actor, action: `запрос ревью на ${board}`, detail: 'Элемент отмечен «Нужно ревью»' }
     default:
       return { actor, action: `событие на ${board}`, detail: notification.snippet }
   }
@@ -85,8 +88,8 @@ const THREAD_KINDS = new Set<NotificationKind>(['mention', 'reply', 'assigned'])
 
 /**
  * Where a notification leads: a mention, an answer or an assigned thread to the thread on its page, a request for
- * access to «Поделиться» with the requests, a proposal of changes to its review on the board, anything else and a board
- * the user can no longer open to the board.
+ * access to «Поделиться» with the requests, a proposal of changes to its review on the board, a request for a review to
+ * the element on its page, anything else and a board the user can no longer open to the board.
  */
 export function notificationLink(notification: UserNotification): string {
   const board = `/boards/${encodeURIComponent(notification.boardId)}`
@@ -98,6 +101,9 @@ export function notificationLink(notification: UserNotification): string {
     return `${board}?${params}`
   }
   if (notification.kind === 'access-request') return `${board}?share=requests`
+  if (notification.kind === 'review-request' && notification.pageId && notification.cellId) {
+    return `${board}?${new URLSearchParams({ page: notification.pageId, cell: notification.cellId })}`
+  }
   if (notification.proposalId) return `${board}?proposal=${encodeURIComponent(notification.proposalId)}`
   return board
 }

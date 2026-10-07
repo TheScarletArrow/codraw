@@ -1,6 +1,7 @@
 import * as Y from 'yjs'
 import { writeAttribution, type Author } from '../diagram/attribution.ts'
 import { newId } from '../diagram/ids.ts'
+import { LINK_KEY, movedPageLink } from '../diagram/links.ts'
 import { getCells, getPages, orderBetween, writeAttrs, writeCell, writePage } from '../diagram/model.ts'
 import { deletePage, isPageEmpty, listPages } from '../diagram/pages.ts'
 import type { DrawioPage } from './parse.ts'
@@ -20,16 +21,26 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | nu
   let order = existing.at(-1)?.order ?? null
   const ids: string[] = []
 
+  // The id of a diagram is kept when it is free, so that links to it keep working. Links of the file to a page whose id
+  // was taken lead to its new id: to the first page of the file with that id, as in draw.io.
+  const moved = new Map<string, string>()
+  const pageIds = pages.map((page) => {
+    const id = page.id && !taken.has(page.id) && getCells(doc, page.id).size === 0 ? page.id : newId()
+    if (page.id && !moved.has(page.id)) moved.set(page.id, id)
+    taken.add(id)
+    return id
+  })
+
   doc.transact(() => {
     const at = Date.now()
     for (const [index, page] of pages.entries()) {
-      // The id of the diagram is kept when it is free, so that links to it keep working.
-      const id = page.id && !taken.has(page.id) && getCells(doc, page.id).size === 0 ? page.id : newId()
-      taken.add(id)
+      const id = pageIds[index]!
       order = orderBetween(order, null)
       writePage(doc, id, { name: page.name.trim() || `Страница ${existing.length + index + 1}`, order })
       const cells = getCells(doc, id)
       for (const { attrs, ...cell } of page.cells) {
+        const link = movedPageLink(cell.style[LINK_KEY], moved)
+        if (link !== cell.style[LINK_KEY]) cell.style = { ...cell.style, [LINK_KEY]: link! }
         writeCell(cells, cell)
         if (attrs) writeAttrs(cells.get(cell.id)!, attrs)
         if (author) writeAttribution(cells.get(cell.id)!, author, at)

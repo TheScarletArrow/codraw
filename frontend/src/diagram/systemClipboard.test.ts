@@ -71,6 +71,25 @@ describe('clipboard format', () => {
     expect(pastedEdge!.getTerminal(false)).toBe(pastedService)
   })
 
+  it('writes the link of a copied element as draw.io does, and reads links of draw.io, but no unsafe one', async () => {
+    const linked = dataToCells([
+      { id: 'a', kind: 'vertex', parent: '1', order: 'a0', value: 'Payments', geometry: { x: 0, y: 0, width: 120, height: 60 }, source: null, target: null, style: { link: 'data:page/id,containers' } },
+    ])
+
+    const text = decodeURIComponent(clipboardText(linked))
+    expect(text).toContain('<UserObject label="Payments" link="data:page/id,containers" id="2"><mxCell style="fontSize=13;" vertex="1" parent="1">')
+
+    const fragment =
+      '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>' +
+      '<UserObject label="Docs" link="https://docs.example.com" id="d"><mxCell vertex="1" parent="1"><mxGeometry width="80" height="40" as="geometry"/></mxCell></UserObject>' +
+      '<UserObject label="Bad" link="javascript:alert(1)" id="x"><mxCell vertex="1" parent="1"><mxGeometry x="100" width="80" height="40" as="geometry"/></mxCell></UserObject>' +
+      '</root></mxGraphModel>'
+    const content = await readClipboardText(encodeURIComponent(fragment))
+    const [docs, bad] = content?.kind === 'cells' ? content.cells : []
+    expect((docs!.getStyle() as Record<string, unknown>).link).toBe('https://docs.example.com')
+    expect(bad!.getStyle()).not.toHaveProperty('link')
+  })
+
   it('keeps the indexes of a copied table', async () => {
     const container = document.createElement('div')
     document.body.append(container)

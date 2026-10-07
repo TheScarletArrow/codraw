@@ -1,24 +1,38 @@
 import { Client } from '@maxgraph/core'
-import { Lock } from 'lucide-react'
+import { Check, Lock } from 'lucide-react'
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
-import { menuItems, shortcutLabel, type MenuCommand } from './canvasMenu.ts'
+import {
+  isStatusCommand,
+  menuItems,
+  shortcutLabel,
+  STATUS_COMMANDS,
+  type MenuCommand,
+  type StatusCommand,
+} from './canvasMenu.ts'
 import { readSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor, Point } from './editor.ts'
 import { lockLabel } from './locks.ts'
+import type { ElementStatus } from './status.ts'
+import { StatusIcon } from './StatusIcon.tsx'
 import { useEditorState } from './useEditorState.ts'
 
 /** What a new thread of comments is about: an element, or a point of the page in diagram coordinates. */
 export type CommentTarget = { cellId: string } | { point: Point }
 
-/** The items that start a thread, which the page does rather than the editor. */
-type CommentCommand = 'comment' | 'commentHere'
+/** The items that the page does rather than the editor: those that start a thread, and the window of a link. */
+type PageCommand = 'comment' | 'commentHere' | 'link'
 
-const COMMANDS: Record<Exclude<MenuCommand, CommentCommand>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
+const COMMANDS: Record<
+  Exclude<MenuCommand, PageCommand | StatusCommand>,
+  (editor: DiagramEditor, request: ContextMenuRequest) => void
+> = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
   paste: (editor, { point }) => void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html)),
   selectAll: (editor) => editor.selectAll(),
+  // At the point of the click, editing its text at once.
+  addSticky: (editor, { point }) => editor.addSticky(point),
   undo: (editor) => editor.undo(),
   redo: (editor) => editor.redo(),
   editLabel: (editor) => editor.editLabel(),
@@ -27,6 +41,8 @@ const COMMANDS: Record<Exclude<MenuCommand, CommentCommand>, (editor: DiagramEdi
   cut: (editor) => editor.cut(),
   copy: (editor) => editor.copy(),
   duplicate: (editor) => editor.duplicate(),
+  copyStyle: (editor) => editor.copyStyle(),
+  pasteStyle: (editor) => editor.pasteStyle(),
   bringToFront: (editor) => editor.bringToFront(),
   sendToBack: (editor) => editor.sendToBack(),
   reverseEdge: (editor) => editor.reverseEdge(),
@@ -40,14 +56,20 @@ const COMMANDS: Record<Exclude<MenuCommand, CommentCommand>, (editor: DiagramEdi
 /**
  * The menu of a right click on the canvas, with the actions that fit what was clicked. With `onComment`, a single
  * element gets «Комментировать» and the empty canvas «Комментировать здесь», at the point of the click, for viewers
- * too. The menu of locked elements says who locked them.
+ * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
+ * link at the point of the click. The menu of locked elements says who locked them. The items of the status set it, and
+ * `onStatusChange` hears of the elements whose status they changed.
  */
 export function CanvasMenu({
   editor,
   onComment,
+  onLink,
+  onStatusChange,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
+  onLink?: (request: ContextMenuRequest) => void
+  onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
 }) {
   const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
@@ -55,7 +77,7 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup, lock } = useEditorState(editor)
+  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, status } = useEditorState(editor)
   const lockId = useId()
 
   useEffect(
@@ -81,6 +103,17 @@ export function CanvasMenu({
   }
   const run = (command: MenuCommand) => {
     close()
+    if (command === 'link') {
+      // The window of the link takes the keyboard.
+      focusTaken.current = true
+      onLink?.(request)
+      return
+    }
+    if (isStatusCommand(command)) {
+      const changed = editor.setStatus(STATUS_COMMANDS[command])
+      if (changed.length > 0) onStatusChange?.(STATUS_COMMANDS[command], changed)
+      return
+    }
     if (command !== 'comment' && command !== 'commentHere') {
       COMMANDS[command](editor, request)
       return
@@ -129,34 +162,55 @@ export function CanvasMenu({
             canUndo,
             canRedo,
             canGroup,
+            canCopyStyle,
+            canPasteStyle,
             readOnly: editor.readOnly,
             canComment,
             canLock: lock?.canLock,
             canUnlock: (lock?.locks.length ?? 0) > 0,
             locked,
-          }).map((item) => (
-            <Fragment key={item.command}>
-              {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
-              <Button
-                type="button"
-                role="menuitem"
-                variant="ghost"
-                size="sm"
-                aria-label={item.label}
-                aria-keyshortcuts={item.shortcut?.replace('Mod', Client.IS_MAC ? 'Meta' : 'Control')}
-                className="justify-between font-normal"
-                disabled={item.disabled}
-                onClick={() => run(item.command)}
-              >
-                {item.label}
-                {item.shortcut && (
-                  <kbd aria-hidden className="font-sans text-xs text-muted-foreground">
-                    {shortcutLabel(item.shortcut, Client.IS_MAC)}
-                  </kbd>
+            canLink: onLink !== undefined && link !== null && link.cellId === request.cellId,
+            status,
+          }).map((item) => {
+            const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
+            return (
+              <Fragment key={item.command}>
+                {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
+                {item.heading && (
+                  <p role="presentation" className="px-2 pt-0.5 pb-1 text-xs text-muted-foreground">
+                    {item.heading}
+                  </p>
                 )}
-              </Button>
-            </Fragment>
-          ))}
+                <Button
+                  type="button"
+                  role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                  aria-checked={item.checked}
+                  variant="ghost"
+                  size="sm"
+                  aria-label={item.label}
+                  aria-keyshortcuts={item.shortcut?.replace('Mod', Client.IS_MAC ? 'Meta' : 'Control')}
+                  className="justify-between font-normal"
+                  disabled={item.disabled}
+                  onClick={() => run(item.command)}
+                >
+                  {choice === undefined ? (
+                    item.label
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      {choice ? <StatusIcon status={choice} /> : <span aria-hidden className="size-4 shrink-0 rounded-full border" />}
+                      {item.label}
+                    </span>
+                  )}
+                  {item.shortcut && (
+                    <kbd aria-hidden className="font-sans text-xs text-muted-foreground">
+                      {shortcutLabel(item.shortcut, Client.IS_MAC)}
+                    </kbd>
+                  )}
+                  {item.checked && <Check aria-hidden className="text-muted-foreground" />}
+                </Button>
+              </Fragment>
+            )
+          })}
         </div>
       </PopoverContent>
     </Popover>

@@ -54,7 +54,8 @@ export function ColorPicker({ label, name, value, noneLabel, onChange, opacity =
               aria-pressed={value === color.value}
               title={color.name}
               className={cn(
-                'size-6 rounded-sm border outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring',
+                // The border sets dark colors off a dark popover.
+                'size-6 rounded-sm border outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring dark:border-foreground/30',
                 value === color.value && 'ring-2 ring-ring ring-offset-1',
               )}
               style={{ backgroundColor: color.value }}
@@ -173,7 +174,7 @@ function Swatch({ color }: { color: string | null }) {
     <span
       aria-hidden
       className={cn(
-        'size-4 shrink-0 rounded-sm border',
+        'size-4 shrink-0 rounded-sm border dark:border-foreground/30',
         color === null && 'border-dashed',
         // No color: a diagonal stroke over an empty square.
         color === NONE && 'bg-[linear-gradient(to_top_right,transparent_45%,var(--destructive)_45%,var(--destructive)_55%,transparent_55%)]',

@@ -144,7 +144,9 @@ export function CommentPins({
             title={first ? `${first.author?.name ?? 'Удалённый пользователь'}: ${excerpt(first.body)}` : undefined}
             className={cn(
               'pointer-events-auto absolute flex items-center justify-center rounded-full rounded-bl-none px-1 text-xs font-semibold shadow-sm',
-              open ? 'bg-amber-400 text-amber-950 hover:bg-amber-300' : 'bg-slate-300 text-slate-700 hover:bg-slate-200',
+              open
+                ? 'bg-amber-400 text-amber-950 hover:bg-amber-300'
+                : 'bg-slate-300 text-slate-700 hover:bg-slate-200 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500',
               thread.id === focusedThreadId && 'ring-2 ring-primary',
               movable(thread) && 'cursor-move touch-none',
             )}

@@ -1,5 +1,15 @@
 import { vi } from 'vitest'
-import type { Box, ContextMenuRequest, DiagramEditor, EditorState, LabelEditing, Point } from '../diagram/editor.ts'
+import type {
+  Box,
+  CellLink,
+  ContextMenuRequest,
+  DiagramEditor,
+  EditorState,
+  LabelEditing,
+  Point,
+  StickySignature,
+} from '../diagram/editor.ts'
+import { DEFAULT_PENCIL_LINE, type PencilLine } from '../diagram/freehand.ts'
 import { unionBox, type PageSketch } from '../diagram/minimap.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
@@ -25,6 +35,12 @@ export type FakeEditor = DiagramEditor & {
   drawLaser(point: Point | null): void
   /** Simulates a click with the comment tool at a point (diagram coordinates). */
   placeComment(point: Point): void
+  /** Sets the links of the elements of the page; `getLinks` returns them. */
+  placeLinks(links: CellLink[]): void
+  /** Simulates a click with Ctrl on an element with a link. */
+  clickLink(link: CellLink): void
+  /** Sets the stickies that `stickySignatures` returns. */
+  setSignatures(signatures: StickySignature[]): void
 }
 
 export interface FakeEditorOptions {
@@ -60,15 +76,23 @@ export function createFakeEditor({
     canUngroup: false,
     hasCells: false,
     canCopy: false,
+    canCopyStyle: false,
+    canPasteStyle: false,
     layoutSelection: false,
     laser: false,
     commentTool: false,
+    pencil: false,
+    pencilLine: DEFAULT_PENCIL_LINE,
     lock: null,
     attribution: null,
+    link: null,
+    stickies: null,
+    status: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
   let editing: LabelEditing | null = null
+  let signatures: StickySignature[] = []
   const cells = new Map<string, Box | null>()
   const edges = new Map<string, Point[] | null>()
   const listeners = new Set<() => void>()
@@ -79,6 +103,8 @@ export function createFakeEditor({
   const editingListeners = new Set<(editing: LabelEditing | null) => void>()
   const laserListeners = new Set<(point: Point | null) => void>()
   const commentListeners = new Set<(point: Point) => void>()
+  const linkListeners = new Set<(link: CellLink) => void>()
+  let links: readonly CellLink[] = []
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
     return () => {
@@ -109,6 +135,10 @@ export function createFakeEditor({
     pageId,
     readOnly,
     addShape: vi.fn(() => null),
+    addSticky: vi.fn(() => null),
+    setStickyColor: vi.fn(),
+    setTextFit: vi.fn(),
+    stickySignatures: () => signatures,
     addTableField: vi.fn(() => null),
     setFieldProps: vi.fn(),
     addTableIndex: vi.fn(() => null),
@@ -119,6 +149,8 @@ export function createFakeEditor({
     cut: vi.fn(),
     paste: vi.fn(),
     duplicate: vi.fn(),
+    copyStyle: vi.fn(),
+    pasteStyle: vi.fn(),
     insertCells: vi.fn(),
     restoreCells: vi.fn(),
     bringToFront: vi.fn(),
@@ -132,9 +164,11 @@ export function createFakeEditor({
     group: vi.fn(() => null),
     ungroup: vi.fn(),
     setLocked: vi.fn(),
+    setStatus: vi.fn(() => []),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),
+    setTheme: vi.fn(),
     exportSvg: vi.fn(() => null),
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
@@ -153,6 +187,9 @@ export function createFakeEditor({
     setTableBase: vi.fn(),
     setGeometry: vi.fn(),
     setRotation: vi.fn(),
+    setLink: vi.fn(),
+    getLinks: () => links,
+    onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
     toCanvasPoint: ({ x, y }) => ({ x: x - offset.x, y: y - offset.y }),
     cellBounds: (id) => {
@@ -184,15 +221,24 @@ export function createFakeEditor({
     onPointerMove: (listener) => listen(pointerListeners, listener),
     // The tools turn each other off, like those of the editor.
     setLaser: vi.fn((laser: boolean) => {
-      state = { ...state, laser, commentTool: laser ? false : state.commentTool }
+      state = { ...state, laser, commentTool: laser ? false : state.commentTool, pencil: laser ? false : state.pencil }
       listeners.forEach((listener) => listener())
     }),
     onLaser: (listener) => listen(laserListeners, listener),
     setCommentTool: vi.fn((commentTool: boolean) => {
-      state = { ...state, commentTool, laser: commentTool ? false : state.laser }
+      state = { ...state, commentTool, laser: commentTool ? false : state.laser, pencil: commentTool ? false : state.pencil }
       listeners.forEach((listener) => listener())
     }),
     onCommentPoint: (listener) => listen(commentListeners, listener),
+    setPencil: vi.fn((pencil: boolean) => {
+      state = { ...state, pencil, laser: pencil ? false : state.laser, commentTool: pencil ? false : state.commentTool }
+      listeners.forEach((listener) => listener())
+    }),
+    setPencilLine: vi.fn((changes: Partial<PencilLine>) => {
+      const defined = Object.entries(changes).filter(([, value]) => value !== undefined)
+      state = { ...state, pencilLine: { ...state.pencilLine, ...Object.fromEntries(defined) } }
+      listeners.forEach((listener) => listener())
+    }),
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -243,6 +289,17 @@ export function createFakeEditor({
     },
     placeComment(point) {
       commentListeners.forEach((listener) => listener(point))
+    },
+    placeLinks(next) {
+      links = next
+      changeView()
+    },
+    clickLink(link) {
+      linkListeners.forEach((listener) => listener(link))
+    },
+    setSignatures(next) {
+      signatures = next
+      changeView()
     },
   }
 }

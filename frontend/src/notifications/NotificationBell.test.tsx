@@ -20,6 +20,7 @@ function notification(id: string, changes: Partial<UserNotification> = {}): User
     access: true,
     boardTitle: 'Схема БД',
     pageId: 'page-2',
+    cellId: null,
     threadId: 'thread-1',
     commentId: `comment-${id}`,
     proposalId: null,

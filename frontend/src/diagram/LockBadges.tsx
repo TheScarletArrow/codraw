@@ -33,7 +33,7 @@ export function LockBadges({ editor }: { editor: DiagramEditor | null }) {
             data-cell={cellId}
             aria-label={label}
             title={label}
-            className="pointer-events-auto absolute flex items-center justify-center rounded-full bg-slate-700 text-white shadow-sm"
+            className="pointer-events-auto absolute flex items-center justify-center rounded-full bg-slate-700 text-white shadow-sm dark:bg-slate-200 dark:text-slate-900"
             style={{
               left: bounds.x - BADGE_GAP - BADGE_SIZE,
               top: bounds.y - BADGE_GAP - BADGE_SIZE,

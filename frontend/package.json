@@ -30,6 +30,7 @@
     "svg2pdf.js": "2.8.1",
     "tailwind-merge": "^3.7.0",
     "y-indexeddb": "^9.0.12",
+    "yaml": "2.9.1",
     "yjs": "^13.6.33"
   },
   "devDependencies": {
