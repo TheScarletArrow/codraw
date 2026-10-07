@@ -1,5 +1,6 @@
 import type { Cell } from '@maxgraph/core'
 import { blocksPlacement, type Side } from '../quickConnect.ts'
+import { rotatedBounds, rotationOf } from '../rotation.ts'
 import { isTableStyle, type ShapeStyle } from '../shapes.ts'
 
 export interface RoutingBox {
@@ -74,6 +75,39 @@ function nearestSide(box: RoutingBox, x: number, y: number): Side {
 const number = (value: unknown) => (typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : NaN)
 
 /**
+ * A number rounded to hundredths: turned points and boxes are the same for every participant even if the browsers
+ * compute sines and cosines a little differently.
+ */
+const hundredths = (value: number) => Math.round(value * 100) / 100
+
+/** The box around a shape turned by `rotation` degrees, which edges go around; the box itself when it is not turned. */
+function turnedBox(box: RoutingBox, rotation: number): RoutingBox {
+  if (rotation === 0) return box
+  const { x, y, width, height } = rotatedBounds(box, rotation)
+  return { x: hundredths(x), y: hundredths(y), width: hundredths(width), height: hundredths(height) }
+}
+
+/** Outward directions of the sides of a box. */
+const NORMALS: Record<Side, [number, number]> = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] }
+
+/**
+ * A pin on the side of `box` as it is when the shape is turned by `rotation` degrees around its centre: the point turns
+ * with the shape, and the edge leaves it in the direction nearest to the turned outward direction of its side, which
+ * takes the edge away from the shape.
+ */
+function turnedPin(pin: RoutingPin, box: RoutingBox, rotation: number): RoutingPin {
+  if (rotation === 0) return pin
+  const radians = (rotation * Math.PI) / 180
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+  const [centerX, centerY] = [box.x + box.width / 2, box.y + box.height / 2]
+  const [dx, dy] = [pin.x - centerX, pin.y - centerY]
+  const [normalX, normalY] = NORMALS[pin.side]
+  const [outX, outY] = [normalX * cos - normalY * sin, normalX * sin + normalY * cos]
+  const side: Side = Math.abs(outX) > Math.abs(outY) ? (outX > 0 ? 'right' : 'left') : outY > 0 ? 'bottom' : 'top'
+  return { x: hundredths(centerX + dx * cos - dy * sin), y: hundredths(centerY + dx * sin + dy * cos), side }
+}
+
+/**
  * An edge is routed automatically when it is orthogonal, the shape of a new edge, and has no bends that the participant
  * placed.
  */
@@ -89,7 +123,9 @@ function isRouted(edge: Cell): boolean {
  * that every participant routes the same. Shapes are the tables as a whole and the other shapes; frames, which let
  * clicks through, and containers of shapes, e.g. groups, are not in the way, their shapes are. An end at a field of
  * a table may leave the table on its left or right border at the middle of the field; an end that the participant
- * fixed to a point of a shape leaves it there; another end leaves its shape at the middle of a side.
+ * fixed to a point of a shape leaves it there; another end leaves its shape at the middle of a side. A turned shape is
+ * in the way with the box around it, and its pins turn with it, so that edges end at its turned border; the edges of a
+ * turned table, which only a file of draw.io makes, are left to maxGraph.
  */
 export function routingInput(page: Cell): RoutingInput {
   const shapes = new Map<Cell, RoutingShape>()
@@ -102,7 +138,9 @@ export function routingInput(page: Cell): RoutingInput {
         const style = cell.getStyle() as ShapeStyle
         const box = absoluteBox(cell)
         if (isTable(cell) || (!cell.getChildren().some((child) => child.isVertex()) && blocksPlacement(style))) {
-          if (box && box.width > 0 && box.height > 0) shapes.set(cell, { id: cell.getId()!, ...box })
+          if (box && box.width > 0 && box.height > 0) {
+            shapes.set(cell, { id: cell.getId()!, ...turnedBox(box, rotationOf(style)) })
+          }
         } else {
           visit(cell)
         }
@@ -115,16 +153,18 @@ export function routingInput(page: Cell): RoutingInput {
     const terminal = edge.getTerminal(source)
     if (!terminal?.isVertex()) return null
     const field = isTable(terminal.getParent()) ? terminal : null
-    const shape = shapes.get(field ? terminal.getParent()! : terminal)
+    const owner = field ? terminal.getParent()! : terminal
+    const shape = shapes.get(owner)
     const box = absoluteBox(terminal)
-    if (!shape || !box) return null
+    const rotation = rotationOf(owner.getStyle())
+    if (!shape || !box || (field && rotation !== 0)) return null
     const end = { shape: shape.id, cell: terminal.getId()! }
     const style = edge.getStyle() as Record<string, unknown>
     const [fixedX, fixedY] = source ? [number(style.exitX), number(style.exitY)] : [number(style.entryX), number(style.entryY)]
     if (Number.isFinite(fixedX) && Number.isFinite(fixedY)) {
       const x = box.x + fixedX * box.width
       const y = box.y + fixedY * box.height
-      return { ...end, pins: [{ x, y, side: nearestSide(shape, x, y) }] }
+      return { ...end, pins: [turnedPin({ x, y, side: nearestSide(field ? shape : box, x, y) }, box, rotation)] }
     }
     if (field) {
       const y = box.y + box.height / 2
@@ -136,16 +176,14 @@ export function routingInput(page: Cell): RoutingInput {
         ],
       }
     }
-    const [centerX, centerY] = [shape.x + shape.width / 2, shape.y + shape.height / 2]
-    return {
-      ...end,
-      pins: [
-        { x: centerX, y: shape.y, side: 'top' },
-        { x: shape.x + shape.width, y: centerY, side: 'right' },
-        { x: centerX, y: shape.y + shape.height, side: 'bottom' },
-        { x: shape.x, y: centerY, side: 'left' },
-      ],
-    }
+    const [centerX, centerY] = [box.x + box.width / 2, box.y + box.height / 2]
+    const pins: RoutingPin[] = [
+      { x: centerX, y: box.y, side: 'top' },
+      { x: box.x + box.width, y: centerY, side: 'right' },
+      { x: centerX, y: box.y + box.height, side: 'bottom' },
+      { x: box.x, y: centerY, side: 'left' },
+    ]
+    return { ...end, pins: pins.map((pin) => turnedPin(pin, box, rotation)) }
   }
 
   const connectors: RoutingConnector[] = []

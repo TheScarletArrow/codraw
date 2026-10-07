@@ -134,6 +134,7 @@ export function createFakeEditor({
     setDefaultBase: vi.fn(),
     setTableBase: vi.fn(),
     setGeometry: vi.fn(),
+    setRotation: vi.fn(),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),
     toCanvasPoint: ({ x, y }) => ({ x: x - offset.x, y: y - offset.y }),
     cellBounds: (id) => {

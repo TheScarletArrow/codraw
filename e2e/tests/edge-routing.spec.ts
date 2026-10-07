@@ -76,3 +76,59 @@ test('an edge between fields goes around a shape in its way, from the sides of t
 
   await close()
 })
+
+test('an edge goes around a turned shape and ends at the middle of a turned side of another', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  await alice.evaluate(() => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const editor = container.__codrawEditor
+    const { graph } = editor
+    const source = editor.addShape('rectangle', { x: 200, y: 200 })
+    const target = editor.addShape('rectangle', { x: 800, y: 200 })
+    const middle = editor.addShape('rectangle', { x: 500, y: 200 })
+    graph.getDataModel().setValue(middle, 'middle')
+    graph.insertEdge({ parent: graph.getDefaultParent(), value: '', source, target })
+    graph.setSelectionCell(middle)
+    editor.setRotation(30)
+    graph.setSelectionCell(target)
+    editor.setRotation(90)
+  })
+
+  const drawn = () =>
+    bob.evaluate(() => {
+      const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+      const { graph } = container.__codrawEditor
+      const view = graph.getView()
+      const cells = graph.getDefaultParent().getChildren()
+      const edge = cells.find((cell: any) => cell.isEdge())
+      const points: { x: number; y: number }[] = (view.getState(edge)?.absolutePoints ?? []).map((point: any) => ({ x: point.x, y: point.y }))
+      const target = view.getState(edge.getTerminal(false))
+      const middle = view.getState(cells.find((cell: any) => cell.getValue() === 'middle'))
+      // The middles of the sides of the target turned by a quarter, and the box around the middle shape turned by 30°.
+      const [x, y] = [target.getCenterX(), target.getCenterY()]
+      const pins = [
+        { x: x + target.height / 2, y },
+        { x: x - target.height / 2, y },
+        { x, y: y + target.width / 2 },
+        { x, y: y - target.width / 2 },
+      ]
+      const radians = Math.PI / 6
+      const width = middle.width * Math.cos(radians) + middle.height * Math.sin(radians)
+      const height = middle.width * Math.sin(radians) + middle.height * Math.cos(radians)
+      const box = { x: middle.getCenterX() - width / 2, y: middle.getCenterY() - height / 2, width, height }
+      const end = points.at(-1)
+      const crossing = points.slice(1).some((point, index) => {
+        const from = points[index]!
+        return (
+          Math.min(from.x, point.x) < box.x + box.width - 1 &&
+          Math.max(from.x, point.x) > box.x + 1 &&
+          Math.min(from.y, point.y) < box.y + box.height - 1 &&
+          Math.max(from.y, point.y) > box.y + 1
+        )
+      })
+      return { endAtSide: !!end && pins.some((pin) => Math.hypot(pin.x - end.x, pin.y - end.y) < 1.5), crossing }
+    })
+
+  await expect.poll(drawn, { timeout: 10_000 }).toEqual({ endAtSide: true, crossing: false })
+  await close()
+})

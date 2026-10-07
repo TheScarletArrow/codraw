@@ -171,6 +171,18 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).api!.style).toEqual({ locked: true, fontSize: 13 })
   })
 
+  it('keeps the rotation of a shape through a file of draw.io', async () => {
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('turned', { style: { rotation: 45 } })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain('style="rotation=45;fontSize=13;"')
+    expect(pageCells(copy, DEFAULT_PAGE_ID).turned!.style).toEqual({ rotation: 45, fontSize: 13 })
+  })
+
   it('writes no file with who changed the elements, and reads none from a file', async () => {
     const doc = board()
     doc.transact(() => {

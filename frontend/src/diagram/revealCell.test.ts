@@ -1,6 +1,7 @@
 import { Geometry } from '@maxgraph/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
+import { DiagramBuilder } from '../templates/builder.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { initializeDocument } from './model.ts'
 
@@ -28,6 +29,27 @@ describe('revealing a cell', () => {
 
     expect(editor.graph.getSelectionCells()).toEqual([cell])
     expect(centerOn).toHaveBeenCalledWith({ x: 450, y: 330 })
+  })
+
+  it('selects a field of a table and centres the canvas on the field', () => {
+    const editor = open()
+    const builder = new DiagramBuilder()
+    builder.table('orders', 200, 100, ['id uuid PK', 'customer_id uuid'])
+    editor.insertCells(builder.build())
+    const table = editor.graph
+      .getDefaultParent()
+      .getChildren()
+      .find((cell) => cell.getValue() === 'orders')!
+    const field = table.getChildren().find((cell) => cell.getValue() === 'customer_id uuid')!
+    editor.graph.clearSelection()
+    const centerOn = vi.spyOn(editor, 'centerOn')
+
+    expect(editor.revealCell(field.getId()!)).toBe(true)
+
+    expect(editor.graph.getSelectionCells()).toEqual([field])
+    const { x, y } = table.getGeometry()!
+    const row = field.getGeometry()!
+    expect(centerOn).toHaveBeenCalledWith({ x: x + row.x + row.width / 2, y: y + row.y + row.height / 2 })
   })
 
   it('clears the selection, in a read-only editor too', () => {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, twoParticipants } from './helpers.ts'
+import { addShape, twoParticipants, vertices } from './helpers.ts'
 
 /** Selects a table, or its row at `row`, through the editor the app exposes on the canvas element. */
 const select = (page: Page, id: string, row: number | null) =>
@@ -52,6 +52,39 @@ test('an index added to a table reaches the other participant with its columns a
   await expect.poll(() => rowsOf(bob, users)).toEqual([
     ['id uuid PK', false],
     ['users_id_idx (id) UNIQUE', true],
+  ])
+  await close()
+})
+
+const MEMBERS = `CREATE TABLE members (
+  board_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text NOT NULL
+);
+CREATE UNIQUE INDEX members_board_user_idx ON members (board_id, user_id);
+CREATE INDEX members_user_idx ON members (user_id);
+`
+
+test('indexes of imported SQL become rows of their table for the other participant', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  await alice.getByRole('button', { name: 'SQL и Mermaid' }).click()
+  const menu = alice.getByRole('dialog', { name: 'SQL и Mermaid' })
+  await menu.getByRole('button', { name: 'Импорт SQL…' }).click()
+  await menu
+    .getByLabel('Файлы SQL')
+    .setInputFiles({ name: 'members.sql', mimeType: 'text/plain', buffer: Buffer.from(MEMBERS) })
+  await expect(menu.getByRole('status')).toHaveText('Таблиц: 1, связей: 0, индексов: 2, пропущено операторов: 0')
+  await menu.getByRole('button', { name: 'Добавить на страницу' }).click()
+  await expect(menu).toBeHidden()
+
+  await expect.poll(async () => (await vertices(bob)).map((cell) => cell.value)).toEqual(['members'])
+  const [members] = await vertices(bob)
+  expect(await rowsOf(bob, members!.id)).toEqual([
+    ['board_id uuid NOT NULL', false],
+    ['user_id uuid NOT NULL', false],
+    ['role text NOT NULL', false],
+    ['members_board_user_idx (board_id, user_id) UNIQUE', true],
+    ['members_user_idx (user_id)', true],
   ])
   await close()
 })

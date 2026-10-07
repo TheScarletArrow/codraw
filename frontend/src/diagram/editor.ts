@@ -10,23 +10,26 @@ import {
   GraphDataModel,
   Guide,
   ImageBox,
+  ImageShape,
   InternalEvent,
   KeyHandler,
   LayoutManager,
   PopupMenuHandler,
   SelectionHandler,
   Point as GraphPoint,
+  Rectangle,
   RubberBandHandler,
   SelectionCellsHandler,
   StackLayout,
   StyleDefaultsConfig,
   TooltipHandler,
   ValueChange,
+  VertexHandler,
   getDefaultPlugins,
   type CellState,
   type CellStyle,
   type EventObject,
-  type ImageShape,
+  type InternalMouseEvent,
   type StyleArrowValue,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
@@ -87,6 +90,7 @@ import { compareCells, DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
+import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
 import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
@@ -211,6 +215,13 @@ export interface SelectionGeometry {
   height: number | null
   /** A selected shape is not a table, whose height its fields set, so the height can be changed. */
   canSetHeight: boolean
+  /**
+   * Clockwise rotation of the selected shapes that turn, in degrees from 0 up to 360; `null` when it differs between
+   * them or none of them turns.
+   */
+  rotation: number | null
+  /** A selected shape turns: it is neither a table nor a group (see {@link DiagramEditor.setRotation}). */
+  canRotate: boolean
 }
 
 /** The type and keys of the selected field of a table, as its text has them. */
@@ -485,11 +496,20 @@ export interface DiagramEditor {
   setTableBase(baseId: string | null): void
   /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
   setGeometry(changes: Partial<Box>): void
+  /**
+   * Turns the selected shapes clockwise around their centres to `angle` degrees, as one undo step: a whole angle from 0
+   * to 359, so that 360 is 0 and −90 is 270; 0, the default, removes the key. Tables, their fields, groups, edges and
+   * locked shapes do not turn.
+   */
+  setRotation(angle: number): void
   /** Converts a client (viewport) position to diagram coordinates. */
   toDiagramPoint(clientX: number, clientY: number): Point
   /** Converts diagram coordinates to a position relative to the visible top-left corner of the canvas. */
   toCanvasPoint(point: Point): Point
-  /** Bounds of a cell relative to the visible top-left corner of the canvas, or `null` if it is not shown. */
+  /**
+   * Bounds of a cell relative to the visible top-left corner of the canvas, or `null` if it is not shown; of a turned
+   * shape, the box around it as it is drawn.
+   */
   cellBounds(id: string): Box | null
   /** Points of the line of an edge as drawn, relative to the visible top-left corner of the canvas; `null` if not shown. */
   edgePoints(id: string): Point[] | null
@@ -566,6 +586,25 @@ const CONNECT_ICON = new ImageBox(
   16,
   16,
 )
+
+/** The handle that turns a selected shape: a round arrow on a white circle, in the color of the selection. */
+const ROTATION_ICON = new ImageBox(
+  'data:image/svg+xml,' +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><circle cx="8" cy="8" r="7.25" fill="#fff" stroke="#2563eb" stroke-width="1.5"/><g transform="translate(3.5 3.5) scale(0.375)" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></g></svg>',
+    ),
+  16,
+  16,
+)
+
+/** How far the handle that turns a shape is out of its top-left corner, along both sides. */
+const ROTATION_HANDLE_OFFSET = 12
+
+/** The step of the angle that dragging the handle turns a shape by, as in draw.io; with Alt held, a whole degree. */
+const ROTATION_STEP = 15
+
+/** The pointer over the handle that turns a shape: CSS has no pointer for turning. */
+const ROTATION_CURSOR = 'grab'
 
 /** The smallest width and height of a shape that can be typed in. */
 export const MIN_SHAPE_SIZE = 10
@@ -778,6 +817,7 @@ const CHANGING_COMMANDS = [
   'setDefaultBase',
   'setTableBase',
   'setGeometry',
+  'setRotation',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -1009,6 +1049,7 @@ export function createDiagramEditor(
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
   const textWrapCells = () => graph.getSelectionCells().filter((cell) => allowsTextWrap(graph, cell))
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
+  const rotationCells = () => graph.getSelectionCells().filter(isRotatableShape)
   /** The cell of the page that a cell belongs to: a field to its table, a shape of a group to the group. */
   const pageCell = (cell: Cell): Cell | null => {
     let current: Cell | null = cell
@@ -1095,12 +1136,15 @@ export function createDiagramEditor(
     const cells = geometryCells()
     if (cells.length === 0) return null
     const value = (key: keyof Box) => same(cells.map((cell) => cell.getGeometry()![key]))
+    const turning = rotationCells()
     return {
       x: value('x'),
       y: value('y'),
       width: value('width'),
       height: value('height'),
       canSetHeight: cells.some((cell) => !isTable(cell)),
+      rotation: turning.length > 0 ? same(turning.map((cell) => rotationOf(cell.getStyle()))) : null,
+      canRotate: turning.length > 0,
     }
   }
 
@@ -1116,6 +1160,15 @@ export function createDiagramEditor(
       }
     })
   }
+  /** Turns shapes to `angle` degrees in one change of the model; see {@link DiagramEditor.setRotation}. */
+  const rotateShapes = (shapes: Cell[], angle: number) => {
+    const rotation = normalizeRotation(angle)
+    if (rotation === null) return
+    // The default is kept by removing the key, as draw.io does.
+    setStyleValue(shapes, ROTATION_KEY, rotation === 0 ? undefined : rotation)
+  }
+  // The handle of a selected shape turns it by an angle, as the command does.
+  configureRotation(graph, (cell, angle) => rotateShapes([cell], rotationOf(cell.getStyle()) + angle))
   const setHeight = (cell: Cell, height: number) => {
     const geometry = cell.getGeometry()
     if (!geometry || geometry.height === height) return
@@ -2320,6 +2373,12 @@ export function createDiagramEditor(
         }
       })
     },
+    setRotation(angle) {
+      const shapes = graph.getSelectionCells().filter((cell) => graph.isCellRotatable(cell))
+      if (shapes.length === 0 || !Number.isFinite(angle)) return
+      graph.stopEditing(false)
+      rotateShapes(shapes, angle)
+    },
     toDiagramPoint,
     toCanvasPoint({ x, y }) {
       const { scale, translate } = graph.getView()
@@ -2332,7 +2391,8 @@ export function createDiagramEditor(
       const cell = model.getCell(id)
       const state = cell ? graph.getView().getState(cell) : null
       if (!state) return null
-      return { x: state.x - container.scrollLeft, y: state.y - container.scrollTop, width: state.width, height: state.height }
+      const { x, y, width, height } = rotatedBounds(state, rotationOf(state.style))
+      return { x: x - container.scrollLeft, y: y - container.scrollTop, width, height }
     },
     edgePoints(id) {
       const cell = model.getCell(id)
@@ -2543,6 +2603,14 @@ function isFreeShape(cell: Cell): boolean {
   return cell.isVertex() && !isTable(cell.getParent()) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
 }
 
+/**
+ * A shape that turns: a shape with a size of its own and without shapes inside, so neither a table, which lays out its
+ * fields in its box, nor a group or a container of draw.io.
+ */
+function isRotatableShape(cell: Cell): boolean {
+  return isFreeShape(cell) && !isTable(cell) && !cell.getChildren().some((child) => child.isVertex())
+}
+
 /** A shape whose words may wrap: one that allows auto width, but not a table, whose name and fields are a line each. */
 function allowsTextWrap(graph: Graph, cell: Cell): boolean {
   return isFreeShape(cell) && !isTable(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
@@ -2652,6 +2720,83 @@ function configureRegionSelection(graph: Graph) {
       })
     graph.selectCellsForEvent(cells, event)
     return cells
+  }
+}
+
+/**
+ * Shapes turn when {@link isRotatableShape} says so, unless they are locked (see {@link configureLocks}) or the
+ * participant may only view, and a selected one that turns has a handle that turns it by `rotate`; see
+ * {@link ShapeHandler}.
+ */
+function configureRotation(graph: Graph, rotate: (cell: Cell, angle: number) => void) {
+  const isCellRotatable = graph.isCellRotatable.bind(graph)
+  // A participant who may only view has every cell locked.
+  graph.isCellRotatable = (cell) => isCellRotatable(cell) && isRotatableShape(cell) && !graph.isCellsLocked()
+  graph.createVertexHandler = (state) => new ShapeHandler(state, rotate)
+}
+
+/**
+ * Handles of a selected shape, with a handle out of its top-left corner that turns the shape if it turns: the arrows of
+ * quick connect are at the middles of the sides, and the badge of comments at the top-right corner. Dragging the handle
+ * turns the frame of the selection around the centre of the shape in steps of {@link ROTATION_STEP}°, or of 1° while
+ * Alt is held, which frees moving from the grid as well (a press with Alt starts the selection frame, as in draw.io);
+ * releasing it turns the shape through `rotate`, in the change of the model that maxGraph makes of it.
+ */
+class ShapeHandler extends VertexHandler {
+  private readonly rotate: (cell: Cell, angle: number) => void
+  /** Alt is down while the handle is dragged. */
+  private freeRotation = false
+
+  constructor(state: CellState, rotate: (cell: Cell, angle: number) => void) {
+    super(state)
+    this.rotate = rotate
+    // One step at any distance from the centre, instead of the steps of maxGraph that get finer away from it.
+    this.rotationRaster = false
+    this.rotationShape?.setCursor(ROTATION_CURSOR)
+  }
+
+  protected override isRotationEnabled() {
+    return true
+  }
+
+  override createSizerShape(bounds: Rectangle, index: number, fillColor?: string) {
+    if (index !== InternalEvent.ROTATION_HANDLE) return super.createSizerShape(bounds, index, fillColor)
+    const { width, height, src } = ROTATION_ICON
+    const icon = new ImageShape(new Rectangle(bounds.x, bounds.y, width, height), src)
+    icon.preserveImageAspect = false
+    return icon
+  }
+
+  override getRotationHandlePosition() {
+    return new GraphPoint(this.bounds.x - ROTATION_HANDLE_OFFSET, this.bounds.y - ROTATION_HANDLE_OFFSET)
+  }
+
+  override start(x: number, y: number, index: number) {
+    const rotating = index === InternalEvent.ROTATION_HANDLE
+    // While the shape turns, the live preview of maxGraph hides the handles, which would stay where they were, and only
+    // the frame of the selection turns; resizing keeps its own preview.
+    this.livePreview = rotating
+    super.start(x, y, index)
+    if (!rotating) return
+    // maxGraph measures the angle of handles right of the centre only; this one is measured as the pointer is:
+    // clockwise from straight up.
+    const handle = this.getRotationHandlePosition()
+    const angle = Math.atan2(handle.x - this.state.getCenterX(), this.state.getCenterY() - handle.y)
+    this.startAngle = (angle * 180) / Math.PI
+  }
+
+  override rotateVertex(me: InternalMouseEvent) {
+    this.freeRotation = !this.graph.isGridEnabledEvent(me.getEvent())
+    super.rotateVertex(me)
+  }
+
+  override roundAngle(angle: number) {
+    const step = this.freeRotation ? 1 : ROTATION_STEP
+    return Math.round(angle / step) * step
+  }
+
+  override rotateCell(cell: Cell, angle: number) {
+    this.rotate(cell, angle)
   }
 }
 
