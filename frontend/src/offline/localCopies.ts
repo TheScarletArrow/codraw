@@ -69,6 +69,11 @@ function writeRegistry(copies: LocalCopy[]) {
   }
 }
 
+/** Whether this browser keeps a copy of any board, i.e. CoDraw was used in it before. */
+export function keepsLocalCopies(): boolean {
+  return readRegistry().length > 0
+}
+
 /** The copy of the board for the user, if this browser keeps one. */
 export function findLocalCopy(userId: string, boardId: string): LocalCopy | null {
   return readRegistry().find((copy) => isCopyOf(copy, userId, boardId)) ?? null
