@@ -22,6 +22,16 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.6.0',
+    date: '2026-10-07',
+    items: [
+      {
+        title: 'Импорт OpenAPI и AsyncAPI',
+        text: 'В меню «SQL и Mermaid» — «Импорт OpenAPI / AsyncAPI…»: спецификации API становятся сервисами со списком эндпоинтов, топиками с отправителями и получателями сообщений и таблицами моделей данных, разложенными автоматически.',
+      },
+    ],
+  },
+  {
     version: '0.5.0',
     date: '2026-10-07',
     items: [
