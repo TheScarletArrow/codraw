@@ -89,14 +89,14 @@ const estimate = (text: string) => text.length * 7.5
  * Width of a table that fits its name beside the badge of its database, the rows of its fields with their references
  * and the rows of its indexes, estimated from the lengths of their texts.
  */
-function tableWidth(table: SqlTable, labels: string[], references: (string | null)[], indexes: string[]): number {
+export function tableWidth(name: string, labels: string[], references: (string | null)[] = [], indexes: string[] = []): number {
   const rows = tableRows(
     labels.map((text, index) => ({ text, font: {}, reference: references[index] ?? null })),
     estimate,
     indexes.map((text) => ({ text, font: {}, reference: null })),
   )
   // Tables get the database of the table of the palette.
-  const header = estimate(table.name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
+  const header = estimate(name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
   return Math.min(560, Math.max(160, Math.ceil(Math.max(header, ...rows.map((row) => row.width)))))
 }
 
@@ -156,7 +156,7 @@ export async function schemaCells(
       const labels = table.columns.map((column) => fieldLabel(column, referencing(table, column.name)))
       const references = table.columns.map((column) => referenceOf(table, column.name))
       const indexes = table.indexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
-      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table, labels, references, indexes), indexes)
+      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table.name, labels, references, indexes), indexes)
       return [table.name, { id, fields: new Map(table.columns.map((column, index) => [column.name, fields[index]!])) }]
     }),
   )

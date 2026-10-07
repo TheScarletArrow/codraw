@@ -67,6 +67,14 @@ export interface BackendClient {
   loadDocument(boardId: string): Promise<Uint8Array | null>;
   /** Stores the Yjs state of the board, which the users `editors` changed since the previous store. */
   storeDocument(boardId: string, state: Uint8Array, editors?: readonly string[]): Promise<void>;
+  /**
+   * Stores the text of the stored document of the board that search finds it by. With `onlyIfMissing` the backend keeps
+   * a text it has already, and the answer is `false`; otherwise it is `true`. Throws {@link BoardNotFoundError} when the
+   * board has no stored document.
+   */
+  storeSearchText(boardId: string, text: string, options?: { onlyIfMissing?: boolean }): Promise<boolean>;
+  /** Boards with a stored document but no text for search, at most `limit` of them by id after `after`. */
+  boardsWithoutSearchText(after: string | null, limit: number): Promise<string[]>;
   loadAccess(boardId: string): Promise<BoardAccess>;
   /** Returns the stored Yjs state of the draft, or `null` while it is empty; throws {@link ProposalNotFoundError}. */
   loadDraft(proposalId: string): Promise<Uint8Array | null>;
@@ -124,6 +132,36 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
       if (!response.ok) {
         throw new Error(`Storing board ${boardId} failed: backend responded with ${response.status}`);
       }
+    },
+
+    async storeSearchText(boardId, text, { onlyIfMissing = false } = {}) {
+      const response = await fetch(new URL(`/internal/boards/${encodeURIComponent(boardId)}/search-text`, baseUrl), {
+        method: "PUT",
+        headers: {
+          ...headers,
+          "Content-Type": "text/plain; charset=utf-8",
+          // Stores the text only while the document has none: a text of an older state does not replace a newer one.
+          ...(onlyIfMissing && { "If-None-Match": "*" }),
+        },
+        body: text,
+      });
+      if (response.status === 404) throw new BoardNotFoundError(boardId);
+      if (onlyIfMissing && response.status === 412) return false;
+      if (!response.ok) {
+        throw new Error(`Storing the text of board ${boardId} failed: backend responded with ${response.status}`);
+      }
+      return true;
+    },
+
+    async boardsWithoutSearchText(after, limit) {
+      const url = new URL("/internal/boards/without-search-text", baseUrl);
+      if (after !== null) url.searchParams.set("after", after);
+      url.searchParams.set("limit", String(limit));
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new Error(`Listing boards without a text failed: backend responded with ${response.status}`);
+      }
+      return (await response.json()) as string[];
     },
 
     async loadAccess(boardId) {

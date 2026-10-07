@@ -40,6 +40,9 @@ import kotlin.test.assertEquals
         "codraw.limits.proposals-per-board=3",
         "codraw.limits.proposals-per-author=2",
         "codraw.limits.closed-proposals-per-board=2",
+        "codraw.limits.tags-per-board=2",
+        "codraw.limits.tags-per-user=3",
+        "codraw.limits.folders-per-user=2",
         "codraw.limits.review-requests-per-hour=2",
     ],
 )
@@ -56,6 +59,7 @@ class LimitsApiTest(
     @BeforeEach
     fun cleanDatabase() {
         jdbcClient.sql("DELETE FROM boards").update()
+        jdbcClient.sql("DELETE FROM board_folders").update()
         alice = users.gitHubUser("Alice")
     }
 
@@ -421,6 +425,86 @@ class LimitsApiTest(
 
         store(ByteArray(2049)).andExpect { status { isPayloadTooLarge() } }
         store(ByteArray(2048)).andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `a board has at most as many tags of a user as the limit, and the user as many different tags`() {
+        val first = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val second = createBoard(alice).andExpect { status { isCreated() } }.id()
+        val reached = limitsReached("tags")
+
+        setTags(first, alice, """["А", "Б", "В"]""").andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Tag limit reached") }
+            jsonPath("$.limit") { value(2) }
+            jsonPath("$.scope") { value("board") }
+        }
+        setTags(first, alice, """["А", "Б"]""").andExpect { status { isOk() } }
+        setTags(second, alice, """["В", "Г"]""").andExpect {
+            status { isConflict() }
+            jsonPath("$.limit") { value(3) }
+            jsonPath("$.scope") { value("user") }
+        }
+        // A tag the user has does not count again.
+        setTags(second, alice, """["а", "В"]""").andExpect {
+            status { isOk() }
+            jsonPath("$.tags") { value(contains("А", "В")) }
+        }
+        assertEquals(reached + 2, limitsReached("tags"))
+    }
+
+    @Test
+    fun `a user has at most as many folders as the limit, and a deleted one makes room`() {
+        val first = createFolder(alice, "Работа").andExpect { status { isCreated() } }.id()
+        createFolder(alice, "Архив").andExpect { status { isCreated() } }
+        val reached = limitsReached("folders")
+
+        createFolder(alice, "Идеи").andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Folder limit reached") }
+            jsonPath("$.limit") { value(2) }
+        }
+        assertEquals(reached + 1, limitsReached("folders"))
+        mockMvc.delete("/api/boards/folders/$first") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
+        createFolder(alice, "Идеи").andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `tags and folders of a guest pass at sign-in beyond the limits, which then let them go but no more come`() {
+        val board = createBoard(alice).andExpect { status { isCreated() } }.id()
+        setTags(board, alice, """["А", "Б"]""").andExpect { status { isOk() } }
+        setTags(createBoard(alice).andExpect { status { isCreated() } }.id(), alice, """["В"]""")
+        repeat(2) { createFolder(alice, "Папка $it").andExpect { status { isCreated() } } }
+        val guest = users.createGuest()
+        mockMvc.get("/api/boards/$board") { with(guest.session()) }.andExpect { status { isOk() } }
+        setTags(board, guest, """["Г", "Д"]""").andExpect { status { isOk() } }
+        createFolder(guest, "Идеи").andExpect { status { isCreated() } }
+
+        users.signIn(ProviderProfile(ProviderProfile.GITHUB, "id-Alice", "Alice", null), guest.id)
+
+        mockMvc.get("/api/boards/folders") { with(alice.session()) }.andExpect { jsonPath("$", hasSize<Any>(3)) }
+        createFolder(alice, "Ещё").andExpect { status { isConflict() } }
+        setTags(board, alice, """["А", "Б", "Г"]""").andExpect { status { isOk() } }
+        setTags(board, alice, """["А", "Б", "Г", "В"]""").andExpect { jsonPath("$.scope") { value("board") } }
+        setTags(board, alice, """["А", "Г", "Е"]""").andExpect { jsonPath("$.scope") { value("user") } }
+    }
+
+    private fun setTags(board: String, user: User, tags: String): ResultActionsDsl =
+        mockMvc.put("/api/boards/$board/tags") {
+            with(user.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"tags": $tags}"""
+        }
+
+    private fun createFolder(user: User, name: String): ResultActionsDsl = mockMvc.post("/api/boards/folders") {
+        with(user.session())
+        with(csrf())
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"name": "$name"}"""
     }
 
     private fun propose(board: String, user: User): ResultActionsDsl = mockMvc.post("/api/boards/$board/proposals") {

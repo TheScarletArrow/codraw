@@ -28,6 +28,18 @@ fun BoardService.participated(id: String, userId: UUID): Participation {
 }
 
 /**
+ * The board in the list of the user [userId], which they organize with tags and folders, see [BoardService.isListed];
+ * 403 for a board that is not, e.g. one they never opened or whose owner closed its link.
+ */
+fun BoardService.listedBy(id: String, userId: UUID): Board {
+    val board = existing(id)
+    if (!isListed(board, userId)) {
+        throw ResponseStatusException(HttpStatus.FORBIDDEN, "The board is not in the list of the user")
+    }
+    return board
+}
+
+/**
  * The board whose versions the user [userId] sees, saves, names and restores, see [BoardRole.managesVersions]; 403 when
  * their role does not let them.
  */
