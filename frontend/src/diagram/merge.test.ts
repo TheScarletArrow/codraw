@@ -5,7 +5,7 @@ import { readAttribution, writeAttribution } from './attribution.ts'
 import { diffDocuments, snapshotDocument, snapshotPage, type CellSnapshot } from './diff.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from './locks.ts'
-import { mergeConflicts, mergeProposal, MERGE_ORIGIN } from './merge.ts'
+import { mergeConflicts, mergedSnapshot, mergeProposal, MERGE_ORIGIN } from './merge.ts'
 import { DEFAULT_PAGE_ID, getCells, LAYER_CELL_ID, readAttrs, writeAttrs, writeCell, type CellData } from './model.ts'
 import { addPage, deletePage, listPages, movePage, renamePage } from './pages.ts'
 import { TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
@@ -461,6 +461,26 @@ describe('mergeProposal', () => {
     accept()
 
     expect(Y.encodeStateVector(board)).toEqual(before)
+  })
+})
+
+describe('mergedSnapshot', () => {
+  it('is the board as accepting would make it, and leaves the board as it is', () => {
+    const { base, draft, board } = proposal(
+      boardWith(shape('api'), shape('db')),
+      (draft) => {
+        writeCell(getCells(draft), shape('queue', { value: 'Очередь' }))
+        change(draft, 'db', { value: 'PostgreSQL' })
+      },
+      (board) => change(board, 'api', { value: 'Шлюз' }),
+    )
+    const before = Y.encodeStateAsUpdate(board)
+
+    const merged = mergedSnapshot(board, snapshotDocument(base), snapshotDocument(draft))
+
+    const values = Object.fromEntries([...merged.get(DEFAULT_PAGE_ID)!.cells.values()].map((cell) => [cell.id, cell.value]))
+    expect(values).toEqual({ api: 'Шлюз', db: 'PostgreSQL', queue: 'Очередь' })
+    expect(Y.encodeStateAsUpdate(board)).toEqual(before)
   })
 })
 

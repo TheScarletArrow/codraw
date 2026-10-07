@@ -822,6 +822,34 @@ describe('BoardPage', () => {
         expect(Y.encodeStateVector(provider.live)).toEqual(before)
       })
 
+      it('offers the migration of the schema from the version to the board, and changes nothing in the board', async () => {
+        // The table `users` with the field `mail` in the version and the same field renamed `email` on the board.
+        const users = (field: string): CellData[] => [
+          { ...shape('users', 'a5', 'users', { x: 0, y: 500 }), style: { childLayout: 'stackLayout', dbVendor: 'postgresql' } },
+          { ...shape('users-id', 'a0', 'id uuid PK', { x: 0, y: 30 }), parent: 'users' },
+          { ...shape('users-mail', 'a1', field, { x: 0, y: 56 }), parent: 'users' },
+        ]
+        const versionDocument = new Y.Doc()
+        initializeDocument(versionDocument)
+        versionDocument.transact(() => users('mail text').forEach((cell) => writeCell(getCells(versionDocument), cell)))
+        const provider = await openHistory({ [`GET ${versionsUrl}/v1`]: { bytes: Y.encodeStateAsUpdate(versionDocument) } })
+        provider.document.transact(() => users('email text').forEach((cell) => writeCell(getCells(provider.document), cell)))
+        await userEvent.click(await screen.findByRole('button', { name: /Автоматически/ }))
+        const preview = await screen.findByRole('region', { name: /^Версия от / })
+        await within(preview).findByTestId('diagram-canvas')
+        expect(within(preview).queryByRole('button', { name: 'Миграция SQL' })).toBeNull()
+        await userEvent.click(within(preview).getByRole('button', { name: 'Сравнить с текущей' }))
+        const before = Y.encodeStateVector(provider.live)
+
+        await userEvent.click(within(preview).getByRole('button', { name: 'Миграция SQL' }))
+
+        const dialog = screen.getByRole('dialog', { name: 'Миграция SQL' })
+        expect(dialog).toHaveTextContent(/Из «версия от .+» в «текущая доска»/)
+        const sql = within(dialog).getByRole('textbox', { name: 'Текст Архитектура — миграция.sql' })
+        expect((sql as HTMLTextAreaElement).value).toContain('\nALTER TABLE users RENAME COLUMN mail TO email;\n')
+        expect(Y.encodeStateVector(provider.live)).toEqual(before)
+      })
+
       it('shows a changed element on the canvas, and centres the canvas on the ghost of a removed one', async () => {
         await openComparison()
         const list = await screen.findByRole('complementary', { name: 'Изменения' })
@@ -2424,6 +2452,27 @@ describe('BoardPage', () => {
       expect(within(list).getByRole('button', { name: /Добавлено: Очередь/ })).not.toHaveTextContent('на доске')
       expect(within(review).getByTestId('diagram-canvas')).toHaveAttribute('data-read-only', 'true')
       expect(within(review).queryByRole('button', { name: 'Отозвать' })).toBeNull()
+    })
+
+    it('offers the migration of the schema from the board to the board with the proposal accepted', async () => {
+      const provider = await openReview()
+      const draftDocument = (provider.draft.configuration as { document: Y.Doc }).document
+      act(() => {
+        const jobs = cell('jobs', 'a3', 'jobs')
+        writeCell(getCells(draftDocument), { ...jobs, style: { childLayout: 'stackLayout', dbVendor: 'mysql' } })
+        writeCell(getCells(draftDocument), { ...cell('jobs-id', 'a0', 'id bigint PK'), parent: 'jobs' })
+      })
+      await within(provider.review).findByRole('complementary', { name: 'Изменения' })
+
+      await userEvent.click(within(provider.review).getByRole('button', { name: 'Миграция SQL' }))
+
+      const dialog = screen.getByRole('dialog', { name: 'Миграция SQL' })
+      expect(dialog).toHaveTextContent('Из «текущая доска» в «доска с предложением «Добавить очередь»»')
+      expect(within(dialog).getByRole('combobox', { name: 'СУБД' })).toHaveValue('mysql')
+      const sql = within(dialog).getByRole('textbox', { name: 'Текст Архитектура — миграция.sql' })
+      expect((sql as HTMLTextAreaElement).value).toContain('CREATE TABLE jobs (\n    id bigint NOT NULL,\n    PRIMARY KEY (id)\n);')
+      // The board stays as it is until the proposal is accepted.
+      expect(getCells(provider.document).has('jobs')).toBe(false)
     })
 
     it('accepts: keeps the board as a version, closes the proposal and merges it into the board for everybody', async () => {
