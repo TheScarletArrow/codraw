@@ -70,6 +70,17 @@ class BoardReads(private val jdbc: JdbcClient) {
         .list()
         .singleOrNull()
 
+    /** When the user [userId] was last on each of the boards [boardIds] they were on. */
+    fun seenAt(userId: UUID, boardIds: Collection<UUID>): Map<UUID, Instant> {
+        if (boardIds.isEmpty()) return emptyMap()
+        return jdbc.sql("SELECT board_id, seen_at FROM board_reads WHERE user_id = :userId AND board_id = ANY (:boardIds::uuid[])")
+            .param("userId", userId)
+            .param("boardIds", boardIds.toTypedArray())
+            .query { rs, _ -> rs.getObject("board_id", UUID::class.java) to rs.instant("seen_at")!! }
+            .list()
+            .toMap()
+    }
+
     /** The users who were on the board [boardId]. */
     fun readers(boardId: UUID): List<UUID> = jdbc.sql("SELECT user_id FROM board_reads WHERE board_id = :boardId")
         .param("boardId", boardId)

@@ -40,6 +40,38 @@ class BoardDocumentRepository(private val jdbc: JdbcClient) {
         .optional()
         .orElse(null)
 
+    /** Whether the board [boardId] has a stored document. */
+    fun exists(boardId: UUID): Boolean = jdbc.sql("SELECT EXISTS (SELECT 1 FROM board_documents WHERE board_id = :boardId)")
+        .param("boardId", boardId)
+        .query(Boolean::class.java)
+        .single()
+
+    /**
+     * Stores the [text] of the stored document of the board [boardId] that search finds it by; with [onlyIfMissing],
+     * only while it has none. Returns whether it stored the text: `false` without a document, or with a text already.
+     */
+    fun storeSearchText(boardId: UUID, text: String, onlyIfMissing: Boolean): Boolean = jdbc.sql(
+        """
+        UPDATE board_documents SET search_text = :text
+        WHERE board_id = :boardId AND (NOT :onlyIfMissing OR search_text IS NULL)
+        """,
+    )
+        .param("boardId", boardId)
+        .param("text", text)
+        .param("onlyIfMissing", onlyIfMissing)
+        .update() > 0
+
+    /** Boards with a stored document without a text for search, the first [limit] of them by id after [after]. */
+    fun withoutSearchText(after: UUID?, limit: Int): List<UUID> = jdbc.sql(
+        "SELECT board_id FROM board_documents WHERE search_text IS NULL AND board_id > :after ORDER BY board_id LIMIT :limit",
+    )
+        // The nil UUID comes before any id of a board.
+        .param("after", after ?: UUID(0, 0))
+        .param("limit", limit)
+        .query(UUID::class.java)
+        .list()
+        .filterNotNull()
+
     /**
      * Stores the [state] of the document of the board [boardId], which the users [editors] changed: those of them who
      * did not change the stored document yet join its editors at the end, up to [maxEditors] together.
