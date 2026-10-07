@@ -27,3 +27,35 @@ export interface InfraGraph {
   frames: InfraFrame[]
   edges: InfraEdge[]
 }
+
+export interface InfraOptions {
+  /** Addresses of other services in environment variables become links. */
+  environment: boolean
+  /** Shapes of C4: Container, Database and External System. */
+  c4: boolean
+}
+
+/** Links between nodes, one a direction, labelled with the labels of all the reasons for it. */
+export class InfraEdges {
+  private readonly edges = new Map<string, InfraEdge & { labels: string[] }>()
+
+  /** Adds a link, or a label to the link in the same direction; a link to itself or to no node is no link. */
+  add(source: number, target: number | undefined, label: string) {
+    if (target === undefined || target === source) return
+    const key = `${source}:${target}`
+    let edge = this.edges.get(key)
+    if (!edge) {
+      edge = { source, target, label: '', labels: [] }
+      this.edges.set(key, edge)
+    }
+    if (label && !edge.labels.includes(label)) {
+      edge.labels.push(label)
+      edge.label = edge.labels.join(', ')
+    }
+  }
+
+  /** The links in the order they were first added. */
+  list(): InfraEdge[] {
+    return [...this.edges.values()].map(({ source, target, label }) => ({ source, target, label }))
+  }
+}

@@ -117,6 +117,23 @@ describe('auto layout', () => {
     expect(graph.children?.[0]?.children?.map((child) => child.id)).toEqual(['a'])
   })
 
+  it('keeps room between the layers for the labels of edges', async () => {
+    const shapes = [shape('client', 0, 0), shape('api', 0, 100)]
+    const edge = { id: 'e1', source: 'client', target: 'api' }
+
+    const plain = await layoutShapes(shapes, [edge], 'right')
+    const labelled = await layoutShapes(shapes, [{ ...edge, label: { width: 240, height: 16 } }], 'right')
+
+    const short = await layoutShapes(shapes, [{ ...edge, label: { width: 40, height: 16 } }], 'right')
+
+    const gap = (boxes: Map<string, LayoutBox>) => boxes.get('api')!.x - (boxes.get('client')!.x + boxes.get('client')!.width)
+    expect(gap(plain)).toBe(80)
+    expect(gap(labelled)).toBeGreaterThanOrEqual(240 + 16)
+    expect(gap(labelled)).toBeLessThan(240 + 80)
+    // A label that fits the space between the layers takes no more room.
+    expect(gap(short)).toBe(80)
+  })
+
   it('lays out nothing without shapes', async () => {
     expect((await layoutShapes([], [], 'right')).size).toBe(0)
   })

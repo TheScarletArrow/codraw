@@ -7,6 +7,7 @@ import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { SHOP_COMPOSE } from '../infra/testCompose.ts'
+import { SHOP_MANIFESTS } from '../infra/testKubernetes.ts'
 import { downloadBlob } from '../lib/download.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -122,6 +123,7 @@ describe('SqlMenu', () => {
     expect(screen.queryByRole('button', { name: 'Импорт Mermaid…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт OpenAPI / AsyncAPI…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт docker-compose…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт Kubernetes…' })).toBeNull()
   })
 
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
@@ -233,6 +235,28 @@ describe('SqlMenu', () => {
     expect(shapes.map((cell) => cell.value)).toEqual(['postgres\npostgres:18-alpine', 'backend\n./backend', 'frontend\nnginx:1.29\n:8080'])
     expect(Math.min(...shapes.map((cell) => cell.geometry!.x))).toBe(700)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('adds the workloads of manifests of Kubernetes, and opens each import of infrastructure afresh', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт docker-compose…' }))
+    await user.upload(screen.getByLabelText('Файлы docker-compose'), new File([SHOP_COMPOSE], 'docker-compose.yml'))
+    await user.click(screen.getByRole('button', { name: 'Назад' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт Kubernetes…' }))
+    expect(screen.queryByText('Файлов: 1')).toBeNull()
+
+    await user.upload(screen.getByLabelText('Файлы Kubernetes'), new File([SHOP_MANIFESTS], 'shop.yaml'))
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Рабочих нагрузок: 4, шлюзов: 1, внешних сервисов: 0, связей: 4, пространств имён: 1'),
+    )
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells.find((cell) => cell.value === 'shop' && cell.style.codrawShape === 'kubernetes-cluster')).toBeDefined()
+    expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
   })
 
   it('cannot add anything until the DDL has a table', async () => {

@@ -3,13 +3,15 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MAX_DOCUMENT_SIZE } from '../apiSpec/loadDocument.ts'
 import type { CellData } from '../diagram/model.ts'
+import { COMPOSE, KUBERNETES, type InfraFormat } from './formats.ts'
 import { InfraImport } from './InfraImport.tsx'
 import { CODRAW_COMPOSE, SHOP_COMPOSE } from './testCompose.ts'
+import { BILLING_MANIFESTS, SHOP_MANIFESTS } from './testKubernetes.ts'
 
-function renderImport({ error = null as string | null } = {}) {
+function renderImport<Parsed>(format: InfraFormat<Parsed>, { error = null as string | null } = {}) {
   const onAdd = vi.fn<(cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void>()
   const onBack = vi.fn()
-  render(<InfraImport busy={false} error={error} onAdd={onAdd} onBack={onBack} />)
+  render(<InfraImport format={format} busy={false} error={error} onAdd={onAdd} onBack={onBack} />)
   return { onAdd, onBack, user: userEvent.setup() }
 }
 
@@ -19,7 +21,7 @@ const shapes = (cells: CellData[]) => cells.filter((cell) => cell.kind === 'vert
 
 describe('InfraImport', () => {
   it('says what it reads and adds nothing before a file is given', () => {
-    renderImport()
+    renderImport(COMPOSE)
 
     expect(status()).toHaveTextContent('docker-compose.yml или compose.yaml; несколько файлов сливаются, как docker compose -f a.yml -f b.yml')
     expect(screen.getByRole('checkbox', { name: 'Связи по переменным окружения' })).toBeChecked()
@@ -28,7 +30,7 @@ describe('InfraImport', () => {
   })
 
   it('sums up the pasted text and adds the cells built for the place it is given', async () => {
-    const { onAdd, user } = renderImport()
+    const { onAdd, user } = renderImport(COMPOSE)
 
     await user.click(screen.getByRole('textbox', { name: 'docker-compose' }))
     await user.paste(SHOP_COMPOSE)
@@ -44,7 +46,7 @@ describe('InfraImport', () => {
   })
 
   it('merges the files with the text, counts links without variables and makes shapes of C4 when asked', async () => {
-    const { onAdd, user } = renderImport()
+    const { onAdd, user } = renderImport(COMPOSE)
 
     await user.upload(screen.getByLabelText('Файлы docker-compose'), [new File([CODRAW_COMPOSE], 'docker-compose.prod.yml')])
     await waitFor(() => expect(status()).toHaveTextContent('Сервисов: 6, связей: 7, сетей: 0'))
@@ -71,7 +73,7 @@ describe('InfraImport', () => {
   })
 
   it('names the files it cannot read and adds the others', async () => {
-    const { user } = renderImport()
+    const { user } = renderImport(COMPOSE)
 
     await user.upload(screen.getByLabelText('Файлы docker-compose'), [
       new File(['openapi: 3.0.3\n'], 'openapi.yaml'),
@@ -87,7 +89,7 @@ describe('InfraImport', () => {
   })
 
   it('refuses a file larger than the limit without reading it', async () => {
-    const { user } = renderImport()
+    const { user } = renderImport(COMPOSE)
     const big = new File(['x'], 'big.yml')
     Object.defineProperty(big, 'size', { value: MAX_DOCUMENT_SIZE + 1 })
 
@@ -98,10 +100,46 @@ describe('InfraImport', () => {
   })
 
   it('shows why the addition failed and goes back', async () => {
-    const { onBack, user } = renderImport({ error: 'Не удалось добавить схему' })
+    const { onBack, user } = renderImport(COMPOSE, { error: 'Не удалось добавить схему' })
 
     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось добавить схему')
     await user.click(screen.getByRole('button', { name: 'Назад' }))
     expect(onBack).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('InfraImport of Kubernetes', () => {
+  const renderKubernetes = () => renderImport(KUBERNETES)
+
+  it('says what it reads', () => {
+    renderKubernetes()
+
+    expect(screen.getByRole('heading', { name: 'Импорт Kubernetes' })).toBeInTheDocument()
+    expect(status()).toHaveTextContent('Манифесты, вывод helm template или kustomize build — в YAML или JSON')
+    expect(add()).toBeDisabled()
+  })
+
+  it('sums up the manifests of several files and adds the workloads in the frames of their namespaces', async () => {
+    const { onAdd, user } = renderKubernetes()
+
+    await user.upload(screen.getByLabelText('Файлы Kubernetes'), [new File([SHOP_MANIFESTS], 'shop.yaml'), new File([BILLING_MANIFESTS], 'billing.yaml')])
+    await waitFor(() =>
+      expect(status()).toHaveTextContent('Рабочих нагрузок: 5, шлюзов: 2, внешних сервисов: 1, связей: 7, пространств имён: 2'),
+    )
+    await user.click(add())
+
+    const cells = await onAdd.mock.lastCall![0]({ x: 0, y: 0 })
+    expect(shapes(cells).filter((cell) => cell.style.codrawShape === 'kubernetes-cluster').map((cell) => cell.value)).toEqual(['shop', 'billing'])
+    expect(shapes(cells).find((cell) => cell.value.startsWith('postgres'))!.value).toBe('postgres\npostgres:16\nStatefulSet, ×3, :5432')
+  })
+
+  it('names a template of Helm', async () => {
+    const { user } = renderKubernetes()
+
+    await user.click(screen.getByRole('textbox', { name: 'Манифесты Kubernetes' }))
+    await user.paste('kind: Deployment\nspec:\n  replicas: {{ .Values.replicas }}\n')
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Текст: это шаблон Helm — выполните helm template и откройте результат'))
+    expect(add()).toBeDisabled()
   })
 })
