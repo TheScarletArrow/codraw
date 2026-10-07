@@ -220,6 +220,17 @@ describe('ProposalPage', () => {
     await waitFor(() => expect(screen.getByTestId('diagram-canvas')).toHaveAttribute('data-page', 'queue-page'))
   })
 
+  it('shows the minimap of a page of the draft, without participants', async () => {
+    const provider = await openDraft()
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+
+    act(() => canvas.editor!.setState({ hasCells: true }))
+
+    expect(screen.getByRole('region', { name: 'Мини-карта' })).toBeInTheDocument()
+    expect(screen.queryByTestId('minimap-participant')).toBeNull()
+  })
+
   it('withdraws the proposal and tells the others on the draft', async () => {
     const withdrawn = proposal({ status: 'withdrawn', decidedBy: { id: ALICE.id, name: ALICE.name, avatarUrl: null } })
     const provider = await openDraft({

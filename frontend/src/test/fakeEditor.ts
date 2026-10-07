@@ -10,6 +10,7 @@ import type {
   StickySignature,
 } from '../diagram/editor.ts'
 import { DEFAULT_PENCIL_LINE, type PencilLine } from '../diagram/freehand.ts'
+import { unionBox, type PageSketch } from '../diagram/minimap.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
 
 export type FakeEditor = DiagramEditor & {
@@ -19,9 +20,12 @@ export type FakeEditor = DiagramEditor & {
   select(ids: string[]): void
   /** Simulates a right click on the canvas. */
   rightClick(request: ContextMenuRequest): void
-  /** Sets where a cell is shown; `cellBounds` returns it. */
+  /** Sets where a cell is shown; `cellBounds` returns it, and `pageSketch` draws it as a plain box. */
   placeCell(id: string, bounds: Box | null): void
-  /** Sets the points of the line of an edge (canvas points before scrolling); `edgePoints` returns them. */
+  /**
+   * Sets the points of the line of an edge (canvas points before scrolling); `edgePoints` returns them, and
+   * `pageSketch` draws them.
+   */
   placeEdge(id: string, points: Point[] | null): void
   /** Simulates scrolling: canvas points are diagram points shifted by this offset. */
   scrollTo(offset: Point): void
@@ -111,6 +115,20 @@ export function createFakeEditor({
     viewVersion++
     viewListeners.forEach((listener) => listener())
   }
+  // The sketch of the placed cells, made again once they change.
+  let sketch: PageSketch | null = null
+  const drawSketch = (): PageSketch => {
+    const shapes = [...cells].flatMap(([id, box]) =>
+      box ? [{ id, ...box, rotation: 0, ellipse: false, fill: '#ffffff', stroke: '#1f2328', header: null }] : [],
+    )
+    const lines = [...edges].flatMap(([id, points]) => (points ? [{ id, points }] : []))
+    let bounds: Box | null = null
+    for (const box of shapes) bounds = unionBox(bounds, box)
+    for (const point of lines.flatMap((line) => line.points)) {
+      bounds = unionBox(bounds, { ...point, width: 0, height: 0 })
+    }
+    return { shapes, edges: lines, bounds }
+  }
 
   return {
     graph: undefined as never,
@@ -180,6 +198,13 @@ export function createFakeEditor({
     },
     edgePoints: (id) => edges.get(id)?.map((point) => ({ x: point.x - offset.x, y: point.y - offset.y })) ?? null,
     viewportSize: () => viewport,
+    visibleArea: () => {
+      const width = viewport.width / state.scale
+      const height = viewport.height / state.scale
+      const middle = { x: offset.x + viewport.width / 2, y: offset.y + viewport.height / 2 }
+      return { x: middle.x - width / 2, y: middle.y - height / 2, width, height }
+    },
+    pageSketch: () => (sketch ??= drawSketch()),
     // Scrolls so that the point is in the middle of the viewport.
     centerOn: vi.fn(({ x, y }: Point) => {
       offset = { x: x - viewport.width / 2, y: y - viewport.height / 2 }
@@ -243,10 +268,12 @@ export function createFakeEditor({
     },
     placeCell(id, bounds) {
       cells.set(id, bounds)
+      sketch = null
       changeView()
     },
     placeEdge(id, points) {
       edges.set(id, points)
+      sketch = null
       changeView()
     },
     scrollTo(next) {

@@ -1,7 +1,7 @@
 /**
  * A line of the help on shortcuts: keys in the notation of shortcuts (`Mod` is Ctrl, or Cmd on macOS), any of which
  * does the action. Besides keys of {@link KEY_BINDINGS}, keys may be `Arrows` (the four arrows), `?`, `/`, `Mod+F` of
- * the search on the board, and the mouse: `Click`, `DoubleClick`, `Drag`, `RightDrag` and `Wheel`.
+ * the search on the board, `M` of the minimap, and the mouse: `Click`, `DoubleClick`, `Drag`, `RightDrag` and `Wheel`.
  */
 export interface ShortcutEntry {
   keys: string[]
@@ -65,6 +65,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['RightDrag'], action: 'Прокрутить холст' },
       { keys: ['Mod+F'], action: 'Найти на доске' },
       { keys: ['Mod+Click'], action: 'Перейти по ссылке элемента' },
+      { keys: ['M'], action: 'Мини-карта' },
       { keys: ['?'], action: 'Горячие клавиши' },
     ],
   },

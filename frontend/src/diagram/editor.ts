@@ -97,6 +97,7 @@ import {
   lockHolders,
   unlockCopy,
 } from './locks.ts'
+import { sketchPage, type PageSketch } from './minimap.ts'
 import { compareCells, DEFAULT_PAGE_ID, getCells, type CellData, type StyleValue } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
@@ -659,6 +660,13 @@ export interface DiagramEditor {
   edgePoints(id: string): Point[] | null
   /** Size of the visible area of the canvas, without scrollbars. */
   viewportSize(): { width: number; height: number }
+  /** The visible area of the canvas, without scrollbars, in diagram coordinates. */
+  visibleArea(): Box
+  /**
+   * The page as the canvas draws it, simplified for a picture of the whole page (see {@link PageSketch}); the same
+   * object until cells change or edges get new routes.
+   */
+  pageSketch(): PageSketch
   /** Scrolls (or, beyond the scrollable area, pans) the canvas so that a diagram point is in its middle. */
   centerOn(point: Point): void
   /** The middle of the visible area in diagram coordinates. */
@@ -1092,7 +1100,12 @@ export function createDiagramEditor(
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
   const binding = new DiagramBinding(model, cells, LOCAL_ORIGIN, readOnly, author)
-  const stopEdgeRouting = startEdgeRouting(graph)
+  // New routes redraw edges without a change of the model: the picture on the screen moved all the same.
+  const stopEdgeRouting = startEdgeRouting(graph, undefined, () => {
+    if (destroyed) return
+    drawingVersion++
+    notifyView()
+  })
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
@@ -2162,6 +2175,13 @@ export function createDiagramEditor(
     viewListeners.forEach((listener) => listener())
   }
   container.addEventListener('scroll', notifyView)
+  // The sketch of the page is made again only once its cells have changed or its edges got new routes.
+  let drawingVersion = 0
+  let sketch: { version: number; sketch: PageSketch } | null = null
+  const handleDrawingChange = () => {
+    drawingVersion++
+  }
+  model.addListener(InternalEvent.CHANGE, handleDrawingChange)
   graph.getView().addListener(InternalEvent.SCALE, notifyView)
   graph.getView().addListener(InternalEvent.TRANSLATE, notifyView)
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
@@ -3105,6 +3125,19 @@ export function createDiagramEditor(
       return points.map((point) => ({ x: point!.x - container.scrollLeft, y: point!.y - container.scrollTop }))
     },
     viewportSize: () => ({ width: container.clientWidth, height: container.clientHeight }),
+    visibleArea() {
+      const { scale, translate } = graph.getView()
+      return {
+        x: container.scrollLeft / scale - translate.x,
+        y: container.scrollTop / scale - translate.y,
+        width: container.clientWidth / scale,
+        height: container.clientHeight / scale,
+      }
+    },
+    pageSketch() {
+      if (sketch?.version !== drawingVersion) sketch = { version: drawingVersion, sketch: sketchPage(graph) }
+      return sketch.sketch
+    },
     centerOn({ x, y }) {
       const view = graph.getView()
       const { scale, translate } = view
@@ -3224,6 +3257,7 @@ export function createDiagramEditor(
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
+      model.removeListener(handleDrawingChange)
       model.removeListener(notify)
       model.removeListener(forgetLinks)
       cells.unobserveDeep(handleAttribution)

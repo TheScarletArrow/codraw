@@ -116,6 +116,7 @@ describe('legal pages', () => {
     expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')
     expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')
     expect(copies).toHaveTextContent('очисткой данных этого сайта')
+    expect(copies).toHaveTextContent('свёрнута ли мини-карта холста (localStorage, ключ codraw.minimap)')
     expect(copies).toHaveTextContent('цвет, который вы последним выбрали для стикеров (localStorage)')
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'имя и идентификатор участника, который написал текст стикера',

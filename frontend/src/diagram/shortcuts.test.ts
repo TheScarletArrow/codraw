@@ -4,9 +4,9 @@ import { formatKeys, SHORTCUT_GROUPS, shortcutGroups } from './shortcuts.ts'
 
 /**
  * Keys of the help that are not keys of the key handler: clipboard events, the mouse, the help itself, the search on
- * the board and the message at the cursor.
+ * the board, the minimap and the message at the cursor.
  */
-const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/)$|Click|Drag|Wheel/
+const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/|M)$|Click|Drag|Wheel/
 
 describe('shortcuts', () => {
   it('describes exactly the keys the editor binds, with the same editing flag', () => {
@@ -66,6 +66,7 @@ describe('shortcuts', () => {
     expect(actions).not.toContain('Вставить стиль')
     expect(actions).toContain('Показать всё')
     expect(actions).toContain('Найти на доске')
+    expect(actions).toContain('Мини-карта')
     expect(actions).toContain('Перейти по ссылке элемента')
     expect(actions).toContain('Указка')
     expect(actions).toContain('Комментарий')
