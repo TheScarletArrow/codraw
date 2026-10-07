@@ -1,5 +1,6 @@
 import type { Cardinality } from '../mermaid/parseMermaid.ts'
 import { FIELD_WORDS } from '../sql/tableField.ts'
+import { protocol } from '../infra/addresses.ts'
 import { ApiSpecError, loadDocument, type ApiSource } from './loadDocument.ts'
 
 /** A model that a field refers to, and how many of it the field holds. */
@@ -59,6 +60,10 @@ export interface ApiSpec {
   source: string
   /** The service: the title of the API or of the application. */
   title: string
+  /** The first paragraph of the description of the API or the application, 500 characters at most. */
+  description?: string
+  /** The protocols of the servers of a document of AsyncAPI, as people write them: `Kafka`, `AMQP`, `MQTT`. */
+  protocols?: string[]
   endpoints: ApiEndpoint[]
   channels: ApiChannel[]
   operations: ApiOperation[]
@@ -511,6 +516,7 @@ function openApi(root: Json, source: string, swagger: boolean): ApiSpec {
     kind: 'openapi',
     source,
     title: titleOf(root, source),
+    description: descriptionOf(root),
     endpoints,
     channels: [],
     operations: [],
@@ -571,7 +577,18 @@ function asyncApi2(root: Json, source: string): ApiSpec {
 function asyncSpec(root: Json, source: string, document: SpecDocument, channels: ApiChannel[], operations: ApiOperation[]): ApiSpec {
   const models = [...document.models.values()]
   const skippedRefs = skippedReferences(root)
-  return { kind: 'asyncapi', source, title: titleOf(root, source), endpoints: [], channels, operations, models, skippedRefs }
+  return {
+    kind: 'asyncapi',
+    source,
+    title: titleOf(root, source),
+    description: descriptionOf(root),
+    protocols: protocolsOf(root),
+    endpoints: [],
+    channels,
+    operations,
+    models,
+    skippedRefs,
+  }
 }
 
 /** A document of AsyncAPI 3.x: channels with an address and messages, operations that `send` or `receive` on a channel. */
@@ -615,6 +632,26 @@ function asyncApi3(root: Json, source: string): ApiSpec {
 /** The title of the API or the application, else the name of the file without its extension. */
 function titleOf(root: Json, source: string): string {
   return text(isObject(root.info) ? root.info.title : undefined) ?? source.replace(/\.(ya?ml|json)$/i, '')
+}
+
+/** The longest description of a service that the import keeps. */
+const MAX_DESCRIPTION = 500
+
+/** The first paragraph of `info.description`, in one line, at most {@link MAX_DESCRIPTION} characters; `''` without one. */
+function descriptionOf(root: Json): string {
+  const description = text(isObject(root.info) ? root.info.description : undefined) ?? ''
+  const paragraph = description.split(/\n\s*\n/)[0]!.replace(/\s+/g, ' ').trim()
+  return paragraph.length > MAX_DESCRIPTION ? `${paragraph.slice(0, MAX_DESCRIPTION - 1)}…` : paragraph
+}
+
+/** The protocols of the servers of a document of AsyncAPI, each once: `kafka` and `kafka-secure` are Kafka. */
+function protocolsOf(root: Json): string[] {
+  return unique(
+    entries(root.servers)
+      .map(([, server]) => text(isObject(server) ? server.protocol : undefined))
+      .filter((name): name is string => name !== null)
+      .map((name) => protocol(name.replace(/-secure$/i, ''))),
+  )
 }
 
 /** The version of a document as text: YAML reads `asyncapi: 2.6` without quotes as a number. */

@@ -29,46 +29,50 @@ function entityRelationship(): CellData[] {
 function c4Containers(): CellData[] {
   const diagram = new DiagramBuilder()
   // The frame first, so that the containers are drawn over it.
-  diagram.shape('c4-boundary', 40, 240, { value: 'Интернет-магазин\n[Software System]', width: 1000, height: 220 })
-  const customer = diagram.shape('c4-person', 440, 0, { value: 'Покупатель\n[Person]\nВыбирает и оплачивает товары' })
+  diagram.shape('c4-boundary', 40, 240, { element: { name: 'Интернет-магазин', kind: 'c4-system' }, width: 1000, height: 220 })
+  const customer = diagram.shape('c4-person', 440, 0, { element: { name: 'Покупатель', description: 'Выбирает и оплачивает товары' } })
   const web = diagram.shape('c4-container', 80, 300, {
-    value: 'Веб-приложение\n[Container: React]\nКаталог, корзина и оформление заказа',
+    element: { name: 'Веб-приложение', technology: 'React', description: 'Каталог, корзина и оформление заказа' },
   })
-  const api = diagram.shape('c4-container', 420, 300, { value: 'API\n[Container: Spring Boot]\nЗаказы, оплата и каталог' })
+  const api = diagram.shape('c4-container', 420, 300, {
+    element: { name: 'API', technology: 'Spring Boot', description: 'Заказы, оплата и каталог' },
+  })
   const database = diagram.shape('c4-database', 760, 300, {
-    value: 'База данных\n[Container: PostgreSQL]\nТовары, заказы и покупатели',
+    element: { name: 'База данных', technology: 'PostgreSQL', description: 'Товары, заказы и покупатели' },
   })
   const payments = diagram.shape('c4-external-system', 420, 540, {
-    value: 'Платёжный шлюз\n[Software System]\nПринимает оплату картой',
+    element: { name: 'Платёжный шлюз', description: 'Принимает оплату картой' },
   })
-  diagram.edge(customer, web, { value: 'Использует\n[HTTPS]', from: 'left', to: 'top' })
-  diagram.edge(web, api, { value: 'Вызывает\n[JSON/HTTPS]', from: 'right', to: 'left' })
-  diagram.edge(api, database, { value: 'Читает и пишет\n[JDBC]', from: 'right', to: 'left' })
-  diagram.edge(api, payments, { value: 'Проводит оплату\n[HTTPS]', from: 'bottom', to: 'top' })
+  const sync = { interaction: 'sync' } as const
+  diagram.edge(customer, web, { value: 'Использует\n[HTTPS]', technology: 'HTTPS', ...sync, from: 'left', to: 'top' })
+  diagram.edge(web, api, { value: 'Вызывает\n[JSON/HTTPS]', technology: 'JSON/HTTPS', ...sync, from: 'right', to: 'left' })
+  diagram.edge(api, database, { value: 'Читает и пишет\n[JDBC]', technology: 'JDBC', ...sync, from: 'right', to: 'left' })
+  diagram.edge(api, payments, { value: 'Проводит оплату\n[HTTPS]', technology: 'HTTPS', ...sync, from: 'bottom', to: 'top' })
   return diagram.build()
 }
 
 function microservices(): CellData[] {
   const diagram = new DiagramBuilder()
-  const browser = diagram.shape('browser', 40, 255)
-  const gateway = diagram.shape('api-gateway', 260, 270)
+  const browser = diagram.shape('browser', 40, 255, { element: { name: 'Веб-браузер' } })
+  const gateway = diagram.shape('api-gateway', 260, 270, { element: { name: 'API-шлюз' } })
   const [orders, payments, catalog] = [
     { name: 'Сервис заказов', database: 'БД заказов', y: 60 },
     { name: 'Сервис оплаты', database: 'БД оплаты', y: 270 },
     { name: 'Сервис каталога', database: 'БД каталога', y: 480 },
   ].map(({ name, database, y }) => {
-    const service = diagram.shape('service', 480, y, { value: name })
-    const store = diagram.shape('database', 720, y - 15, { value: database })
+    const service = diagram.shape('service', 480, y, { element: { name } })
+    const store = diagram.shape('database', 720, y - 15, { element: { name: database, technology: 'PostgreSQL' } })
     diagram.edge(gateway, service, { from: 'right', to: 'left' })
     diagram.edge(service, store, { from: 'right', to: 'left' })
     return service
   }) as [string, string, string]
-  const topic = diagram.shape('event-topic', 470, 177, { value: 'Топик «Заказы» [Kafka]', width: 140 })
-  diagram.edge(orders, topic, { value: 'Публикует', from: 'bottom', to: 'top' })
-  diagram.edge(topic, payments, { value: 'Читает', from: 'bottom', to: 'top' })
-  const cache = diagram.shape('cache', 725, 610, { value: 'Кэш [Redis]' })
+  const topic = diagram.shape('event-topic', 470, 177, { element: { name: 'Топик «Заказы»', technology: 'Kafka' }, showTechnology: true, width: 140 })
+  const kafka = { technology: 'Kafka', interaction: 'async' } as const
+  diagram.edge(orders, topic, { value: 'Публикует', ...kafka, from: 'bottom', to: 'top' })
+  diagram.edge(topic, payments, { value: 'Читает', ...kafka, from: 'bottom', to: 'top' })
+  const cache = diagram.shape('cache', 725, 610, { element: { name: 'Кэш', technology: 'Redis' }, showTechnology: true })
   diagram.edge(catalog, cache, { from: 'bottom', to: 'left' })
-  diagram.edge(browser, gateway, { value: 'HTTPS', from: 'right', to: 'left' })
+  diagram.edge(browser, gateway, { value: 'HTTPS', technology: 'HTTPS', interaction: 'sync', from: 'right', to: 'left' })
   return diagram.build()
 }
 

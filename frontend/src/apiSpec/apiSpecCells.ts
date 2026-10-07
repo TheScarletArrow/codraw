@@ -1,3 +1,4 @@
+import type { Interaction } from '../diagram/elementKinds.ts'
 import { LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, type ShapeStyle } from '../diagram/shapes.ts'
@@ -15,10 +16,13 @@ export interface ApiImportOptions {
   models: boolean
 }
 
-/** A service of a document: its title and its endpoints as `METHOD /path`. */
+/** A service of a document: its title and its endpoints as `METHOD /path`, its description and protocols. */
 export interface ApiService {
   title: string
   endpoints: string[]
+  description?: string
+  /** The protocols of its servers, e.g. `Kafka`. */
+  technology?: string
 }
 
 /** An end of a link: a service, a topic, a model, or a field of a model, by their indexes in the graph. */
@@ -29,6 +33,10 @@ export interface ApiLink {
   target: ApiNode
   label: string
   style: Record<string, StyleValue>
+  /** The protocol of a message sent or received. */
+  technology?: string
+  /** Messages of AsyncAPI are asynchronous. */
+  interaction?: Interaction
 }
 
 /**
@@ -38,6 +46,8 @@ export interface ApiLink {
 export interface ApiGraph {
   services: ApiService[]
   topics: string[]
+  /** The protocols of the topics, by their indexes: of the servers of the documents that have them. */
+  topicTechnologies?: string[]
   models: ApiModel[]
   links: ApiLink[]
   skippedRefs: number
@@ -53,17 +63,21 @@ const USES: Record<string, StyleValue> = { dashed: true }
  * `oneOf` and `anyOf`, and from a service or a topic to the models of its endpoints or messages.
  */
 export function apiGraph(specs: ApiSpec[], { models: withModels }: ApiImportOptions): ApiGraph {
-  const graph: ApiGraph = { services: [], topics: [], models: [], links: [], skippedRefs: 0 }
+  const graph: ApiGraph = { services: [], topics: [], topicTechnologies: [], models: [], links: [], skippedRefs: 0 }
   const topics = new Map<string, number>()
+  const topicProtocols: Set<string>[] = []
   const models = new Map<string, number>()
   const linked = new Set<string>()
   const flows = new Map<string, { link: ApiLink; labels: string[] }>()
-  const topicOf = (address: string) => {
+  const topicOf = (address: string, protocols: string[] = []) => {
     let index = topics.get(address)
     if (index === undefined) {
       index = graph.topics.push(address) - 1
       topics.set(address, index)
+      topicProtocols.push(new Set())
     }
+    protocols.forEach((name) => topicProtocols[index!]!.add(name))
+    graph.topicTechnologies![index] = [...topicProtocols[index]!].join(', ')
     return index
   }
   const once = (key: string, link: ApiLink) => {
@@ -74,11 +88,13 @@ export function apiGraph(specs: ApiSpec[], { models: withModels }: ApiImportOpti
 
   for (const spec of specs) {
     const endpoints = spec.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`)
-    const service = graph.services.push({ title: spec.title, endpoints }) - 1
+    const protocols = spec.protocols ?? []
+    const technology = protocols.join(', ')
+    const service = graph.services.push({ title: spec.title, endpoints, description: spec.description ?? '', technology }) - 1
     graph.skippedRefs += spec.skippedRefs
-    for (const channel of spec.channels) topicOf(channel.address)
+    for (const channel of spec.channels) topicOf(channel.address, protocols)
     for (const operation of spec.operations) {
-      const topic = topicOf(operation.channel)
+      const topic = topicOf(operation.channel, protocols)
       const key = `${service}:${topic}:${operation.action}`
       const flow = flows.get(key)
       if (flow) {
@@ -91,7 +107,7 @@ export function apiGraph(specs: ApiSpec[], { models: withModels }: ApiImportOpti
         { kind: 'topic', index: topic },
       ]
       const [source, target] = operation.action === 'send' ? ends : [ends[1], ends[0]]
-      const link: ApiLink = { source, target, label: operation.label, style: {} }
+      const link: ApiLink = { source, target, label: operation.label, style: {}, technology, interaction: 'async' }
       flows.set(key, { link, labels: operation.label ? [operation.label] : [] })
       graph.links.push(link)
     }
@@ -198,12 +214,15 @@ export async function apiSpecCells(
     const lines = label.split('\n')
     const width = Math.min(560, Math.max(service.width, Math.ceil(Math.max(...lines.map((line) => line.length)) * CHAR_WIDTH) + 32))
     const height = Math.max(service.height, lines.length * LINE_HEIGHT + 20)
-    return builder.shape('service', 0, 0, { value: label, width, height, ...(item.endpoints.length > 0 && { style: LISTING }) })
+    // The label stays as it is: the title, then the endpoints, which the properties do not change.
+    const element = { name: item.title, kind: 'service' as const, description: item.description, technology: item.technology }
+    return builder.shape('service', 0, 0, { value: label, width, height, element, ...(item.endpoints.length > 0 && { style: LISTING }) })
   })
   // The address is written under the topic: a long one widens it, so that the layout keeps it clear of its neighbours.
-  const topics = graph.topics.map((address) => {
+  const topics = graph.topics.map((address, index) => {
     const width = Math.min(320, Math.max(topic.width, Math.ceil(address.length * CHAR_WIDTH) + 16))
-    return builder.shape('event-topic', 0, 0, { value: address, width })
+    const element = { name: address, technology: graph.topicTechnologies?.[index] }
+    return builder.shape('event-topic', 0, 0, { value: address, width, element })
   })
   const tables = graph.models.map((model) => {
     const labels = model.fields.map((field) => [fieldName(field.name), field.type, field.notNull && 'NOT NULL'].filter(Boolean).join(' '))
@@ -216,7 +235,10 @@ export async function apiSpecCells(
   }
   /** The shape an end of a link is on: a field is on its table. */
   const shapeOf = (node: ApiNode) => (node.kind === 'field' ? tables[node.index]!.id : cellOf(node))
-  for (const link of graph.links) builder.edge(cellOf(link.source), cellOf(link.target), { value: link.label, style: link.style })
+  for (const link of graph.links) {
+    const { label: value, style, technology, interaction } = link
+    builder.edge(cellOf(link.source), cellOf(link.target), { value, style, technology, interaction })
+  }
 
   const cells = builder.build()
   const shapes = cells.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')

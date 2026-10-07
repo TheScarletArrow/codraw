@@ -1,6 +1,15 @@
 import { generateNKeysBetween } from 'fractional-indexing'
+import {
+  edgePropertiesStyle,
+  normalizeProperties,
+  propertiesStyle,
+  SHOW_TECHNOLOGY_KEY,
+  type ElementProperties,
+  type Interaction,
+} from '../diagram/elementKinds.ts'
+import { composeLabel } from '../diagram/elementProps.ts'
 import { newId } from '../diagram/ids.ts'
-import { LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
+import { ELEMENT_KEY, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import {
   findShape,
   markedStyle,
@@ -14,11 +23,16 @@ import {
 } from '../diagram/shapes.ts'
 
 export interface ShapeOptions {
+  /** The label; without it, the label made of `element`, or the label of the shape of the palette. */
   value?: string
   width?: number
   height?: number
   /** Keys added to the style of the shape of the palette. */
   style?: ShapeStyle
+  /** Properties of the element of the shape: the shape gets an element of its own with them (see `elementProps.ts`). */
+  element?: Partial<ElementProperties>
+  /** The plain label shows the technology of the element on its second line. */
+  showTechnology?: boolean
 }
 
 /** A side of a shape that an edge leaves or enters. */
@@ -27,6 +41,10 @@ export type Side = 'left' | 'right' | 'top' | 'bottom'
 export interface EdgeOptions {
   value?: string
   style?: Record<string, StyleValue>
+  /** The technology or protocol of the edge. */
+  technology?: string
+  /** A synchronous call or an asynchronous message. */
+  interaction?: Interaction
   /** The side of the source the edge leaves, and of the target it enters: otherwise the router picks them. */
   from?: Side
   to?: Side
@@ -43,15 +61,23 @@ export class DiagramBuilder {
   private readonly cells: CellData[] = []
 
   /** Adds a shape of the palette with its top-left corner at (x, y) and returns its id. */
-  shape(preset: ShapeId, x: number, y: number, { value, width, height, style }: ShapeOptions = {}): string {
+  shape(preset: ShapeId, x: number, y: number, { value, width, height, style, element, showTechnology = false }: ShapeOptions = {}): string {
     const shape = findShape(preset)
     if (!shape) throw new Error(`No shape ${preset}`)
+    const full = { ...markedStyle(shape), ...style } as Record<string, StyleValue>
+    if (element) {
+      const properties = normalizeProperties({ kind: preset, ...element })
+      for (const [key, property] of Object.entries(propertiesStyle(properties))) if (property !== undefined) full[key] = property
+      full[ELEMENT_KEY] = newId()
+      if (showTechnology) full[SHOW_TECHNOLOGY_KEY] = true
+      value ??= composeLabel(properties, full, { showTechnology })
+    }
     return this.add({
       kind: 'vertex',
       parent: LAYER_CELL_ID,
       value: value ?? shape.value,
       geometry: { x, y, width: width ?? shape.width, height: height ?? shape.height },
-      style: { ...markedStyle(shape), ...style } as Record<string, StyleValue>,
+      style: full,
     })
   }
 
@@ -80,10 +106,13 @@ export class DiagramBuilder {
   }
 
   /** Adds an edge from `source` to `target` with the default look of CoDraw and the keys of `style`. */
-  edge(source: string, target: string, { value = '', style = {}, from, to }: EdgeOptions = {}): string {
+  edge(source: string, target: string, { value = '', style = {}, from, to, technology = '', interaction }: EdgeOptions = {}): string {
     const ends: Record<string, StyleValue> = {
       ...(from && { exitX: SIDES[from][0], exitY: SIDES[from][1] }),
       ...(to && { entryX: SIDES[to][0], entryY: SIDES[to][1] }),
+    }
+    for (const [key, property] of Object.entries(edgePropertiesStyle({ technology, interaction: interaction ?? null }))) {
+      if (property !== undefined) ends[key] = property
     }
     return this.add({
       kind: 'edge',
