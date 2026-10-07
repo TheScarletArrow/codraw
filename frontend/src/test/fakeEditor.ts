@@ -61,6 +61,7 @@ export function createFakeEditor({
     commentTool: false,
     lock: null,
     attribution: null,
+    canAddImages: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -100,6 +101,7 @@ export function createFakeEditor({
     copy: vi.fn(),
     cut: vi.fn(),
     paste: vi.fn(),
+    addImages: vi.fn(async () => {}),
     duplicate: vi.fn(),
     insertCells: vi.fn(),
     restoreCells: vi.fn(),

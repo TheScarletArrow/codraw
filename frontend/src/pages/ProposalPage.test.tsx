@@ -6,11 +6,19 @@ import type { Board } from '../api/boards.ts'
 import type { Proposal } from '../api/proposals.ts'
 import { PROPOSALS_CHANGED } from '../board/messages.ts'
 import { getCells, getPages, initializeDocument, LAYER_CELL_ID, writePage } from '../diagram/model.ts'
+import { uploadImage } from '../api/images.ts'
+import type { ImageHost } from '../diagram/images.ts'
 import type { FakeEditor } from '../test/fakeEditor.ts'
 import { FakeHocuspocusProvider } from '../test/fakeProvider.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
 import { ProposalPage } from './ProposalPage.tsx'
 
+// The host of images of the canvas, as the page gives it.
+const canvas = vi.hoisted(() => ({ images: null as ImageHost | null }))
+vi.mock('../api/images.ts', async (original) => ({
+  ...(await original<typeof import('../api/images.ts')>()),
+  uploadImage: vi.fn(async () => ({ id: 'i', url: '/api/boards/b/images/i', contentType: 'image/png', size: 3, width: 4, height: 2 })),
+}))
 vi.mock('@hocuspocus/provider', async () => ({
   HocuspocusProvider: (await import('../test/fakeProvider.ts')).FakeHocuspocusProvider,
 }))
@@ -23,13 +31,16 @@ vi.mock('../diagram/DiagramCanvas.tsx', async () => {
       pageId,
       readOnly = false,
       collaboration = true,
+      images = null,
       onEditor,
     }: {
       pageId: string
       readOnly?: boolean
       collaboration?: boolean
+      images?: ImageHost | null
       onEditor: (editor: FakeEditor | null) => void
     }) => {
+      canvas.images = images
       useEffect(() => {
         onEditor(createFakeEditor({ pageId, readOnly }))
         return () => onEditor(null)
@@ -112,6 +123,16 @@ describe('ProposalPage', () => {
     expect(within(note).getByRole('button', { name: 'Отозвать' })).toBeInTheDocument()
     // The draft of a board that had no pages gets its first page from its author.
     expect(getPages(provider.document).size).toBe(1)
+  })
+
+  it('stores the images that the author adds to the draft on the board, in the name of the proposal', async () => {
+    const provider = await openDraft()
+    act(() => provider.emitConnected('read-write'))
+    await screen.findByTestId('diagram-canvas')
+
+    await act(() => canvas.images!.store(new File(['png'], 'logo.png', { type: 'image/png' })))
+
+    expect(uploadImage).toHaveBeenCalledWith({ boardId, proposalId }, expect.any(File), expect.any(Function))
   })
 
   it('offers neither the laser pointer nor the comment tool on the draft, which nobody else is on', async () => {

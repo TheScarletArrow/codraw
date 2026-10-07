@@ -1,16 +1,27 @@
-import { ChevronDown, Search } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, ImagePlus, Search } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { DiagramEditor } from './editor.ts'
+import { IMAGE_FILE_TYPES } from './images.ts'
 import { ShapeIcon } from './ShapeIcon.tsx'
 import { searchShapes } from './shapeSearch.ts'
 import { SHAPE_DRAG_TYPE, SHAPE_SECTIONS, type ShapePreset } from './shapes.ts'
+import { useEditorState } from './useEditorState.ts'
+
+/** Words of a search that mean pictures rather than shapes: the search offers «Изображение» for them. */
+const IMAGE_WORDS = ['изображение', 'картинка', 'рисунок', 'фото', 'скриншот', 'логотип', 'image', 'picture', 'png', 'jpeg']
+
+const searchesImage = (query: string) => {
+  const words = query.trim().toLowerCase().split(/\s+/)
+  return words.every((word) => IMAGE_WORDS.some((candidate) => candidate.startsWith(word)))
+}
 
 /** Shapes that can be dragged onto the canvas or added to the middle of the view with a click, and a search for them. */
 export function ShapePalette({ editor }: { editor: DiagramEditor | null }) {
   const [query, setQuery] = useState('')
   const searching = query.trim() !== ''
   const found = searching ? searchShapes(query) : []
+  const imageFound = searching && searchesImage(query)
 
   return (
     <aside aria-label="Фигуры" className="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r p-2">
@@ -35,8 +46,9 @@ export function ShapePalette({ editor }: { editor: DiagramEditor | null }) {
         />
       </label>
       {searching ? (
-        found.length > 0 ? (
+        found.length > 0 || imageFound ? (
           <div role="group" aria-label="Найденные фигуры" className="flex flex-col gap-1">
+            {imageFound && <ImageButton editor={editor} />}
             {found.map((shape) => (
               <ShapeButton key={shape.id} shape={shape} editor={editor} />
             ))}
@@ -57,6 +69,7 @@ export function ShapePalette({ editor }: { editor: DiagramEditor | null }) {
               {section.shapes.map((shape) => (
                 <ShapeButton key={shape.id} shape={shape} editor={editor} />
               ))}
+              {section.group === 'basic' && <ImageButton editor={editor} />}
             </div>
           </details>
         ))
@@ -82,5 +95,39 @@ function ShapeButton({ shape, editor }: { shape: ShapePreset; editor: DiagramEdi
       <ShapeIcon shape={shape.id} />
       {shape.label}
     </Button>
+  )
+}
+
+/** «Изображение»: picks image files and adds them in the middle of the visible part of the canvas. */
+function ImageButton({ editor }: { editor: DiagramEditor | null }) {
+  const input = useRef<HTMLInputElement>(null)
+  const { canAddImages } = useEditorState(editor)
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept={IMAGE_FILE_TYPES.join(',')}
+        multiple
+        aria-label="Файлы изображений"
+        className="hidden"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? [])
+          event.target.value = ''
+          if (files.length > 0) void editor?.addImages(files)
+        }}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-auto justify-start py-1.5 text-left whitespace-normal"
+        title="Изображение PNG, JPEG, GIF или WebP с компьютера; картинку можно и вставить (Ctrl+V), и перетащить на холст"
+        disabled={!canAddImages}
+        onClick={() => input.current?.click()}
+      >
+        <ImagePlus aria-hidden className="size-5 text-foreground" strokeWidth={1.5} />
+        Изображение
+      </Button>
+    </>
   )
 }

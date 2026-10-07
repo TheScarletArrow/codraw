@@ -2,6 +2,7 @@ import { useEffect, useRef, type DragEvent } from 'react'
 import * as Y from 'yjs'
 import type { PageHistories } from './binding.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
+import { filesOf, type ImageHost } from './images.ts'
 import { SHAPE_DRAG_TYPE, type ShapeId } from './shapes.ts'
 
 interface DiagramCanvasProps {
@@ -25,6 +26,11 @@ interface DiagramCanvasProps {
    */
   collaboration?: boolean
   /**
+   * Where the images that the participant adds are stored; without it they cannot add images. Must be stable: a new
+   * host creates a new canvas.
+   */
+  images?: ImageHost | null
+  /**
    * Receives the editor once the canvas is created and `null` when it is destroyed.
    * Must be stable (e.g. a state setter): a new function recreates the canvas.
    */
@@ -40,6 +46,7 @@ export function DiagramCanvas({
   participantName,
   participantId,
   collaboration = true,
+  images = null,
   onEditor,
 }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -53,6 +60,7 @@ export function DiagramCanvas({
       participantName,
       participantId,
       collaboration,
+      images,
     })
     editorRef.current = editor
     onEditor(editor)
@@ -61,21 +69,27 @@ export function DiagramCanvas({
       editorRef.current = null
       editor.destroy()
     }
-  }, [document, pageId, histories, readOnly, participantName, participantId, collaboration, onEditor])
+  }, [document, pageId, histories, readOnly, participantName, participantId, collaboration, images, onEditor])
 
   const handleDragOver = (event: DragEvent) => {
-    if (!readOnly && event.dataTransfer.types.includes(SHAPE_DRAG_TYPE)) {
-      event.preventDefault()
-      event.dataTransfer.dropEffect = 'copy'
-    }
+    const types = event.dataTransfer.types
+    const files = types.includes('Files')
+    if (!files && !types.includes(SHAPE_DRAG_TYPE)) return
+    // Files are never dropped on the browser, which would open them instead of the board; only images go on the canvas.
+    event.preventDefault()
+    event.dataTransfer.dropEffect = readOnly || (files && !images) ? 'none' : 'copy'
   }
 
   const handleDrop = (event: DragEvent) => {
-    const shape = event.dataTransfer.getData(SHAPE_DRAG_TYPE) as ShapeId
     const editor = editorRef.current
-    if (!shape || !editor) return
+    const shape = event.dataTransfer.getData(SHAPE_DRAG_TYPE) as ShapeId
+    const files = filesOf(event.dataTransfer)
+    if (!shape && files.length === 0) return
     event.preventDefault()
-    editor.addShape(shape, editor.toDiagramPoint(event.clientX, event.clientY))
+    if (!editor || readOnly) return
+    const point = editor.toDiagramPoint(event.clientX, event.clientY)
+    if (shape) editor.addShape(shape, point)
+    else void editor.addImages(files, point)
   }
 
   return (

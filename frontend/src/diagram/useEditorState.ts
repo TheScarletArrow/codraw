@@ -27,6 +27,7 @@ const NO_EDITOR: EditorState = {
   commentTool: false,
   lock: null,
   attribution: null,
+  canAddImages: false,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

@@ -3,6 +3,8 @@ import { useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import type { Author } from '../diagram/attribution.ts'
+import { storePageImages, type ImageHost } from '../diagram/images.ts'
+import { embeddedImages } from '../image/inlineImages.ts'
 import { DRAWIO_FILE_TYPES, downloadDrawio } from './files.ts'
 import { importPages } from './importPages.ts'
 import { DrawioFormatError, parseDrawio } from './parse.ts'
@@ -17,10 +19,19 @@ interface DrawioActionsProps {
   readOnly?: boolean
   /** The participant who imports, whom the imported elements keep as who changed them last. */
   author?: Author | null
+  /** Where the pictures of an imported file are stored; without it they stay in the file's `data:` addresses. */
+  images?: ImageHost | null
 }
 
 /** Import of `.drawio` files into the board and export of the board to `.drawio`. */
-export function DrawioActions({ document, title, onImported, readOnly = false, author = null }: DrawioActionsProps) {
+export function DrawioActions({
+  document,
+  title,
+  onImported,
+  readOnly = false,
+  author = null,
+  images = null,
+}: DrawioActionsProps) {
   const input = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -30,10 +41,24 @@ export function DrawioActions({ document, title, onImported, readOnly = false, a
     setError(null)
     setBusy(true)
     try {
-      const [first] = importPages(document, await parseDrawio(await file.text()), author)
+      const pages = await parseDrawio(await file.text())
+      // The board keeps addresses of its pictures, not the pictures.
+      if (images) await storePageImages(pages, images)
+      const [first] = importPages(document, pages, author)
       if (first) onImported(first)
     } catch (cause) {
       setError(cause instanceof DrawioFormatError ? cause.message : 'Не удалось импортировать файл')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Saves the board with its pictures in the file, so that it opens without access to the board. */
+  const exportFile = async () => {
+    if (!document) return
+    setBusy(true)
+    try {
+      downloadDrawio(title, exportDrawio(document, await embeddedImages(document)))
     } finally {
       setBusy(false)
     }
@@ -74,8 +99,8 @@ export function DrawioActions({ document, title, onImported, readOnly = false, a
         size="icon-sm"
         aria-label="Экспорт в .drawio"
         title="Экспорт в .drawio: все страницы доски"
-        disabled={!document}
-        onClick={() => document && downloadDrawio(title, exportDrawio(document))}
+        disabled={!document || busy}
+        onClick={() => void exportFile()}
       >
         <FileDown />
       </Button>

@@ -17,7 +17,8 @@ type CommentCommand = 'comment' | 'commentHere'
 
 const COMMANDS: Record<Exclude<MenuCommand, CommentCommand>, (editor: DiagramEditor, request: ContextMenuRequest) => void> = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
-  paste: (editor, { point }) => void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html)),
+  paste: (editor, { point }) =>
+    void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html, content?.images)),
   selectAll: (editor) => editor.selectAll(),
   undo: (editor) => editor.undo(),
   redo: (editor) => editor.redo(),

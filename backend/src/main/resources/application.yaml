@@ -60,3 +60,8 @@ codraw:
     retention: 90d
     # Every hour; "-" turns the cleanup off.
     cleanup-cron: "0 41 * * * *"
+  images:
+    # Deletes the images of deleted boards from the storage every hour; "-" turns the cleanup off.
+    cleanup-cron: "0 53 * * * *"
+    # The S3-compatible storage of images (codraw.images.s3.endpoint, region, bucket, access-key, secret-key): the
+    # environment of the deployment sets it, see docs/deploy.md.

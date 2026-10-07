@@ -18,3 +18,9 @@ spring:
 
 codraw:
   internal-token: dev-internal-token
+  # The storage of images of `docker compose up s3`.
+  images:
+    s3:
+      endpoint: http://localhost:9000
+      access-key: codraw
+      secret-key: codraw-secret

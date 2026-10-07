@@ -16,6 +16,8 @@ import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
+import { useImageUploads } from '../board/imageUploads.ts'
+import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
@@ -46,6 +48,7 @@ import { CanvasMenu, type CommentTarget } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
+import { storePageImages } from '../diagram/images.ts'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
 import { LockBadges } from '../diagram/LockBadges.tsx'
@@ -123,6 +126,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])
   const pages = usePages(document, !readOnly)
+  // Images that the participant adds go to the board; one who only views adds none.
+  const imageUploads = useImageUploads(readOnly ? null : { boardId: board.id })
+  const imageHost = imageUploads.host
   // Versions of the board, which whoever edits it sees; a selected version shows in place of the board.
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewed, setPreviewed] = useState<BoardVersion | null>(null)
@@ -217,13 +223,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
   }, [currentPage, requestedPage, selectPage])
 
-  // A board created from a file on the list of boards gets the pages of the file once its document is synced.
+  // A board created from a file on the list of boards gets the pages of the file once its document is synced, and its
+  // pictures are stored on the board first.
   useEffect(() => {
     const pending = document && takePendingImport(board.id)
     if (!pending) return
-    const [first] = importPages(document, pending, author)
-    if (first) selectPage(first)
-  }, [document, board.id, selectPage, author])
+    void (imageHost ? storePageImages(pending, imageHost) : Promise.resolve()).then(() => {
+      const [first] = importPages(document, pending, author)
+      if (first) selectPage(first)
+    })
+  }, [document, board.id, selectPage, author, imageHost])
 
   // Following another participant and presenting to everybody.
   const following = useFollowing({ awareness, editor, pages, currentPageId: currentPage?.id ?? null, selectPage })
@@ -394,6 +403,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onImported={selectPage}
           readOnly={readOnly}
           author={author}
+          images={imageHost}
         />
         <ImageExportMenu
           editor={editor}
@@ -458,7 +468,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             {unsent && <span className="font-medium text-foreground">Не отправлено: есть правки</span>}
           </p>
         )}
+        <ImageUploadProgress state={imageUploads.state} />
       </div>
+      <ImageUploadError state={imageUploads.state} onDismiss={imageUploads.dismiss} />
       {connection.tooLarge && (
         <div
           role="alert"
@@ -573,6 +585,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     readOnly={readOnly}
                     participantName={author.name}
                     participantId={author.id}
+                    images={imageHost}
                     onEditor={setEditor}
                   />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />

@@ -183,6 +183,24 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).turned!.style).toEqual({ rotation: 45, fontSize: 13 })
   })
 
+  it('writes pictures of the board into the file as draw.io does, and reads them back to be stored on a board', async () => {
+    const doc = board()
+    const url = '/api/boards/0199a000-0000-7000-8000-000000000001/images/0199a000-0000-7000-8000-0000000000aa'
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('logo', { style: { shape: 'image', image: url, aspect: 'fixed' } }))
+      writeCell(getCells(doc), cell('remote', { style: { shape: 'image', image: 'https://example.com/a.png' } }))
+    })
+
+    const xml = exportDrawio(doc, new Map([[url, 'data:image/png;base64,iVBORw0KGgo=']]))
+
+    // `;` separates the keys of a style of draw.io, so the picture has no `;base64`.
+    expect(xml).toContain('style="shape=image;image=data:image/png,iVBORw0KGgo=;aspect=fixed;fontSize=13;"')
+    expect(xml).toContain('image=https://example.com/a.png;')
+    expect(exportDrawio(doc)).toContain(`image=${url};`)
+    const [page] = await parseDrawio(xml)
+    expect(page!.cells.find((one) => one.id === 'logo')!.style.image).toBe('data:image/png;base64,iVBORw0KGgo=')
+  })
+
   it('writes no file with who changed the elements, and reads none from a file', async () => {
     const doc = board()
     doc.transact(() => {

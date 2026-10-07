@@ -96,6 +96,13 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Предложение изменений с его черновиком видят его автор, владелец и редакторы доски',
     )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'Изображения. Картинки, которые участники кладут на доски',
+    )
+    expect(retention).toHaveTextContent('Изображения доски — пока существует доска, даже если на доске их больше нет')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'сервер отдаёт изображение доски только тем, кому доступна доска',
+    )
     const copies = screen.getByRole('region', { name: 'Копии досок в браузере' })
     expect(copies).toHaveTextContent('не больше 20 последних открытых вами досок')
     expect(copies).toHaveTextContent('Выход из CoDraw удаляет ваши копии')

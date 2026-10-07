@@ -33,15 +33,19 @@ export function canReadSystemClipboard(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function'
 }
 
-/** The text of the clipboard of the system and its HTML, empty when it has none or the browser does not give it. */
+/**
+ * The text of the clipboard of the system and its HTML, empty when it has none or the browser does not give it, and its
+ * pictures, e.g. a screenshot.
+ */
 export interface SystemClipboard {
   text: string
   html: string
+  images: Blob[]
 }
 
 /**
- * Reads the clipboard of the system: its text and HTML where the browser lets the page read them, else its text alone;
- * `null` when the browser does not allow reading it.
+ * Reads the clipboard of the system: its text, HTML and pictures where the browser lets the page read them, else its
+ * text alone; `null` when the browser does not allow reading it.
  */
 export async function readSystemClipboard(): Promise<SystemClipboard | null> {
   if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function') {
@@ -51,14 +55,17 @@ export async function readSystemClipboard(): Promise<SystemClipboard | null> {
         const item = items.find((candidate) => candidate.types.includes(type))
         return item ? (await item.getType(type)).text() : ''
       }
-      return { text: await read('text/plain'), html: await read('text/html') }
+      const images = await Promise.all(
+        items.flatMap((item) => item.types.filter((type) => type.startsWith('image/')).map((type) => item.getType(type))),
+      )
+      return { text: await read('text/plain'), html: await read('text/html'), images }
     } catch {
       // The browser may refuse more than the text, e.g. without the permission to read; the text may still be allowed.
     }
   }
   if (!canReadSystemClipboard()) return null
   try {
-    return { text: await navigator.clipboard.readText(), html: '' }
+    return { text: await navigator.clipboard.readText(), html: '', images: [] }
   } catch {
     return null
   }

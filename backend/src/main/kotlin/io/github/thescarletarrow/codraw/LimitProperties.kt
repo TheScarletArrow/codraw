@@ -48,4 +48,8 @@ data class LimitProperties(
     val embedSize: DataSize = DataSize.ofMegabytes(2),
     /** The most that the versions of a board take together; the newest version stays whatever its size. */
     val versionsSizePerBoard: DataSize = DataSize.ofMegabytes(64),
+    /** The largest file of an image that participants put on a board. */
+    val imageSize: DataSize = DataSize.ofMegabytes(10),
+    /** The most that the images of a board take together, the same file once; they stay as long as the board. */
+    val imagesSizePerBoard: DataSize = DataSize.ofMegabytes(100),
 )

@@ -39,6 +39,7 @@ class MigrationsTest {
         private val versionAuthorsColumns = setOf("id", "board_id", "state", "reason", "created_at", "authors", "name")
         private val readsTables = reactionsTables + "board_reads"
         private val proposalsTables = readsTables + "proposals"
+        private val imagesTables = proposalsTables + "board_images"
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -50,15 +51,22 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V15 create tables on an empty database and U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(15, flyway().migrate().migrationsExecuted)
-        assertEquals(proposalsTables, appTables())
+    fun `V1 to V16 create tables on an empty database and U16, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(16, flyway().migrate().migrationsExecuted)
+        assertEquals(imagesTables, appTables())
+        assertEquals(
+            setOf("id", "board_id", "sha256", "content_type", "size", "width", "height", "created_at"),
+            columns("board_images"),
+        )
         assertEquals(setOf("id", "title", "owner_id", "created_at", "updated_at", "link_access"), boardColumns())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
         assertEquals(setOf("board_id", "state", "updated_at", "editors"), columns("board_documents"))
         assertEquals(setOf("user_id", "board_id", "seen_at", "previous_seen_at", "present"), columns("board_reads"))
+
+        revert("U16__claude_eager_tesla_oz6ry8_canvas_images.sql")
+        assertEquals(proposalsTables, appTables())
 
         revert("U15__claude_epic_lovelace_pwi6v4_change_proposals.sql")
         assertEquals(readsTables, appTables())
@@ -111,8 +119,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(15, flyway().migrate().migrationsExecuted)
-        assertEquals(proposalsTables, appTables())
+        assertEquals(16, flyway().migrate().migrationsExecuted)
+        assertEquals(imagesTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(notificationColumns + setOf("thread_id", "proposal_id"), columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
@@ -239,7 +247,7 @@ class MigrationsTest {
         assertFailsWith<DataIntegrityViolationException> {
             jdbcClient.sql("UPDATE notifications SET kind = 'PROPOSAL_ACCEPTED'").update()
         }
-        assertEquals(1, flyway().migrate().migrationsExecuted)
+        assertEquals(1, flyway("15").migrate().migrationsExecuted)
     }
 
     @Test
@@ -732,6 +740,27 @@ class MigrationsTest {
             jdbcClient.sql("UPDATE notifications SET kind = 'ASSIGNED'").update()
         }
         assertEquals(1, flyway("12").migrate().migrationsExecuted)
+    }
+
+    @Test
+    fun `V16 keeps a file of a board once, only raster types, and the rows of images of a deleted board`() {
+        assertEquals(16, flyway().migrate().migrationsExecuted)
+        val insert = { board: String, sha: String, type: String ->
+            jdbcClient.sql(
+                """
+                INSERT INTO board_images (board_id, sha256, content_type, size, width, height, created_at)
+                VALUES ('$board'::uuid, decode(repeat('$sha', 32), 'hex'), '$type', 100, 10, 20, now())
+                """,
+            ).update()
+        }
+
+        // No board of that id: the rows wait for the cleanup to delete their objects.
+        insert("0199a000-0000-7000-8000-000000000001", "aa", "image/png")
+        insert("0199a000-0000-7000-8000-000000000002", "aa", "image/webp")
+
+        assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-000000000001", "aa", "image/jpeg") }
+        assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-000000000001", "bb", "image/svg+xml") }
+        assertEquals(2, count("board_images"))
     }
 
     @Test

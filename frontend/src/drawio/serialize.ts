@@ -67,10 +67,17 @@ function geometryXml(geometry: GeometryData | null): string {
   return children.length > 0 ? `<mxGeometry${attrs}>${children.join('')}</mxGeometry>` : `<mxGeometry${attrs}/>`
 }
 
-function cellXml(cell: CellData, attrs: Record<string, string>): string {
+/**
+ * Pictures to write into a file in place of their addresses: the address of each picture of the board, and the picture
+ * as a `data:` address, which the file then carries (see `image/inlineImages.ts`).
+ */
+export type EmbeddedImages = ReadonlyMap<string, string>
+
+function cellXml(cell: CellData, attrs: Record<string, string>, images?: EmbeddedImages): string {
   const kind = cell.kind === 'edge' ? 'edge' : 'vertex'
+  const picture = typeof cell.style.image === 'string' ? images?.get(cell.style.image) : undefined
   const body = attributes({
-    style: formatStyle(cell.style, kind),
+    style: formatStyle(picture ? { ...cell.style, image: picture } : cell.style, kind),
     [kind]: 1,
     parent: cell.parent ?? LAYER_CELL_ID,
     source: cell.source,
@@ -88,7 +95,7 @@ function cellXml(cell: CellData, attrs: Record<string, string>): string {
  * Cells of a page in the order of the tree: every cell is followed by its children, siblings in drawing order. With
  * `only`, just these cells of the layer with their descendants.
  */
-function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>): string {
+function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, images?: EmbeddedImages): string {
   const cells = getCells(doc, pageId)
   const entries = Array.from(cells.entries())
     .filter(([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID)
@@ -107,7 +114,7 @@ function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>): s
     for (const entry of (children.get(parent) ?? []).sort((a, b) => compareCells(a.data, b.data))) {
       if (visited.has(entry.data.id) || (only && parent === LAYER_CELL_ID && !only.has(entry.data.id))) continue
       visited.add(entry.data.id)
-      xml.push(cellXml(entry.data, entry.attrs))
+      xml.push(cellXml(entry.data, entry.attrs, images))
       visit(entry.data.id)
     }
   }
@@ -133,11 +140,16 @@ const MODEL_ATTRIBUTES = attributes({
   shadow: 0,
 })
 
-function diagramXml(doc: Y.Doc, page: { id: string; name: string }, only?: ReadonlySet<string>): string {
+function diagramXml(
+  doc: Y.Doc,
+  page: { id: string; name: string },
+  only?: ReadonlySet<string>,
+  images?: EmbeddedImages,
+): string {
   return (
     `<diagram${attributes({ id: page.id, name: page.name })}>` +
     `<mxGraphModel${MODEL_ATTRIBUTES}><root><mxCell id="${ROOT_CELL_ID}"/><mxCell id="${LAYER_CELL_ID}" parent="${ROOT_CELL_ID}"/>` +
-    pageCellsXml(doc, page.id, only) +
+    pageCellsXml(doc, page.id, only, images) +
     `</root></mxGraphModel></diagram>`
   )
 }
@@ -156,16 +168,21 @@ export function cellsModelXml(cells: CellData[]): string {
   )
 }
 
-/** Writes all pages of the board as an uncompressed `.drawio` file. */
-export function exportDrawio(doc: Y.Doc): string {
-  return mxfile(listPages(doc).map((page) => diagramXml(doc, page)))
+/** Writes all pages of the board as an uncompressed `.drawio` file, with the `images` in it instead of their addresses. */
+export function exportDrawio(doc: Y.Doc, images?: EmbeddedImages): string {
+  return mxfile(listPages(doc).map((page) => diagramXml(doc, page, undefined, images)))
 }
 
 /**
  * Writes one page of the board as an uncompressed `.drawio` file, or with `cellIds` only these cells of the page with
- * their descendants; `null` for an unknown page.
+ * their descendants, with the `images` in it instead of their addresses; `null` for an unknown page.
  */
-export function exportDrawioPage(doc: Y.Doc, pageId: string, cellIds?: readonly string[]): string | null {
+export function exportDrawioPage(
+  doc: Y.Doc,
+  pageId: string,
+  cellIds?: readonly string[],
+  images?: EmbeddedImages,
+): string | null {
   const page = listPages(doc).find((candidate) => candidate.id === pageId)
-  return page ? mxfile([diagramXml(doc, page, cellIds && new Set(cellIds))]) : null
+  return page ? mxfile([diagramXml(doc, page, cellIds && new Set(cellIds), images)]) : null
 }

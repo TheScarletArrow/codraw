@@ -78,12 +78,20 @@ describe('clipboard of the system', () => {
       getType: async (type: string) => new Blob([type === 'text/html' ? '<pre data-codraw="x">sql</pre>' : 'sql']),
     }
     stubClipboard({ read: async () => [item as unknown as ClipboardItem], readText: async () => 'sql' } as Partial<Clipboard>)
-    expect(await readSystemClipboard()).toEqual({ text: 'sql', html: '<pre data-codraw="x">sql</pre>' })
+    expect(await readSystemClipboard()).toEqual({ text: 'sql', html: '<pre data-codraw="x">sql</pre>', images: [] })
 
     stubClipboard({ read: () => Promise.reject(new Error('denied')), readText: async () => 'sql' } as Partial<Clipboard>)
-    expect(await readSystemClipboard()).toEqual({ text: 'sql', html: '' })
+    expect(await readSystemClipboard()).toEqual({ text: 'sql', html: '', images: [] })
 
     stubClipboard({})
     expect(await readSystemClipboard()).toBeNull()
+  })
+
+  it('reads the pictures of the clipboard, e.g. a screenshot', async () => {
+    const screenshot = new Blob(['png'], { type: 'image/png' })
+    const item = { types: ['image/png'], getType: async () => screenshot }
+    stubClipboard({ read: async () => [item as unknown as ClipboardItem], readText: async () => '' } as Partial<Clipboard>)
+
+    expect(await readSystemClipboard()).toEqual({ text: '', html: '', images: [screenshot] })
   })
 })

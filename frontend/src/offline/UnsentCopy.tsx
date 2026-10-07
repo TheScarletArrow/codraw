@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { downloadDrawio } from '../drawio/files.ts'
 import { exportDrawio } from '../drawio/serialize.ts'
+import { embeddedImages } from '../image/inlineImages.ts'
 import { deleteLocalCopy, findLocalCopy, loadLocalCopy } from './localCopies.ts'
 
 /** Why the edits of the copy did not go to the board. */
@@ -49,7 +50,8 @@ export function UnsentCopy({ userId, boardId, title, reason, dropSent = false, o
     setBusy(true)
     try {
       const document = await loadLocalCopy(userId, boardId)
-      downloadDrawio(title ?? copy.title, exportDrawio(document))
+      // Pictures that the browser keeps go into the file; the others stay addresses of the board.
+      downloadDrawio(title ?? copy.title, exportDrawio(document, await embeddedImages(document)))
       document.destroy()
     } catch {
       setFailed(true)

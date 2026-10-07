@@ -67,7 +67,7 @@
   `V16`/`U16`, пределы и метрики, удаление картинок с доской; зависимость `software.amazon.awssdk:s3` и
   `url-connection-client` 2.55.12 (Apache-2.0); тесты с контейнером RustFS.
 - `frontend`: `api/images.ts`, `diagram/images.ts` (стиль, ссылки, перенос картинок), `image/inlineImages.ts`,
-  `board/useImageHost.ts` и строка состояния загрузки, редактор (`addImages`, вставка, перетаскивание, пропорции,
+  `board/imageUploads.ts` и строки загрузки и ошибок, редактор (`addImages`, вставка, перетаскивание, пропорции,
   заглушка), панель фигур, `.drawio`, экспорт изображений, живая картинка, политика конфиденциальности, «Что нового».
 - Деплой: `docker-compose.yml`, `docker-compose.prod.yml`, `.env.example`, `.env.prod.example`, `.github/workflows/ci.yml`,
   `e2e/playwright.config.ts`, `docs/deploy.md`, `docs/running.md`, `docs/adr/0006-image-storage.md`.

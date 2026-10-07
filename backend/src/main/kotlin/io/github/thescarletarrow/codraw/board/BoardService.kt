@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.notification.NotificationService
 import io.github.thescarletarrow.codraw.user.UserRepository
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,6 +25,7 @@ class BoardService(
     private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
+    private val events: ApplicationEventPublisher,
     private val clock: Clock,
 ) {
 
@@ -110,10 +112,12 @@ class BoardService(
 
     /**
      * Deletes the [board] for good, with its document, its members, the requests for access to it and the visits of
-     * its users.
+     * its users; [BoardDeleted] tells what keeps more of it, e.g. its images.
      */
     fun delete(board: Board) {
-        boards.deleteById(checkNotNull(board.id))
+        val boardId = checkNotNull(board.id)
+        boards.deleteById(boardId)
+        events.publishEvent(BoardDeleted(boardId))
     }
 
     /**
@@ -164,6 +168,12 @@ class BoardService(
         const val SHARED_LIMIT = 50
     }
 }
+
+/**
+ * Its owner deleted the board [boardId]. Boards that the cleanup of gone guests deletes are not told: what keeps more of
+ * a board finds those itself.
+ */
+data class BoardDeleted(val boardId: UUID)
 
 /** The user owns as many boards as the [limit] allows. */
 class BoardLimitReachedException(val limit: Int) : RuntimeException("The user owns $limit boards, the most allowed")
