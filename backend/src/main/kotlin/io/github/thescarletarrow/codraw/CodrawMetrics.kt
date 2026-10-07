@@ -20,6 +20,8 @@ enum class Limit(val tag: String) {
     ACCESS_REQUESTS("access-requests"),
     PROPOSALS("proposals"),
     AUTHOR_PROPOSALS("proposals-per-author"),
+    TAGS("tags"),
+    FOLDERS("folders"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */

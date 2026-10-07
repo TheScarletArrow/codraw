@@ -38,6 +38,8 @@ describe("collab server", () => {
       verifyToken: createTokenVerifier(createRemoteJWKSet(new URL(backend.jwksUrl), { cooldownDuration: 0 })),
       debounce: 50,
       maxDebounce: 200,
+      // Filling in texts asks the backend on its own; the tests of it turn it on.
+      searchTextBackfillInterval: null,
       ...options,
     });
     await server.listen();
@@ -535,6 +537,95 @@ describe("collab server", () => {
       await waitFor(() => backend.storesFor(board) === 2);
 
       expect(backend.editorsOfStores(board)[1]).toEqual([BOB, ALICE]);
+    });
+  });
+
+  describe("texts for search", () => {
+    /** Writes a page named `name` with a shape labelled `label`, as the editor does. */
+    function writePage(document: Y.Doc, name: string, label: string) {
+      document.transact(() => {
+        const page = new Y.Map<unknown>();
+        page.set("name", name);
+        page.set("order", "a0");
+        document.getMap("pages").set("page-1", page);
+        const shape = new Y.Map<unknown>();
+        shape.set("kind", "vertex");
+        shape.set("value", label);
+        shape.set("order", "a0");
+        document.getMap("cells:page-1").set("shape", shape);
+      });
+    }
+
+    const relabel = (document: Y.Doc, label: string) =>
+      (document.getMap("cells:page-1").get("shape") as Y.Map<unknown>).set("value", label);
+
+    /** A stored state of a board with one page. */
+    function storedBoard(name: string) {
+      const document = new Y.Doc();
+      document.getMap("pages").set("page-1", { name, order: "a0" });
+      return Y.encodeStateAsUpdate(document);
+    }
+
+    it("sends the text of the board after storing its state, and again only once the text changes", async () => {
+      await startServer();
+      const writer = await connect(board);
+
+      writePage(writer.document, "Схема", "Kafka<br>топик");
+      await waitFor(() => backend.searchTexts.get(board) === "Схема\nKafka топик");
+      const putsOf = (method: string) => backend.requests.findIndex((r) => r.method === method && r.boardId === board);
+      expect(putsOf("PUT")).toBeLessThan(putsOf("PUT search-text"));
+
+      writer.document.getMap("meta").set("title", "Не текст доски");
+      await waitFor(() => backend.storesFor(board) === 2);
+      relabel(writer.document, "Redis");
+      await waitFor(() => backend.searchTexts.get(board) === "Схема\nRedis");
+
+      expect(backend.storesFor(board)).toBe(3);
+      expect(backend.searchTextsSent(board)).toEqual([
+        { text: "Схема\nKafka топик", onlyIfMissing: false },
+        { text: "Схема\nRedis", onlyIfMissing: false },
+      ]);
+    });
+
+    it("keeps the stored state when the text is not taken, and sends the text with the next store", async () => {
+      await startServer();
+      const writer = await connect(board);
+      backend.failingSearchTexts = 1;
+
+      writePage(writer.document, "Схема", "Kafka");
+      await waitFor(() => backend.searchTextsSent(board).length === 1);
+      expect(backend.documents.has(board)).toBe(true);
+      expect(backend.searchTexts.has(board)).toBe(false);
+      writer.document.getMap("meta").set("title", "Ещё правка");
+
+      await waitFor(() => backend.searchTexts.get(board) === "Схема\nKafka");
+      expect(backend.storesFor(board)).toBe(2);
+    });
+
+    it("fills in the texts of stored boards without one when it starts, and keeps those that are there", async () => {
+      backend.documents.set(board, storedBoard("Старая"));
+      backend.documents.set(otherBoard, storedBoard("Другая"));
+      backend.searchTexts.set(otherBoard, "Есть");
+
+      await startServer({ searchTextBackfillInterval: 60_000 });
+
+      await waitFor(() => backend.searchTexts.get(board) === "Старая");
+      expect(backend.searchTextsSent(board)).toEqual([{ text: "Старая", onlyIfMissing: true }]);
+      expect(backend.searchTextsSent(otherBoard)).toEqual([]);
+      expect(backend.searchTexts.get(otherBoard)).toBe("Есть");
+    });
+
+    it("fills in texts from time to time, from memory for a board open in collab", async () => {
+      await startServer({ searchTextBackfillInterval: 50, debounce: 60_000, maxDebounce: 60_000 });
+      const writer = await connect(board);
+      writePage(writer.document, "Открытая", "Kafka");
+      // The backend has a state without a text, e.g. one that a collab before the update stored.
+      backend.documents.set(board, storedBoard("Сохранённая"));
+
+      await waitFor(() => backend.searchTexts.has(board));
+
+      expect(backend.searchTexts.get(board)).toBe("Открытая\nKafka");
+      expect(backend.storesFor(board)).toBe(0);
     });
   });
 
