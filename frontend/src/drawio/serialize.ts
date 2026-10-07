@@ -1,8 +1,12 @@
 import * as Y from 'yjs'
 import { EDGE_API_KEY, edgeApiOf } from '../diagram/edgeApi.ts'
+import { edgeProperties, normalizeProperties } from '../diagram/elementKinds.ts'
 import { LINK_KEY, linkOf } from '../diagram/links.ts'
 import {
   compareCells,
+  ELEMENT_KEY,
+  ELEMENT_STYLE_KEYS,
+  elementIdOf,
   getCells,
   LAYER_CELL_ID,
   readAttrs,
@@ -75,6 +79,59 @@ function geometryXml(geometry: GeometryData | null): string {
  */
 export type EmbeddedImages = ReadonlyMap<string, string>
 
+/**
+ * The properties of the element of a cell, or of an edge, as attributes of the element around the cell, which draw.io
+ * shows in «Edit Data»: `name`, `kind`, `technology`, `description`, `owner`, `tags` (words split by spaces, as the tags
+ * of draw.io) and `codrawElement`; `technology` and `interaction` of an edge.
+ */
+function propertyAttributes(cell: CellData): Record<string, string> {
+  const element = elementIdOf(cell.style)
+  if (cell.kind === 'edge') {
+    const { technology, interaction } = edgeProperties(cell.style)
+    return { ...(technology && { technology }), ...(interaction && { interaction }) }
+  }
+  if (element === null) return {}
+  const properties = normalizeProperties(
+    Object.fromEntries(Object.entries(ELEMENT_STYLE_KEYS).map(([field, key]) => [field, cell.style[key]])),
+  )
+  const attributes: Record<string, string> = {}
+  for (const [field, value] of Object.entries(properties)) {
+    const text = Array.isArray(value) ? value.join(' ') : (value ?? '')
+    if (text) attributes[field] = text
+  }
+  return { ...attributes, [ELEMENT_KEY]: element }
+}
+
+/** A line of the type and the technology, `[Container: Kotlin]`, or of the technology alone, `[Redis]`. */
+const BRACKETS = /^\[([^\]]*)\]$/
+
+/**
+ * The label of a cell of an element as a template of draw.io (`placeholders="1"`): its first line, the technology in the
+ * brackets of its second line and the lines after them replaced by `%name%`, `%technology%` and `%description%` where
+ * they are the name, the technology and the description, so that draw.io shows the same label and changes it with the
+ * properties. `null` when the first line is not the name, or the label has a `%` of its own, which draw.io would read.
+ */
+export function labelTemplate(value: string, properties: { name?: string; technology?: string; description?: string }): string | null {
+  const { name = '', technology = '', description = '' } = properties
+  const lines = value.split('\n')
+  if (!name || lines[0] !== name || value.includes('%')) return null
+  const template = ['%name%']
+  let next = 1
+  const bracketed = BRACKETS.exec(lines[1] ?? '')
+  if (bracketed) {
+    const inner = bracketed[1]!
+    const typed = /^([^:]+): (.*)$/.exec(inner)
+    if (technology && typed?.[2] === technology) template.push(`[${typed[1]}: %technology%]`)
+    else if (technology && inner === technology) template.push('[%technology%]')
+    else template.push(lines[1]!)
+    next = 2
+  }
+  const rest = lines.slice(next)
+  if (description && rest.join('\n') === description) template.push('%description%')
+  else template.push(...rest)
+  return template.join('\n')
+}
+
 function cellXml(cell: CellData, attrs: Record<string, string>, images?: EmbeddedImages): string {
   const kind = cell.kind === 'edge' ? 'edge' : 'vertex'
   const picture = typeof cell.style.image === 'string' ? images?.get(cell.style.image) : undefined
@@ -89,16 +146,20 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
   const inner = (head: string) => (geometry ? `<mxCell${head}>${geometry}</mxCell>` : `<mxCell${head}/>`)
   // The style does not write the link: draw.io keeps it on the element around the cell. A board imported before CoDraw
   // read links keeps it among the custom properties. One that CoDraw would not open is not written.
-  const { id: _id, label: _label, [LINK_KEY]: oldLink, [EDGE_API_KEY]: _api, ...properties } = attrs
+  const { id: _id, label: _label, placeholders: _placeholders, [LINK_KEY]: oldLink, [EDGE_API_KEY]: _api, ...own } = attrs
   const link = linkOf(cell.style) ?? linkOf({ [LINK_KEY]: oldLink })
+  // The properties of the element win over custom properties of the same names.
+  const properties = { ...own, ...propertyAttributes(cell) }
   // The description of the call of an edge is a custom property of draw.io, which shows it in «Edit Data».
   const api = edgeApiOf(cell.style) ? (cell.style[EDGE_API_KEY] as string) : null
   if (api) properties[EDGE_API_KEY] = api
   if (Object.keys(properties).length === 0 && !link) return inner(attributes({ id: cell.id, value: cell.value }) + body)
+  const template = properties[ELEMENT_KEY] ? labelTemplate(cell.value, properties) : null
   // A link alone makes the cell a <UserObject>, as draw.io makes it when a link is set; custom properties make it an
   // <object>. Either carries the id and the label.
   const tag = Object.keys(properties).length === 0 ? 'UserObject' : 'object'
-  return `<${tag}${attributes({ label: cell.value, ...properties, ...(link && { [LINK_KEY]: link }), id: cell.id })}>${inner(body)}</${tag}>`
+  const label = template === null ? { label: cell.value } : { label: template, placeholders: '1' }
+  return `<${tag}${attributes({ ...label, ...properties, ...(link && { [LINK_KEY]: link }), id: cell.id })}>${inner(body)}</${tag}>`
 }
 
 /**

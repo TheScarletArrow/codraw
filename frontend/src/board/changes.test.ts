@@ -5,8 +5,8 @@ import { fromStyle } from '../diagram/binding.ts'
 import { diffDocuments, snapshotDocument, type PageDiff } from '../diagram/diff.ts'
 import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
-import { DEFAULT_PAGE_ID, getCells, writeCell, type CellData } from '../diagram/model.ts'
-import { TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
+import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, getElements, writeCell, type CellData } from '../diagram/model.ts'
+import { findShape, markedStyle, TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
 import { writeStatus } from '../diagram/status.ts'
 import { boardWith, edgeData, laterState, shapeData } from '../diagram/testing.ts'
 import { absoluteBounds, changeItems, edgeLine, ghostCenter, lineMiddle } from './changes.ts'
@@ -142,6 +142,42 @@ describe('items of the list of changes', () => {
     })
 
     expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([['Оплата', ['описание API']]])
+  })
+
+  it('says which properties of an element changed, and not those that the label told before', () => {
+    const container = stored(markedStyle(findShape('c4-container')!))
+    const element = { ...container, [ELEMENT_KEY]: 'e1', codrawName: 'API', codrawKind: 'c4-container', codrawTechnology: 'Java' }
+    const version = boardWith(
+      shapeData('api', 'a0', { value: 'API\n[Container: Java]', style: element }),
+      shapeData('payments', 'a1', { value: 'Payments\n[Container: Kotlin]', style: container }),
+    )
+    const now = laterState(version, (doc) => {
+      doc.transact(() => {
+        getElements(doc).get('e1')!.set('technology', 'Kotlin')
+        cell(doc, 'api').set('value', 'API\n[Container: Kotlin]')
+        // The first owner of a shape that kept its properties in its label.
+        writeCell(getCells(doc), {
+          ...shapeData('payments', 'a1', { value: 'Payments\n[Container: Kotlin]' }),
+          style: { ...container, [ELEMENT_KEY]: 'e2', codrawName: 'Payments', codrawKind: 'c4-container', codrawTechnology: 'Kotlin', codrawOwner: 'Платежи' },
+        })
+      })
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([
+      ['API', ['подпись', 'технология']],
+      ['Payments', ['владелец']],
+    ])
+  })
+
+  it('says that the technology or the interaction of an edge changed', () => {
+    const version = boardWith(shapeData('a', 'a0'), shapeData('b', 'a1'), edgeData('flow', 'a2', 'a', 'b', { value: 'Читает' }))
+    const now = laterState(version, (doc) => {
+      const style = cell(doc, 'flow').get('style') as Y.Map<unknown>
+      style.set('codrawTechnology', 'Kafka')
+      style.set('codrawInteraction', 'async')
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ title, details }) => [title, details])).toEqual([['Читает', ['технология', 'вид связи']]])
   })
 
   it('says the status an element got, or that its status was taken off, once', () => {

@@ -5,7 +5,9 @@ import { fromStyle } from '../diagram/binding.ts'
 import { EDGE_API_KEY, emptyEdgeApi, writeEdgeApi } from '../diagram/edgeApi.ts'
 import {
   DEFAULT_PAGE_ID,
+  ELEMENT_KEY,
   getCells,
+  getElements,
   initializeDocument,
   LAYER_CELL_ID,
   orderBetween,
@@ -22,7 +24,7 @@ import { readStatus, writeStatus } from '../diagram/status.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
 import { parseDrawio } from './parse.ts'
-import { exportDrawio } from './serialize.ts'
+import { exportDrawio, labelTemplate } from './serialize.ts'
 
 function board() {
   const doc = new Y.Doc()
@@ -341,6 +343,58 @@ describe('exportDrawio', () => {
     expect(readAttribution(getCells(copy).get('api'))).toBeNull()
   })
 
+  it('writes the properties of elements on an <object> with a label of placeholders, and reads them back', async () => {
+    const doc = board()
+    const element = {
+      [ELEMENT_KEY]: 'e-api',
+      codrawName: 'API',
+      codrawKind: 'c4-container',
+      codrawTechnology: 'Spring Boot',
+      codrawDescription: 'Заказы',
+      codrawOwner: 'Команда заказов',
+      codrawTags: ['core', 'pci'],
+    }
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('api', { value: 'API\n[Container: Spring Boot]\nЗаказы', style: { ...fromStyle(markedStyle(findShape('c4-container')!) as never), ...element } }))
+      writeCell(getCells(doc), cell('db', { value: 'DB' }))
+      writeCell(
+        getCells(doc),
+        cell('flow', {
+          kind: 'edge',
+          value: 'Читает',
+          source: 'api',
+          target: 'db',
+          geometry: { x: 0, y: 0, width: 0, height: 0, relative: true },
+          style: { codrawTechnology: 'JDBC', codrawInteraction: 'sync' },
+        }),
+      )
+    })
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain(
+      '<object label="%name%&#xa;[Container: %technology%]&#xa;%description%" placeholders="1" name="API" kind="c4-container" technology="Spring Boot" description="Заказы" owner="Команда заказов" tags="core pci" codrawElement="e-api" id="api">',
+    )
+    expect(xml).not.toContain('codrawTechnology')
+    expect(xml).toContain('<object label="Читает" technology="JDBC" interaction="sync" id="flow">')
+    const cells = pageCells(copy, DEFAULT_PAGE_ID)
+    expect(cells.api!.value).toBe('API\n[Container: Spring Boot]\nЗаказы')
+    expect(cells.api!.style).toMatchObject(element)
+    expect(cells.api!.attrs).toEqual({})
+    expect(getElements(copy).get('e-api')!.toJSON()).toMatchObject({ name: 'API', technology: 'Spring Boot', tags: ['core', 'pci'] })
+    expect(cells.flow!.style).toMatchObject({ codrawTechnology: 'JDBC', codrawInteraction: 'sync' })
+  })
+
+  it('writes a label of placeholders only where it reads the same', () => {
+    expect(labelTemplate('Кэш\n[Redis]\n:6379', { name: 'Кэш', technology: 'Redis' })).toBe('%name%\n[%technology%]\n:6379')
+    expect(labelTemplate('API\n[Container]\nЗаказы', { name: 'API', description: 'Заказы' })).toBe('%name%\n[Container]\n%description%')
+    expect(labelTemplate('API\n[Container: Go]', { name: 'API', technology: 'Kotlin' })).toBe('%name%\n[Container: Go]')
+    expect(labelTemplate('Загрузка 100%', { name: 'Загрузка 100%' })).toBeNull()
+    expect(labelTemplate('Другое', { name: 'API' })).toBeNull()
+  })
+
   it('writes no status of the elements into a file', async () => {
     const doc = board()
     doc.transact(() => {
@@ -429,6 +483,26 @@ describe('importPages', () => {
 
     expect(listPages(doc).map((page) => page.id)).toEqual(['ctx-page', 'layers-page'])
     expect(getCells(doc, DEFAULT_PAGE_ID).size).toBe(0)
+  })
+
+  it('keeps the elements of the file whose ids are free, and gives the others new ids', async () => {
+    const doc = board()
+    doc.transact(() =>
+      writeCell(getCells(doc), cell('api', { style: { [ELEMENT_KEY]: 'e-api', codrawName: 'API', codrawTechnology: 'Go' } })),
+    )
+    const file = await parseDrawio(exportDrawio(doc))
+
+    const [first] = importPages(doc, file)
+    const [second] = importPages(doc, file)
+
+    const elementOf = (pageId: string) => readCell('api', getCells(doc, pageId).get('api')!).style[ELEMENT_KEY]
+    expect(elementOf(first!)).not.toBe('e-api')
+    expect(elementOf(second!)).not.toBe(elementOf(first!))
+    expect(getElements(doc).size).toBe(3)
+
+    const fresh = new Y.Doc()
+    const [page] = importPages(fresh, file)
+    expect(readCell('api', getCells(fresh, page!).get('api')!).style).toMatchObject({ [ELEMENT_KEY]: 'e-api', codrawTechnology: 'Go' })
   })
 
   it('writes the import in one transaction that undo does not track', async () => {

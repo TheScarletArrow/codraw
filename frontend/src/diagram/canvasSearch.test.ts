@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { INHERITED_KEY } from './baseTables.ts'
 import { searchCanvas, searchText, stepMatch, type CanvasMatch } from './canvasSearch.ts'
-import { DEFAULT_PAGE_ID, getCells, initializeDocument, LAYER_CELL_ID, writeCell, type CellData } from './model.ts'
+import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, initializeDocument, LAYER_CELL_ID, writeCell, type CellData } from './model.ts'
 import { addPage, renamePage } from './pages.ts'
 
 function board() {
@@ -49,6 +49,23 @@ describe('searching the canvas', () => {
     expect(found(doc, '  ёт ')).toEqual(['Счёт\nи   оплата'])
     expect(found(doc, 'https')).toEqual(['HTTPS'])
     expect(found(doc, 'кухня')).toEqual([])
+  })
+
+  it('finds elements by the properties their labels do not show, and edges by their technology', () => {
+    const doc = board()
+    doc.transact(() => {
+      const cells = getCells(doc)
+      writeCell(cells, cell('billing', { value: 'Billing', style: { [ELEMENT_KEY]: 'e1', codrawTechnology: 'Kafka Streams', codrawTags: ['pci'], codrawOwner: 'Платежи' } }))
+      writeCell(cells, cell('db', { value: 'DB', geometry: { x: 300, y: 0, width: 120, height: 60 } }))
+      writeCell(cells, cell('flow', { kind: 'edge', value: '', source: 'billing', target: 'db', geometry: { x: 0, y: 0, width: 0, height: 0, relative: true }, style: { codrawTechnology: 'Kafka' } }))
+      // Custom properties of a file are no properties of an element.
+      writeCell(cells, cell('other', { value: 'Other', style: { tooltip: 'kafka' }, geometry: { x: 0, y: 200, width: 120, height: 60 } }))
+    })
+
+    const ids = (query: string) => searchCanvas(doc, query).map((match) => match.cellId)
+    expect(ids('kafka')).toEqual(['billing', 'flow'])
+    expect(ids('PCI')).toEqual(['billing'])
+    expect(ids('платежи')).toEqual(['billing'])
   })
 
   it('finds tables by their names and the fields and indexes of tables as they are typed', () => {

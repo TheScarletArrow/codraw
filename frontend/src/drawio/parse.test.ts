@@ -103,6 +103,55 @@ describe('parseDrawio', () => {
     expect(cells.get('script')!.attrs).toBeUndefined()
   })
 
+  it('reads the properties of elements of CoDraw and of shapes of C4 of draw.io, with labels of placeholders', async () => {
+    const model = (cells: string) =>
+      `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`
+    const object = (id: string, attributes: string, style = '') =>
+      `<object ${attributes} id="${id}"><mxCell style="${style}" vertex="1" parent="1"><mxGeometry width="80" height="40" as="geometry"/></mxCell></object>`
+    const [page] = await parseDrawio(
+      model(
+        object(
+          'api',
+          'placeholders="1" label="%name%&#xa;[Container: %technology%]" name="API" kind="c4-container" technology="Spring Boot" owner="Заказы" tags="core pci" codrawElement="e-api" tooltip="Шлюз"',
+          'rounded=1;codrawShape=c4-container;',
+        ) +
+          object(
+            'billing',
+            'placeholders="1" label="&lt;b&gt;%c4Name%&lt;/b&gt;&lt;div&gt;[%c4Type%: %c4Technology%]&lt;/div&gt;" c4Name="Billing &lt;v2&gt;" c4Type="Container" c4Technology="Go"',
+            'rounded=1;html=1;',
+          ) +
+          object('db', 'placeholders="1" label="%c4Name%" c4Name="Счета" c4Type="Container" c4Technology="PostgreSQL"', 'shape=cylinder3;') +
+          object('page', 'placeholders="1" label="%name% на %page%" name="Схема"') +
+          `<object technology="Kafka" interaction="async" c4Type="Relationship" id="flow"><mxCell edge="1" parent="1" source="api" target="billing"><mxGeometry relative="1" as="geometry"/></mxCell></object>`,
+      ),
+    )
+    const cells = byId(page!.cells)
+
+    expect(cells.get('api')).toMatchObject({
+      value: 'API\n[Container: Spring Boot]',
+      style: {
+        codrawElement: 'e-api',
+        codrawName: 'API',
+        codrawKind: 'c4-container',
+        codrawTechnology: 'Spring Boot',
+        codrawOwner: 'Заказы',
+        codrawTags: ['core', 'pci'],
+      },
+      attrs: { tooltip: 'Шлюз' },
+    })
+    expect(cells.get('billing')).toMatchObject({
+      value: 'Billing <v2>\n[Container: Go]',
+      style: { codrawName: 'Billing <v2>', codrawKind: 'c4-container', codrawTechnology: 'Go' },
+    })
+    expect(cells.get('billing')!.style.codrawElement).toEqual(expect.any(String))
+    expect(cells.get('billing')!.attrs).toBeUndefined()
+    expect(cells.get('db')!.style).toMatchObject({ codrawName: 'Счета', codrawKind: 'c4-database', codrawTechnology: 'PostgreSQL' })
+    // Without an element of CoDraw, `name` is a custom property; a placeholder of no attribute stays.
+    expect(cells.get('page')).toMatchObject({ value: 'Схема на %page%', attrs: { name: 'Схема' } })
+    expect(cells.get('page')!.style).not.toHaveProperty('codrawElement')
+    expect(cells.get('flow')).toMatchObject({ style: { codrawTechnology: 'Kafka', codrawInteraction: 'async' }, attrs: { c4Type: 'Relationship' } })
+  })
+
   it('reads a label of an edge as a cell of the edge that edges cannot connect to', async () => {
     const label = byId((await parseDrawio(SAMPLE_DRAWIO))[0]!.cells).get('label')!
 

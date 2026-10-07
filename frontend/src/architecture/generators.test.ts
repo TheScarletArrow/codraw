@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ShapeStyle } from '../diagram/shapes.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { mermaidC4 } from './mermaid.ts'
 import { architectureModel } from './model.ts'
@@ -128,6 +129,20 @@ describe('mermaidC4', () => {
     const components = new DiagramBuilder()
     components.shape('uml-component', 0, 0, { value: ':core' })
     expect(mermaidC4(architectureModel(components.build(), 'Магазин')).split('\n')[0]).toBe('C4Component')
+  })
+
+  it('writes the kind, the technology and the description of the properties of elements and edges', () => {
+    const builder = new DiagramBuilder()
+    const element = { codrawElement: 'e1', codrawName: 'Billing', codrawKind: 'database', codrawTechnology: 'PostgreSQL', codrawDescription: 'Счета\nи оплата' }
+    const billing = builder.shape('service', 0, 0, { value: 'Billing', style: element as ShapeStyle })
+    const orders = builder.shape('service', 300, 0, { value: 'Orders\n[Kotlin]' })
+    builder.edge(orders, billing, { value: 'Публикует', style: { codrawTechnology: 'Kafka' } })
+
+    const text = lines(mermaidC4(architectureModel(builder.build(), 'Магазин')))
+
+    expect(text).toContain('ContainerDb(billing, "Billing", "PostgreSQL", "Счета; и оплата")')
+    expect(text).toContain('Container(orders, "Orders", "Kotlin", "")')
+    expect(text).toContain('Rel(orders, billing, "Публикует", "Kafka")')
   })
 
   it('writes the elements in their boundaries and the relations', () => {
