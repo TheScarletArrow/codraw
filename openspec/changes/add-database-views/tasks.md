@@ -22,10 +22,10 @@
 
 ## 4. Живая база
 
-- [ ] 4.1 backend: `PostgresSchemaReader` — представления и материализованные представления из `pg_get_viewdef` в порядке зависимостей из `pg_depend`, `WITH NO DATA`, индексы материализованных представлений; проверка: unit-тест порядка и интеграционный тест на базе Testcontainers
+- [x] 4.1 backend: `PostgresSchemaReader` — представления и материализованные представления из `pg_get_viewdef` в порядке зависимостей из `pg_depend`, `WITH NO DATA`, индексы материализованных представлений; проверка: unit-тест порядка и интеграционный тест на базе Testcontainers
 
 ## 5. Документация и проверка
 
 - [x] 5.1 docs: README (таблицы, SQL и Mermaid, дампы, «План работ»), «Что нового» и версия frontend; проверка: тест «Что нового»
 - [ ] 5.2 e2e: `database-views.spec.ts` — DDL с представлением становится представлением со связями, второй участник видит запрос, «Скопировать SQL» даёт `CREATE VIEW`; проверка: e2e зелёный
-- [ ] 5.3 проверка: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `./gradlew build`
+- [x] 5.3 проверка: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `./gradlew build`
