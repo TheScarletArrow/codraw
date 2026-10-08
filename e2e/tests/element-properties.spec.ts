@@ -71,7 +71,7 @@ test('properties go through a file of draw.io as attributes and a label of place
   // Another user opens the file as a board of their own: the shape has the same label and properties.
   const eve = await userPage(browser, 'Ева')
   await eve.goto('/')
-  await eve.getByLabel('Файл draw.io').setInputFiles({ name: 'Свойства.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
+  await eve.getByLabel('Файл draw.io').setInputFiles({ name: 'Заказы.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(eve.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(() => label(eve, api)).toBe('Контейнер\n[Container: Spring Boot]')
   await select(eve, api)
