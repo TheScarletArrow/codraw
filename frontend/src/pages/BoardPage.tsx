@@ -56,6 +56,8 @@ import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { storePageImages } from '../diagram/images.ts'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
+import { LayersButton, LayersPanel } from '../diagram/LayersPanel.tsx'
+import { LayerViews, layerViewsKey } from '../diagram/layerViews.ts'
 import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { StickyPanel } from '../diagram/StickyPanel.tsx'
@@ -214,6 +216,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
+  // What the participant chose about the layers of the pages for themselves outlives the canvas of a page too; the
+  // browser keeps the layers they show and hide.
+  const layerViews = useMemo(() => new LayerViews(layerViewsKey(user.id, board.id)), [user.id, board.id])
+  const [layersOpen, setLayersOpen] = useState(false)
 
   // The current page is the participant's own and lives in the address, so a link opens the board on it.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -510,6 +516,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           boardTitle={board.title}
           pageName={currentPage?.name ?? ''}
           pageCount={pages.length}
+          layerViews={layerViews}
         />
         <SqlMenu
           editor={editor}
@@ -541,6 +548,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
           />
           <StatusSummary document={document} onSelect={showElement} />
+          <LayersButton open={layersOpen} onToggle={() => setLayersOpen((open) => !open)} />
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
           <CommentsButton
@@ -695,6 +703,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     participantName={author.name}
                     participantId={author.id}
                     images={imageHost}
+                    layerViews={layerViews}
                     onEditor={setEditor}
                   />
                   <StickySignatures editor={editor} />
@@ -722,6 +731,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <StickyPanel editor={editor} />}
                   <SidePanels>
                     <EdgeApiPanel editor={editor} request={apiRequest} />
+                    {layersOpen && (
+                      <LayersPanel
+                        editor={editor}
+                        onClose={() => {
+                          setLayersOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                     {propertiesOpen && (
                       <PropertiesPanel
                         editor={editor}

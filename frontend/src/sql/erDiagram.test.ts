@@ -102,6 +102,10 @@ describe('tables of a schema as cells', () => {
 
     expect(placeBeside(builder.build())).toEqual({ x: 580, y: 50 })
     expect(placeBeside([])).toEqual({ x: 40, y: 40 })
+    // Shapes of every layer of the page.
+    const layer = { id: 'infra', kind: 'layer', parent: '0', order: 'a1', value: '', geometry: null, source: null, target: null, style: {} } as const
+    const cells = builder.build().map((cell) => (cell.geometry?.x === 400 ? { ...cell, parent: layer.id } : cell))
+    expect(placeBeside([layer, ...cells])).toEqual({ x: 580, y: 50 })
   })
 })
 

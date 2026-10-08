@@ -21,7 +21,8 @@ export const IMPORT_ORIGIN = 'codraw:import'
 /**
  * Adds the pages of a draw.io file after the pages of the board in one transaction and returns their ids. A board
  * that has a single page without shapes gets exactly the pages of the file: the empty page is deleted. With an
- * `author`, the imported cells keep them as who changed them last. The elements of the cells get new ids.
+ * `author`, the imported cells keep them as who changed them last. The elements of the cells get new ids. The first layer
+ * of a page of the file is the main layer of its page.
  */
 export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | null = null): string[] {
   const existing = listPages(doc)
@@ -54,6 +55,8 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | nu
       order = orderBetween(order, null)
       writePage(doc, id, { name: page.name.trim() || `Страница ${existing.length + index + 1}`, order })
       const cells = getCells(doc, id)
+      // The first layer of the file takes the place of the main layer that the page got.
+      for (const layer of page.layers ?? []) writeCell(cells, layer)
       for (const { attrs, ...cell } of page.cells) {
         const link = movedPageLink(cell.style[LINK_KEY], moved)
         if (link !== cell.style[LINK_KEY]) cell.style = { ...cell.style, [LINK_KEY]: link! }
