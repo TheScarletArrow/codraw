@@ -88,6 +88,7 @@ const routes = [
 async function openDraft(responses: Record<string, MockResponse | MockResponse[]> = {}) {
   const fetchMock = mockFetch({
     'GET /api/me': { body: ALICE },
+    'GET /api/libraries': { body: [] },
     [`GET /api/boards/${boardId}`]: { body: board },
     [`GET ${proposalUrl}`]: { body: proposal() },
     [`GET /api/boards/${boardId}/proposals`]: { body: [proposal()] },

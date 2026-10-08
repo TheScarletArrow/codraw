@@ -581,4 +581,16 @@ describe('CanvasMenu', () => {
       expect(onMergeElements).toHaveBeenCalledWith(expect.objectContaining({ target: 'selection' }))
     })
   })
+
+  it('asks the page to save the selection into a library at the point of the click, for a viewer too', async () => {
+    const viewer = createFakeEditor({ readOnly: true })
+    const onSaveToLibrary = vi.fn()
+    render(<CanvasMenu editor={viewer} onSaveToLibrary={onSaveToLibrary} />)
+
+    act(() => viewer.rightClick({ x: 100, y: 50, point: { x: 300, y: 200 }, target: 'group', cellId: 'group-1' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Сохранить в библиотеку…' }))
+
+    expect(onSaveToLibrary).toHaveBeenCalledWith(expect.objectContaining({ target: 'group', x: 100, y: 50 }))
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
 })

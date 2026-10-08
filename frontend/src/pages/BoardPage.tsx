@@ -76,6 +76,8 @@ import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDia
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
+import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
+import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
@@ -364,6 +366,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   useEffect(() => editor?.onCommentPoint((point) => commentOn({ point })), [editor, commentOn])
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
+  const libraries = useLibraries()
+  const [savingToLibrary, setSavingToLibrary] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
   // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
@@ -630,7 +634,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         />
       )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} />}
+        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} libraries={libraries} />}
         {preview && document ? (
           <VersionPreview
             key={preview.id}
@@ -696,6 +700,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     participantId={author.id}
                     images={imageHost}
                     onEditor={setEditor}
+                    onDropComponent={libraries.drop}
                   />
                   <StickySignatures editor={editor} />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
@@ -764,6 +769,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                    onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                   />
                   {elementWindow &&
                     elementWindow.editor === editor &&
@@ -781,6 +787,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         onClose={() => setElementWindow(null)}
                       />
                     ))}
+                  {savingToLibrary && savingToLibrary.editor === editor && (
+                    <SaveToLibraryDialog
+                      editor={savingToLibrary.editor}
+                      shelf={libraries}
+                      request={savingToLibrary.request}
+                      onClose={() => setSavingToLibrary(null)}
+                    />
+                  )}
                   {linking && linking.editor === editor && (
                     <LinkDialog
                       editor={linking.editor}

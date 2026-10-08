@@ -20,7 +20,15 @@ export type ClipboardContent = { kind: 'cells' | 'diagram'; cells: Cell[] } | { 
  * draw.io copies, so that draw.io pastes it too. `cells` are clones that no graph holds, with their descendants.
  */
 export function clipboardText(cells: Cell[]): string {
-  return encodeURIComponent(cellsModelXml(clipboardData(cells)))
+  return encodeURIComponent(cellsXml(cells))
+}
+
+/**
+ * Copied cells as a `<mxGraphModel>` of draw.io, as the clipboard holds them and components of libraries keep them.
+ * `cells` are clones that no graph holds, with their descendants.
+ */
+export function cellsXml(cells: Cell[]): string {
+  return cellsModelXml(clipboardData(cells))
 }
 
 /** Attribute of the HTML of the clipboard that holds the copied cells as {@link clipboardText} writes them. */
@@ -102,6 +110,15 @@ export async function readClipboardText(text: string, html = ''): Promise<Clipbo
   const schema = parseSql(trimmed)
   if (schema.tables.length > 0) return { kind: 'diagram', cells: dataToCells(await schemaCells(schema, { x: 0, y: 0 })) }
   return { kind: 'text', text: trimmed }
+}
+
+/**
+ * The cells of a `<mxGraphModel>` or `<mxfile>` of draw.io or CoDraw (e.g. a component of a library), as
+ * {@link readClipboardText} reads them; `[]` for text that is no diagram.
+ */
+export async function diagramCells(xml: string): Promise<Cell[]> {
+  const content = await diagramContent(xml.trim())
+  return content?.kind === 'cells' ? content.cells : []
 }
 
 /** The cells that {@link clipboardContent} put into the HTML of the clipboard; `null` without them. */
