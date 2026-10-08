@@ -127,6 +127,21 @@ import {
 } from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
+import {
+  DEFAULT_END_ARROW,
+  LEGEND_KEY,
+  legendSettings,
+  legendSettingsValue,
+  type LegendItem,
+} from './legend.ts'
+import {
+  configureLegends,
+  graphLegendItems,
+  isLegend,
+  LegendGraphLayout,
+  legendsForChanges,
+  registerLegendShapes,
+} from './legendShapes.ts'
 import { LINK_KEY, linkOf } from './links.ts'
 import {
   hasLockedDescendant,
@@ -191,6 +206,7 @@ import {
   type StyleValue,
 } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
+import { DEFAULT_FILL_COLOR, DEFAULT_LINE_COLOR } from './colors.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
@@ -472,6 +488,22 @@ export type SelectionProperties =
       properties: EdgeProperties
       canChange: boolean
     }
+  | {
+      target: 'legend'
+      cellId: string
+      /** Every item of the page, hidden ones too, in the order of the legend. */
+      items: LegendPanelItem[]
+      canChange: boolean
+    }
+
+/** An item of a legend as its panel shows it; see {@link DiagramEditor.setLegendItem}. */
+export interface LegendPanelItem extends Pick<LegendItem, 'key' | 'type'> {
+  /** The name of the item unless the legend names it otherwise. */
+  defaultName: string
+  /** The name the legend gives it, or `''` for none. */
+  name: string
+  hidden: boolean
+}
 
 /** Changes of the properties of a shape, and whether its plain label shows the technology. */
 export type ElementPropertiesChange = Partial<ElementProperties> & { showTechnology?: boolean }
@@ -934,6 +966,11 @@ export interface DiagramEditor {
   /** Changes the technology or the interaction of the edge `cellId` of the page, as one undo step; the label stays. */
   setEdgeProperties(cellId: string, changes: Partial<EdgeProperties>): void
   /**
+   * Names the item `key` of the legend `cellId` (an empty name gives it back its own) or hides and shows it, as one undo
+   * step; a locked legend and an editor only for reading change nothing.
+   */
+  setLegendItem(cellId: string, key: string, changes: { name?: string; hidden?: boolean }): void
+  /**
    * Pastes the cells copied in this tab as {@link paste} does, but a shape that may be an element becomes another cell
    * of the element of the shape it was copied from, with the properties of the element now; that shape becomes an
    * element if it is none yet. Cells copied on another board are pasted as new elements. One undo step.
@@ -1377,6 +1414,7 @@ const CHANGING_COMMANDS = [
   'setEdgeApi',
   'setElementProperties',
   'setEdgeProperties',
+  'setLegendItem',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -1406,6 +1444,7 @@ export function createDiagramEditor(
   registerDiagramExtensions()
   registerTableShapes()
   registerSequenceShapes()
+  registerLegendShapes()
   graph.setPanning(true)
   graph.setConnectable(true)
   graph.setAllowDanglingEdges(false)
@@ -1421,6 +1460,7 @@ export function createDiagramEditor(
   configureElementLabels(graph)
   configureTextWrap(graph)
   const unconfigureSequences = configureSequences(graph)
+  const unconfigureLegends = configureLegends(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
   configureCanvasTheme(graph, () => theme)
@@ -1446,13 +1486,19 @@ export function createDiagramEditor(
   const layoutManager = new LayoutManager(graph)
   const tableLayout = new TableLayout(graph)
   const sequenceLayout = new SequenceDiagramLayout(graph)
-  layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : isSequence(cell) ? sequenceLayout : null)
+  const legendLayout = new LegendGraphLayout(graph)
+  layoutManager.getLayout = (cell) =>
+    isTable(cell) ? tableLayout : isSequence(cell) ? sequenceLayout : isLegend(cell) ? legendLayout : null
   // The text of a part of a sequence diagram sets its room, and so the layout of the diagram.
   const getCellsForChange = layoutManager.getCellsForChange.bind(layoutManager)
   layoutManager.getCellsForChange = (change) =>
     change instanceof ValueChange && sequenceOf(change.cell)
       ? layoutManager.addCellsWithLayout(change.cell)
       : getCellsForChange(change)
+  // A legend lists what the page has: any cell that comes, goes or changes its look may change its items. Last, so that
+  // it lists the page as the other layouts left it.
+  const getCellsForChanges = layoutManager.getCellsForChanges.bind(layoutManager)
+  layoutManager.getCellsForChanges = (changes) => [...getCellsForChanges(changes), ...legendsForChanges(graph, changes)]
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
   // A draft of a proposal, without others, would take putting labels right for a change of its author.
@@ -1476,7 +1522,8 @@ export function createDiagramEditor(
     cellEditor.isStopEditingEvent = (event) => {
       const cell = cellEditor.getEditingCell()
       const part = partOf(cell)
-      const line = isTable(cell) || isColumnField(cell) || isIndexRow(cell) || isSequence(cell) || (part !== null && part !== 'note')
+      const line =
+        isTable(cell) || isColumnField(cell) || isIndexRow(cell) || isSequence(cell) || isLegend(cell) || (part !== null && part !== 'note')
       const enter = event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing
       const stop = isStopEditingEvent(event) || (line && enter)
       if (stop && enter && part === 'message') nextMessageAfter = cell
@@ -1687,9 +1734,9 @@ export function createDiagramEditor(
     return [...cells]
   }
   const fontSizeOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontSize ?? StyleDefaultsConfig.fontSize)
-  // The parts of a sequence diagram set its size.
+  // The parts of a sequence diagram set its size, the items of a legend its.
   const allowsAutoWidthCell = (cell: Cell) =>
-    isFreeShape(cell) && !isSequence(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+    isFreeShape(cell) && !isSequence(cell) && !isLegend(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
   const textWrapCells = () => graph.getSelectionCells().filter((cell) => allowsTextWrap(graph, cell))
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
@@ -1756,6 +1803,18 @@ export function createDiagramEditor(
   /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
   const selectionProperties = (): SelectionProperties | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    if (cell && isLegend(cell)) {
+      const settings = legendSettings(cell.getStyle() as Record<string, unknown>)
+      const hidden = new Set(settings.hidden)
+      const items = graphLegendItems(graph).map((item) => ({
+        key: item.key,
+        type: item.type,
+        defaultName: item.name,
+        name: settings.names[item.key] ?? '',
+        hidden: hidden.has(item.key),
+      }))
+      return { target: 'legend', cellId: cell.getId()!, items, canChange: !readOnly && isUnlocked(cell) }
+    }
     const target = cell && propertiesTarget(cell)
     if (!cell || !target) return null
     const cellId = cell.getId()!
@@ -1896,8 +1955,8 @@ export function createDiagramEditor(
       y: value('y'),
       width: value('width'),
       height: value('height'),
-      canSetHeight: cells.some((cell) => !isTable(cell) && !isSequence(cell)),
-      canSetWidth: cells.some((cell) => !isSequence(cell)),
+      canSetHeight: cells.some((cell) => !isTable(cell) && !isSequence(cell) && !isLegend(cell)),
+      canSetWidth: cells.some((cell) => !isSequence(cell) && !isLegend(cell)),
       rotation: turning.length > 0 ? same(turning.map((cell) => rotationOf(cell.getStyle()))) : null,
       canRotate: turning.length > 0,
     }
@@ -4016,6 +4075,27 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       model.batchUpdate(() => setStyleKeys(cell, edgePropertiesStyle(next)))
     },
+    setLegendItem(cellId, key, changes) {
+      // The panel applies a name when it goes away, which may be after the editor did.
+      if (readOnly || destroyed) return
+      const cell = model.getCell(cellId)
+      if (!cell || !isLegend(cell) || !isUnlocked(cell)) return
+      const style = cell.getStyle() as Record<string, unknown>
+      const settings = legendSettings(style)
+      const names = { ...settings.names }
+      if (changes.name !== undefined) {
+        const name = propertyLine(changes.name, PROPERTY_LIMITS.name)
+        if (name) names[key] = name
+        else delete names[key]
+      }
+      const hidden = new Set(settings.hidden)
+      if (changes.hidden === true) hidden.add(key)
+      if (changes.hidden === false) hidden.delete(key)
+      const value = legendSettingsValue({ names, hidden: [...hidden] })
+      if (value === (style[LEGEND_KEY] ?? undefined)) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => setStyleKeys(cell, { [LEGEND_KEY]: value }))
+    },
     pasteAsSameElement(at) {
       const copied = clipboard.read()
       if (readOnly || destroyed || !copied) return
@@ -4294,6 +4374,7 @@ export function createDiagramEditor(
       model.removeListener(handleRemoteLabel)
       unwatchTableRows()
       unconfigureSequences()
+      unconfigureLegends()
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
@@ -4567,7 +4648,9 @@ function fitsText(graph: Graph, cell: Cell): boolean {
  * a sequence diagram, whose title is.
  */
 function allowsTextWrap(graph: Graph, cell: Cell): boolean {
-  return isFreeShape(cell) && !isTable(cell) && !isSequence(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+  return (
+    isFreeShape(cell) && !isTable(cell) && !isSequence(cell) && !isLegend(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+  )
 }
 
 function isTable(cell: Cell | null): boolean {
@@ -4983,15 +5066,15 @@ function restyle(graph: Graph) {
 function configureStyles(graph: Graph) {
   const stylesheet = graph.getStylesheet()
   Object.assign(stylesheet.getDefaultVertexStyle(), {
-    fillColor: '#ffffff',
-    strokeColor: '#1f2328',
-    fontColor: '#1f2328',
+    fillColor: DEFAULT_FILL_COLOR,
+    strokeColor: DEFAULT_LINE_COLOR,
+    fontColor: DEFAULT_LINE_COLOR,
     fontSize: 13,
   })
   Object.assign(stylesheet.getDefaultEdgeStyle(), {
     edgeStyle: 'orthogonalEdgeStyle',
-    strokeColor: '#1f2328',
-    fontColor: '#1f2328',
-    endArrow: 'classic',
+    strokeColor: DEFAULT_LINE_COLOR,
+    fontColor: DEFAULT_LINE_COLOR,
+    endArrow: DEFAULT_END_ARROW,
   })
 }

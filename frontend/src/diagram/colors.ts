@@ -1,3 +1,9 @@
+/** The fill of shapes without one of their own, as the default style of the editor sets it. */
+export const DEFAULT_FILL_COLOR = '#ffffff'
+
+/** The color of lines and text without one of their own, as the default style of the editor sets it. */
+export const DEFAULT_LINE_COLOR = '#1f2328'
+
 /** The standard draw.io palette: light colors for fills, dark ones for lines and text. */
 export const PALETTE = [
   { value: '#ffffff', name: 'Белый' },

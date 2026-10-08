@@ -11,6 +11,7 @@ import {
 } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import { crowsFoot, EDGE_MARKERS, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
+import { LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_SHAPE } from './sequence.ts'
 import { SHAPES } from './shapes.ts'
 
@@ -69,7 +70,7 @@ describe('diagram extensions', () => {
     registerDiagramExtensions()
 
     for (const name of Object.keys(SYSTEM_DESIGN_SHAPES)) expect(ShapeRegistry.get(name)).toBe(SYSTEM_DESIGN_SHAPES[name as keyof typeof SYSTEM_DESIGN_SHAPES])
-    // A sequence diagram has shapes of its own; see `sequenceShapes.ts`.
+    // A sequence diagram and a legend have shapes of their own; see `sequenceShapes.ts` and `legendShapes.ts`.
     const builtIn = [
       'ellipse',
       'rhombus',
@@ -82,6 +83,7 @@ describe('diagram extensions', () => {
       'document',
       'mxgraph.c4.person2',
       SEQUENCE_SHAPE,
+      LEGEND_SHAPE,
     ]
     for (const shape of SHAPES) {
       const name = shape.style.shape

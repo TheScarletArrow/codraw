@@ -1,6 +1,6 @@
 import type { CellStyle } from '@maxgraph/core'
 import { STICKY_COLORS } from './colors.ts'
-import { BROWSER_BAR_HEIGHT } from './extensions.ts'
+import { LEGEND_PRESET, LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_PRESET, SEQUENCE_SHAPE } from './sequence.ts'
 
 export type ShapeId =
@@ -66,6 +66,7 @@ export type ShapeId =
   | 'c4-database'
   | 'c4-external-system'
   | 'c4-boundary'
+  | 'legend'
 
 /**
  * maxGraph style with draw.io keys and values that maxGraph does not type: `childLayout`, and port constraints
@@ -88,6 +89,8 @@ export type ShapeStyle = Omit<CellStyle, 'portConstraint'> & {
   gridColumns?: number | string
   /** Horizontal lanes of a lane-like shape. */
   lanes?: number | string
+  /** `false` keeps edges off the cell, as in draw.io. */
+  connectable?: boolean
 }
 
 /** A cell created inside the shape, e.g. a field of a table. It spans the width of the shape. */
@@ -115,6 +118,9 @@ export interface ShapeSection {
   group: ShapeGroup
   shapes: ShapePreset[]
 }
+
+/** Height of the title bar of `codraw.browser`; its caption sits below the bar. */
+export const BROWSER_BAR_HEIGHT = 16
 
 /** Height of the table header that holds the table name. */
 export const TABLE_HEADER_HEIGHT = 30
@@ -187,6 +193,19 @@ const c4Style = (fillColor: string, strokeColor: string, fontColor = '#ffffff'):
   strokeColor,
   fontColor,
 })
+
+/**
+ * A legend, in the sections of architecture and of C4: its items and their layout set its size, and its look but the
+ * shape comes from the hooks of the canvas; see `legend.ts`. No edge goes to it, here and in draw.io.
+ */
+const LEGEND: ShapePreset = {
+  id: LEGEND_PRESET,
+  label: 'Легенда',
+  width: 200,
+  height: 80,
+  value: 'Легенда',
+  style: { shape: LEGEND_SHAPE, connectable: false },
+}
 
 /** Shapes of the palette by section. Style keys and shape names match draw.io, so they map to `.drawio` one to one. */
 export const SHAPE_SECTIONS: ShapeSection[] = [
@@ -435,6 +454,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
       { id: 'external-system', label: 'Внешняя система', width: 140, height: 90, value: 'Внешняя система', style: { shape: 'cloud' } },
       { id: 'document', label: 'Документ', width: 110, height: 80, value: 'Документ', style: { shape: 'document' } },
       { id: 'boundary', label: 'Граница', width: 360, height: 240, value: 'Граница', style: boundaryStyle('#1f2328') },
+      LEGEND,
     ],
   },
   {
@@ -676,24 +696,29 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         value: 'Граница системы\n[Software System]',
         style: { ...boundaryStyle('#666666'), fontColor: '#333333' },
       },
+      LEGEND,
     ],
   },
 ]
 
-export const SHAPES: ShapePreset[] = SHAPE_SECTIONS.flatMap((section) => section.shapes)
+/** Shapes of the palette in their order; a shape of two sections, the legend, comes once, with the first. */
+export const SHAPES: ShapePreset[] = SHAPE_SECTIONS.flatMap((section) => section.shapes).filter(
+  (shape, index, all) => all.findIndex((other) => other.id === shape.id) === index,
+)
 
 export function findShape(id: string): ShapePreset | undefined {
   return SHAPES.find((shape) => shape.id === id)
 }
 
 /**
- * Frames, text, stickies and sequence diagrams: they belong to no group, so nothing is connected to them with the
- * arrows.
+ * Frames, text, stickies, sequence diagrams and legends: they belong to no group, so nothing is connected to them with
+ * the arrows.
  */
 export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>([
   'text',
   'sticky',
   'sequence',
+  'legend',
   'boundary',
   'bpmn-pool',
   'kubernetes-cluster',

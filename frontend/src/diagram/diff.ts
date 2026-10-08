@@ -13,6 +13,7 @@ import {
   type PointData,
   type StyleValue,
 } from './model.ts'
+import { isLegendStyle } from './legendKeys.ts'
 import { isSequenceStyle, sequencePartOf } from './sequence.ts'
 import { isTableStyle } from './shapes.ts'
 
@@ -248,6 +249,8 @@ export function isTableRow(cell: CellSnapshot, cells: Map<string, CellSnapshot>)
 
 const isSequence = (cell: CellSnapshot) => cell.kind === 'vertex' && isSequenceStyle(cell.style)
 
+const isLegend = (cell: CellSnapshot) => cell.kind === 'vertex' && isLegendStyle(cell.style)
+
 /** A part of a sequence diagram: the diagram lays it out, so its geometry is not its own either. */
 export function isSequencePart(cell: CellSnapshot, cells: Map<string, CellSnapshot>): boolean {
   const parent = cell.parent === null ? undefined : cells.get(cell.parent)
@@ -266,9 +269,9 @@ function geometryChanges(
   if (isLaidOut(before, beforeCells) && isLaidOut(after, afterCells)) return []
   const a = before.geometry ?? EMPTY_GEOMETRY
   const b = after.geometry ?? EMPTY_GEOMETRY
-  // The rows of a table set its height, the parts of a sequence diagram its size.
+  // The rows of a table set its height, the parts of a sequence diagram its size, the items of a legend its.
   const bounds =
-    isSequence(before) && isSequence(after)
+    (isSequence(before) && isSequence(after)) || (isLegend(before) && isLegend(after))
       ? (['x', 'y'] as const)
       : isTable(before) && isTable(after)
         ? (['x', 'y', 'width'] as const)
