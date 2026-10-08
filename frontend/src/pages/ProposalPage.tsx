@@ -38,6 +38,7 @@ import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
+import { ChecksButton, ChecksPanel } from '../checks/ChecksPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
 import { useRevealCell } from '../elements/useRevealCell.ts'
@@ -134,6 +135,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   // The panel of the elements of the board, and the element whose cells the menu or a badge asked for.
   const [elementsOpen, setElementsOpen] = useState(false)
   const [elementsRequest, setElementsRequest] = useState<ElementsRequest | null>(null)
+  // The panel of the checks of the draft.
+  const [checksOpen, setChecksOpen] = useState(false)
   const showWhereUsed = (key: string) => {
     setElementsOpen(true)
     setElementsRequest({ key })
@@ -202,6 +205,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         <div className="flex shrink-0 items-center gap-1">
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
+          <ChecksButton document={document} open={checksOpen} onToggle={() => setChecksOpen((open) => !open)} />
           <ShortcutsHelp readOnly={readOnly} collaboration={false} />
         </div>
       </div>
@@ -295,6 +299,18 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                       onShow={showCell}
                       onClose={() => {
                         setElementsOpen(false)
+                        editor?.focus()
+                      }}
+                    />
+                  )}
+                  {checksOpen && (
+                    <ChecksPanel
+                      document={document}
+                      canChange={!readOnly}
+                      onShow={showCell}
+                      onMerge={(refs, keep) => editor?.mergeElementCells(refs, keep)}
+                      onClose={() => {
+                        setChecksOpen(false)
                         editor?.focus()
                       }}
                     />
