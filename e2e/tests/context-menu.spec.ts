@@ -90,6 +90,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'На задний план',
     'Закрепить',
     'Ссылка…',
+    'Зависимости',
     'Комментировать',
     'Удалить',
   ])
@@ -147,8 +148,9 @@ test('a right click on one of the selected shapes keeps the whole selection', as
 
   await rightClick(page, center(await cellBox(page, service)))
 
-  // The menu of several elements: grouping first, then merging a service and a database into one element.
-  expect((await menuLabels(page)).slice(0, 3)).toEqual(['Сгруппировать', 'Объединить в один элемент…', 'Вырезать'])
+  // The menu of several elements: grouping first, then merging a service and a database into one element and the path
+  // between them.
+  expect((await menuLabels(page)).slice(0, 4)).toEqual(['Сгруппировать', 'Объединить в один элемент…', 'Путь между', 'Вырезать'])
   expect((await selectedIds(page)).sort()).toEqual([service, database].sort())
 
   await page.context().close()

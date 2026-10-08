@@ -14,6 +14,7 @@ import { Minimap } from '../board/Minimap.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { StatusBadges } from '../board/StatusBadges.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { useImageUploads } from '../board/imageUploads.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { usePages } from '../board/usePages.ts'
@@ -275,6 +276,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 {!readOnly && <FieldPopover editor={editor} />}
                 {!readOnly && <StickyPanel editor={editor} />}
                 <SidePanels>
+                  <ImpactPanel editor={editor} document={document} onShow={showCell} />
                   <EdgeApiPanel editor={editor} request={apiRequest} />
                   {propertiesOpen && (
                     <PropertiesPanel

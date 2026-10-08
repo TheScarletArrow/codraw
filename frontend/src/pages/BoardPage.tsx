@@ -14,6 +14,7 @@ import { useCurrentUser } from '../auth/session.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
@@ -721,6 +722,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <FieldPopover editor={editor} />}
                   {!readOnly && <StickyPanel editor={editor} />}
                   <SidePanels>
+                    <ImpactPanel editor={editor} document={document} onShow={showCell} />
                     <EdgeApiPanel editor={editor} request={apiRequest} />
                     {propertiesOpen && (
                       <PropertiesPanel

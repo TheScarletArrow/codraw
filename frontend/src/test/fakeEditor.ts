@@ -92,6 +92,7 @@ export function createFakeEditor({
     status: null,
     properties: null,
     sequence: null,
+    impact: null,
     canPasteAsSameElement: false,
     canMergeElements: false,
   }
@@ -241,6 +242,11 @@ export function createFakeEditor({
       changeView()
     }),
     revealCell: vi.fn((id: string) => cells.get(id) != null),
+    showDependencies: vi.fn(() => true),
+    showPathBetween: vi.fn(() => true),
+    clearImpact: vi.fn(),
+    canAnalyze: vi.fn(() => false),
+    canShowPath: vi.fn(() => false),
     clearSelection: vi.fn(),
     viewportCenter: () => ({ x: offset.x + viewport.width / 2, y: offset.y + viewport.height / 2 }),
     zoomTo: vi.fn((scale: number) => {

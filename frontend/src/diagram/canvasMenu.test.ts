@@ -147,6 +147,17 @@ describe('menuItems', () => {
     expect(locked).not.toContain('Где используется…')
   })
 
+  it('offers the dependencies of an element after its properties and the path between two elements, also to a viewer', () => {
+    const analysed = { ...all, canShowProperties: true, canShowDependencies: true, canShowWhereUsed: true }
+    expect(labels('shape', analysed).slice(-4, -1)).toEqual(['Свойства…', 'Зависимости', 'Где используется…'])
+    expect(labels('table', { ...all, canShowDependencies: true })).toContain('Зависимости')
+    expect(labels('shape', { ...analysed, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Свойства…', 'Зависимости', 'Где используется…'])
+    expect(labels('shape', all)).not.toContain('Зависимости')
+    expect(labels('selection', { ...all, canGroup: true, canShowPath: true }).slice(0, 2)).toEqual(['Сгруппировать', 'Путь между'])
+    expect(labels('selection', { ...all, canShowPath: true, readOnly: true })).toEqual(['Путь между', 'Копировать'])
+    expect(labels('selection', all)).not.toContain('Путь между')
+  })
+
   it('offers merging several shapes into one element', () => {
     expect(labels('selection', { ...all, canGroup: true, canMergeElements: true }).slice(0, 2)).toEqual([
       'Сгруппировать',

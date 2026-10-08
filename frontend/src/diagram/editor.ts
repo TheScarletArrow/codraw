@@ -128,6 +128,8 @@ import {
   type StoredImage,
 } from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
+import { impactNode, type ImpactDepth } from './impact.ts'
+import { configureImpact, modelImpactRecords, type ImpactState } from './impactView.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import {
   DEFAULT_END_ARROW,
@@ -684,6 +686,8 @@ export interface EditorState {
   properties: SelectionProperties | null
   /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
   sequence: SelectedSequence | null
+  /** The impact analysis the canvas shows, `null` without one; see {@link DiagramEditor.showDependencies}. */
+  impact: ImpactState | null
   /** The clipboard of the browser tab holds copied cells: «Вставить как тот же элемент» pastes them. */
   canPasteAsSameElement: boolean
   /** The selection has shapes of at least two elements, or of shapes that are no elements yet, that may be merged. */
@@ -898,6 +902,20 @@ export interface DiagramEditor {
    * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
   exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
+  /**
+   * Shows what the element of the cell `cellId` depends on and what depends on it, up to `depth` steps (see
+   * `impact.ts`), on this canvas only: they are outlined in their colors and everything else is pale. `false` for a cell
+   * that depends on nothing by its kind, e.g. an edge.
+   */
+  showDependencies(cellId: string, depth?: ImpactDepth): boolean
+  /** Shows the shortest paths between the cells `from` and `to`, or between the two selected shapes, on this canvas only. */
+  showPathBetween(from?: string, to?: string): boolean
+  /** Ends the impact analysis of the canvas. */
+  clearImpact(): void
+  /** The cell is an element whose dependencies the analysis shows: a shape, a table, a field of a table. */
+  canAnalyze(cellId: string): boolean
+  /** Two shapes are selected whose paths the analysis shows. */
+  canShowPath(): boolean
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
@@ -1469,6 +1487,9 @@ export function createDiagramEditor(
   const unconfigureLegends = configureLegends(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  // Before the theme, so that the theme sees the colors of the analysis.
+  let impactChanged = () => {}
+  const impactView = configureImpact(graph, () => impactChanged())
   configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
@@ -2296,6 +2317,7 @@ export function createDiagramEditor(
       status: selectionStatus(),
       properties: selectionProperties(),
       sequence: selectionSequence(),
+      impact: impactView.state(),
       canPasteAsSameElement: !readOnly && clipboard.read() !== null,
       canMergeElements: !readOnly && selectedElements().length >= 2,
     }
@@ -2802,6 +2824,28 @@ export function createDiagramEditor(
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
   model.addListener(InternalEvent.CHANGE, notifyView)
   cells.observeDeep(handleTextAuthors)
+  // The analysis is a change of the drawing and of the state that tells it.
+  impactChanged = () => {
+    drawingVersion++
+    notify()
+    notifyView()
+  }
+  /** The cell stands for an element whose dependencies the analysis shows: a shape that may be an element, a table or its field. */
+  const analysable = (records: ReturnType<typeof modelImpactRecords>, cellId: string) => {
+    const node = impactNode(records, cellId)
+    const cell = node === null ? null : model.getCell(node)
+    return !!cell && (isTable(cell) || propertiesTarget(cell) === 'shape')
+  }
+  /** The two selected cells whose paths the analysis would show: two different elements. */
+  const pathEnds = (): [string, string] | null => {
+    const selected = graph.getSelectionCells()
+    if (selected.length !== 2) return null
+    const records = modelImpactRecords(graph)
+    const ids = selected.map((cell) => cell.getId()!)
+    if (!ids.every((id) => analysable(records, id))) return null
+    const [a, b] = ids.map((id) => impactNode(records, id))
+    return a !== b ? [ids[0]!, ids[1]!] : null
+  }
 
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
@@ -3119,6 +3163,33 @@ export function createDiagramEditor(
   }
   /** Selected cells without table fields and parts of sequence diagrams: their layouts, not the user, order them. */
   const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
+
+  /** The image of {@link DiagramEditor.exportSvg} as the page is drawn now. */
+  const drawImage = (selectionOnly: boolean, options: SvgOptions): ExportedImage | null => {
+    const copied = selectionOnly ? new Set(cellsToCopy()) : null
+    // In the order of the page, so that what lies on top on the canvas lies on top in the image.
+    const cells = graph
+      .getDefaultParent()
+      .getChildren()
+      .filter((cell) => !copied || copied.has(cell))
+    if (copied && cells.length === 0) return null
+    // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+    // participant never sees.
+    const shown = theme
+    if (shown !== 'light') {
+      theme = 'light'
+      restyle(graph)
+    }
+    try {
+      const image = renderSvg(graph, cells, options)
+      return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+    } finally {
+      if (shown !== 'light') {
+        theme = shown
+        restyle(graph)
+      }
+    }
+  }
 
   const editor: DiagramEditor = {
     graph,
@@ -3869,29 +3940,29 @@ export function createDiagramEditor(
       restyle(graph)
     },
     exportSvg({ selectionOnly = false, ...options } = {}) {
-      const copied = selectionOnly ? new Set(cellsToCopy()) : null
-      // In the order of the page, so that what lies on top on the canvas lies on top in the image.
-      const cells = graph
-        .getDefaultParent()
-        .getChildren()
-        .filter((cell) => !copied || copied.has(cell))
-      if (copied && cells.length === 0) return null
-      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
-      // participant never sees.
-      const shown = theme
-      if (shown !== 'light') {
-        theme = 'light'
-        restyle(graph)
-      }
-      try {
-        const image = renderSvg(graph, cells, options)
-        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
-      } finally {
-        if (shown !== 'light') {
-          theme = shown
-          restyle(graph)
-        }
-      }
+      // The analysis is of this canvas: the image has the page without it.
+      return impactView.drawn(() => drawImage(selectionOnly, options))
+    },
+    showDependencies(cellId, depth = 1) {
+      if (destroyed) return false
+      impactView.set({ mode: 'dependencies', cellId, depth })
+      return impactView.state() !== null
+    },
+    showPathBetween(from, to) {
+      if (destroyed) return false
+      const ends: [string, string] | null = from && to ? [from, to] : pathEnds()
+      if (!ends) return false
+      impactView.set({ mode: 'path', from: ends[0], to: ends[1] })
+      return impactView.state() !== null
+    },
+    clearImpact() {
+      if (impactView.state()) impactView.set(null)
+    },
+    canAnalyze(cellId) {
+      return analysable(modelImpactRecords(graph), cellId)
+    },
+    canShowPath() {
+      return pathEnds() !== null
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -4434,6 +4505,7 @@ export function createDiagramEditor(
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
+      impactView.destroy()
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
