@@ -1400,9 +1400,16 @@ export function createDiagramEditor(
   const isUnlocked = (cell: Cell) => lockHolder(cell) === null
   /** The cells that the commands change: those that can. */
   const unlocked = (cells: Cell[]) => cells.filter(isUnlocked)
-  /** The selected shapes that may be elements and are not locked. */
+  /**
+   * The selected shapes that are not locked and are elements, or stand for something: a service, a database, a
+   * container, not a rectangle.
+   */
   const mergeableCells = (): Cell[] =>
-    graph.getSelectionCells().filter((cell) => propertiesTarget(cell) === 'shape' && isUnlocked(cell))
+    graph.getSelectionCells().filter((cell) => {
+      if (propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return false
+      const style = cell.getStyle() as Record<string, unknown>
+      return elementIdOf(style) !== null || elementProperties(style, String(cell.getValue() ?? '')).kind !== null
+    })
   /** The selected shapes by their elements, each element once; a shape that is no element yet is one of its own. */
   const selectedElements = (): Cell[] => {
     const seen = new Set<string>()

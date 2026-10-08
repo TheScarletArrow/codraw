@@ -225,7 +225,8 @@ export function CanvasMenu({
         side="bottom"
         align="start"
         sideOffset={2}
-        className="w-64 p-1"
+        // A long menu, e.g. of a shape with its statuses, scrolls on a low screen instead of going off it.
+        className="max-h-[var(--radix-popover-content-available-height)] w-64 overflow-y-auto p-1"
         // The keyboard goes back to the canvas, unless the chosen item started editing a label or a comment, or another
         // menu is open already: taking the focus from that menu would close it.
         onCloseAutoFocus={(event) => {

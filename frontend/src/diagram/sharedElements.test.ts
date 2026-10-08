@@ -138,8 +138,18 @@ describe('shared elements', () => {
       description: 'Заказы',
     })
     expect(elementOf(doc, DEFAULT_PAGE_ID, 'a')).toBe(id)
+    expect(valueOf(doc, DEFAULT_PAGE_ID, 'a')).toBe('API\n[Container: Java]\nЗаказы')
     expect(getElements(doc).get('gone')!.toJSON()).toEqual({ name: 'Cache', kind: 'cache', technology: 'Redis' })
     expect(ensureElement(doc, { pageId: DEFAULT_PAGE_ID, cellId: 't' })).toBeNull()
+  })
+
+  it('makes the label of a shape of the palette that becomes an element of its properties, without the words of the palette', () => {
+    const { doc } = board()
+    put(doc, DEFAULT_PAGE_ID, shapeData('p', 'a0', { value: 'Контейнер\n[Container: технология]\nОписание', style: CONTAINER }))
+
+    doc.transact(() => ensureElement(doc, { pageId: DEFAULT_PAGE_ID, cellId: 'p' }))
+
+    expect(valueOf(doc, DEFAULT_PAGE_ID, 'p')).toBe('Контейнер\n[Container]')
   })
 
   it('detaches a cell into an element of its own with the same properties', () => {

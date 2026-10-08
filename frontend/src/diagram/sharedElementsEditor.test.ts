@@ -205,6 +205,17 @@ describe('one element on several pages in the editor', () => {
     expect(elementIdOf(doc, DEFAULT_PAGE_ID, other.getId()!)).toBeUndefined()
   })
 
+  it('does not merge shapes that stand for nothing, such as rectangles', () => {
+    const { doc } = board()
+    const editor = open(doc, DEFAULT_PAGE_ID)
+    const boxes = [shape(editor, 'rectangle', 'A'), shape(editor, 'rectangle', 'B', { x: 500, y: 200 })]
+
+    editor.graph.setSelectionCells(boxes)
+
+    expect(editor.getState().canMergeElements).toBe(false)
+    expect(editor.mergeCandidates()).toEqual([])
+  })
+
   it('removes the element from all pages with its edges, in one undo step of the page', () => {
     const { doc, second, histories } = board()
     const first = open(doc, DEFAULT_PAGE_ID, histories)

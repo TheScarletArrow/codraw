@@ -198,8 +198,9 @@ export function healLabels(cells: CellsMap, ids?: Iterable<string>): string[] {
 
 /**
  * Makes the shape `ref` a cell of an element, as changing its properties would: its element, or a new one with the
- * properties its label tells; an element that its cell names but the document lost, or that has no properties, gets
- * them. Returns the element, or `null` when the cell is no shape that may be an element. Call inside a transaction.
+ * properties its label tells, and the label made of them; an element that its cell names but the document lost, or
+ * that has no properties, gets them. Returns the element, or `null` when the cell is no shape that may be an element.
+ * Call inside a transaction.
  */
 export function ensureElement(doc: Y.Doc, ref: CellRef): string | null {
   const cells = getCells(doc, ref.pageId)
@@ -211,8 +212,21 @@ export function ensureElement(doc: Y.Doc, ref: CellRef): string | null {
   const data = readCell(ref.cellId, cell)
   const properties = elementProperties(data.style, data.value)
   const id = named ?? newId()
-  writeCell(cells, { ...data, style: { ...styleWith(data.style, undefined), ...definedStyle(properties), [ELEMENT_KEY]: id } })
+  const style = { ...styleWith(data.style, undefined), ...definedStyle(properties), [ELEMENT_KEY]: id }
+  // As the first change of its properties does, the label is made of them: e.g. the words of the palette go.
+  const value = labelWith(data.style, data.value, id, propertiesData(properties))
+  writeCell(cells, { ...data, value, style })
   return id
+}
+
+/** The properties as the document keeps them. */
+function propertiesData(properties: ElementProperties): ElementData {
+  const data: ElementData = {}
+  for (const field of ELEMENT_FIELDS) {
+    const value = properties[field]
+    if (Array.isArray(value) ? value.length > 0 : value) data[field] = value as never
+  }
+  return data
 }
 
 /** The style keys of properties that have a value. */
