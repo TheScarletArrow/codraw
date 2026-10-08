@@ -294,7 +294,8 @@ function IssueRow({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label={hidden ? `Показать замечание ${issue.subject}` : `Скрыть замечание ${issue.subject}`}
+          // The rule tells apart two remarks of one element or edge.
+          aria-label={`${hidden ? 'Показать' : 'Скрыть'} замечание «${CHECK_RULES[issue.rule].title}»: ${issue.subject}`}
           title={hidden ? 'Показать замечание' : 'Скрыть замечание для этого случая'}
           onClick={() => onHide(issue, !hidden)}
         >

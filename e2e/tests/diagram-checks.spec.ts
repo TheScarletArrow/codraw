@@ -35,7 +35,7 @@ test('the checks list the remarks of the board for every participant, go to the 
   await expect.poll(() => selectedIds(alice)).toEqual([database])
 
   // Алиса hides the remark of the label and turns the technology of edges off: Боб has the same.
-  await checks(alice).getByRole('button', { name: 'Скрыть замечание «Сервис» → «База данных»' }).click()
+  await checks(alice).getByRole('button', { name: 'Скрыть замечание «Связь без подписи»: «Сервис» → «База данных»' }).click()
   await checks(alice).getByRole('tab', { name: 'Правила' }).click()
   await checks(alice).getByRole('checkbox', { name: /Связь без технологии/ }).uncheck()
   await bob.getByRole('button', { name: /^Проверки/ }).click()

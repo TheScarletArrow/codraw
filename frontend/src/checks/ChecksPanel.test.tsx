@@ -49,11 +49,11 @@ describe('ChecksPanel', () => {
     await userEvent.click(within(label).getByRole('button', { name: 'стр. «Страница 1»' }))
     expect(onShow).toHaveBeenCalledWith('page-1', edge)
 
-    await userEvent.click(within(label).getByRole('button', { name: 'Скрыть замечание «API» → «БД»' }))
+    await userEvent.click(within(label).getByRole('button', { name: 'Скрыть замечание «Связь без подписи»: «API» → «БД»' }))
     expect(screen.queryByRole('region', { name: 'Связь без подписи' })).toBeNull()
     expect(screen.getByRole('tab', { name: 'Замечания 2' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Показать скрытые (1)' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Показать замечание «API» → «БД»' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Показать замечание «Связь без подписи»: «API» → «БД»' }))
     expect(screen.getByRole('tab', { name: 'Замечания 3' })).toBeInTheDocument()
   })
 
