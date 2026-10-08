@@ -50,9 +50,10 @@ test('the dependencies of an element and the path between two, for their partici
   // The path between the browser and the database goes through the service.
   await alice.mouse.click(...(Object.values(center(await cellBox(alice, web))) as [number, number]))
   const end = center(await cellBox(alice, db))
-  await alice.keyboard.down('Shift')
+  // maxGraph toggles the selection with Ctrl, or Cmd on macOS; the test browser reports Windows.
+  await alice.keyboard.down('Control')
   await alice.mouse.click(end.x, end.y)
-  await alice.keyboard.up('Shift')
+  await alice.keyboard.up('Control')
   await alice.mouse.click(end.x, end.y, { button: 'right' })
   await menu(alice).getByRole('menuitem', { name: 'Путь между' }).click()
   const path = alice.getByRole('complementary', { name: 'Путь между' })
