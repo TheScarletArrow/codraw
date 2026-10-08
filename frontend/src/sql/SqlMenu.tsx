@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { createProposal, proposalLimitOf, type Proposal } from '../api/proposals.ts'
 import { fetchSchemaImport } from '../api/schemaImport.ts'
 import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
 import { ArchitectureExport } from '../architecture/ArchitectureExport.tsx'
@@ -15,6 +16,7 @@ import { InfraImport } from '../infra/InfraImport.tsx'
 import { downloadBlob, fileName } from '../lib/download.ts'
 import { mermaidCells, mermaidSummary } from '../mermaid/mermaidCells.ts'
 import { MermaidError, parseMermaid, type MermaidDiagram } from '../mermaid/parseMermaid.ts'
+import { setPendingSchemaImportUpdate, summarizeSchemaUpdate } from '../proposals/schemaImportUpdate.ts'
 import { DatabaseConnection } from './DatabaseConnection.tsx'
 import { diagramSchema, placeBeside, schemaCells, schemaMermaid, schemaSql } from './erDiagram.ts'
 import { parseSql, parseSqlFiles, type SqlFile, type SqlSchema } from './parseSql.ts'
@@ -28,15 +30,22 @@ interface SqlMenuProps {
   pageCount: number
   /** A participant who may only view exports, but does not import. */
   readOnly: boolean
+  /** The board whose page is open; absent in a proposal draft. */
+  boardId?: string
+  /** Called after an import has opened a proposal. */
+  onProposalCreated?: (proposal: Proposal) => void
 }
 
-type Message = 'sql-copied' | 'mermaid-copied' | 'copy-failed' | 'import-failed'
+type Message = 'sql-copied' | 'mermaid-copied' | 'copy-failed' | 'import-failed' | 'proposal-failed' | 'proposal-limit-author' | 'proposal-limit-board'
 
 const MESSAGES: Record<Message, string> = {
   'sql-copied': 'SQL скопирован',
   'mermaid-copied': 'Mermaid скопирован',
   'copy-failed': 'Не удалось скопировать',
   'import-failed': 'Не удалось добавить схему',
+  'proposal-failed': 'Не удалось создать предложение',
+  'proposal-limit-author': 'У вас уже предельное число открытых предложений на этой доске',
+  'proposal-limit-board': 'На доске уже предельное число открытых предложений',
 }
 
 /** The cells of a page, as its document has them. */
@@ -72,12 +81,38 @@ const countReferences = (schema: SqlSchema) =>
 
 const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) => sum + table.indexes.length, 0)
 
+type CellFactory = (origin: { x: number; y: number }) => Promise<CellData[]>
+
+const sourceTitle = (files: { name: string }[], fallback: string) =>
+  files.length === 1 ? files[0]!.name : files.length > 1 ? `${files.length} файлов` : fallback
+
+function proposalDescription(pageName: string, summary: string, existing: CellData[], imported: CellData[]): string {
+  const update = summarizeSchemaUpdate(existing, imported)
+  const lines = [
+    `Страница: ${pageName}`,
+    summary,
+    `Совпало: ${update.changed}, новых элементов: ${update.added}, к удалению: ${update.removed}.`,
+    update.matchedByName.length > 0 && `Без метки источника сопоставлено по имени: ${update.matchedByName.join(', ')}.`,
+  ].filter(Boolean)
+  return lines.join('\n').slice(0, 2000)
+}
+
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
  * a flowchart, an ER diagram or a sequence diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose, manifests of
  * Kubernetes and builds of Gradle become a diagram of the page.
  */
-export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
+export function SqlMenu({
+  editor,
+  document: doc,
+  pageId,
+  boardTitle,
+  pageName,
+  pageCount,
+  readOnly,
+  boardId,
+  onProposalCreated,
+}: SqlMenuProps) {
   const [open, setOpen] = useState(false)
   const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | 'gradle' | null>(null)
   // «Подключение к базе» over «Импорт SQL».
@@ -96,6 +131,7 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
   const mermaid = importing === 'mermaid' ? importedDiagram(text) : null
   // Whether the server reads schemas of databases for this user; asked when «Импорт SQL» opens.
   const schemaImport = useQuery({ queryKey: ['schema-import'], queryFn: fetchSchemaImport, enabled: importing === 'sql', staleTime: 5 * 60_000 })
+  const importError = message && message !== 'sql-copied' && message !== 'mermaid-copied' ? MESSAGES[message] : null
 
   const reset = () => {
     setImporting(null)
@@ -135,18 +171,51 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
     }
   }
 
-  /** What the windows of the imports of infrastructure share. */
-  const infraProps = {
-    busy,
-    error: message === 'import-failed' ? MESSAGES[message] : null,
-    onBack: reset,
-    onAdd: (cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void insert(cells),
+  /** Creates a proposal, and lets its draft page apply the imported cells once it connects. */
+  const proposeUpdate = async (source: string, summary: string, cells: CellFactory) => {
+    if (!doc || !pageId || !boardId || !onProposalCreated) return
+    setBusy(true)
+    try {
+      const existing = pageCells(doc, pageId)
+      const imported = await cells(placeBeside(existing))
+      const proposal = await createProposal(boardId, `Обновление из ${source}`, proposalDescription(pageName, summary, existing, imported))
+      setPendingSchemaImportUpdate(proposal.id, { pageId, cells: imported })
+      setOpen(false)
+      reset()
+      onProposalCreated(proposal)
+    } catch (error) {
+      const limit = proposalLimitOf(error)
+      setMessage(limit?.scope === 'author' ? 'proposal-limit-author' : limit?.scope === 'board' ? 'proposal-limit-board' : 'proposal-failed')
+    } finally {
+      setBusy(false)
+    }
   }
+
+  /** What the windows of the imports of infrastructure share. */
+  const infraProps = (prefix: string, fallback: string) => ({
+    busy,
+    error: importError,
+    onBack: reset,
+    onAdd: (cells: CellFactory) => void insert(cells),
+    onUpdate: boardId && onProposalCreated ? (source: string, summary: string, cells: CellFactory) => void proposeUpdate(sourceTitle([{ name: source }], fallback), summary, cells) : undefined,
+    sourcePrefix: prefix,
+  })
 
   const addTables = () => {
     const diagram = mermaid?.diagram
-    if (imported && imported.tables.length > 0) void insert((origin) => schemaCells(imported, origin))
-    else if (diagram) void insert((origin) => mermaidCells(diagram, origin))
+    if (imported && imported.tables.length > 0) void insert((origin) => schemaCells(imported, origin, undefined, [], 'sql'))
+    else if (diagram) void insert((origin) => mermaidCells(diagram, origin, undefined, 'mermaid'))
+  }
+
+  const updateTables = () => {
+    const diagram = mermaid?.diagram
+    if (imported && imported.tables.length > 0) {
+      void proposeUpdate(sourceTitle(files, 'SQL'), `Таблиц: ${imported.tables.length}, связей: ${countReferences(imported)}, индексов: ${countIndexes(imported)}`, (origin) =>
+        schemaCells(imported, origin, undefined, [], 'sql'),
+      )
+    } else if (diagram) {
+      void proposeUpdate('Mermaid', mermaidSummary(diagram), (origin) => mermaidCells(diagram, origin, undefined, 'mermaid'))
+    }
   }
 
   return (
@@ -179,16 +248,17 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
         ) : importing === 'api' ? (
           <ApiSpecImport
             busy={busy}
-            error={message === 'import-failed' ? MESSAGES[message] : null}
+            error={importError}
             onBack={reset}
             onAdd={(cells) => void insert(cells)}
+            onUpdate={boardId && onProposalCreated ? (source, summary, cells) => void proposeUpdate(source, summary, cells) : undefined}
           />
         ) : importing === 'compose' ? (
-          <InfraImport format={COMPOSE} {...infraProps} />
+          <InfraImport format={COMPOSE} {...infraProps('compose', 'docker-compose')} />
         ) : importing === 'kubernetes' ? (
-          <InfraImport format={KUBERNETES} {...infraProps} />
+          <InfraImport format={KUBERNETES} {...infraProps('kubernetes', 'Kubernetes')} />
         ) : importing === 'gradle' ? (
-          <GradleImport {...infraProps} />
+          <GradleImport {...infraProps('gradle', 'Gradle')} />
         ) : importing === 'mermaid' && mermaid ? (
           <>
             <div className="flex items-center gap-1">
@@ -222,9 +292,16 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                 {MESSAGES[message]}
               </p>
             )}
-            <Button type="button" size="sm" disabled={busy || !mermaid.diagram} onClick={addTables}>
-              Добавить на страницу
-            </Button>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" disabled={busy || !mermaid.diagram} onClick={addTables}>
+                Добавить на страницу
+              </Button>
+              {boardId && onProposalCreated && (
+                <Button type="button" variant="outline" size="sm" disabled={busy || !mermaid.diagram} onClick={updateTables}>
+                  Обновить через предложение
+                </Button>
+              )}
+            </div>
           </>
         ) : importing === 'sql' && connecting && schemaImport.data?.kind === 'available' ? (
           <DatabaseConnection
@@ -291,9 +368,16 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
                 {MESSAGES[message]}
               </p>
             )}
-            <Button type="button" size="sm" disabled={busy || imported.tables.length === 0} onClick={addTables}>
-              Добавить на страницу
-            </Button>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" disabled={busy || imported.tables.length === 0} onClick={addTables}>
+                Добавить на страницу
+              </Button>
+              {boardId && onProposalCreated && (
+                <Button type="button" variant="outline" size="sm" disabled={busy || imported.tables.length === 0} onClick={updateTables}>
+                  Обновить через предложение
+                </Button>
+              )}
+            </div>
           </>
         ) : (
           <>

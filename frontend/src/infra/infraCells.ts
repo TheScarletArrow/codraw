@@ -1,6 +1,7 @@
 import { layoutShapes, type LayoutEngine, type LayoutShape } from '../diagram/layout.ts'
 import type { CellData } from '../diagram/model.ts'
 import { findShape, type ShapePreset, type ShapeStyle } from '../diagram/shapes.ts'
+import { SOURCE_KEY } from '../diagram/sources.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import type { InfraGraph, InfraNode } from './infraGraph.ts'
 
@@ -66,13 +67,31 @@ function measure(node: InfraNode): Measured {
  * at `origin`: a shape of the palette per node, a frame around the nodes of each frame, drawn under them, and an edge
  * per link.
  */
-export async function infraCells(graph: InfraGraph, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>): Promise<CellData[]> {
+export async function infraCells(
+  graph: InfraGraph,
+  origin: { x: number; y: number },
+  engine?: () => Promise<LayoutEngine>,
+  sourcePrefix?: string,
+): Promise<CellData[]> {
   const builder = new DiagramBuilder()
   const frames = graph.frames.map((frame) => builder.shape(frame.shape, 0, 0, { value: frame.label }))
   const sizes = graph.nodes.map(measure)
   const nodes = graph.nodes.map((node, index) => builder.shape(node.shape, 0, 0, { value: node.lines.join('\n'), ...sizes[index]!.shape }))
-  for (const edge of graph.edges) builder.edge(nodes[edge.source]!, nodes[edge.target]!, { value: edge.label })
+  const sourceMarks = new Map<string, string>()
+  for (const edge of graph.edges) {
+    const id = builder.edge(nodes[edge.source]!, nodes[edge.target]!, { value: edge.label })
+    if (sourcePrefix) sourceMarks.set(id, `${sourcePrefix}:edge:${graph.nodes[edge.source]!.lines[0]}->${graph.nodes[edge.target]!.lines[0]}:${edge.label}`)
+  }
   const cells = builder.build()
+  if (sourcePrefix) {
+    const byId = new Map(cells.map((cell) => [cell.id, cell]))
+    graph.frames.forEach((frame, index) => sourceMarks.set(frames[index]!, `${sourcePrefix}:frame:${frame.label}`))
+    graph.nodes.forEach((node, index) => sourceMarks.set(nodes[index]!, `${sourcePrefix}:node:${node.lines[0]}`))
+    for (const [id, source] of sourceMarks) {
+      const cell = byId.get(id)
+      if (cell) cell.style = { ...cell.style, [SOURCE_KEY]: source }
+    }
+  }
 
   const shapes: LayoutShape[] = [
     ...frames.map((id) => ({ id, x: 0, y: 0, width: 0, height: 0, frame: true, parent: null })),

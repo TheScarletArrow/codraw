@@ -519,6 +519,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           pageName={currentPage?.name ?? ''}
           pageCount={pages.length}
           readOnly={readOnly}
+          boardId={board.id}
+          onProposalCreated={proposalCreated}
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <EditorToolbar editor={editor} readOnly={readOnly} />

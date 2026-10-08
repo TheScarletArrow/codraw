@@ -15,6 +15,7 @@ import { createQueryClient } from '../queryClient.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { mockFetch, type MockResponse } from '../test/render.tsx'
+import { takePendingSchemaImportUpdate } from '../proposals/schemaImportUpdate.ts'
 import { SqlMenu } from './SqlMenu.tsx'
 
 vi.mock('../lib/download.ts', async (importOriginal) => ({
@@ -38,7 +39,19 @@ function boardWithTables() {
 /** The server reads no schemas of databases unless a test says otherwise. */
 const SCHEMA_IMPORT_OFF: Record<string, MockResponse | MockResponse[]> = { 'GET /api/schema-import': { status: 404 } }
 
-function renderMenu({ document = boardWithTables(), readOnly = false, responses = SCHEMA_IMPORT_OFF } = {}) {
+function renderMenu({
+  document = boardWithTables(),
+  readOnly = false,
+  responses = SCHEMA_IMPORT_OFF,
+  boardId,
+  onProposalCreated,
+}: {
+  document?: Y.Doc
+  readOnly?: boolean
+  responses?: Record<string, MockResponse | MockResponse[]>
+  boardId?: string
+  onProposalCreated?: Parameters<typeof SqlMenu>[0]['onProposalCreated']
+} = {}) {
   const fetchMock = mockFetch(responses)
   const editor = createFakeEditor()
   const queryClient = createQueryClient()
@@ -54,6 +67,8 @@ function renderMenu({ document = boardWithTables(), readOnly = false, responses 
         pageName="БД"
         pageCount={2}
         readOnly={readOnly}
+        boardId={boardId}
+        onProposalCreated={onProposalCreated}
       />
     </QueryClientProvider>,
   )
@@ -152,6 +167,50 @@ describe('SqlMenu', () => {
     expect(Math.min(...cells.filter((cell) => cell.parent === '1' && cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
     expect(teams.geometry!.y).toBeGreaterThanOrEqual(40)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('creates a proposal that updates the schema instead of inserting it on the board', async () => {
+    const user = userEvent.setup()
+    const onProposalCreated = vi.fn()
+    const { editor, fetchMock } = renderMenu({
+      boardId: 'board-1',
+      onProposalCreated,
+      responses: {
+        ...SCHEMA_IMPORT_OFF,
+        'POST /api/boards/board-1/proposals': {
+          status: 201,
+          body: {
+            id: 'proposal-1',
+            boardId: 'board-1',
+            title: 'Обновление из SQL',
+            description: null,
+            status: 'open',
+            author: { id: 'alice', name: 'Алиса', avatarUrl: null },
+            createdAt: '2026-10-08T10:00:00Z',
+            decidedAt: null,
+            decidedBy: null,
+            comment: null,
+          },
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+    await user.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await user.paste('CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL); CREATE TABLE teams (id uuid PRIMARY KEY);')
+    await user.click(screen.getByRole('button', { name: 'Обновить через предложение' }))
+
+    await waitFor(() => expect(onProposalCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'proposal-1' })))
+    expect(editor.insertCells).not.toHaveBeenCalled()
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(JSON.parse(post[1]!.body as string)).toMatchObject({
+      title: 'Обновление из SQL',
+      description: expect.stringContaining('Совпало: 1, новых элементов: 1'),
+    })
+    const pending = takePendingSchemaImportUpdate('proposal-1')
+    expect(pending).toMatchObject({ pageId: DEFAULT_PAGE_ID })
+    expect(pending!.cells.some((cell) => cell.value === 'teams')).toBe(true)
   })
 
   it('reads migrations of Flyway from files in the order of their versions', async () => {

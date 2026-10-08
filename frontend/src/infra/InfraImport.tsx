@@ -17,6 +17,10 @@ interface InfraImportProps<Parsed> {
   format: InfraFormat<Parsed>
   /** Adds the cells built for a top-left corner to the page. */
   onAdd: (cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void
+  /** Opens a proposal whose draft gets the cells of this import as an update. */
+  onUpdate?: (source: string, summary: string, cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void
+  /** Prefix of `codrawSource` markers for cells of this import. */
+  sourcePrefix?: string
   onBack: () => void
   busy: boolean
   /** Why the last addition failed. */
@@ -35,7 +39,7 @@ interface Result<Parsed> {
  * read together, parsed while the participant types, a summary of what the page gets, the errors of the files it does
  * not get.
  */
-export function InfraImport<Parsed>({ format, onAdd, onBack, busy, error }: InfraImportProps<Parsed>) {
+export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'infra', onBack, busy, error }: InfraImportProps<Parsed>) {
   const [text, setText] = useState('')
   const [files, setFiles] = useState<ApiSource[]>([])
   const [environment, setEnvironment] = useState(true)
@@ -144,10 +148,24 @@ export function InfraImport<Parsed>({ format, onAdd, onBack, busy, error }: Infr
         type="button"
         size="sm"
         disabled={busy || pending || !graph || tooLarge !== null}
-        onClick={() => graph && onAdd((origin) => infraCells(graph, origin))}
+        onClick={() => graph && onAdd((origin) => infraCells(graph, origin, undefined, sourcePrefix))}
       >
         Добавить на страницу
       </Button>
+      {onUpdate && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy || pending || !graph || tooLarge !== null}
+          onClick={() => graph && onUpdate(sourceTitle(sources, format.title), format.summary(result!.parsed!, graph), (origin) => infraCells(graph, origin, undefined, sourcePrefix))}
+        >
+          Обновить через предложение
+        </Button>
+      )}
     </>
   )
 }
+
+const sourceTitle = (sources: ApiSource[], fallback: string) =>
+  sources.length === 1 ? sources[0]!.name : sources.length > 1 ? `${sources.length} файлов` : fallback.replace(/^Импорт\s+/, '')
