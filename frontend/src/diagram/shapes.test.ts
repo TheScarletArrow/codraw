@@ -54,7 +54,7 @@ describe('shape presets', () => {
         ['Хранилище объектов', 'Поисковый индекс', 'Хранилище данных', 'Топик событий', 'Планировщик задач', 'Функция'],
       ],
       ['Клиенты', ['Веб-браузер', 'Мобильное приложение', 'Десктоп-приложение', 'IoT-устройство']],
-      ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка']],
+      ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка', 'Диаграмма последовательности']],
       [
         'C4',
         ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы'],
@@ -125,7 +125,10 @@ describe('shape presets', () => {
 
   it('caption system design shapes with their names and draw them with registered shapes', () => {
     const sections = ['Инфраструктура', 'Данные и сообщения', 'Клиенты', 'UML']
-    const shapes = SHAPE_SECTIONS.filter((section) => sections.includes(section.title)).flatMap((section) => section.shapes)
+    // A sequence diagram is captioned with its title.
+    const shapes = SHAPE_SECTIONS.filter((section) => sections.includes(section.title))
+      .flatMap((section) => section.shapes)
+      .filter((shape) => shape.id !== 'sequence')
 
     for (const shape of shapes) {
       expect(shape.value).toBe(shape.label)
@@ -207,7 +210,7 @@ describe('shape groups', () => {
   })
 
   it('hold every shape of the palette but frames, text and stickies, in the group of its section', () => {
-    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'sticky', 'boundary', 'bpmn-pool', 'kubernetes-cluster', 'c4-boundary'])
+    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'sticky', 'sequence', 'boundary', 'bpmn-pool', 'kubernetes-cluster', 'c4-boundary'])
     for (const section of SHAPE_SECTIONS) {
       for (const shape of section.shapes) {
         expect(shapeGroup(shape.id)).toBe(UNGROUPED_SHAPES.has(shape.id) ? null : section.group)

@@ -4,9 +4,9 @@ import { formatKeys, SHORTCUT_GROUPS, shortcutGroups } from './shortcuts.ts'
 
 /**
  * Keys of the help that are not keys of the key handler: clipboard events, the mouse, the help itself, the search on
- * the board, the minimap and the message at the cursor.
+ * the board, the minimap, the message at the cursor and Enter in the text of a message, which the editor of labels reads.
  */
-const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/|M)$|Click|Drag|Wheel/
+const NOT_BOUND = /^(Mod\+[CXVF]|\?|\/|M|Enter)$|Click|Drag|Wheel/
 
 describe('shortcuts', () => {
   it('describes exactly the keys the editor binds, with the same editing flag', () => {

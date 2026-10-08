@@ -431,4 +431,69 @@ describe('shortcutLabel', () => {
     expect(labels('field', viewing)).toEqual(['Копировать стиль', 'Комментировать'])
     expect(labels('edge', viewing)).toEqual(['Копировать стиль', 'Комментировать'])
   })
+
+  it('offers new participants and messages and the copy as Mermaid for a sequence diagram', () => {
+    expect(labels('sequence')).toEqual([
+      'Изменить подпись',
+      'Добавить участника',
+      'Добавить сообщение',
+      'Скопировать Mermaid',
+      'Вырезать',
+      'Копировать',
+      'Дублировать',
+      'Копировать стиль',
+      'Вставить стиль',
+      'На передний план',
+      'На задний план',
+      'Удалить',
+    ])
+  })
+
+  it('offers its own items for each part of a sequence diagram, frames of a message in a group of their own', () => {
+    expect(labels('participant')).toEqual([
+      'Изменить',
+      'Добавить участника справа',
+      'Добавить сообщение',
+      'Скопировать Mermaid',
+      'Удалить участника',
+    ])
+    const message = menuItems('message', all)
+    expect(message.map((item) => item.label)).toEqual([
+      'Изменить',
+      'Добавить сообщение ниже',
+      'Добавить заметку ниже',
+      'alt — варианты',
+      'opt — необязательно',
+      'loop — цикл',
+      'par — параллельно',
+      'Скопировать Mermaid',
+      'Удалить сообщение',
+    ])
+    expect(message.find((item) => item.command === 'frameAlt')).toMatchObject({ heading: 'Рамка', separatorBefore: true })
+    expect(message.find((item) => item.command === 'frameOpt')?.heading).toBeUndefined()
+    expect(labels('note')).toEqual(['Изменить', 'Добавить сообщение ниже', 'Скопировать Mermaid', 'Удалить заметку'])
+    expect(labels('frame')).toEqual(['Изменить условие', 'Скопировать Mermaid', 'Удалить рамку'])
+    expect(labels('frame', { ...all, canBranch: true })).toEqual(['Изменить условие', 'Добавить ветку', 'Скопировать Mermaid', 'Удалить рамку'])
+    expect(labels('branch', { ...all, canBranch: true })).toEqual(['Изменить условие', 'Добавить ветку', 'Скопировать Mermaid', 'Удалить ветку'])
+  })
+
+  it('gives a participant who may only view the copy as Mermaid and comments of a sequence diagram', () => {
+    const viewing = { ...all, readOnly: true, canComment: true }
+    expect(labels('message', viewing)).toEqual(['Скопировать Mermaid', 'Комментировать'])
+    expect(labels('sequence', viewing)).toEqual(['Скопировать Mermaid', 'Копировать', 'Копировать стиль', 'Комментировать'])
+  })
+
+  it('disables the items that change a locked sequence diagram', () => {
+    const locked = menuItems('message', { ...all, locked: true })
+    expect(locked.filter((item) => item.disabled).map((item) => item.command)).toEqual([
+      'editLabel',
+      'addMessage',
+      'addNote',
+      'frameAlt',
+      'frameOpt',
+      'frameLoop',
+      'framePar',
+      'delete',
+    ])
+  })
 })

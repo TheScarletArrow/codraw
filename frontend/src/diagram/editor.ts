@@ -138,6 +138,45 @@ import {
   unlockCopy,
 } from './locks.ts'
 import { sketchPage, type PageSketch } from './minimap.ts'
+import { sequenceMermaid as mermaidOfSequence } from '../mermaid/sequenceMermaid.ts'
+import {
+  ACTIVATE_KEY,
+  ARROW_KEY,
+  BRANCH_WORDS,
+  DEACTIVATE_KEY,
+  FRAME_KEY,
+  frameOwners,
+  FROM_KEY,
+  isNumbered,
+  messageStyle,
+  NOTE_KEY,
+  noteStyle,
+  NUMBERS_KEY,
+  PART_KEY,
+  PARTICIPANT_KIND_KEY,
+  participantStyle,
+  SEQUENCE_PRESET,
+  sequenceCells,
+  starterSequence,
+  TO_KEY,
+  type FrameKind,
+  type MessageArrow,
+  type NotePlacement,
+  type ParticipantKind,
+  type SequenceDiagram,
+} from './sequence.ts'
+import {
+  configureSequences,
+  diagramCell,
+  graphSequence,
+  isSequence,
+  isSequencePart,
+  partOf,
+  registerSequenceShapes,
+  SequenceDiagramLayout,
+  sequenceOf,
+  withDependentParts,
+} from './sequenceShapes.ts'
 import {
   cellElementId,
   compareCells,
@@ -312,6 +351,8 @@ export interface SelectionGeometry {
   height: number | null
   /** A selected shape is not a table, whose height its fields set, so the height can be changed. */
   canSetHeight: boolean
+  /** A selected shape is not a sequence diagram, whose size its parts set, so the width can be changed. */
+  canSetWidth: boolean
   /**
    * Clockwise rotation of the selected shapes that turn, in degrees from 0 up to 360; `null` when it differs between
    * them or none of them turns.
@@ -478,6 +519,54 @@ export interface StickySignature extends TextAuthor {
   color: string
 }
 
+/** The single selected part of a sequence diagram with what the panel changes in it. */
+export type SequencePartState =
+  | { type: 'participant'; cellId: string; kind: ParticipantKind }
+  | {
+      type: 'message'
+      cellId: string
+      /** The keys of the sender and of the receiver. */
+      from: string
+      to: string
+      arrow: MessageArrow
+      /** The message starts an activation of its receiver, and ends one of its sender. */
+      activates: boolean
+      deactivates: boolean
+    }
+  | { type: 'note'; cellId: string; placement: NotePlacement; from: string; to: string }
+  /** A frame, or a branch of the frame `frameId`, of the kind of that frame. */
+  | { type: 'frame' | 'branch'; cellId: string; kind: FrameKind; frameId: string }
+
+/** The sequence diagram that the selection is, or is parts of; see {@link DiagramEditor.addSequenceMessage}. */
+export interface SelectedSequence {
+  diagramId: string
+  numbered: boolean
+  /** Its participants from left to right, which messages and notes name by their keys. */
+  participants: { key: string; name: string }[]
+  /** The single selected part, or `null` when the diagram or several parts are selected. */
+  part: SequencePartState | null
+  /** The number of selected rows, which a new frame goes around. */
+  rows: number
+  /** The participant may change it: they edit the board and the diagram is not locked. */
+  canChange: boolean
+}
+
+/** Changes of a message of a sequence diagram; see {@link DiagramEditor.setSequenceMessage}. */
+export interface SequenceMessageChange {
+  from?: string
+  to?: string
+  arrow?: MessageArrow
+  activates?: boolean
+  deactivates?: boolean
+}
+
+/** Changes of a note of a sequence diagram; see {@link DiagramEditor.setSequenceNote}. */
+export interface SequenceNoteChange {
+  placement?: NotePlacement
+  from?: string
+  to?: string
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -558,6 +647,8 @@ export interface EditorState {
   status: SelectionStatus | null
   /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
   properties: SelectionProperties | null
+  /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
+  sequence: SelectedSequence | null
   /** The clipboard of the browser tab holds copied cells: «Вставить как тот же элемент» pastes them. */
   canPasteAsSameElement: boolean
   /** The selection has shapes of at least two elements, or of shapes that are no elements yet, that may be merged. */
@@ -631,6 +722,46 @@ export interface DiagramEditor {
   setIndexProps(props: Partial<Pick<SelectedIndex, 'columns' | 'unique'>>): void
   /** Sets the database of the selected table, or of the table of the selected field, as one undo step. */
   setTableVendor(vendor: DbVendorId): void
+  /**
+   * Adds a participant to the sequence diagram of the selection right of the selected participant, or last, as one undo
+   * step, selects it and starts editing its name; the name written there joins that step.
+   */
+  addSequenceParticipant(): Cell | null
+  /**
+   * Adds a message to the sequence diagram of the selection under the selected row, or last, as one undo step, selects it
+   * and starts editing its text: between the participants of the selected message and of its kind, from the selected
+   * participant to its neighbour, or from the first participant to the second. The text written there joins that step;
+   * a message whose editing is cancelled or ends without text goes away with it, leaving nothing to redo. Enter in the
+   * text of a message adds the next one this way.
+   */
+  addSequenceMessage(): Cell | null
+  /**
+   * Adds a note under the selected row of the sequence diagram of the selection, or last, over the selected participant
+   * or the participants of the selected message, as one undo step, and starts editing its text.
+   */
+  addSequenceNote(): Cell | null
+  /**
+   * Puts the selected rows of the sequence diagram of the selection, whole frames with them, into a new frame of `kind`
+   * as one undo step, or without selected rows adds an empty frame last, and starts editing its condition.
+   */
+  addSequenceFrame(kind: FrameKind): Cell | null
+  /** Adds a branch at the end of the selected frame, or of the frame of the selected branch, if its kind has branches. */
+  addSequenceBranch(): Cell | null
+  /** Changes the kind of the participant `cellId` of a sequence diagram as one undo step. */
+  setSequenceParticipant(cellId: string, changes: { kind?: ParticipantKind }): void
+  /**
+   * Changes the sender, the receiver, the kind or the activations of the message `cellId` as one undo step; a new sender or
+   * receiver takes over the activations the old one had of the message.
+   */
+  setSequenceMessage(cellId: string, changes: SequenceMessageChange): void
+  /** Changes where the note `cellId` stands, or its participants, as one undo step. */
+  setSequenceNote(cellId: string, changes: SequenceNoteChange): void
+  /** Changes the kind of the frame `cellId` as one undo step. */
+  setSequenceFrame(cellId: string, kind: FrameKind): void
+  /** Turns the numbers of the messages of the sequence diagram `cellId` on or off as one undo step. */
+  setSequenceNumbering(cellId: string, numbered: boolean): void
+  /** The sequence diagram of the cell `cellId`, or of which it is a part, as Mermaid; `null` for other cells. */
+  sequenceMermaid(cellId: string): string | null
   /**
    * Adds a shape of the group of the selected shape on its `side` and connects the selected shape to it, as one undo
    * step, and selects the new shape.
@@ -1196,6 +1327,16 @@ const CHANGING_COMMANDS = [
   'addTableIndex',
   'setIndexProps',
   'setTableVendor',
+  'addSequenceParticipant',
+  'addSequenceMessage',
+  'addSequenceNote',
+  'addSequenceFrame',
+  'addSequenceBranch',
+  'setSequenceParticipant',
+  'setSequenceMessage',
+  'setSequenceNote',
+  'setSequenceFrame',
+  'setSequenceNumbering',
   'addConnectedShape',
   'cut',
   'paste',
@@ -1264,6 +1405,7 @@ export function createDiagramEditor(
   // After the graph: the first graph registers the default shapes of maxGraph, including its own `rectangle`.
   registerDiagramExtensions()
   registerTableShapes()
+  registerSequenceShapes()
   graph.setPanning(true)
   graph.setConnectable(true)
   graph.setAllowDanglingEdges(false)
@@ -1278,6 +1420,7 @@ export function createDiagramEditor(
   configureTableFields(graph)
   configureElementLabels(graph)
   configureTextWrap(graph)
+  const unconfigureSequences = configureSequences(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
   configureCanvasTheme(graph, () => theme)
@@ -1302,7 +1445,14 @@ export function createDiagramEditor(
   }
   const layoutManager = new LayoutManager(graph)
   const tableLayout = new TableLayout(graph)
-  layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
+  const sequenceLayout = new SequenceDiagramLayout(graph)
+  layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : isSequence(cell) ? sequenceLayout : null)
+  // The text of a part of a sequence diagram sets its room, and so the layout of the diagram.
+  const getCellsForChange = layoutManager.getCellsForChange.bind(layoutManager)
+  layoutManager.getCellsForChange = (change) =>
+    change instanceof ValueChange && sequenceOf(change.cell)
+      ? layoutManager.addCellsWithLayout(change.cell)
+      : getCellsForChange(change)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
   // A draft of a proposal, without others, would take putting labels right for a change of its author.
@@ -1316,14 +1466,21 @@ export function createDiagramEditor(
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
-  // The name of a table, a field and an index are a line each: Enter applies them, as Escape cancels them.
+  /** The message whose text Enter applied: the next message follows it once the editing stops. */
+  let nextMessageAfter: Cell | null = null
+  // The name of a table, a field and an index are a line each: Enter applies them, as Escape cancels them. So are the
+  // title of a sequence diagram and its parts but notes, and Enter in a message adds the next one; Shift+Enter breaks
+  // the line.
   if (cellEditor) {
     const isStopEditingEvent = cellEditor.isStopEditingEvent.bind(cellEditor)
     cellEditor.isStopEditingEvent = (event) => {
       const cell = cellEditor.getEditingCell()
-      const line = isTable(cell) || isColumnField(cell) || isIndexRow(cell)
+      const part = partOf(cell)
+      const line = isTable(cell) || isColumnField(cell) || isIndexRow(cell) || isSequence(cell) || (part !== null && part !== 'note')
       const enter = event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing
-      return isStopEditingEvent(event) || (line && enter)
+      const stop = isStopEditingEvent(event) || (line && enter)
+      if (stop && enter && part === 'message') nextMessageAfter = cell
+      return stop
     }
   }
   // The editor of the name of a field is at least as wide as the column of names and, while empty, shows the
@@ -1351,8 +1508,12 @@ export function createDiagramEditor(
     editing = next
     editingListeners.forEach((listener) => listener(next))
   }
-  /** A sticky that {@link DiagramEditor.addSticky} added, whose text is being edited, and the undo step that added it. */
-  let newSticky: { cell: Cell; step: unknown } | null = null
+  /**
+   * A cell that a command added and whose text is being edited — a sticky of {@link DiagramEditor.addSticky}, a part of
+   * a sequence diagram — with the undo step that added it; a new message left without text goes away with that step,
+   * and what was selected before it is selected again.
+   */
+  let newCell: { cell: Cell; step: unknown; removeEmpty: boolean; selected: Cell[] } | null = null
   if (cellEditor) {
     const startEditing = cellEditor.startEditing.bind(cellEditor)
     cellEditor.startEditing = (cell: Cell, trigger?: MouseEvent | null) => {
@@ -1369,15 +1530,15 @@ export function createDiagramEditor(
         delete textarea.dataset.placeholder
         textarea.style.minWidth = ''
       }
-      // The text applied to a new sticky goes into the undo step that added it while that step is the last one, as
-      // changes within the capture timeout of the undo manager do: one step takes the sticky away with its text.
-      const sticky = newSticky
-      newSticky = null
-      const joining =
-        !cancel &&
-        sticky !== null &&
-        cellEditor.getEditingCell() === sticky.cell &&
-        undoManager.undoStack.at(-1) === sticky.step
+      // The text applied to a new cell goes into the undo step that added it while that step is the last one, as
+      // changes within the capture timeout of the undo manager do: one step takes the cell away with its text.
+      const added = newCell
+      newCell = null
+      const next = nextMessageAfter
+      nextMessageAfter = null
+      const editingCell = cellEditor.getEditingCell()
+      const lastStep = () => added !== null && editingCell === added.cell && undoManager.undoStack.at(-1) === added.step
+      const joining = !cancel && lastStep()
       const captureTimeout = undoManager.captureTimeout
       if (joining) undoManager.captureTimeout = Number.POSITIVE_INFINITY
       try {
@@ -1387,6 +1548,14 @@ export function createDiagramEditor(
       }
       if (field) redrawField(field)
       setEditing(null)
+      // A new message left without text goes away with the step that added it, which leaves nothing to redo either.
+      if (added?.removeEmpty && lastStep() && !String(added.cell.getValue() ?? '').trim()) {
+        undoManager.undo()
+        undoManager.clear(false, true)
+        graph.setSelectionCells(added.selected.filter((cell) => model.getCell(cell.getId() ?? '') === cell))
+        return
+      }
+      if (!cancel && next && next === editingCell && model.getCell(next.getId() ?? '') === next) addMessageAfter(next)
     }
   }
   // Another participant replaced the label being edited: the participant is told once, and applying their editing
@@ -1426,8 +1595,8 @@ export function createDiagramEditor(
       return true
     })
   }
-  /** What locking a cell locks: a field or an index with its table, any other cell itself. */
-  const lockTarget = (cell: Cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)
+  /** What locking a cell locks: a field or an index with its table, a part of a sequence diagram with it, any other cell itself. */
+  const lockTarget = (cell: Cell) => (isTable(cell.getParent()) || isSequencePart(cell) ? cell.getParent()! : cell)
   const selectedTable = (): Cell | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
     if (!cell || isTable(cell)) return cell
@@ -1474,7 +1643,7 @@ export function createDiagramEditor(
    */
   const quickConnectSource = (): { cell: Cell; group: ShapeGroup } | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
-    if (!cell?.isVertex() || isTable(cell.getParent()) || lockHolder(cell)) return null
+    if (!cell?.isVertex() || isTable(cell.getParent()) || isSequencePart(cell) || lockHolder(cell)) return null
     const group = shapeGroupOf(cell.getStyle() as ShapeStyle)
     return group ? { cell, group } : null
   }
@@ -1505,17 +1674,22 @@ export function createDiagramEditor(
     }
   }
 
-  /** Selected cells and the fields of selected tables: the text of a table is its name and its fields. */
+  /**
+   * Selected cells and the fields of selected tables and the parts of selected sequence diagrams: the text of a table is
+   * its name and its fields.
+   */
   const textCells = (): Cell[] => {
     const cells = new Set<Cell>()
     for (const cell of graph.getSelectionCells()) {
       cells.add(cell)
-      if (isTable(cell)) cell.getChildren().forEach((field) => cells.add(field))
+      if (isTable(cell) || isSequence(cell)) cell.getChildren().forEach((field) => cells.add(field))
     }
     return [...cells]
   }
   const fontSizeOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontSize ?? StyleDefaultsConfig.fontSize)
-  const allowsAutoWidthCell = (cell: Cell) => isFreeShape(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+  // The parts of a sequence diagram set its size.
+  const allowsAutoWidthCell = (cell: Cell) =>
+    isFreeShape(cell) && !isSequence(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
   const autoWidthCells = () => graph.getSelectionCells().filter(allowsAutoWidthCell)
   const textWrapCells = () => graph.getSelectionCells().filter((cell) => allowsTextWrap(graph, cell))
   const geometryCells = () => graph.getSelectionCells().filter(isFreeShape)
@@ -1535,9 +1709,9 @@ export function createDiagramEditor(
   const pageEdges = (parent: Cell = graph.getDefaultParent()): Cell[] =>
     parent.getChildren().flatMap((child) => (child.isEdge() ? [child] : pageEdges(child)))
   let layingOut = false
-  /** Selected cells that can become a group: those of the parent of the first one, fields of tables aside. */
+  /** Selected cells that can become a group: those of the parent of the first one, fields of tables and parts aside. */
   const groupableCells = (): Cell[] => {
-    const cells = graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()))
+    const cells = graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
     const parent = cells[0]?.getParent()
     if (!parent) return []
     return cells.filter((cell) => cell.getParent() === parent).sort((a, b) => parent.getIndex(a) - parent.getIndex(b))
@@ -1601,6 +1775,67 @@ export function createDiagramEditor(
       canChange,
     }
   }
+  /** The sequence diagram that every selected cell is, or is a part of. */
+  const selectedSequence = (): Cell | null => {
+    const cells = graph.getSelectionCells()
+    const diagram = cells.length > 0 ? sequenceOf(cells[0]) : null
+    return diagram && cells.every((cell) => sequenceOf(cell) === diagram) ? diagram : null
+  }
+  /** The single selected part of a sequence diagram. */
+  const selectedPart = (): Cell | null => {
+    const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+    return isSequencePart(cell) ? cell : null
+  }
+  /** Selected rows of sequence diagrams: their parts but participants. */
+  const selectedRows = () =>
+    graph.getSelectionCells().filter((cell) => {
+      const part = partOf(cell)
+      return part !== null && part !== 'participant'
+    })
+  /** What the panel shows of a part of `diagram`; see {@link SequencePartState}. */
+  const partState = (cell: Cell, diagram: SequenceDiagram): SequencePartState | null => {
+    const id = cell.getId() ?? ''
+    const participant = diagram.participants.find((candidate) => candidate.id === id)
+    if (participant) return { type: 'participant', cellId: id, kind: participant.kind }
+    const step = diagram.steps.find((candidate) => candidate.id === id)
+    switch (step?.type) {
+      case 'message':
+        return {
+          type: 'message',
+          cellId: id,
+          from: step.from,
+          to: step.to,
+          arrow: step.arrow,
+          activates: step.activate.includes(step.to),
+          deactivates: step.deactivate.includes(step.from),
+        }
+      case 'note':
+        return { type: 'note', cellId: id, placement: step.placement, from: step.from, to: step.to }
+      case 'frame':
+        return { type: 'frame', cellId: id, kind: step.kind, frameId: id }
+      case 'else': {
+        const frame = frameOwners(diagram).get(id)
+        return frame ? { type: 'branch', cellId: id, kind: frame.kind, frameId: frame.id } : null
+      }
+      default:
+        return null
+    }
+  }
+  /** The sequence diagram of the selection; see {@link SelectedSequence}. */
+  const selectionSequence = (): SelectedSequence | null => {
+    const cell = selectedSequence()
+    if (!cell) return null
+    const diagram = graphSequence(cell)
+    const part = selectedPart()
+    return {
+      diagramId: cell.getId()!,
+      numbered: diagram.numbered,
+      participants: diagram.participants.map(({ key, name }) => ({ key, name })),
+      part: part ? partState(part, diagram) : null,
+      rows: selectedRows().length,
+      canChange: !readOnly && isUnlocked(cell),
+    }
+  }
   /** The description of the call of the single selected edge; see {@link SelectionEdgeApi}. */
   const selectionEdgeApi = (): SelectionEdgeApi | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
@@ -1661,7 +1896,8 @@ export function createDiagramEditor(
       y: value('y'),
       width: value('width'),
       height: value('height'),
-      canSetHeight: cells.some((cell) => !isTable(cell)),
+      canSetHeight: cells.some((cell) => !isTable(cell) && !isSequence(cell)),
+      canSetWidth: cells.some((cell) => !isSequence(cell)),
       rotation: turning.length > 0 ? same(turning.map((cell) => rotationOf(cell.getStyle()))) : null,
       canRotate: turning.length > 0,
     }
@@ -1955,6 +2191,7 @@ export function createDiagramEditor(
       stickies: selectionStickies(),
       status: selectionStatus(),
       properties: selectionProperties(),
+      sequence: selectionSequence(),
       canPasteAsSameElement: !readOnly && clipboard.read() !== null,
       canMergeElements: !readOnly && selectedElements().length >= 2,
     }
@@ -2059,8 +2296,9 @@ export function createDiagramEditor(
   const removeSelection = () => {
     if (graph.isEditing() || graph.isSelectionEmpty()) return
     const selected = graph.getSelectionCells()
-    // An inherited field goes with its table only: it is removed in its base table.
-    const cells = selected.filter((cell) => inheritedFieldId(cell) === null || selected.includes(cell.getParent()!))
+    // An inherited field goes with its table only: it is removed in its base table. A participant of a sequence diagram
+    // takes its messages and notes with it, a frame its branches and its end.
+    const cells = withDependentParts(selected.filter((cell) => inheritedFieldId(cell) === null || selected.includes(cell.getParent()!)))
     if (cells.length === 0) return
     // Tables of removed fields and those whose fields show references to what is removed.
     const tables = cells.flatMap(tablesShowing)
@@ -2401,6 +2639,9 @@ export function createDiagramEditor(
     if (cells.length > 1) return 'selection'
     const cell = cells[0]!
     if (cell.isEdge()) return 'edge'
+    const part = partOf(cell)
+    if (part) return part === 'else' ? 'branch' : part === 'end' ? 'frame' : part
+    if (isSequence(cell)) return 'sequence'
     if (isIndexRow(cell)) return 'index'
     if (isTable(cell.getParent())) return 'field'
     if (isGroup(cell)) return 'group'
@@ -2467,6 +2708,8 @@ export function createDiagramEditor(
 
   /** Inserts a palette shape with its children; the caller wraps it in a model update. */
   const insertShape = (preset: ShapePreset, parent: Cell, x: number, y: number): Cell => {
+    // A sequence diagram starts with two participants, a call and its answer; its layout gives it its size.
+    if (preset.id === SEQUENCE_PRESET) return graph.addCell(diagramCell(sequenceCells(starterSequence(), { x, y })), parent)
     // A new table with the default base of the page has the fields of the base instead of those of the preset.
     const base = isTableStyle(preset.style) ? defaultBase(pageTables(graph)) : null
     const shape = base ? { ...preset, style: { ...preset.style, [BASE_TABLE_KEY]: base.getId()! }, children: [] } : preset
@@ -2536,6 +2779,68 @@ export function createDiagramEditor(
     graph.setSelectionCell(row)
     graph.startEditingAtCell(row)
     return row
+  }
+  /**
+   * Adds a part to the sequence diagram `diagram` at `index` of its children, with what `also` adds in the same change, as
+   * one undo step; selects it and starts editing its text, which joins that step (see `newCell`). With `removeEmpty`, a
+   * new message left without text goes away with the step.
+   */
+  const addPart = (
+    diagram: Cell,
+    index: number,
+    value: string,
+    style: Record<string, StyleValue>,
+    removeEmpty = false,
+    also?: () => void,
+  ): Cell => {
+    const part = new Cell(value, new Geometry(0, 0, 0, 0), style as CellStyle)
+    part.setVertex(true)
+    const selected = graph.getSelectionCells()
+    const steps = undoManager.undoStack.length
+    model.batchUpdate(() => {
+      graph.addCell(part, diagram, Math.min(index, diagram.getChildCount()))
+      also?.()
+    })
+    graph.setSelectionCell(part)
+    graph.startEditingAtCell(part)
+    if (graph.isEditing(part) && undoManager.undoStack.length > steps) {
+      newCell = { cell: part, step: undoManager.undoStack.at(-1), removeEmpty, selected }
+    }
+    return part
+  }
+  /** Where a new row goes in `diagram`: under the selected row, or last. */
+  const rowIndex = (diagram: Cell, selected: Cell | null) => {
+    const part = partOf(selected)
+    return selected && part !== null && part !== 'participant' ? diagram.getIndex(selected) + 1 : diagram.getChildCount()
+  }
+  /** Adds the message that follows `message` when Enter applied its text: between the same participants, of its kind. */
+  const addMessageAfter = (message: Cell) => {
+    const diagram = message.getParent()
+    if (readOnly || !diagram || !isSequence(diagram) || !isUnlocked(diagram)) return
+    const read = graphSequence(diagram).steps.find((step) => step.id === message.getId())
+    if (read?.type !== 'message') return
+    const style = messageStyle({ from: read.from, to: read.to, arrow: read.arrow, activate: [], deactivate: [] })
+    addPart(diagram, diagram.getIndex(message) + 1, '', style, true)
+  }
+  /** The diagram of the selection that commands change: not locked; editing stops first. */
+  const changingSequence = (): Cell | null => {
+    graph.stopEditing(false)
+    const diagram = selectedSequence()
+    return diagram && isUnlocked(diagram) ? diagram : null
+  }
+  /** The part `cellId` of a kind that a command changes: of the page and not locked, with its diagram. */
+  const changingPart = (cellId: string, kind: string): { cell: Cell; diagram: SequenceDiagram } | null => {
+    if (destroyed) return null
+    const cell = model.getCell(cellId)
+    if (!cell || partOf(cell) !== kind || !isUnlocked(cell)) return null
+    return { cell, diagram: graphSequence(cell.getParent()!) }
+  }
+  /** Sets keys of the style of a cell as one change, unless it has them already; `undefined` removes a key. */
+  const changeStyle = (cell: Cell, changes: Record<string, StyleValue | undefined>) => {
+    const style = cell.getStyle() as Record<string, unknown>
+    if (Object.entries(changes).every(([key, value]) => JSON.stringify(style[key]) === JSON.stringify(value))) return
+    graph.stopEditing(false)
+    model.batchUpdate(() => setStyleKeys(cell, changes))
   }
   /**
    * Adds clones of `cells` moved by (dx, dy) as one undo step and selects them; with `sameElements`, the clones name the
@@ -2707,8 +3012,8 @@ export function createDiagramEditor(
     graph.setSelectionCell(cell)
     container.focus({ preventScroll: true })
   }
-  /** Selected cells without table fields: the table layout, not the user, orders fields. */
-  const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()))
+  /** Selected cells without table fields and parts of sequence diagrams: their layouts, not the user, order them. */
+  const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
 
   const editor: DiagramEditor = {
     graph,
@@ -2764,7 +3069,7 @@ export function createDiagramEditor(
       graph.startEditingAtCell(cell)
       // After the editing started: starting it stops any editing before it.
       if (graph.isEditing(cell) && undoManager.undoStack.length > steps) {
-        newSticky = { cell, step: undoManager.undoStack.at(-1) }
+        newCell = { cell, step: undoManager.undoStack.at(-1), removeEmpty: false, selected: [] }
       }
       return cell
     },
@@ -2886,6 +3191,145 @@ export function createDiagramEditor(
         setStyleValue([table], VENDOR_KEY, vendor)
         fitAutoWidth([table])
       })
+    },
+    addSequenceParticipant() {
+      const diagram = changingSequence()
+      if (!diagram) return null
+      const selected = selectedPart()
+      const participants = diagram.getChildren().filter((child) => partOf(child) === 'participant')
+      const after = selected && partOf(selected) === 'participant' ? selected : (participants.at(-1) ?? null)
+      const index = after ? diagram.getIndex(after) + 1 : 0
+      return addPart(diagram, index, `Участник ${participants.length + 1}`, participantStyle(newId(), 'participant'))
+    },
+    addSequenceMessage() {
+      const diagram = changingSequence()
+      const read = diagram && graphSequence(diagram)
+      if (!diagram || !read || read.participants.length === 0) return null
+      const selected = selectedPart()
+      const keys = read.participants.map((participant) => participant.key)
+      const state = selected ? partState(selected, read) : null
+      let [from, to, arrow]: [string, string, MessageArrow] = [keys[0]!, keys[1] ?? keys[0]!, 'sync']
+      if (state?.type === 'message') [from, to, arrow] = [state.from, state.to, state.arrow]
+      else if (state?.type === 'note') [from, to] = [state.from, state.to]
+      else if (state?.type === 'participant') {
+        const at = read.participants.findIndex((participant) => participant.id === state.cellId)
+        from = keys[at]!
+        to = keys[at + 1] ?? keys[at - 1] ?? from
+      }
+      return addPart(diagram, rowIndex(diagram, selected), '', messageStyle({ from, to, arrow, activate: [], deactivate: [] }), true)
+    },
+    addSequenceNote() {
+      const diagram = changingSequence()
+      const read = diagram && graphSequence(diagram)
+      if (!diagram || !read || read.participants.length === 0) return null
+      const selected = selectedPart()
+      const state = selected ? partState(selected, read) : null
+      let [from, to] = [read.participants[0]!.key, read.participants[0]!.key]
+      if (state?.type === 'message' || state?.type === 'note') [from, to] = [state.from, state.to]
+      else if (state?.type === 'participant') from = to = read.participants.find((participant) => participant.id === state.cellId)!.key
+      return addPart(diagram, rowIndex(diagram, selected), 'Заметка', noteStyle({ from, to, placement: 'over' }))
+    },
+    addSequenceFrame(kind) {
+      const diagram = changingSequence()
+      if (!diagram) return null
+      const children = diagram.getChildren()
+      const owners = frameOwners(graphSequence(diagram))
+      const at = (id: string | undefined) => children.findIndex((child) => child.getId() === id)
+      const rows = selectedRows().map((cell) => children.indexOf(cell))
+      let first = rows.length > 0 ? Math.min(...rows) : children.length
+      let last = rows.length > 0 ? Math.max(...rows) : children.length - 1
+      // Whole frames: a frame among the rows takes its branches and its end, a branch or an end its frame.
+      for (let changed = rows.length > 0; changed; ) {
+        changed = false
+        for (let index = first; index <= last; index++) {
+          const id = children[index]!.getId() ?? ''
+          const owner = owners.get(id)
+          if (owner && at(owner.id) < first) {
+            first = at(owner.id)
+            changed = true
+          }
+          const own = children.reduce((end, child, place) => (owners.get(child.getId() ?? '')?.id === id ? place : end), -1)
+          if (own > last) {
+            last = own
+            changed = true
+          }
+        }
+      }
+      const end = new Cell('', new Geometry(0, 0, 0, 0), { [PART_KEY]: 'end' } as CellStyle)
+      end.setVertex(true)
+      // The end goes after the last row, which the frame put one further.
+      return addPart(diagram, first, '', { [PART_KEY]: 'frame', [FRAME_KEY]: kind }, false, () => graph.addCell(end, diagram, last + 2))
+    },
+    addSequenceBranch() {
+      graph.stopEditing(false)
+      const part = selectedPart()
+      const diagram = part?.getParent()
+      if (!part || !diagram || !isUnlocked(diagram)) return null
+      const read = graphSequence(diagram)
+      const state = partState(part, read)
+      if ((state?.type !== 'frame' && state?.type !== 'branch') || !BRANCH_WORDS[state.kind]) return null
+      const owners = frameOwners(read)
+      const end = diagram.getChildren().find((child) => partOf(child) === 'end' && owners.get(child.getId() ?? '')?.id === state.frameId)
+      return addPart(diagram, end ? diagram.getIndex(end) : diagram.getChildCount(), '', { [PART_KEY]: 'else' })
+    },
+    setSequenceParticipant(cellId, { kind }) {
+      const changing = changingPart(cellId, 'participant')
+      if (!changing || kind === undefined) return
+      changeStyle(changing.cell, { [PARTICIPANT_KIND_KEY]: kind === 'participant' ? undefined : kind })
+    },
+    setSequenceMessage(cellId, changes) {
+      const changing = changingPart(cellId, 'message')
+      const message = changing?.diagram.steps.find((step) => step.id === cellId)
+      if (!changing || message?.type !== 'message') return
+      const keys = new Set(changing.diagram.participants.map((participant) => participant.key))
+      const from = changes.from !== undefined && keys.has(changes.from) ? changes.from : message.from
+      const to = changes.to !== undefined && keys.has(changes.to) ? changes.to : message.to
+      // A new receiver takes over its activation of the message, a new sender its end of one.
+      let activate = message.activate.map((key) => (key === message.to ? to : key))
+      let deactivate = message.deactivate.map((key) => (key === message.from ? from : key))
+      if (changes.activates !== undefined) activate = [...activate.filter((key) => key !== to), ...(changes.activates ? [to] : [])]
+      if (changes.deactivates !== undefined) {
+        deactivate = [...deactivate.filter((key) => key !== from), ...(changes.deactivates ? [from] : [])]
+      }
+      const next = messageStyle({
+        from,
+        to,
+        arrow: changes.arrow ?? message.arrow,
+        activate: [...new Set(activate)],
+        deactivate: [...new Set(deactivate)],
+      })
+      changeStyle(changing.cell, {
+        [FROM_KEY]: from,
+        [TO_KEY]: to,
+        [ARROW_KEY]: next[ARROW_KEY],
+        [ACTIVATE_KEY]: next[ACTIVATE_KEY],
+        [DEACTIVATE_KEY]: next[DEACTIVATE_KEY],
+      })
+    },
+    setSequenceNote(cellId, changes) {
+      const changing = changingPart(cellId, 'note')
+      const note = changing?.diagram.steps.find((step) => step.id === cellId)
+      if (!changing || note?.type !== 'note') return
+      const keys = new Set(changing.diagram.participants.map((participant) => participant.key))
+      const from = changes.from !== undefined && keys.has(changes.from) ? changes.from : note.from
+      const to = changes.to !== undefined && keys.has(changes.to) ? changes.to : note.to
+      const placement = changes.placement ?? note.placement
+      // A note beside a participant stands by one.
+      const next = noteStyle({ from, to: placement === 'over' ? to : from, placement })
+      changeStyle(changing.cell, { [FROM_KEY]: next[FROM_KEY], [TO_KEY]: next[TO_KEY], [NOTE_KEY]: next[NOTE_KEY] })
+    },
+    setSequenceFrame(cellId, kind) {
+      const changing = changingPart(cellId, 'frame')
+      if (changing) changeStyle(changing.cell, { [FRAME_KEY]: kind })
+    },
+    setSequenceNumbering(cellId, numbered) {
+      const cell = destroyed ? null : model.getCell(cellId)
+      if (!cell || !isSequence(cell) || !isUnlocked(cell) || isNumbered(cell.getStyle() as Record<string, unknown>) === numbered) return
+      changeStyle(cell, { [NUMBERS_KEY]: numbered || undefined })
+    },
+    sequenceMermaid(cellId) {
+      const diagram = sequenceOf(model.getCell(cellId))
+      return diagram ? mermaidOfSequence(graphSequence(diagram)) : null
     },
     addConnectedShape(side, shapeId) {
       const shape = findShape(shapeId)
@@ -3101,8 +3545,10 @@ export function createDiagramEditor(
       graph.selectAll()
     },
     moveSelection(dx, dy) {
-      // A field moves with its table: the table layout places fields.
-      const cells = new Set(graph.getSelectionCells().map((cell) => (isTable(cell.getParent()) ? cell.getParent()! : cell)))
+      // A field moves with its table: the table layout places fields; so does a part of a sequence diagram.
+      const cells = new Set(
+        graph.getSelectionCells().map((cell) => (isTable(cell.getParent()) || isSequencePart(cell) ? cell.getParent()! : cell)),
+      )
       const movable = graph.getMovableCells([...cells])
       if (movable.length === 0 || (dx === 0 && dy === 0)) return
       graph.stopEditing(false)
@@ -3814,7 +4260,9 @@ export function createDiagramEditor(
     getState: () => state,
     subscribe: (listener) => listen(listeners, listener),
     destroy() {
-      // The graph releases the label editor but keeps its cell, so a pending resize of it would stop editing later.
+      // The graph releases the label editor but keeps its cell, so a pending resize of it would stop editing later. A new
+      // part being edited stays: the page of its board may only change.
+      newCell = null
       graph.stopEditing(true)
       Reflect.deleteProperty(container, EDITOR_PROPERTY)
       container.removeEventListener('pointerdown', focusCanvas, true)
@@ -3845,6 +4293,7 @@ export function createDiagramEditor(
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
       unwatchTableRows()
+      unconfigureSequences()
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
@@ -3921,6 +4370,7 @@ function isFreehand(cell: Cell): boolean {
 function propertiesTarget(cell: Cell): 'shape' | 'edge' | null {
   if (cell.isEdge()) return isFreehand(cell) ? null : 'edge'
   if (!cell.isVertex() || cell.getParent()?.isEdge() || isTable(cell) || isTable(cell.getParent()) || isGroup(cell)) return null
+  if (isSequence(cell) || isSequencePart(cell)) return null
   return canBeElement(cell.getStyle() as Record<string, unknown>) ? 'shape' : null
 }
 
@@ -4047,9 +4497,14 @@ function alignOf(style: CellStyle): Align {
   return style.align === 'left' || style.align === 'right' ? style.align : 'center'
 }
 
-/** A shape with a size of its own: not a field, which its table places, nor a label of an edge. */
+/**
+ * A shape with a size of its own: not a field, which its table places, nor a part of a sequence diagram, which its
+ * diagram places, nor a label of an edge.
+ */
 function isFreeShape(cell: Cell): boolean {
-  return cell.isVertex() && !isTable(cell.getParent()) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
+  return (
+    cell.isVertex() && !isTable(cell.getParent()) && !isSequencePart(cell) && cell.getGeometry() !== null && !cell.getGeometry()!.relative
+  )
 }
 
 /**
@@ -4107,9 +4562,12 @@ function fitsText(graph: Graph, cell: Cell): boolean {
   return allowsTextWrap(graph, cell) && hasTextFit(cell.getStyle())
 }
 
-/** A shape whose words may wrap: one that allows auto width, but not a table, whose name and fields are a line each. */
+/**
+ * A shape whose words may wrap: one that allows auto width, but not a table, whose name and fields are a line each, nor
+ * a sequence diagram, whose title is.
+ */
 function allowsTextWrap(graph: Graph, cell: Cell): boolean {
-  return isFreeShape(cell) && !isTable(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
+  return isFreeShape(cell) && !isTable(cell) && !isSequence(cell) && allowsAutoWidth(graph.getCellStyle(cell) as ShapeStyle)
 }
 
 function isTable(cell: Cell | null): boolean {
@@ -4127,7 +4585,7 @@ function indexPartsOf(text: string): IndexParts | null {
  * draw.io with a fill or a border, are not groups.
  */
 export function isGroup(cell: Cell | null): boolean {
-  if (!cell?.isVertex() || cell.getChildCount() === 0 || isTable(cell)) return false
+  if (!cell?.isVertex() || cell.getChildCount() === 0 || isTable(cell) || isSequence(cell)) return false
   const style = cell.getStyle()
   return style.fillColor === 'none' && style.strokeColor === 'none'
 }
@@ -4189,8 +4647,9 @@ function configureSelection(graph: Graph) {
   }
   const propagate = handler.isPropagateSelectionCell.bind(handler)
   // A second click on a selected field would select its table, and Delete would then remove the whole table.
-  // The table is selected by its header instead.
-  handler.isPropagateSelectionCell = (cell, immediate, me) => !isTable(cell.getParent()) && propagate(cell, immediate, me)
+  // The table is selected by its header instead, and a sequence diagram by its empty space.
+  handler.isPropagateSelectionCell = (cell, immediate, me) =>
+    !isTable(cell.getParent()) && !isSequencePart(cell) && propagate(cell, immediate, me)
 }
 
 /** The selection frame selects what it touches, as on the desktop of Windows; see {@link touchedByRegion}. */

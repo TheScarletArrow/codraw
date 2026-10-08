@@ -1,6 +1,17 @@
-import { EdgeMarkerRegistry, Point, ShapeRegistry, StyleDefaultsConfig, type AbstractCanvas2D, type Shape } from '@maxgraph/core'
+import {
+  EdgeMarkerRegistry,
+  PerimeterRegistry,
+  Point,
+  Rectangle,
+  ShapeRegistry,
+  StyleDefaultsConfig,
+  type AbstractCanvas2D,
+  type CellState,
+  type Shape,
+} from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import { crowsFoot, EDGE_MARKERS, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
+import { SEQUENCE_SHAPE } from './sequence.ts'
 import { SHAPES } from './shapes.ts'
 
 /** Records the path drawn by a marker. */
@@ -16,6 +27,14 @@ function recordingCanvas() {
     lineTo: record('lineTo'),
     ellipse: record('ellipse'),
     stroke: record('stroke'),
+    rect: record('rect'),
+    roundrect: record('roundrect'),
+    close: record('close'),
+    fillAndStroke: record('fillAndStroke'),
+    setDashed: (dashed: boolean) => calls.push(`setDashed(${dashed})`),
+    setShadow: () => {},
+    save: () => {},
+    restore: () => {},
   }
   return { canvas: canvas as unknown as AbstractCanvas2D, calls }
 }
@@ -50,7 +69,20 @@ describe('diagram extensions', () => {
     registerDiagramExtensions()
 
     for (const name of Object.keys(SYSTEM_DESIGN_SHAPES)) expect(ShapeRegistry.get(name)).toBe(SYSTEM_DESIGN_SHAPES[name as keyof typeof SYSTEM_DESIGN_SHAPES])
-    const builtIn = ['ellipse', 'rhombus', 'cylinder', 'actor', 'cloud', 'hexagon', 'doubleEllipse', 'swimlane', 'document', 'mxgraph.c4.person2']
+    // A sequence diagram has shapes of its own; see `sequenceShapes.ts`.
+    const builtIn = [
+      'ellipse',
+      'rhombus',
+      'cylinder',
+      'actor',
+      'cloud',
+      'hexagon',
+      'doubleEllipse',
+      'swimlane',
+      'document',
+      'mxgraph.c4.person2',
+      SEQUENCE_SHAPE,
+    ]
     for (const shape of SHAPES) {
       const name = shape.style.shape
       if (name) expect([...builtIn, ...Object.keys(SYSTEM_DESIGN_SHAPES)]).toContain(name)
@@ -70,5 +102,38 @@ describe('diagram extensions', () => {
 
     expect(calls).toEqual(['begin()', 'moveTo(100,0)', 'lineTo(91,0)', 'stroke()', 'ellipse(85,-3,6,6)', 'stroke()'])
     expect(end.x).toBe(85)
+  })
+
+  it('draw a lifeline of draw.io as its header and a dashed line down its middle, with its label in the header', () => {
+    registerDiagramExtensions()
+    const Lifeline = ShapeRegistry.get('umlLifeline')!
+    const lifeline = new Lifeline()
+    lifeline.style = { size: 40 } as never
+    lifeline.scale = 1
+    const { canvas, calls } = recordingCanvas()
+    lifeline.paintVertexShape(canvas, 0, 0, 100, 300)
+    expect(calls).toEqual(['rect(0,0,100,40)', 'fillAndStroke()', 'setDashed(true)', 'begin()', 'moveTo(50,40)', 'lineTo(50,300)', 'stroke()'])
+    expect(lifeline.getLabelBounds(new Rectangle(0, 0, 100, 300))).toMatchObject({ height: 40 })
+  })
+
+  it('draw a frame of draw.io with its tab, and an actor as a stick figure', () => {
+    registerDiagramExtensions()
+    const frame = new (ShapeRegistry.get('umlFrame')!)()
+    frame.style = { width: 50, height: 20 } as never
+    frame.scale = 1
+    const { canvas, calls } = recordingCanvas()
+    frame.paintVertexShape(canvas, 0, 0, 300, 200)
+    expect(calls.slice(0, 5)).toEqual(['begin()', 'moveTo(0,0)', 'lineTo(50,0)', 'lineTo(50,5)', 'lineTo(40,20)'])
+    expect(frame.getLabelBounds(new Rectangle(0, 0, 300, 200))).toMatchObject({ width: 50, height: 20 })
+    expect(ShapeRegistry.get('umlActor')).toBeDefined()
+  })
+
+  it('end edges on the dashed line of a lifeline, below its header', () => {
+    registerDiagramExtensions()
+    const perimeter = PerimeterRegistry.get('lifelinePerimeter')!
+    const lifeline = { style: { size: 40 }, view: { scale: 1 } } as unknown as CellState
+    const bounds = new Rectangle(0, 0, 100, 300)
+    expect(perimeter(bounds, lifeline, new Point(400, 120), false)).toMatchObject({ x: 50, y: 120 })
+    expect(perimeter(bounds, lifeline, new Point(400, 10), false)).toMatchObject({ x: 50, y: 40 })
   })
 })

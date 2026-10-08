@@ -2,6 +2,7 @@ import { cellLabel } from '../comments/threads.ts'
 import {
   cellOrigin,
   groupChanges,
+  isSequencePart,
   isTableRow,
   type BoardDiff,
   type CellDiff,
@@ -19,6 +20,22 @@ import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
 import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, isElementStyleKey, type PointData } from '../diagram/model.ts'
 import { isImageStyle } from '../diagram/images.ts'
+import {
+  ACTIVATE_KEY,
+  ARROW_KEY,
+  DEACTIVATE_KEY,
+  FRAME_KEY,
+  FROM_KEY,
+  isSequenceStyle,
+  NOTE_KEY,
+  NUMBERS_KEY,
+  PART_KEY,
+  PARTICIPANT_KEY,
+  PARTICIPANT_KIND_KEY,
+  sequencePartOf,
+  TO_KEY,
+  type SequencePart,
+} from '../diagram/sequence.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
 import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
 
@@ -97,6 +114,16 @@ export function countConflicts(diff: BoardDiff, conflicts: MergeConflicts): numb
   )
 }
 
+/** What the parts of a sequence diagram are, as the list says it. */
+const SEQUENCE_PARTS: Record<SequencePart, string> = {
+  participant: 'Участник',
+  message: 'Сообщение',
+  note: 'Заметка',
+  frame: 'Рамка',
+  else: 'Ветка',
+  end: 'Конец рамки',
+}
+
 /** Kinds of the cells of one state of a page; groups are told by their children. */
 class Kinds {
   private readonly cells: Map<string, CellSnapshot>
@@ -112,10 +139,17 @@ class Kinds {
     return isTableRow(cell, this.cells)
   }
 
+  /** A part of a sequence diagram of this state of the page. */
+  isSequencePart(cell: CellSnapshot): boolean {
+    return isSequencePart(cell, this.cells)
+  }
+
   of(cell: CellSnapshot): string {
     if (cell.kind === 'edge') return isFreehandStyle(cell.style) ? 'Линия от руки' : 'Связь'
     if (this.isTableRow(cell)) return isTableIndexStyle(cell.style) ? 'Индекс' : 'Поле'
     if (isTableStyle(cell.style)) return 'Таблица'
+    if (this.isSequencePart(cell)) return SEQUENCE_PARTS[sequencePartOf(cell.style)!]
+    if (isSequenceStyle(cell.style)) return 'Диаграмма последовательности'
     // A group of draw.io and CoDraw: a container without a fill and a border.
     if (this.parents.has(cell.id) && cell.style.fillColor === 'none' && cell.style.strokeColor === 'none') return 'Группа'
     if (isImageStyle(cell.style)) return 'Изображение'
@@ -167,6 +201,17 @@ const STYLE_WORDS: Record<string, string> = {
   // The properties of an edge; those of a shape are said by what changed in them (see {@link propertyWords}).
   [ELEMENT_STYLE_KEYS.technology]: 'технология',
   [INTERACTION_KEY]: 'вид связи',
+  [PART_KEY]: 'вид',
+  [PARTICIPANT_KEY]: 'участник',
+  [PARTICIPANT_KIND_KEY]: 'вид участника',
+  [FROM_KEY]: 'участники',
+  [TO_KEY]: 'участники',
+  [ARROW_KEY]: 'вид сообщения',
+  [ACTIVATE_KEY]: 'активация',
+  [DEACTIVATE_KEY]: 'активация',
+  [NOTE_KEY]: 'положение заметки',
+  [FRAME_KEY]: 'вид рамки',
+  [NUMBERS_KEY]: 'нумерация',
 }
 
 /** Words for the properties of an element of a shape. */
@@ -212,15 +257,16 @@ function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Ki
   const { fields, geometry, style, attrs } = change.changes
   const cell = change.after
   const row = kinds.isTableRow(cell)
+  const part = kinds.isSequencePart(cell)
   const status = cell.extra[STATUS_KEY]
   const fieldWord = (field: string): string => {
     // The status and the mark of who set it are one change, said by the status the element has now.
     if (STATUS_KEYS.includes(field)) return isElementStatus(status) ? `статус «${STATUS_LABELS[status]}»` : 'статус снят'
     switch (field) {
       case 'value':
-        return row ? 'текст' : isTableStyle(cell.style) ? 'название' : 'подпись'
+        return row || part ? 'текст' : isTableStyle(cell.style) || isSequenceStyle(cell.style) ? 'название' : 'подпись'
       case 'parent':
-        return row ? 'таблица' : 'группа'
+        return row ? 'таблица' : part ? 'диаграмма' : 'группа'
       case 'source':
         return 'начало'
       case 'target':

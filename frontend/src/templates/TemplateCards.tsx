@@ -1,4 +1,4 @@
-import { Boxes, Network, Ship, Table2, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, Boxes, Network, Ship, Table2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BOARD_TEMPLATES, type BoardTemplate, type TemplateId } from './templates.ts'
 
@@ -7,6 +7,7 @@ const ICONS: Record<TemplateId, LucideIcon> = {
   'c4-containers': Boxes,
   microservices: Network,
   kubernetes: Ship,
+  'oauth-login': ArrowRightLeft,
 }
 
 interface TemplateCardsProps {
@@ -20,7 +21,7 @@ interface TemplateCardsProps {
 /** A card for every template: its icon, title and what its diagram shows. */
 export function TemplateCards({ onChoose, disabled = false, compact = false, className }: TemplateCardsProps) {
   return (
-    <ul className={cn('grid gap-2', compact ? 'grid-cols-2 sm:grid-cols-4' : 'sm:grid-cols-2', className)}>
+    <ul className={cn('grid gap-2', compact ? 'grid-cols-2 sm:grid-cols-3' : 'sm:grid-cols-2', className)}>
       {BOARD_TEMPLATES.map((template) => {
         const Icon = ICONS[template.id]
         return (

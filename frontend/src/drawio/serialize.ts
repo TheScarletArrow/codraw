@@ -17,6 +17,8 @@ import {
   type PointData,
 } from '../diagram/model.ts'
 import { listPages } from '../diagram/pages.ts'
+import { isSequenceStyle, sequencePartOf } from '../diagram/sequence.ts'
+import { sequenceDrawioCells } from './sequenceDrawio.ts'
 import { formatStyle } from './style.ts'
 
 /** Media type of draw.io files. */
@@ -164,7 +166,7 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
 
 /**
  * Cells of a page in the order of the tree: every cell is followed by its children, siblings in drawing order. With
- * `only`, just these cells of the layer with their descendants.
+ * `only`, just these cells of the layer with their descendants. A sequence diagram is written as shapes of draw.io.
  */
 function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, images?: EmbeddedImages): string {
   const cells = getCells(doc, pageId)
@@ -185,6 +187,21 @@ function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, im
     for (const entry of (children.get(parent) ?? []).sort((a, b) => compareCells(a.data, b.data))) {
       if (visited.has(entry.data.id) || (only && parent === LAYER_CELL_ID && !only.has(entry.data.id))) continue
       visited.add(entry.data.id)
+      if (isSequenceStyle(entry.data.style)) {
+        // A sequence diagram goes as shapes of draw.io (see `sequenceDrawio.ts`); a cell inside it that is no part of
+        // it, as it is.
+        const inside = (children.get(entry.data.id) ?? []).sort((a, b) => compareCells(a.data, b.data))
+        const parts = inside.filter((child) => sequencePartOf(child.data.style) !== null)
+        parts.forEach((part) => visited.add(part.data.id))
+        const [frame, ...shapes] = sequenceDrawioCells(entry.data, parts.map((part) => part.data))
+        xml.push(cellXml(frame!, entry.attrs, images), ...shapes.map((shape) => cellXml(shape, {}, images)))
+        for (const other of inside.filter((child) => !parts.includes(child))) {
+          visited.add(other.data.id)
+          xml.push(cellXml(other.data, other.attrs, images))
+          visit(other.data.id)
+        }
+        continue
+      }
       xml.push(cellXml(entry.data, entry.attrs, images))
       visit(entry.data.id)
     }

@@ -1,4 +1,5 @@
 import type { SqlColumn, SqlTable } from '../sql/parseSql.ts'
+import { parseSequence, type SequenceMermaid } from './sequenceMermaid.ts'
 
 /** How a node of a flowchart is drawn, as far as the palette has it. */
 export type NodeShape = 'rectangle' | 'rounded' | 'ellipse' | 'rhombus' | 'database'
@@ -59,7 +60,7 @@ export interface ErDiagram {
   skipped: number
 }
 
-export type MermaidDiagram = Flowchart | ErDiagram
+export type MermaidDiagram = Flowchart | ErDiagram | SequenceMermaid
 
 export class MermaidError extends Error {
   constructor(message: string) {
@@ -68,9 +69,9 @@ export class MermaidError extends Error {
   }
 }
 
-/** Whether the text is a diagram of Mermaid that CoDraw draws: a flowchart or an ER diagram. */
+/** Whether the text is a diagram of Mermaid that CoDraw draws: a flowchart, an ER diagram or a sequence diagram. */
 export function isMermaid(text: string): boolean {
-  return /^(flowchart|graph|erDiagram)\b/.test(firstLine(text))
+  return /^(flowchart|graph|erDiagram|sequenceDiagram)\b/.test(firstLine(text))
 }
 
 /** The first line that is not empty, a comment or front matter. */
@@ -98,7 +99,10 @@ export function parseMermaid(text: string): MermaidDiagram {
   const header = lines[0] ?? ''
   if (/^(flowchart|graph)\b/.test(header)) return parseFlowchart(header, lines.slice(1))
   if (/^erDiagram\b/.test(header)) return parseErDiagram(lines.slice(1))
-  throw new MermaidError('CoDraw рисует из Mermaid блок-схемы (flowchart, graph) и ER-диаграммы (erDiagram)')
+  if (/^sequenceDiagram\b/.test(header)) return parseSequence(lines.slice(1))
+  throw new MermaidError(
+    'CoDraw рисует из Mermaid блок-схемы (flowchart, graph), ER-диаграммы (erDiagram) и диаграммы последовательности (sequenceDiagram)',
+  )
 }
 
 /** Text of a label: quotes and Markdown marks away, `<br>` as a new line. */

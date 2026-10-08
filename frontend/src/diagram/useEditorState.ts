@@ -38,6 +38,7 @@ const NO_EDITOR: EditorState = {
   stickies: null,
   status: null,
   properties: null,
+  sequence: null,
   canPasteAsSameElement: false,
   canMergeElements: false,
 }

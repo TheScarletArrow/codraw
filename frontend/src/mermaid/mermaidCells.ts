@@ -1,5 +1,6 @@
 import type { CellData, StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine, type LayoutShape } from '../diagram/layout.ts'
+import { sequenceCells } from '../diagram/sequence.ts'
 import { findShape, type ShapeId } from '../diagram/shapes.ts'
 import { schemaCells, type TableLink } from '../sql/erDiagram.ts'
 import type { SqlColumn, SqlSchema, SqlTable } from '../sql/parseSql.ts'
@@ -138,6 +139,7 @@ async function erCells(diagram: ErDiagram, origin: { x: number; y: number }, eng
 
 /** Cells of a diagram of Mermaid laid out with its top-left corner at `origin`. */
 export function mermaidCells(diagram: MermaidDiagram, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>): Promise<CellData[]> {
+  if (diagram.kind === 'sequence') return Promise.resolve(sequenceCells(diagram.diagram, origin))
   return diagram.kind === 'flowchart' ? flowchartCells(diagram, origin, engine) : erCells(diagram, origin, engine)
 }
 
@@ -145,6 +147,11 @@ export function mermaidCells(diagram: MermaidDiagram, origin: { x: number; y: nu
 export function mermaidSummary(diagram: MermaidDiagram): string {
   if (diagram.kind === 'flowchart') {
     return `Узлов: ${diagram.nodes.length}, связей: ${diagram.edges.length}, рамок: ${diagram.subgraphs.length}, пропущено строк: ${diagram.skipped}`
+  }
+  if (diagram.kind === 'sequence') {
+    const { participants, steps } = diagram.diagram
+    const count = (type: string) => steps.filter((step) => step.type === type).length
+    return `Участников: ${participants.length}, сообщений: ${count('message')}, рамок: ${count('frame')}, заметок: ${count('note')}, пропущено строк: ${diagram.skipped}`
   }
   return `Таблиц: ${diagram.tables.length}, связей: ${diagram.relations.length}, пропущено строк: ${diagram.skipped}`
 }

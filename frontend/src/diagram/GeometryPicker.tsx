@@ -32,6 +32,8 @@ export function GeometryPicker({
             label="Ширина"
             value={geometry.width}
             min={MIN_SHAPE_SIZE}
+            disabled={!geometry.canSetWidth}
+            title={geometry.canSetWidth ? 'Ширина' : 'Размер диаграммы последовательности задают её части'}
             onCommit={(width) => onChange({ width })}
           />
         </Field>
@@ -41,7 +43,7 @@ export function GeometryPicker({
             value={geometry.height}
             min={MIN_SHAPE_SIZE}
             disabled={!geometry.canSetHeight}
-            title={geometry.canSetHeight ? 'Высота' : 'Высоту таблицы задают её поля'}
+            title={geometry.canSetHeight ? 'Высота' : 'Высоту таблицы задают её поля, диаграммы последовательности — её части'}
             onCommit={(height) => onChange({ height })}
           />
         </Field>

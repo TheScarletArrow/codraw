@@ -13,6 +13,7 @@ import {
   type PointData,
   type StyleValue,
 } from './model.ts'
+import { isSequenceStyle, sequencePartOf } from './sequence.ts'
 import { isTableStyle } from './shapes.ts'
 
 /**
@@ -21,7 +22,8 @@ import { isTableStyle } from './shapes.ts'
  * milliseconds and nothing observes the cells.
  *
  * Only content counts: keys that record who changed a cell and when, order keys rewritten without reordering, the noise
- * of floating-point coordinates and the geometry that the layout of a table sets are not changes.
+ * of floating-point coordinates and the geometry that the layouts of a table and of a sequence diagram set are not
+ * changes.
  */
 
 /** Keys that say who changed a cell last and when: they change with every edit, but they are not its content. */
@@ -244,17 +246,33 @@ export function isTableRow(cell: CellSnapshot, cells: Map<string, CellSnapshot>)
   return cell.kind === 'vertex' && parent !== undefined && isTable(parent)
 }
 
+const isSequence = (cell: CellSnapshot) => cell.kind === 'vertex' && isSequenceStyle(cell.style)
+
+/** A part of a sequence diagram: the diagram lays it out, so its geometry is not its own either. */
+export function isSequencePart(cell: CellSnapshot, cells: Map<string, CellSnapshot>): boolean {
+  const parent = cell.parent === null ? undefined : cells.get(cell.parent)
+  return cell.kind === 'vertex' && parent !== undefined && isSequence(parent) && sequencePartOf(cell.style) !== null
+}
+
+/** A cell whose layout is that of its parent. */
+const isLaidOut = (cell: CellSnapshot, cells: Map<string, CellSnapshot>) => isTableRow(cell, cells) || isSequencePart(cell, cells)
+
 function geometryChanges(
   before: CellSnapshot,
   after: CellSnapshot,
   beforeCells: Map<string, CellSnapshot>,
   afterCells: Map<string, CellSnapshot>,
 ): string[] {
-  if (isTableRow(before, beforeCells) && isTableRow(after, afterCells)) return []
+  if (isLaidOut(before, beforeCells) && isLaidOut(after, afterCells)) return []
   const a = before.geometry ?? EMPTY_GEOMETRY
   const b = after.geometry ?? EMPTY_GEOMETRY
-  // The rows of a table set its height.
-  const bounds = isTable(before) && isTable(after) ? (['x', 'y', 'width'] as const) : (['x', 'y', 'width', 'height'] as const)
+  // The rows of a table set its height, the parts of a sequence diagram its size.
+  const bounds =
+    isSequence(before) && isSequence(after)
+      ? (['x', 'y'] as const)
+      : isTable(before) && isTable(after)
+        ? (['x', 'y', 'width'] as const)
+        : (['x', 'y', 'width', 'height'] as const)
   const changed: string[] = bounds.filter((key) => !sameNumber(a[key], b[key]))
   if (!samePoints(a.points ?? [], b.points ?? [])) changed.push('points')
   if (!samePoint(a.offset ?? ORIGIN, b.offset ?? ORIGIN)) changed.push('offset')

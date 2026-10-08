@@ -310,6 +310,35 @@ describe('clipboard events of the canvas', () => {
     expect(shapes(editor)).toHaveLength(0)
   })
 
+  it('pastes a sequence diagram of Mermaid as a diagram of its participants and messages, as one undo step', async () => {
+    const { editor, container } = open()
+
+    fireClipboard('paste', container, 'sequenceDiagram\n  Клиент->>API: POST /login\n  API-->>Клиент: 200')
+
+    await vi.waitFor(() => expect(shapes(editor)).toHaveLength(1))
+    const [diagram] = shapes(editor)
+    expect(diagram!.getStyle().shape).toBe('codraw.sequence')
+    expect(diagram!.getChildren().map((part) => part.getValue())).toEqual(['Клиент', 'API', 'POST /login', '200'])
+    editor.undo()
+    expect(shapes(editor)).toHaveLength(0)
+  })
+
+  it('copies a sequence diagram as its cells, which a paste on another board makes the same diagram again', async () => {
+    const { editor, container } = open()
+    editor.addShape('sequence', { x: 200, y: 200 })
+    editor.graph.stopEditing(false)
+    const { text } = fireClipboard('copy', container)
+    const other = open()
+
+    // As another tab reads it: from the text of the clipboard of the system, not from the clipboard of this tab.
+    fireClipboard('paste', other.container, decodeURIComponent(text))
+
+    await vi.waitFor(() => expect(shapes(other.editor)).toHaveLength(1))
+    const [copy] = shapes(other.editor)
+    expect(copy!.getStyle().shape).toBe('codraw.sequence')
+    expect(copy!.getChildren().map((part) => part.getValue())).toEqual(['Клиент', 'Сервис', 'Запрос', 'Ответ'])
+  })
+
   it('pastes a diagram of Mermaid with its top-left corner at a point, and other kinds of Mermaid as text', async () => {
     const { editor } = open()
 
@@ -318,9 +347,9 @@ describe('clipboard events of the canvas', () => {
     expect(Math.min(...shapes(editor).map((cell) => cell.getGeometry()!.x))).toBe(300)
     expect(Math.min(...shapes(editor).map((cell) => cell.getGeometry()!.y))).toBe(200)
 
-    editor.paste(undefined, 'sequenceDiagram\n  A->>B: hi')
+    editor.paste(undefined, 'classDiagram\n  A <|-- B')
     await vi.waitFor(() => expect(shapes(editor)).toHaveLength(3))
-    expect(shapes(editor)[2]!.getValue()).toBe('sequenceDiagram\n  A->>B: hi')
+    expect(shapes(editor)[2]!.getValue()).toBe('classDiagram\n  A <|-- B')
   })
 
   it('pastes text with its top-left corner at a point', async () => {

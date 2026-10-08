@@ -61,6 +61,7 @@ export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
   'uml-interface': ['uml', 'interface', 'интерфейс', 'lollipop'],
   'uml-package': ['uml', 'package', 'пакет', 'module', 'модуль'],
   'uml-note': ['uml', 'note', 'comment', 'заметка', 'комментарий'],
+  sequence: ['uml', 'sequence', 'diagram', 'lifeline', 'saga', 'oauth', 'последовательность', 'сценарий', 'сага', 'линия жизни', 'сообщения'],
   'c4-person': ['c4', 'person', 'user', 'пользователь', 'человек'],
   'c4-system': ['c4', 'software system', 'system', 'система'],
   'c4-container': ['c4', 'container', 'контейнер', 'app'],

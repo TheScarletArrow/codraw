@@ -35,6 +35,7 @@ import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
 import { lockLabel } from './locks.ts'
 import { NumberField } from './NumberField.tsx'
+import { SequenceTools } from './SequenceTools.tsx'
 import { TableTools } from './TableTools.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
@@ -219,12 +220,15 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     lock,
     canCopyStyle,
     canPasteStyle,
+    sequence,
   } = useEditorState(editor)
 
   return (
     <>
       {lock && <LockTools editor={editor} lock={lock} />}
       {lock && <StyleTools editor={editor} canCopy={canCopyStyle} canPaste={canPasteStyle} />}
+      {/* Copying a locked diagram as Mermaid changes nothing: the tools disable the rest themselves. */}
+      {sequence && <SequenceTools editor={editor} sequence={sequence} />}
       <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
         {tableSelected && (
           <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />

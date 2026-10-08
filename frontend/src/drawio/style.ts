@@ -24,6 +24,7 @@ const BOOLEAN_KEYS = new Set([
   'codrawBaseDefault',
   'codrawFreehand',
   'codrawIndex',
+  'codrawSeqNumbers',
   'codrawShowTechnology',
   'connectable',
   'curved',

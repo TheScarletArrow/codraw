@@ -1,8 +1,10 @@
 import type { CellData } from '../diagram/model.ts'
+import { sequenceCells } from '../diagram/sequence.ts'
 import type { DrawioPage } from '../drawio/parse.ts'
+import { parseMermaid } from '../mermaid/parseMermaid.ts'
 import { DiagramBuilder } from './builder.ts'
 
-export type TemplateId = 'er' | 'c4-containers' | 'microservices' | 'kubernetes'
+export type TemplateId = 'er' | 'c4-containers' | 'microservices' | 'kubernetes' | 'oauth-login'
 
 export interface BoardTemplate {
   id: TemplateId
@@ -100,6 +102,35 @@ function kubernetes(): CellData[] {
   return diagram.build()
 }
 
+/** Signing in with OAuth as a sequence diagram: the code of authorization exchanged for a token, and a failed sign-in. */
+const OAUTH_LOGIN = `sequenceDiagram
+  title Вход через OAuth
+  autonumber
+  actor User as Пользователь
+  participant App as Приложение
+  participant Auth as Сервер авторизации
+  participant API
+  User->>App: Войти
+  App-->>User: Перенаправление на сервер авторизации
+  User->>Auth: Логин и пароль
+  alt Вход удался
+    Auth-->>User: Перенаправление с кодом
+    User->>App: Код авторизации
+    App->>+Auth: Обмен кода на токен
+    Auth-->>-App: Токен доступа
+    App->>API: Запрос с токеном
+    API-->>App: Данные
+    App-->>User: Страница
+  else Неверный пароль
+    Auth-->>User: Ошибка входа
+  end`
+
+function oauthLogin(): CellData[] {
+  const diagram = parseMermaid(OAUTH_LOGIN)
+  if (diagram.kind !== 'sequence') throw new Error('Not a sequence diagram')
+  return sequenceCells(diagram.diagram, { x: 40, y: 40 })
+}
+
 export const BOARD_TEMPLATES: BoardTemplate[] = [
   {
     id: 'er',
@@ -124,6 +155,12 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     title: 'Деплой в Kubernetes',
     description: 'CDN, балансировщик, кластер с подами и управляемые сервисы',
     build: kubernetes,
+  },
+  {
+    id: 'oauth-login',
+    title: 'Вход через OAuth',
+    description: 'Диаграмма последовательности: перенаправление, код, токен и ошибка входа',
+    build: oauthLogin,
   },
 ]
 
