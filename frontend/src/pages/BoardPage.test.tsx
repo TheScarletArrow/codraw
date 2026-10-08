@@ -1372,6 +1372,7 @@ describe('BoardPage', () => {
         'Клиенты',
         'UML',
         'C4',
+        'Провайдеры',
       ])
       const basic = within(palette).getByRole('group', { name: 'Основные' })
       expect(within(basic).getAllByRole('button').map((button) => button.textContent)).toEqual([

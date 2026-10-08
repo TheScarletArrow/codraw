@@ -34,6 +34,15 @@ describe('EditorToolbar', () => {
     expect(editor.addTableIndex).toHaveBeenCalled()
   })
 
+  it('switches list types and removes the active markers', async () => {
+    act(() => editor.setState({ text: { ...plainText, fontSize: 12, autoWidth: null, list: 'bullet' } }))
+    expect(screen.getByRole('button', { name: 'Маркированный список' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Нумерованный список' }))
+    expect(editor.setList).toHaveBeenCalledWith('numbered')
+    await userEvent.click(screen.getByRole('button', { name: 'Маркированный список' }))
+    expect(editor.setList).toHaveBeenCalledWith(null)
+  })
+
   it('sets the columns of the selected index on Enter and its uniqueness', async () => {
     act(() => editor.setState({ tableSelected: true, index: { cellId: 'index', tableId: 'table', columns: 'org_id', unique: false } }))
     const columns = screen.getByRole('textbox', { name: 'Столбцы индекса' })

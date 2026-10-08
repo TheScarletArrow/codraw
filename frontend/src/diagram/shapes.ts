@@ -2,8 +2,10 @@ import type { CellStyle } from '@maxgraph/core'
 import { STICKY_COLORS } from './colors.ts'
 import { BROWSER_BAR_HEIGHT } from './extensions.ts'
 import { SEQUENCE_PRESET, SEQUENCE_SHAPE } from './sequence.ts'
+import { PROVIDER_SHAPES, type ProviderId } from './providers.ts'
 
 export type ShapeId =
+  | ProviderId
   | 'rectangle'
   | 'rounded'
   | 'ellipse'
@@ -16,6 +18,7 @@ export type ShapeId =
   | 'sticky'
   | 'grid-table'
   | 'list'
+  | 'numbered-list'
   | 'table'
   | 'flow-process'
   | 'flow-terminator'
@@ -312,6 +315,14 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         width: 180,
         height: 110,
         value: '• Элемент\n• Элемент\n• Элемент',
+        style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
+      },
+      {
+        id: 'numbered-list',
+        label: 'Нумерованный список',
+        width: 180,
+        height: 110,
+        value: '1. Элемент\n2. Элемент\n3. Элемент',
         style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
       },
     ],
@@ -678,6 +689,7 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
       },
     ],
   },
+  { title: 'Провайдеры', group: 'system', shapes: PROVIDER_SHAPES },
 ]
 
 export const SHAPES: ShapePreset[] = SHAPE_SECTIONS.flatMap((section) => section.shapes)
@@ -730,6 +742,7 @@ export function shapeOf(style: ShapeStyle): ShapePreset | null {
   if (isTableStyle(style)) return findShape('table')!
   if (style.pointerEvents === false) return null
   const shape = String(style.shape ?? 'rectangle')
+  if (shape === 'image') return PROVIDER_SHAPES.find((preset) => preset.style.image === style.image) ?? null
   if (shape === 'rectangle' && style.fillColor === 'none' && style.strokeColor === 'none') return null
   if (shape.startsWith('mxgraph.c4.')) return findShape('c4-person')!
   return (

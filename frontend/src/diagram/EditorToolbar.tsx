@@ -6,6 +6,8 @@ import {
   AlignRight,
   Bold,
   Italic,
+  List,
+  ListOrdered,
   Lock,
   LockOpen,
   Maximize,
@@ -445,6 +447,25 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
           <Icon />
         </Button>
       ))}
+      {(['bullet', 'numbered'] as const).map((kind) => {
+        const label = kind === 'bullet' ? 'Маркированный список' : 'Нумерованный список'
+        const Icon = kind === 'bullet' ? List : ListOrdered
+        return (
+          <Button
+            key={kind}
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={text.list === kind}
+            title={label}
+            className={cn(text.list === kind && 'bg-accent text-accent-foreground')}
+            onClick={() => editor?.setList(text.list === kind ? null : kind)}
+          >
+            <Icon />
+          </Button>
+        )
+      })}
       {text.autoWidth !== null && (
         <Button
           type="button"

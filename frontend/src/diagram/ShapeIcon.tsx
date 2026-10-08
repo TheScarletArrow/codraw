@@ -16,6 +16,8 @@ import {
   Folder,
   Globe,
   HardDrive,
+  List,
+  ListOrdered,
   Monitor,
   Network,
   Puzzle,
@@ -39,12 +41,14 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { ShapeId } from './shapes.ts'
+import { providerImage } from './providers.ts'
 
 const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
   text: Type,
   sticky: StickyNotes,
   'grid-table': Table2,
-  list: Rows3,
+  list: List,
+  'numbered-list': ListOrdered,
   table: Table2,
   'flow-document': FileText,
   'bpmn-data-object': FileText,
@@ -89,6 +93,8 @@ const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
 
 /** Icon of a palette shape: a lucide icon, or the outline of a basic shape. */
 export function ShapeIcon({ shape }: { shape: ShapeId }) {
+  const image = providerImage(shape)
+  if (image) return <img src={image} alt="" aria-hidden className="size-5 shrink-0 object-contain" />
   const Icon = ICONS[shape]
   if (Icon) return <Icon aria-hidden />
   return (
