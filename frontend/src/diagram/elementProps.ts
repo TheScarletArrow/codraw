@@ -57,7 +57,7 @@ export function shapeIdOf(style: Record<string, unknown>): ShapeId | null {
 export function canBeElement(style: Record<string, unknown>): boolean {
   if (isTableStyle(style as ShapeStyle) || isStickyStyle(style) || isImageStyle(style)) return false
   if (isSequenceStyle(style) || sequencePartOf(style) !== null) return false
-  if (['text', 'grid-table', 'list'].includes(String(style.codrawShape ?? ''))) return false
+  if (['text', 'grid-table', 'list', 'numbered-list'].includes(String(style.codrawShape ?? ''))) return false
   return !(style.fillColor === 'none' && style.strokeColor === 'none')
 }
 
