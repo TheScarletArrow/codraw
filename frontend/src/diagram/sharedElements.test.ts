@@ -22,6 +22,11 @@ import {
   relabelElementCells,
   removeElementCells,
 } from './sharedElements.ts'
+import { apiGraph, apiSpecCells } from '../apiSpec/apiSpecCells.ts'
+import { parseApiSpec } from '../apiSpec/parseApiSpec.ts'
+import { ORDERS_ASYNCAPI_YAML, PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
+import { importPages } from '../drawio/importPages.ts'
+import { BOARD_TEMPLATES, templatePage } from '../templates/templates.ts'
 import { edgeData, shapeData } from './testing.ts'
 
 const CONTAINER = { codrawShape: 'c4-container' }
@@ -230,5 +235,31 @@ describe('shared elements', () => {
     expect(getCells(doc, DEFAULT_PAGE_ID).has('a')).toBe(true)
     expect(getCells(doc, second).has('b')).toBe(false)
     expect(getElements(doc).get('e1')!.get('technology')).toBe('Kotlin')
+  })
+})
+
+describe('labels of boards made by CoDraw', () => {
+  it('puts nothing right on the boards of the templates: their labels tell the properties of their elements', () => {
+    for (const template of BOARD_TEMPLATES) {
+      const doc = new Y.Doc()
+      const [page] = importPages(doc, [templatePage(template)])
+      let healed: string[] = []
+      doc.transact(() => (healed = healLabels(getCells(doc, page!))))
+      expect({ template: template.id, healed }).toEqual({ template: template.id, healed: [] })
+    }
+  })
+
+  it('puts nothing right on services and topics imported from OpenAPI and AsyncAPI', async () => {
+    const specs = await Promise.all(
+      [PETSTORE_YAML, ORDERS_ASYNCAPI_YAML].map((text, index) => parseApiSpec({ name: `api${index}.yaml`, text })),
+    )
+    const doc = board().doc
+    put(doc, DEFAULT_PAGE_ID, ...(await apiSpecCells(apiGraph(specs, { models: true }), { x: 0, y: 0 })))
+
+    let healed: string[] = []
+    doc.transact(() => (healed = healLabels(getCells(doc))))
+
+    expect(getElements(doc).size).toBeGreaterThan(0)
+    expect(healed).toEqual([])
   })
 })
