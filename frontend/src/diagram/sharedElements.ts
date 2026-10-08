@@ -24,9 +24,10 @@ import { isTableStyle, type ShapeStyle } from './shapes.ts'
 
 /**
  * One element of the architecture shown by cells of several pages, or of one page: the cells share the properties of
- * the element (see `model.ts`), and each keeps its place, look, lines of its own, lock, status and link. A change of the
- * properties rewrites the labels of all the cells of the element in the same transaction ({@link relabelElementCells});
- * labels that two participants changed at the same time are put right afterwards ({@link healLabels}).
+ * the element (see `model.ts`), and each keeps its place, look, lines of its own, lock, status and link. A change of
+ * the properties rewrites the labels of all the cells of the element in the same transaction
+ * ({@link relabelElementCells}); labels that two participants changed at the same time are put right afterwards
+ * ({@link healLabels}).
  *
  * Everything here works on the document, without a canvas: the editor runs it in a transaction of its page and reads
  * the cells of its page into the canvas again.
@@ -40,6 +41,27 @@ export interface CellRef {
 
 /** Origin of the transactions that put labels right; no history undoes them, and they mark nobody as the author. */
 export const RELABEL_ORIGIN = 'codraw:relabel'
+
+/** The type of the data of a drag of an element from the panel «Элементы доски» onto the canvas. */
+export const ELEMENT_DRAG_TYPE = 'application/x-codraw-element'
+
+/** What a drag from the panel carries: an element, or a shape that is no element yet. */
+export type ElementDrag = { elementId: string } | { cell: CellRef }
+
+/** The element of the data of a drag; `null` for anything else. */
+export function readElementDrag(data: string): ElementDrag | null {
+  let value: unknown
+  try {
+    value = JSON.parse(data)
+  } catch {
+    return null
+  }
+  if (typeof value !== 'object' || value === null) return null
+  const { elementId, cell } = value as { elementId?: unknown; cell?: { pageId?: unknown; cellId?: unknown } }
+  if (typeof elementId === 'string' && elementId !== '') return { elementId }
+  if (typeof cell?.pageId === 'string' && typeof cell.cellId === 'string') return { cell: { pageId: cell.pageId, cellId: cell.cellId } }
+  return null
+}
 
 const ELEMENT_FIELDS = Object.keys(ELEMENT_STYLE_KEYS) as ElementField[]
 
@@ -304,7 +326,10 @@ export function elementPlaces(doc: Y.Doc, id: string): ElementPlace[] {
   return places
 }
 
-/** The cells `ids` of a page with the cells inside them and the edges that end at any of these, as removing them on the canvas goes. */
+/**
+ * The cells `ids` of a page with the cells inside them and the edges that end at any of these, as removing them on the
+ * canvas goes.
+ */
 function removal(cells: CellsMap, ids: Iterable<string>): Set<string> {
   const removed = new Set<string>()
   const children = new Map<string, string[]>()

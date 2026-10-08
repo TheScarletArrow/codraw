@@ -165,6 +165,7 @@ import {
   removeElementCells,
   styleWith,
   type CellRef,
+  type ElementDrag,
   type ElementPlace,
 } from './sharedElements.ts'
 import {
@@ -452,7 +453,7 @@ export interface MergeCandidate {
 }
 
 /** An element of the board to add a cell of: by its id, or a shape that is no element yet. */
-export type ElementSource = { elementId: string } | { cell: CellRef }
+export type ElementSource = ElementDrag
 
 /** The selected stickies, which the panel of stickies changes; see {@link DiagramEditor.setStickyColor}. */
 export interface SelectedStickies {

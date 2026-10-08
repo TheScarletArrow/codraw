@@ -506,6 +506,27 @@ describe('importPages', () => {
     expect(getElements(fresh).size).toBe(1)
   })
 
+  it('makes the cells of one element on different pages of a file one element of the board, apart from the board it came from', async () => {
+    const doc = board()
+    const second = addPage(doc, DEFAULT_PAGE_ID)
+    const payments = { codrawShape: 'c4-container', [ELEMENT_KEY]: 'e1', codrawName: 'Payments', codrawKind: 'c4-container' }
+    doc.transact(() => {
+      writeCell(getCells(doc), cell('a', { value: 'Payments\n[Container]', style: payments }))
+      writeCell(getCells(doc, second), cell('b', { value: 'Payments\n[Container]', style: { ...payments, fillColor: '#ff0000' } }))
+    })
+    const xml = exportDrawio(doc)
+    expect(xml.match(/codrawElement="e1"/g)).toHaveLength(2)
+
+    const fresh = new Y.Doc()
+    const [first, other] = importPages(fresh, await parseDrawio(xml))
+    const elementOf = (pageId: string, id: string) => readCell(id, getCells(fresh, pageId).get(id)!).style[ELEMENT_KEY]
+
+    expect(elementOf(other!, 'b')).toBe(elementOf(first!, 'a'))
+    expect(elementOf(first!, 'a')).not.toBe('e1')
+    expect(getElements(fresh).size).toBe(1)
+    expect(readCell('b', getCells(fresh, other!).get('b')!).style).toMatchObject({ fillColor: '#ff0000', codrawName: 'Payments' })
+  })
+
   it('writes the import in one transaction that undo does not track', async () => {
     const doc = board()
     const origins: unknown[] = []

@@ -152,6 +152,31 @@ describe('restorePage', () => {
     return { doc, first: listPages(doc)[0]!.id, schema, notes }
   }
 
+  it('gives the cells of an element of the restored page on other pages the properties and labels of the version', () => {
+    const live = new Y.Doc()
+    initializeDocument(live)
+    const second = addPage(live, DEFAULT_PAGE_ID)
+    const payments = { codrawShape: 'c4-container', [ELEMENT_KEY]: 'e1', codrawName: 'Payments', codrawKind: 'c4-container' }
+    live.transact(() => {
+      writeCell(getCells(live), shapeData('a', 'a0', { value: 'Payments\n[Container]', style: payments }))
+      writeCell(getCells(live, second), shapeData('b', 'a0', { value: 'Payments\n[Container]', style: payments }))
+      writeCell(getCells(live, second), shapeData('other', 'a1', { value: 'Счета' }))
+    })
+    const version = copyOf(live)
+    live.transact(() => {
+      getElements(live).get('e1')!.set('name', 'Billing')
+      getCells(live).get('a')!.set('value', 'Billing\n[Container]')
+      getCells(live, second).get('b')!.set('value', 'Billing\n[Container]')
+      getCells(live, second).get('other')!.set('value', 'Счета и оплаты')
+    })
+
+    restorePage(live, version, DEFAULT_PAGE_ID)
+
+    expect(getCells(live, second).get('b')!.get('value')).toBe('Payments\n[Container]')
+    expect(getCells(live, second).get('other')!.get('value')).toBe('Счета и оплаты')
+    expect(getElements(live).get('e1')!.get('name')).toBe('Payments')
+  })
+
   it('makes the content of a page as the version has it and keeps its name, its place and the other pages', () => {
     const { doc: live, first, schema } = threePages()
     const version = copyOf(live)

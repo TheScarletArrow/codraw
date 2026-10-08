@@ -5,6 +5,7 @@ import type { PageHistories } from './binding.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { filesOf, type ImageHost } from './images.ts'
 import { SHAPE_DRAG_TYPE, type ShapeId } from './shapes.ts'
+import { ELEMENT_DRAG_TYPE, readElementDrag } from './sharedElements.ts'
 
 interface DiagramCanvasProps {
   document: Y.Doc
@@ -85,7 +86,7 @@ export function DiagramCanvas({
   const handleDragOver = (event: DragEvent) => {
     const types = event.dataTransfer.types
     const files = types.includes('Files')
-    if (!files && !types.includes(SHAPE_DRAG_TYPE)) return
+    if (!files && !types.includes(SHAPE_DRAG_TYPE) && !types.includes(ELEMENT_DRAG_TYPE)) return
     // Files are never dropped on the browser, which would open them instead of the board; only images go on the canvas.
     event.preventDefault()
     event.dataTransfer.dropEffect = readOnly || (files && !images) ? 'none' : 'copy'
@@ -94,12 +95,15 @@ export function DiagramCanvas({
   const handleDrop = (event: DragEvent) => {
     const editor = editorRef.current
     const shape = event.dataTransfer.getData(SHAPE_DRAG_TYPE) as ShapeId
+    // An element of the panel «Элементы доски»: another cell of it.
+    const element = readElementDrag(event.dataTransfer.getData(ELEMENT_DRAG_TYPE))
     const files = filesOf(event.dataTransfer)
-    if (!shape && files.length === 0) return
+    if (!shape && !element && files.length === 0) return
     event.preventDefault()
     if (!editor || readOnly) return
     const point = editor.toDiagramPoint(event.clientX, event.clientY)
     if (shape) editor.addShape(shape, point)
+    else if (element) editor.placeElement(element, point)
     else void editor.addImages(files, point)
   }
 

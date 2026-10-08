@@ -65,11 +65,12 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  *   element re-reads the cells of the page that name it.
  *
  * The cells of elements carry their properties as style keys (see `model.ts`); deleting such cells, or naming another
- * element, deletes in the same transaction the elements that no cell names any longer. A local change of the properties
- * of an element rewrites, in the same transaction, the labels of its other cells on all pages (see `sharedElements.ts`);
- * those of this page that the change did not touch are read into the model after it. The labels of the cells of this
- * page that do not tell the properties of their elements, e.g. after two participants changed one element at the same
- * time, are put right when the page opens and when an element changes otherwise than through this binding.
+ * element, deletes in the same transaction the elements that no cell names any longer. A local change of the
+ * properties of an element rewrites, in the same transaction, the labels of its other cells on all pages (see
+ * `sharedElements.ts`); those of this page that the change did not touch are read into the model after it. The labels
+ * of the cells of this page that do not tell the properties of their elements, e.g. after two participants changed one
+ * element at the same time, are put right when the page opens and when an element changes otherwise than through this
+ * binding.
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
  * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.

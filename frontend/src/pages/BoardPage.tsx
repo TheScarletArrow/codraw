@@ -72,7 +72,10 @@ import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
+import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
+import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
+import { SharedBadges } from '../elements/SharedBadges.tsx'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
@@ -329,6 +332,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setShowingVisit(false)
     if (revealElement(item.pageId, item.cellId)) selectPage(item.pageId)
   }
+  /** Goes to a cell of an element, from the panel «Элементы доски». */
+  const showCell = (pageId: string, cellId: string) => {
+    if (!pages.some((page) => page.id === pageId)) return
+    following.stop()
+    if (revealElement(pageId, cellId)) selectPage(pageId)
+  }
   // A participant who is not the owner asks the owner to review what they marked «Нужно ревью»: one request for the first
   // element of the change, the others are in the list of statuses. The notification is extra: the status stays whatever
   // the request gets.
@@ -360,6 +369,19 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
   const [propertiesOpen, setPropertiesOpen] = useState(false)
   const [propertiesRequest, setPropertiesRequest] = useState<PropertiesRequest | null>(null)
+  // The panel of the elements of the board, and the element whose cells the menu or a badge asked for.
+  const [elementsOpen, setElementsOpen] = useState(false)
+  const [elementsRequest, setElementsRequest] = useState<ElementsRequest | null>(null)
+  const showWhereUsed = (key: string) => {
+    setElementsOpen(true)
+    setElementsRequest({ key })
+  }
+  // The window that merges the selected shapes into one element, or that removes an element from all pages.
+  const [elementWindow, setElementWindow] = useState<{
+    kind: 'merge' | 'delete'
+    editor: DiagramEditor
+    request: ContextMenuRequest
+  } | null>(null)
   const showThreadsOf = (cellId: string) => {
     if (!editor) return
     openComments()
@@ -516,6 +538,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         />
         <StatusSummary document={document} onSelect={showElement} />
         <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
+        <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
         <CommentsButton
           threads={threads.data}
           open={commentsOpen}
@@ -686,6 +709,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onChanged={notifyCommentsChanged}
                   />
                   <StatusBadges editor={editor} document={document} />
+                  <SharedBadges editor={editor} document={document} onShow={showWhereUsed} />
                   <LockBadges editor={editor} />
                   <ShapeLinks editor={editor} pages={pages} onSelectPage={selectPage} onNavigate={following.stop} />
                   {!readOnly && <QuickConnect editor={editor} />}
@@ -704,6 +728,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         }}
                       />
                     )}
+                    {elementsOpen && (
+                      <ElementsPanel
+                        document={document}
+                        canPlace={!readOnly}
+                        request={elementsRequest}
+                        onShow={showCell}
+                        onClose={() => {
+                          setElementsOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                   </SidePanels>
                   <CanvasMenu
                     editor={editor}
@@ -712,10 +748,34 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                       setPropertiesOpen(true)
                       setPropertiesRequest({ cellId })
                     }}
+                    onWhereUsed={(cellId) => {
+                      const element = editor?.selectedElement()
+                      showWhereUsed(element?.elementId ?? `${currentPage.id}/${cellId}`)
+                    }}
+                    onDeleteElementEverywhere={
+                      readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'delete', editor, request })
+                    }
+                    onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
                   />
+                  {elementWindow &&
+                    elementWindow.editor === editor &&
+                    (elementWindow.kind === 'merge' ? (
+                      <MergeElementsDialog
+                        editor={elementWindow.editor}
+                        request={elementWindow.request}
+                        onClose={() => setElementWindow(null)}
+                      />
+                    ) : (
+                      <DeleteElementDialog
+                        editor={elementWindow.editor}
+                        document={document}
+                        request={elementWindow.request}
+                        onClose={() => setElementWindow(null)}
+                      />
+                    ))}
                   {linking && linking.editor === editor && (
                     <LinkDialog
                       editor={linking.editor}
