@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api/boards.ts'
+import type { NotificationSettings } from '../api/notificationSettings.ts'
 import { participantColor } from '../board/identity.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
@@ -118,6 +119,13 @@ const toRgb = (hex: string) => {
 const tokenUrl = `POST /api/boards/${boardId}/collab-token`
 const collabToken = (token: string): MockResponse => ({ body: { token, expiresAt: '2026-10-01T10:05:00Z' } })
 
+/** The settings of a user who gets notifications only in the bell. */
+const noChannels: NotificationSettings = {
+  email: { available: true, channel: null },
+  webhook: { available: true, hosts: ['hooks.slack.com'], channel: null },
+  mutedBoards: [],
+}
+
 /** What the API answers the page of the board by default. */
 const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> = {}) => ({
   'GET /api/me': { body: ALICE },
@@ -135,6 +143,7 @@ const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> =
   [`PUT ${boardUrl}/visit`]: { status: 204 },
   [`DELETE ${boardUrl}/visit`]: { status: 204 },
   [`GET ${boardUrl}/proposals`]: { body: [] },
+  'GET /api/notification-settings': { body: noChannels },
   ...responses,
 })
 
@@ -1284,6 +1293,41 @@ describe('BoardPage', () => {
       expect(screen.getByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Архитектура' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).not.toBeInTheDocument()
+    })
+
+    it('lets a viewer with an email for notifications stop and restart those of the board from its menu', async () => {
+      const withEmail: NotificationSettings = {
+        ...noChannels,
+        email: {
+          available: true,
+          channel: {
+            address: 'alice@example.com',
+            verified: true,
+            verificationSentAt: null,
+            enabled: true,
+            events: ['mentions'],
+            lastDeliveredAt: null,
+            lastError: null,
+            lastErrorAt: null,
+          },
+        },
+      }
+      const muted = { ...withEmail, mutedBoards: [{ boardId, boardTitle: 'Архитектура', mutedAt: '2026-10-08T10:00:00Z' }] }
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: { body: boardToView },
+        'GET /api/notification-settings': [{ body: withEmail }, { body: muted }, { body: withEmail }],
+        [`PUT ${boardUrl}/notification-mute`]: { status: 204 },
+        [`DELETE ${boardUrl}/notification-mute`]: { status: 204 },
+      })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Меню доски «Архитектура»' }))
+      expect(screen.queryByRole('menuitem', { name: 'История версий' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Не присылать уведомления' }))
+      expect(requests(provider.fetchMock, 'PUT', `${boardUrl}/notification-mute`)).toHaveLength(1)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Присылать уведомления' }))
+      expect(requests(provider.fetchMock, 'DELETE', `${boardUrl}/notification-mute`)).toHaveLength(1)
     })
 
     it('shows the new title when another participant renamed the board', async () => {

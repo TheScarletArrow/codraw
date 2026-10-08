@@ -6,6 +6,7 @@ import { TermsPage } from './legal/TermsPage.tsx'
 import { BoardsPage } from './pages/BoardsPage.tsx'
 import { InvitePage } from './pages/InvitePage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
+import { NotificationSettingsPage } from './pages/NotificationSettingsPage.tsx'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <AppError /> },
@@ -20,6 +21,8 @@ export const routes: RouteObject[] = [
       { index: true, element: <BoardsPage /> },
       // An invitation needs a signed-in user: a visitor without a session comes back here from the login page.
       { path: 'invite/:token', element: <InvitePage /> },
+      // The link of a letter that confirms an address comes here too, with `?confirm=`.
+      { path: 'settings/notifications', element: <NotificationSettingsPage /> },
       {
         path: 'boards/:boardId',
         // The editor pulls in maxGraph, so it is loaded only when a board is opened.

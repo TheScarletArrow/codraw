@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { canManageVersions, deleteBoard, renameBoard, type Board } from '../api/boards.ts'
+import { useBoardNotifications } from '../notifications/useBoardNotifications.ts'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { BoardActions } from './BoardActions.tsx'
 import { TitleInput } from './TitleInput.tsx'
@@ -15,13 +16,15 @@ interface BoardHeadingProps {
 }
 
 /**
- * Title of the board; its owner renames it with a click and deletes it from the menu of the board, and whoever edits it
- * opens its versions from that menu.
+ * Title of the board; its owner renames it with a click and deletes it from the menu of the board, whoever edits it
+ * opens its versions from that menu, and whoever has an email or a chat for notifications turns those of the board off
+ * and on there.
  */
 export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [renaming, setRenaming] = useState(false)
+  const notifications = useBoardNotifications(board.id)
   const rename = useMutation({
     mutationFn: (title: string) => renameBoard(board.id, title),
     onSuccess: (renamed) => {
@@ -47,11 +50,12 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
 
   if (board.role !== 'owner') {
     const heading = <h2 className="max-w-64 shrink-0 truncate font-semibold">{board.title}</h2>
-    if (!canManageVersions(board) || !onOpenHistory) return heading
+    const onHistory = canManageVersions(board) ? onOpenHistory : undefined
+    if (!onHistory && !notifications) return heading
     return (
       <div className="flex max-w-72 shrink-0 items-center gap-1">
         {heading}
-        <BoardActions title={board.title} onHistory={onOpenHistory} />
+        <BoardActions title={board.title} onHistory={onHistory} notifications={notifications} />
       </div>
     )
   }
@@ -88,6 +92,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
         onRename={() => setRenaming(true)}
         onHistory={onOpenHistory}
         onDelete={() => remove.mutate()}
+        notifications={notifications}
       />
       {(rename.isError || remove.isError) && (
         <span role="alert" className="text-sm whitespace-nowrap text-destructive">

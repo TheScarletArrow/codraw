@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell } from 'lucide-react'
+import { Bell, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -88,6 +88,11 @@ function NotificationList({ unread, onLeave }: { unread: number; onLeave: () => 
     <>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <h2 className="flex-1 text-sm font-semibold">Уведомления</h2>
+        <Button asChild variant="ghost" size="icon-xs" title="Настройки уведомлений">
+          <Link to="/settings/notifications" aria-label="Настройки уведомлений" onClick={onLeave}>
+            <Settings />
+          </Link>
+        </Button>
         <Button
           type="button"
           variant="ghost"
