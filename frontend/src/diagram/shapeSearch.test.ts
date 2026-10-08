@@ -6,10 +6,10 @@ const labels = (query: string) => searchShapes(query).map((shape) => shape.label
 
 describe('searching shapes', () => {
   it('finds shapes by the technologies they stand for', () => {
-    expect(labels('redis')).toEqual(['Кэш'])
-    expect(labels('kafka')).toEqual(['Топик событий'])
+    expect(labels('redis')).toEqual(['Redis', 'Кэш'])
+    expect(labels('kafka')).toEqual(['Kafka', 'Топик событий'])
     expect(labels('s3')).toEqual(['Хранилище объектов'])
-    expect(labels('k8s')).toEqual(['Кластер Kubernetes'])
+    expect(labels('k8s')).toEqual(['Кластер Kubernetes', 'Kubernetes'])
     expect(labels('postgres')).toContain('База данных')
   })
 

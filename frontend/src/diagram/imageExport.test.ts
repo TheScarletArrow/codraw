@@ -7,6 +7,8 @@ import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { boardLink } from './links.ts'
 import { DEFAULT_PAGE_ID, initializeDocument } from './model.ts'
 import { embedDiagram, IMAGE_BACKGROUND, IMAGE_BORDER } from './svgExport.ts'
+import { PROVIDER_SHAPES } from './providers.ts'
+import { shapeOf } from './shapes.ts'
 
 describe('image export', () => {
   const editors: DiagramEditor[] = []
@@ -33,6 +35,28 @@ describe('image export', () => {
 
   const connect = (editor: DiagramEditor, source: Cell, target: Cell) =>
     editor.graph.insertEdge({ parent: editor.graph.getDefaultParent(), value: '', source, target })
+
+  it('keeps provider logos embedded in SVG and draw.io exports and recognizes them after import', async () => {
+    const { doc, editor } = open()
+    for (const [index, preset] of PROVIDER_SHAPES.entries()) {
+      editor.addShape(preset.id, { x: index * 100, y: 100 })
+    }
+    const svg = new DOMParser().parseFromString(editor.exportSvg()!.svg, 'image/svg+xml')
+    const urls = Array.from(svg.getElementsByTagName('image'), (image) => image.getAttributeNS('http://www.w3.org/1999/xlink', 'href'))
+    expect(urls).toEqual(PROVIDER_SHAPES.map((shape) => shape.style.image))
+
+    const [page] = await parseDrawio(exportDrawioPage(doc, DEFAULT_PAGE_ID)!)
+    expect(page!.cells.map((cell) => [cell.value, cell.style.image, shapeOf(cell.style)?.id])).toEqual(
+      PROVIDER_SHAPES.map((shape) => [shape.value, shape.style.image, shape.id]),
+    )
+    for (const url of urls) {
+      expect(url).toMatch(/^data:image\/svg\+xml;base64,/)
+      const icon = new DOMParser().parseFromString(atob(url!.split(',')[1]!), 'image/svg+xml')
+      expect(icon.querySelector('parsererror')).toBeNull()
+      expect(icon.documentElement.localName).toBe('svg')
+    }
+    expect(shapeOf({ shape: 'image', image: '/uploaded-picture.png' })).toBeNull()
+  })
 
   it('draws the whole page at 100% with margins on white, whatever the zoom', () => {
     const { editor } = open()

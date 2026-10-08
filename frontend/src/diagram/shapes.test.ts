@@ -59,6 +59,7 @@ describe('shape presets', () => {
         'C4',
         ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы'],
       ],
+      ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
     expect(new Set(SHAPES.map((shape) => shape.id)).size).toBe(SHAPES.length)
   })
@@ -206,6 +207,7 @@ describe('shape groups', () => {
       'system',
       'uml',
       'c4',
+      'system',
     ])
   })
 
