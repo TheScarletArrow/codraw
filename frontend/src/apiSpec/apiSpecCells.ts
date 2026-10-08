@@ -2,6 +2,7 @@ import type { Interaction } from '../diagram/elementKinds.ts'
 import { LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, type ShapeStyle } from '../diagram/shapes.ts'
+import { SOURCE_KEY } from '../diagram/sources.ts'
 import { CARDINALITY_MARKERS } from '../mermaid/mermaidCells.ts'
 import { tableWidth } from '../sql/erDiagram.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -205,6 +206,7 @@ export async function apiSpecCells(
   graph: ApiGraph,
   origin: { x: number; y: number },
   engine?: () => Promise<LayoutEngine>,
+  sourcePrefix?: string,
 ): Promise<CellData[]> {
   const builder = new DiagramBuilder()
   const service = findShape('service')!
@@ -228,6 +230,12 @@ export async function apiSpecCells(
     const labels = model.fields.map((field) => [fieldName(field.name), field.type, field.notNull && 'NOT NULL'].filter(Boolean).join(' '))
     return builder.table(model.name, 0, 0, labels, tableWidth(model.name, labels))
   })
+  const nodeSource = (node: ApiNode): string => {
+    if (node.kind === 'field') return `${sourcePrefix}:model:${graph.models[node.index]!.name}.${graph.models[node.index]!.fields[node.field]!.name}`
+    if (node.kind === 'model') return `${sourcePrefix}:model:${graph.models[node.index]!.name}`
+    if (node.kind === 'topic') return `${sourcePrefix}:topic:${graph.topics[node.index]!}`
+    return `${sourcePrefix}:service:${graph.services[node.index]!.title}`
+  }
   const cellOf = (node: ApiNode): string => {
     if (node.kind === 'field') return tables[node.index]!.fields[node.field]!
     if (node.kind === 'model') return tables[node.index]!.id
@@ -235,12 +243,28 @@ export async function apiSpecCells(
   }
   /** The shape an end of a link is on: a field is on its table. */
   const shapeOf = (node: ApiNode) => (node.kind === 'field' ? tables[node.index]!.id : cellOf(node))
+  const sourceMarks = new Map<string, string>()
   for (const link of graph.links) {
     const { label: value, style, technology, interaction } = link
-    builder.edge(cellOf(link.source), cellOf(link.target), { value, style, technology, interaction })
+    const edge = builder.edge(cellOf(link.source), cellOf(link.target), { value, style, technology, interaction })
+    if (sourcePrefix) sourceMarks.set(edge, `${sourcePrefix}:edge:${nodeSource(link.source)}->${nodeSource(link.target)}:${value}`)
   }
 
   const cells = builder.build()
+  const byId = new Map(cells.map((cell) => [cell.id, cell]))
+  if (sourcePrefix) {
+    graph.services.forEach((item, index) => sourceMarks.set(services[index]!, `${sourcePrefix}:service:${item.title}`))
+    graph.topics.forEach((address, index) => sourceMarks.set(topics[index]!, `${sourcePrefix}:topic:${address}`))
+    graph.models.forEach((model, index) => {
+      const table = tables[index]!
+      sourceMarks.set(table.id, `${sourcePrefix}:model:${model.name}`)
+      model.fields.forEach((field, fieldIndex) => sourceMarks.set(table.fields[fieldIndex]!, `${sourcePrefix}:model:${model.name}.${field.name}`))
+    })
+    for (const [id, source] of sourceMarks) {
+      const cell = byId.get(id)
+      if (cell) cell.style = { ...cell.style, [SOURCE_KEY]: source }
+    }
+  }
   const shapes = cells.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')
   const boxes = await layoutShapes(
     shapes.map((cell) => ({ id: cell.id, ...cell.geometry!, frame: false })),

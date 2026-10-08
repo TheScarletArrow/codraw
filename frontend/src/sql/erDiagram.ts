@@ -2,6 +2,7 @@ import { isBaseStyle } from '../diagram/baseTables.ts'
 import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, isTableIndexStyle, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
+import { SOURCE_KEY } from '../diagram/sources.ts'
 import { badgeRoom, tableRows } from '../diagram/tableRows.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import {
@@ -139,6 +140,7 @@ export async function schemaCells(
   origin: { x: number; y: number },
   engine?: () => Promise<LayoutEngine>,
   links: TableLink[] = [],
+  sourcePrefix?: string,
 ): Promise<CellData[]> {
   const builder = new DiagramBuilder()
   const referencing = (table: SqlTable, column: string) => table.foreignKeys.some((key) => key.columns.includes(column))
@@ -156,11 +158,19 @@ export async function schemaCells(
       const labels = table.columns.map((column) => fieldLabel(column, referencing(table, column.name)))
       const references = table.columns.map((column) => referenceOf(table, column.name))
       const indexes = table.indexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
-      const { id, fields } = builder.table(table.name, 0, 0, labels, tableWidth(table.name, labels, references, indexes), indexes)
-      return [table.name, { id, fields: new Map(table.columns.map((column, index) => [column.name, fields[index]!])) }]
+      const built = builder.table(table.name, 0, 0, labels, tableWidth(table.name, labels, references, indexes), indexes)
+      return [
+        table.name,
+        {
+          id: built.id,
+          fields: new Map(table.columns.map((column, index) => [column.name, built.fields[index]!])),
+          indexes: new Map(table.indexes.map((index, at) => [index.name, built.indexes[at]!])),
+        },
+      ]
     }),
   )
   const references: { source: string; target: string }[] = []
+  const sourceMarks = new Map<string, string>()
   for (const table of schema.tables) {
     for (const foreignKey of table.foreignKeys) {
       const target = schema.tables.find((candidate) => candidate.name === foreignKey.table)
@@ -170,7 +180,11 @@ export async function schemaCells(
         const source = built.get(table.name)!.fields.get(name)
         const referenced = columns[index] && built.get(target.name)!.fields.get(columns[index])
         if (!source || !referenced) return
-        builder.edge(source, referenced, { style: referenceStyle(table, table.columns.find((column) => column.name === name)) })
+        const edge = builder.edge(source, referenced, { style: referenceStyle(table, table.columns.find((column) => column.name === name)) })
+        if (sourcePrefix) {
+          const referenceName = columns[index] ?? ''
+          sourceMarks.set(edge, `${sourcePrefix}:${table.name}.${name}->${target.name}.${referenceName}`)
+        }
         references.push({ source: built.get(table.name)!.id, target: built.get(target.name)!.id })
       })
     }
@@ -178,10 +192,31 @@ export async function schemaCells(
   for (const link of links) {
     const [from, to] = [built.get(link.from)?.id, built.get(link.to)?.id]
     if (!from || !to) continue
-    builder.edge(from, to, { value: link.label, style: link.style })
+    const edge = builder.edge(from, to, { value: link.label, style: link.style })
+    if (sourcePrefix) sourceMarks.set(edge, `${sourcePrefix}:${link.from}->${link.to}:${link.label}`)
     references.push({ source: from, target: to })
   }
   const cells = builder.build()
+  const byId = new Map(cells.map((cell) => [cell.id, cell]))
+  if (sourcePrefix) {
+    for (const table of schema.tables) {
+      const entry = built.get(table.name)
+      if (!entry) continue
+      sourceMarks.set(entry.id, `${sourcePrefix}:${table.name}`)
+      for (const column of table.columns) {
+        const field = entry.fields.get(column.name)
+        if (field) sourceMarks.set(field, `${sourcePrefix}:${table.name}.${column.name}`)
+      }
+      for (const index of table.indexes) {
+        const row = entry.indexes.get(index.name)
+        if (row) sourceMarks.set(row, `${sourcePrefix}:${table.name}#index:${index.name}`)
+      }
+    }
+    for (const [id, source] of sourceMarks) {
+      const cell = byId.get(id)
+      if (cell) cell.style = { ...cell.style, [SOURCE_KEY]: source }
+    }
+  }
   const tables = cells.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')
   const boxes = await layoutShapes(
     tables.map((cell) => ({ id: cell.id, ...cell.geometry!, frame: false })),

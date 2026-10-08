@@ -19,6 +19,8 @@ const TEXT_SOURCE = 'Текст'
 interface ApiSpecImportProps {
   /** Adds the cells built for a top-left corner to the page. */
   onAdd: (cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void
+  /** Opens a proposal whose draft gets the cells of this import as an update. */
+  onUpdate?: (source: string, summary: string, cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void
   onBack: () => void
   busy: boolean
   /** Why the last addition failed. */
@@ -36,7 +38,7 @@ interface Parsed {
  * The import of OpenAPI and AsyncAPI in the menu «SQL и Mermaid»: documents from the text and from files, parsed while
  * the participant types, a summary of what the page gets, the errors of the documents it does not get.
  */
-export function ApiSpecImport({ onAdd, onBack, busy, error }: ApiSpecImportProps) {
+export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecImportProps) {
   const [text, setText] = useState('')
   const [files, setFiles] = useState<ApiSource[]>([])
   const [models, setModels] = useState(true)
@@ -136,10 +138,24 @@ export function ApiSpecImport({ onAdd, onBack, busy, error }: ApiSpecImportProps
         type="button"
         size="sm"
         disabled={busy || pending || !graph || tooLarge !== null}
-        onClick={() => graph && onAdd((origin) => apiSpecCells(graph, origin))}
+        onClick={() => graph && onAdd((origin) => apiSpecCells(graph, origin, undefined, 'api'))}
       >
         Добавить на страницу
       </Button>
+      {onUpdate && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy || pending || !graph || tooLarge !== null}
+          onClick={() => graph && onUpdate(sourceTitle(sources), apiSummary(graph), (origin) => apiSpecCells(graph, origin, undefined, 'api'))}
+        >
+          Обновить через предложение
+        </Button>
+      )}
     </>
   )
 }
+
+const sourceTitle = (sources: ApiSource[]) =>
+  sources.length === 1 ? sources[0]!.name : sources.length > 1 ? `${sources.length} файлов OpenAPI / AsyncAPI` : 'OpenAPI / AsyncAPI'

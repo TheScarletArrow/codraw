@@ -15,6 +15,10 @@ const TEXT_SOURCE = 'Текст'
 interface GradleImportProps {
   /** Adds the cells built for a top-left corner to the page. */
   onAdd: (cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void
+  /** Opens a proposal whose draft gets the cells of this import as an update. */
+  onUpdate?: (source: string, summary: string, cells: (origin: { x: number; y: number }) => Promise<CellData[]>) => void
+  /** Prefix of `codrawSource` markers for cells of this import. */
+  sourcePrefix?: string
   onBack: () => void
   busy: boolean
   /** Why the last addition failed. */
@@ -45,7 +49,7 @@ function readBuild(folder: Folder | null, graphs: ApiSource[]): { build: GradleB
  * The import of a build of Gradle in the menu «SQL и Mermaid»: the graph that the init script `codraw.gradle` prints,
  * opened or pasted, or the files of the build in a chosen folder; a summary of what the page gets and the errors.
  */
-export function GradleImport({ onAdd, onBack, busy, error }: GradleImportProps) {
+export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack, busy, error }: GradleImportProps) {
   const [text, setText] = useState('')
   const [files, setFiles] = useState<ApiSource[]>([])
   const [folder, setFolder] = useState<Folder | null>(null)
@@ -177,10 +181,24 @@ export function GradleImport({ onAdd, onBack, busy, error }: GradleImportProps) 
         type="button"
         size="sm"
         disabled={busy || !graph || empty || tooLarge !== null}
-        onClick={() => graph && onAdd((origin) => infraCells(graph, origin))}
+        onClick={() => graph && onAdd((origin) => infraCells(graph, origin, undefined, sourcePrefix))}
       >
         Добавить на страницу
       </Button>
+      {onUpdate && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy || !graph || empty || tooLarge !== null}
+          onClick={() => graph && result.build && onUpdate(sourceTitle(folder, graphs), gradleSummary(result.build, graph), (origin) => infraCells(graph, origin, undefined, sourcePrefix))}
+        >
+          Обновить через предложение
+        </Button>
+      )}
     </>
   )
 }
+
+const sourceTitle = (folder: Folder | null, graphs: ApiSource[]) =>
+  folder ? folder.name : graphs.length === 1 ? graphs[0]!.name : graphs.length > 1 ? `${graphs.length} файлов Gradle` : 'Gradle'

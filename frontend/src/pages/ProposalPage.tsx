@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -44,6 +44,7 @@ import { useRevealCell } from '../elements/useRevealCell.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
+import { applySchemaUpdate, takePendingSchemaImportUpdate } from '../proposals/schemaImportUpdate.ts'
 import { useDraftConnection } from '../proposals/useDraftConnection.ts'
 import { SqlMenu } from '../sql/SqlMenu.tsx'
 
@@ -97,6 +98,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])
   const pages = usePages(document, !readOnly)
+  const appliedImport = useRef<string | null>(null)
   // The author adds images to the draft; they are images of the board, which it gets when the proposal is accepted.
   const imageUploads = useImageUploads(readOnly ? null : { boardId: board.id, proposalId: proposal.id })
   const histories = useMemo(() => document && new PageHistories(document), [document])
@@ -112,6 +114,14 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
   }, [currentPage, requestedPage, selectPage])
+  useEffect(() => {
+    if (!document || readOnly || appliedImport.current === proposal.id) return
+    const update = takePendingSchemaImportUpdate(proposal.id)
+    appliedImport.current = proposal.id
+    if (!update) return
+    applySchemaUpdate(document, update.pageId, update.cells, author)
+    selectPage(update.pageId)
+  }, [document, readOnly, proposal.id, author, selectPage])
   const showCell = useRevealCell(editor, selectPage)
 
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.

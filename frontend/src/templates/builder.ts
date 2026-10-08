@@ -85,7 +85,14 @@ export class DiagramBuilder {
    * Adds a table of a database with its fields under the name and the rows of its indexes under the fields; returns the
    * ids of the table and of its fields.
    */
-  table(name: string, x: number, y: number, fields: string[], width = 220, indexes: string[] = []): { id: string; fields: string[] } {
+  table(
+    name: string,
+    x: number,
+    y: number,
+    fields: string[],
+    width = 220,
+    indexes: string[] = [],
+  ): { id: string; fields: string[]; indexes: string[] } {
     const indexesTop = TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT + TABLE_INDEX_GAP
     const id = this.shape('table', x, y, {
       value: name,
@@ -101,8 +108,8 @@ export class DiagramBuilder {
         style: { ...TABLE_FIELD_STYLE, ...style } as Record<string, StyleValue>,
       })
     const fieldIds = fields.map((field, index) => row(field, TABLE_HEADER_HEIGHT + index * TABLE_FIELD_HEIGHT, {}))
-    indexes.forEach((index, at) => row(index, indexesTop + at * TABLE_FIELD_HEIGHT, { [TABLE_INDEX_KEY]: true }))
-    return { id, fields: fieldIds }
+    const indexIds = indexes.map((index, at) => row(index, indexesTop + at * TABLE_FIELD_HEIGHT, { [TABLE_INDEX_KEY]: true }))
+    return { id, fields: fieldIds, indexes: indexIds }
   }
 
   /** Adds an edge from `source` to `target` with the default look of CoDraw and the keys of `style`. */

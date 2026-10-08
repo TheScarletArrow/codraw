@@ -2,6 +2,7 @@ import type { CellData, StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine, type LayoutShape } from '../diagram/layout.ts'
 import { sequenceCells } from '../diagram/sequence.ts'
 import { findShape, type ShapeId } from '../diagram/shapes.ts'
+import { SOURCE_KEY } from '../diagram/sources.ts'
 import { schemaCells, type TableLink } from '../sql/erDiagram.ts'
 import type { SqlColumn, SqlSchema, SqlTable } from '../sql/parseSql.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -37,7 +38,7 @@ function edgeStyle(edge: Flowchart['edges'][number]): Record<string, StyleValue>
 }
 
 /** Cells of a flowchart: shapes for nodes, frames for subgraphs around their nodes, laid out along the edges. */
-async function flowchartCells(chart: Flowchart, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>) {
+async function flowchartCells(chart: Flowchart, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>, sourcePrefix?: string) {
   const builder = new DiagramBuilder()
   // Frames first, outer ones before inner ones, so that they are drawn under what they hold.
   const frames = new Map(chart.subgraphs.map((subgraph) => [subgraph.id, builder.shape('boundary', 0, 0, { value: subgraph.title })]))
@@ -47,11 +48,21 @@ async function flowchartCells(chart: Flowchart, origin: { x: number; y: number }
       return [node.id, builder.shape(preset, 0, 0, { value: node.label, ...fitted(preset, node.label) })]
     }),
   )
+  const sourceMarks = new Map<string, string>()
   for (const edge of chart.edges) {
-    builder.edge(nodes.get(edge.source)!, nodes.get(edge.target)!, { value: edge.label, style: edgeStyle(edge) })
+    const id = builder.edge(nodes.get(edge.source)!, nodes.get(edge.target)!, { value: edge.label, style: edgeStyle(edge) })
+    if (sourcePrefix) sourceMarks.set(id, `${sourcePrefix}:edge:${edge.source}->${edge.target}:${edge.label}`)
   }
   const cells = builder.build()
   const byId = new Map(cells.map((cell) => [cell.id, cell]))
+  if (sourcePrefix) {
+    chart.subgraphs.forEach((subgraph) => sourceMarks.set(frames.get(subgraph.id)!, `${sourcePrefix}:subgraph:${subgraph.id}`))
+    chart.nodes.forEach((node) => sourceMarks.set(nodes.get(node.id)!, `${sourcePrefix}:node:${node.id}`))
+    for (const [id, source] of sourceMarks) {
+      const cell = byId.get(id)
+      if (cell) cell.style = { ...cell.style, [SOURCE_KEY]: source }
+    }
+  }
   const frameOf = (subgraph: string | null) => (subgraph === null ? null : (frames.get(subgraph) ?? null))
   const shapes: LayoutShape[] = [
     ...chart.subgraphs.map((subgraph) => ({
@@ -113,7 +124,7 @@ function referencingColumn(table: SqlTable, referenced: string): (SqlColumn & { 
  * Cells of an ER diagram: tables with their attributes. A relation becomes a reference between fields when the table on
  * its «many» side has a column marked FK for it, else an edge between the tables, with the markers of its cardinalities.
  */
-async function erCells(diagram: ErDiagram, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>) {
+async function erCells(diagram: ErDiagram, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>, sourcePrefix?: string) {
   const schema: SqlSchema = { tables: diagram.tables.map((table) => ({ ...table, foreignKeys: [] })), skipped: 0 }
   const table = (name: string) => schema.tables.find((candidate) => candidate.name === name)!
   const links: TableLink[] = []
@@ -134,13 +145,18 @@ async function erCells(diagram: ErDiagram, origin: { x: number; y: number }, eng
       links.push({ from, to, label: relation.label, style })
     }
   }
-  return schemaCells(schema, origin, engine, links)
+  return schemaCells(schema, origin, engine, links, sourcePrefix)
 }
 
 /** Cells of a diagram of Mermaid laid out with its top-left corner at `origin`. */
-export function mermaidCells(diagram: MermaidDiagram, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>): Promise<CellData[]> {
+export function mermaidCells(
+  diagram: MermaidDiagram,
+  origin: { x: number; y: number },
+  engine?: () => Promise<LayoutEngine>,
+  sourcePrefix?: string,
+): Promise<CellData[]> {
   if (diagram.kind === 'sequence') return Promise.resolve(sequenceCells(diagram.diagram, origin))
-  return diagram.kind === 'flowchart' ? flowchartCells(diagram, origin, engine) : erCells(diagram, origin, engine)
+  return diagram.kind === 'flowchart' ? flowchartCells(diagram, origin, engine, sourcePrefix) : erCells(diagram, origin, engine, sourcePrefix)
 }
 
 /** What the import of a diagram adds, for the summary before it. */
@@ -155,4 +171,3 @@ export function mermaidSummary(diagram: MermaidDiagram): string {
   }
   return `Таблиц: ${diagram.tables.length}, связей: ${diagram.relations.length}, пропущено строк: ${diagram.skipped}`
 }
-
