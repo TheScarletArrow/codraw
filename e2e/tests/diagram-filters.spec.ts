@@ -16,10 +16,11 @@ function look(page: Page, id: string): Promise<{ opacity: number; drawn: boolean
   }, id)
 }
 
-/** Gives the shape an owner in the panel of properties. */
-async function setOwner(page: Page, id: string, owner: string) {
+/** Gives the shape named `name` an owner in the panel of properties, once the panel shows the shape. */
+async function setOwner(page: Page, id: string, name: string, owner: string) {
   const at = center(await cellBox(page, id))
   await page.mouse.click(at.x, at.y)
+  await expect(panel(page).getByLabel('Имя', { exact: true })).toHaveValue(name)
   await panel(page).getByLabel('Владелец').fill(owner)
   await panel(page).getByLabel('Владелец').press('Enter')
 }
@@ -28,11 +29,12 @@ test('a filter by owner dims and hides the others for its participant alone, and
   const { alice, bob, close } = await twoParticipants(browser)
   const payments = await addShape(alice, 'Сервис')
   const stock = await addShape(alice, 'База данных')
+  // Below the service, not at the right of it, where the panel of properties covers it.
   const box = await cellBox(alice, stock)
-  await drag(alice, { x: box.x + 20, y: box.y + 30 }, { x: box.x + 270, y: box.y + 30 })
+  await drag(alice, { x: box.x + 20, y: box.y + 30 }, { x: box.x + 20, y: box.y + 230 })
   await alice.getByRole('button', { name: 'Свойства', exact: true }).click()
-  await setOwner(alice, payments, 'Платежи')
-  await setOwner(alice, stock, 'Склад')
+  await setOwner(alice, payments, 'Сервис', 'Платежи')
+  await setOwner(alice, stock, 'База данных', 'Склад')
 
   // Алиса shows the payments team: the warehouse goes pale for her only.
   await alice.getByRole('button', { name: 'Фильтр' }).click()
@@ -64,10 +66,10 @@ test('«Только видимое» saves the slice of the filter as an image'
   const payments = await addShape(alice, 'Сервис')
   const stock = await addShape(alice, 'База данных')
   const box = await cellBox(alice, stock)
-  await drag(alice, { x: box.x + 20, y: box.y + 30 }, { x: box.x + 270, y: box.y + 30 })
+  await drag(alice, { x: box.x + 20, y: box.y + 30 }, { x: box.x + 20, y: box.y + 230 })
   await alice.getByRole('button', { name: 'Свойства', exact: true }).click()
-  await setOwner(alice, payments, 'Платежи')
-  await setOwner(alice, stock, 'Склад')
+  await setOwner(alice, payments, 'Сервис', 'Платежи')
+  await setOwner(alice, stock, 'База данных', 'Склад')
   await alice.getByRole('button', { name: 'Фильтр' }).click()
   await filterWindow(alice).getByRole('checkbox', { name: 'Склад' }).check()
   await alice.keyboard.press('Escape')

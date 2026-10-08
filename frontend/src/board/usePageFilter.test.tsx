@@ -1,7 +1,7 @@
 import { act, render } from '@testing-library/react'
 import { useEffect } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { NO_FILTER, type PageFilter } from '../diagram/pageFilter.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { usePageFilter } from './usePageFilter.ts'
@@ -38,5 +38,45 @@ describe('usePageFilter', () => {
     await act(async () => change(NO_FILTER))
     expect(router.state.location.search).toBe('?page=p2')
     expect(editor.setFilter).toHaveBeenLastCalledWith(null)
+  })
+
+  it('shows a choice at once, while the router is still changing the address, and follows the address after', async () => {
+    const editor = createFakeEditor()
+    let change: (filter: PageFilter) => void = () => {}
+    const seen: PageFilter[] = []
+    function Page() {
+      const { filter, changeFilter } = usePageFilter(editor)
+      useEffect(() => {
+        change = changeFilter
+        seen.push(filter)
+      })
+      return null
+    }
+    // The first load opens the board; the next ones wait to be released, as a slow router would.
+    let loads = 0
+    let release = () => {}
+    const loader = () => (loads++ === 0 ? null : new Promise<null>((resolve) => (release = () => resolve(null))))
+    const router = createMemoryRouter([{ path: '/boards/:id', Component: Page, loader }], { initialEntries: ['/boards/b1?page=p2'] })
+    render(<RouterProvider router={router} />)
+    await act(async () => {})
+    expect(seen.at(-1)).toEqual(NO_FILTER)
+
+    await act(async () => change({ ...NO_FILTER, owners: ['Склад'] }))
+    expect(router.state.location.search).toBe('?page=p2')
+    const chosen = seen.at(-1)
+    expect(chosen).toEqual({ ...NO_FILTER, owners: ['Склад'] })
+    expect(editor.setFilter).toHaveBeenLastCalledWith(chosen)
+    const calls = vi.mocked(editor.setFilter).mock.calls.length
+
+    // The address gets the choice: the filter stays the same object, and the editor is not told again.
+    await act(async () => release())
+    expect(new URLSearchParams(router.state.location.search).getAll('owner')).toEqual(['Склад'])
+    expect(seen.at(-1)).toBe(chosen)
+    expect(editor.setFilter).toHaveBeenCalledTimes(calls)
+
+    // Another address, e.g. a link, has a filter of its own.
+    await act(async () => void router.navigate('/boards/b1?page=p2&tag=pci'))
+    await act(async () => release())
+    expect(seen.at(-1)).toEqual({ ...NO_FILTER, tags: ['pci'] })
   })
 })
