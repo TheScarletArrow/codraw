@@ -17,8 +17,10 @@ import {
   type PointData,
 } from '../diagram/model.ts'
 import { listPages } from '../diagram/pages.ts'
+import { isLegendStyle } from '../diagram/legend.ts'
 import { isSequenceStyle, sequencePartOf } from '../diagram/sequence.ts'
 import { isViewStyle, viewQueryOf, VIEW_QUERY_KEY } from '../diagram/views.ts'
+import { legendDrawioCells } from './legendDrawio.ts'
 import { sequenceDrawioCells } from './sequenceDrawio.ts'
 import { formatStyle } from './style.ts'
 
@@ -170,7 +172,8 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
 
 /**
  * Cells of a page in the order of the tree: every cell is followed by its children, siblings in drawing order. With
- * `only`, just these cells of the layer with their descendants. A sequence diagram is written as shapes of draw.io.
+ * `only`, just these cells of the layer with their descendants. A sequence diagram is written as shapes of draw.io, and
+ * so is a legend, with the items of the whole page.
  */
 function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, images?: EmbeddedImages): string {
   const cells = getCells(doc, pageId)
@@ -185,16 +188,40 @@ function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, im
     entry.data.parent = parent
     children.set(parent, [...(children.get(parent) ?? []), entry])
   }
+  children.forEach((siblings) => siblings.sort((a, b) => compareCells(a.data, b.data)))
+  // What a legend lists: the cells of the page in drawing order, as the canvas has them.
+  let ordered: CellData[] | null = null
+  const drawingOrder = () => {
+    if (ordered) return ordered
+    const cells: CellData[] = []
+    const seen = new Set<string>()
+    const walk = (parent: string) => {
+      for (const entry of children.get(parent) ?? []) {
+        if (seen.has(entry.data.id)) continue
+        seen.add(entry.data.id)
+        cells.push(entry.data)
+        walk(entry.data.id)
+      }
+    }
+    walk(LAYER_CELL_ID)
+    return (ordered = cells)
+  }
   const xml: string[] = []
   const visited = new Set<string>()
   const visit = (parent: string) => {
-    for (const entry of (children.get(parent) ?? []).sort((a, b) => compareCells(a.data, b.data))) {
+    for (const entry of children.get(parent) ?? []) {
       if (visited.has(entry.data.id) || (only && parent === LAYER_CELL_ID && !only.has(entry.data.id))) continue
       visited.add(entry.data.id)
+      if (entry.data.kind === 'vertex' && isLegendStyle(entry.data.style)) {
+        const [frame, ...parts] = legendDrawioCells(entry.data, drawingOrder())
+        xml.push(cellXml(frame!, entry.attrs, images), ...parts.map((part) => cellXml(part, {}, images)))
+        visit(entry.data.id)
+        continue
+      }
       if (isSequenceStyle(entry.data.style)) {
         // A sequence diagram goes as shapes of draw.io (see `sequenceDrawio.ts`); a cell inside it that is no part of
         // it, as it is.
-        const inside = (children.get(entry.data.id) ?? []).sort((a, b) => compareCells(a.data, b.data))
+        const inside = children.get(entry.data.id) ?? []
         const parts = inside.filter((child) => sequencePartOf(child.data.style) !== null)
         parts.forEach((part) => visited.add(part.data.id))
         const [frame, ...shapes] = sequenceDrawioCells(entry.data, parts.map((part) => part.data))
