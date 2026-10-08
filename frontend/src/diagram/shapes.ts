@@ -16,6 +16,7 @@ export type ShapeId =
   | 'sticky'
   | 'grid-table'
   | 'list'
+  | 'numbered-list'
   | 'table'
   | 'flow-process'
   | 'flow-terminator'
@@ -312,6 +313,14 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         width: 180,
         height: 110,
         value: '• Элемент\n• Элемент\n• Элемент',
+        style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
+      },
+      {
+        id: 'numbered-list',
+        label: 'Нумерованный список',
+        width: 180,
+        height: 110,
+        value: '1. Элемент\n2. Элемент\n3. Элемент',
         style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
       },
     ],

@@ -19,6 +19,7 @@ export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
   sticky: ['sticky', 'note', 'post-it', 'заметка', 'ретро', 'брейншторм', 'идея'],
   'grid-table': ['table', 'grid', 'spreadsheet', 'rows', 'columns', 'таблица', 'сетка', 'строки', 'столбцы'],
   list: ['list', 'bullet', 'bullets', 'checklist', 'список', 'пункты'],
+  'numbered-list': ['list', 'ordered', 'numbered', 'список', 'номера', 'пункты'],
   table: ['table', 'entity', 'сущность', 'sql', 'er'],
   'flow-process': ['flowchart', 'process', 'step', 'процесс', 'шаг', 'блок-схема'],
   'flow-terminator': ['flowchart', 'terminator', 'start', 'stop', 'начало', 'конец', 'старт', 'финиш', 'блок-схема'],
