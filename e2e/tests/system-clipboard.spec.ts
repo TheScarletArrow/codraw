@@ -127,7 +127,7 @@ test('text from another program becomes a text shape, with the keys or from the 
   const canvas = (await alice.getByTestId('diagram-canvas').boundingBox())!
   const point = { x: canvas.x + 120, y: canvas.y + canvas.height - 120 }
   await alice.mouse.click(point.x, point.y, { button: 'right' })
-  await alice.getByRole('menuitem', { name: 'Вставить' }).click()
+  await alice.getByRole('menuitem', { name: 'Вставить', exact: true }).click()
 
   await expect.poll(async () => (await vertices(alice)).length).toBe(2)
   const note = (await vertices(alice)).find((cell) => cell.value === 'Заметка\nв две строки')!
