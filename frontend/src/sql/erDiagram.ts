@@ -430,8 +430,8 @@ const indexSql = (table: string, index: SqlIndex) =>
   `${index.method ? ` USING ${index.method}` : ''} (${index.columns})${index.rest ? ` ${index.rest}` : ''};`
 
 /**
- * Views in an order that a database takes: each after the views it reads, otherwise in their order; views that read
- * each other in a circle stay in their order.
+ * Views in an order that a database takes: each after the views it reads, otherwise in their order. Views that read
+ * each other in a circle, which a database does not take anyway, come once each all the same.
  */
 function viewOrder(views: SqlView[]): SqlView[] {
   const byName = new Map(views.map((view) => [view.name, view]))
