@@ -128,6 +128,7 @@ import {
   type StoredImage,
 } from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
+import { configureFilter, modelFilterRecords, type FilterStatus } from './filterView.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { LINK_KEY, linkOf } from './links.ts'
 import {
@@ -140,6 +141,7 @@ import {
   unlockCopy,
 } from './locks.ts'
 import { sketchPage, type PageSketch } from './minimap.ts'
+import { filterChoices, isFilterActive, type FilterChoices, type PageFilter } from './pageFilter.ts'
 import { sequenceMermaid as mermaidOfSequence } from '../mermaid/sequenceMermaid.ts'
 import {
   ACTIVATE_KEY,
@@ -652,6 +654,8 @@ export interface EditorState {
   properties: SelectionProperties | null
   /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
   sequence: SelectedSequence | null
+  /** The filter of the page while it chooses something: how many elements match, of how many, and whether it hides. */
+  filter: { matched: number; total: number; hide: boolean } | null
   /** The clipboard of the browser tab holds copied cells: «Вставить как тот же элемент» pastes them. */
   canPasteAsSameElement: boolean
   /** The selection has shapes of at least two elements, or of shapes that are no elements yet, that may be merged. */
@@ -865,7 +869,19 @@ export interface DiagramEditor {
    * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%, in the colors of the
    * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
-  exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
+  exportSvg(options?: SvgOptions & { selectionOnly?: boolean; onlyVisible?: boolean }): ExportedImage | null
+  /**
+   * Shows the page through `filter` (see `pageFilter.ts`): what does not match drawn pale, or not at all when it hides.
+   * Only this editor changes, not the document; `null`, or a filter that chooses nothing, shows everything. While a
+   * filter is on, an image of {@link exportSvg} has the page without it, or with `onlyVisible` only what matches.
+   */
+  setFilter(filter: PageFilter | null): void
+  /** The filter the page is shown through, `null` without one. */
+  currentFilter(): PageFilter | null
+  /** The values the facets of the filter offer on the page, with those `filter` chose; see `filterChoices`. */
+  filterChoices(filter?: PageFilter | null): FilterChoices
+  /** What the filter does to the cell `cellId`: drawn pale, hidden, or nothing. */
+  filterStatus(cellId: string): FilterStatus
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
@@ -1429,6 +1445,9 @@ export function createDiagramEditor(
   const unconfigureSequences = configureSequences(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  // Before the theme, so that the theme sees the pale style of what does not match.
+  let filterChanged = () => {}
+  const filterView = configureFilter(graph, () => filterChanged())
   configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
@@ -1788,6 +1807,12 @@ export function createDiagramEditor(
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
     if (!cell || !isLinkable(cell)) return null
     return { cellId: cell.getId()!, link: linkOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
+  }
+  /** The filter of the page while it chooses something; see {@link EditorState.filter}. */
+  const filterState = (): EditorState['filter'] => {
+    const counts = filterView.counts()
+    const filter = filterView.filter()
+    return counts && filter ? { ...counts, hide: filter.hide } : null
   }
   /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
   const selectionProperties = (): SelectionProperties | null => {
@@ -2229,6 +2254,7 @@ export function createDiagramEditor(
       status: selectionStatus(),
       properties: selectionProperties(),
       sequence: selectionSequence(),
+      filter: filterState(),
       canPasteAsSameElement: !readOnly && clipboard.read() !== null,
       canMergeElements: !readOnly && selectedElements().length >= 2,
     }
@@ -2735,6 +2761,12 @@ export function createDiagramEditor(
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
   model.addListener(InternalEvent.CHANGE, notifyView)
   cells.observeDeep(handleTextAuthors)
+  // What the filter shows is a change of the drawing, and of the state that tells how many elements match.
+  filterChanged = () => {
+    drawingVersion++
+    notify()
+    notifyView()
+  }
 
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
@@ -3052,6 +3084,37 @@ export function createDiagramEditor(
   }
   /** Selected cells without table fields and parts of sequence diagrams: their layouts, not the user, order them. */
   const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
+
+  /**
+   * The image of {@link DiagramEditor.exportSvg} as the page is drawn now: with `onlyVisible` only the cells drawn, which
+   * the image names then as it names a selection.
+   */
+  const drawImage = (selectionOnly: boolean, onlyVisible: boolean, options: SvgOptions): ExportedImage | null => {
+    const copied = selectionOnly ? new Set(cellsToCopy()) : null
+    // In the order of the page, so that what lies on top on the canvas lies on top in the image.
+    const cells = graph
+      .getDefaultParent()
+      .getChildren()
+      .filter((cell) => (!copied || copied.has(cell)) && cell.isVisible())
+    if (copied && cells.length === 0) return null
+    const named = copied !== null || (onlyVisible && filterView.filter() !== null)
+    // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+    // participant never sees.
+    const shown = theme
+    if (shown !== 'light') {
+      theme = 'light'
+      restyle(graph)
+    }
+    try {
+      const image = renderSvg(graph, cells, options)
+      return image && { ...image, cellIds: named ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+    } finally {
+      if (shown !== 'light') {
+        theme = shown
+        restyle(graph)
+      }
+    }
+  }
 
   const editor: DiagramEditor = {
     graph,
@@ -3801,30 +3864,24 @@ export function createDiagramEditor(
       theme = next
       restyle(graph)
     },
-    exportSvg({ selectionOnly = false, ...options } = {}) {
-      const copied = selectionOnly ? new Set(cellsToCopy()) : null
-      // In the order of the page, so that what lies on top on the canvas lies on top in the image.
-      const cells = graph
-        .getDefaultParent()
-        .getChildren()
-        .filter((cell) => !copied || copied.has(cell))
-      if (copied && cells.length === 0) return null
-      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
-      // participant never sees.
-      const shown = theme
-      if (shown !== 'light') {
-        theme = 'light'
-        restyle(graph)
-      }
-      try {
-        const image = renderSvg(graph, cells, options)
-        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
-      } finally {
-        if (shown !== 'light') {
-          theme = shown
-          restyle(graph)
-        }
-      }
+    exportSvg({ selectionOnly = false, onlyVisible = false, ...options } = {}) {
+      // With a filter, the image has only what matches, or the page without the filter.
+      return filterView.drawn(onlyVisible ? 'hidden' : 'unfiltered', () => drawImage(selectionOnly, onlyVisible, options))
+    },
+    setFilter(filter) {
+      if (destroyed) return
+      graph.stopEditing(false)
+      filterView.set(isFilterActive(filter) ? filter : null)
+      // A hidden cell is not selected.
+      graph.setSelectionCells(graph.getSelectionCells().filter((cell) => cell.isVisible()))
+    },
+    currentFilter: () => filterView.filter(),
+    filterChoices(filter) {
+      return filterChoices(modelFilterRecords(graph), filter ?? filterView.filter() ?? undefined)
+    },
+    filterStatus(cellId) {
+      const cell = model.getCell(cellId)
+      return cell ? filterView.status(cell) : null
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -4221,7 +4278,9 @@ export function createDiagramEditor(
       }
     },
     pageSketch() {
-      if (sketch?.version !== drawingVersion) sketch = { version: drawingVersion, sketch: sketchPage(graph) }
+      if (sketch?.version !== drawingVersion) {
+        sketch = { version: drawingVersion, sketch: sketchPage(graph, (cell) => filterView.status(cell) !== null) }
+      }
       return sketch.sketch
     },
     centerOn({ x, y }) {
@@ -4345,6 +4404,7 @@ export function createDiagramEditor(
       model.removeListener(handleRemoteLabel)
       unwatchTableRows()
       unconfigureSequences()
+      filterView.destroy()
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)
