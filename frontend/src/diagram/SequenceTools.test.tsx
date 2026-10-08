@@ -64,6 +64,24 @@ describe('the tools of a sequence diagram', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Mermaid скопирован')
   })
 
+  it('of a locked diagram copy it as Mermaid and change nothing', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true })
+    vi.mocked(editor.sequenceMermaid).mockReturnValue('sequenceDiagram\n')
+    act(() =>
+      editor.setState({
+        lock: { all: true, canLock: false, locks: [{ cellId: 'diagram', lockedBy: 'Алиса' }] },
+        sequence: diagram({ canChange: false, part: { type: 'participant', cellId: 'p', kind: 'participant' } }),
+      }),
+    )
+
+    expect(screen.getByRole('button', { name: 'Сообщение' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: 'Рамка' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Нумерация' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: 'Вид участника' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Скопировать Mermaid' }))
+    expect(editor.sequenceMermaid).toHaveBeenCalledWith('diagram')
+  })
+
   it('change the kind of the selected participant', async () => {
     act(() => editor.setState({ sequence: diagram({ part: { type: 'participant', cellId: 'p', kind: 'participant' } }) }))
 

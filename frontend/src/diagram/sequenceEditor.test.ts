@@ -1,4 +1,4 @@
-import type { Cell, CellEditorHandler } from '@maxgraph/core'
+import type { Cell, CellEditorHandler, SelectionHandler } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
@@ -114,6 +114,9 @@ describe('sequence diagrams in the editor', () => {
     expect(values(diagram, 'message')).toEqual(['Логин', 'Проверка', 'Токен', 'Ответ'])
     expect(editor.getState().canRedo).toBe(false)
     expect(editor.graph.isEditing()).toBe(false)
+    // The message written last is selected again, and the tools of the diagram stay.
+    expect(editor.graph.getSelectionCells().map((cell) => cell.getValue())).toEqual(['Токен'])
+    expect(editor.getState().sequence?.part?.type).toBe('message')
     editor.undo()
     expect(values(diagram, 'message')).toEqual(['Логин', 'Проверка', 'Ответ'])
     editor.undo()
@@ -245,9 +248,12 @@ describe('sequence diagrams in the editor', () => {
     const [client, service] = parts(diagram, 'participant')
     const [request, answer] = parts(diagram, 'message')
     const view = editor.graph.getView()
-    // What maxGraph does when a part is dropped: it moves it, and the layout of its diagram hears where.
-    const drop = (cell: Cell, x: number, y: number) =>
-      editor.graph.moveCells([cell], 1, 1, false, null, new MouseEvent('mouseup', { clientX: x, clientY: y }))
+    // What maxGraph does when a dragged part is dropped: it moves it, and the layout of its diagram hears where.
+    const handler = editor.graph.getPlugin<SelectionHandler>('SelectionHandler')!
+    const drop = (cell: Cell, x: number, y: number) => {
+      handler.cell = cell
+      handler.moveCells([cell], 1, 1, false, null, new MouseEvent('mouseup', { clientX: x, clientY: y }))
+    }
     // Dropped left of the client.
     const clientState = view.getState(client!)!
     drop(service!, clientState.x - 5, clientState.y + 10)
@@ -258,6 +264,15 @@ describe('sequence diagrams in the editor', () => {
     expect(values(diagram, 'message')).toEqual(['Ответ', 'Запрос'])
     editor.undo()
     expect(values(diagram, 'message')).toEqual(['Запрос', 'Ответ'])
+
+    // Dropped outside the diagram, below it and right of it: still parts of it, last.
+    const diagramState = view.getState(diagram)!
+    drop(request!, diagramState.x + 20, diagramState.y + diagramState.height + 40)
+    expect(request!.getParent()).toBe(diagram)
+    expect(values(diagram, 'message')).toEqual(['Ответ', 'Запрос'])
+    drop(service!, diagramState.x + diagramState.width + 40, clientState.y + 10)
+    expect(service!.getParent()).toBe(diagram)
+    expect(values(diagram, 'participant')).toEqual(['Клиент', 'Сервис'])
   })
 
   it('keeps parts out of what changes shapes on their own, and copies the whole diagram', () => {

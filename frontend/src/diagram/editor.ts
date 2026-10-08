@@ -1423,9 +1423,10 @@ export function createDiagramEditor(
   }
   /**
    * A cell that a command added and whose text is being edited — a sticky of {@link DiagramEditor.addSticky}, a part of
-   * a sequence diagram — with the undo step that added it; a new message left without text goes away with that step.
+   * a sequence diagram — with the undo step that added it; a new message left without text goes away with that step,
+   * and what was selected before it is selected again.
    */
-  let newCell: { cell: Cell; step: unknown; removeEmpty: boolean } | null = null
+  let newCell: { cell: Cell; step: unknown; removeEmpty: boolean; selected: Cell[] } | null = null
   if (cellEditor) {
     const startEditing = cellEditor.startEditing.bind(cellEditor)
     cellEditor.startEditing = (cell: Cell, trigger?: MouseEvent | null) => {
@@ -1464,6 +1465,7 @@ export function createDiagramEditor(
       if (added?.removeEmpty && lastStep() && !String(added.cell.getValue() ?? '').trim()) {
         undoManager.undo()
         undoManager.clear(false, true)
+        graph.setSelectionCells(added.selected.filter((cell) => model.getCell(cell.getId() ?? '') === cell))
         return
       }
       if (!cancel && next && next === editingCell && model.getCell(next.getId() ?? '') === next) addMessageAfter(next)
@@ -2684,6 +2686,7 @@ export function createDiagramEditor(
   ): Cell => {
     const part = new Cell(value, new Geometry(0, 0, 0, 0), style as CellStyle)
     part.setVertex(true)
+    const selected = graph.getSelectionCells()
     const steps = undoManager.undoStack.length
     model.batchUpdate(() => {
       graph.addCell(part, diagram, Math.min(index, diagram.getChildCount()))
@@ -2692,7 +2695,7 @@ export function createDiagramEditor(
     graph.setSelectionCell(part)
     graph.startEditingAtCell(part)
     if (graph.isEditing(part) && undoManager.undoStack.length > steps) {
-      newCell = { cell: part, step: undoManager.undoStack.at(-1), removeEmpty }
+      newCell = { cell: part, step: undoManager.undoStack.at(-1), removeEmpty, selected }
     }
     return part
   }
@@ -2890,7 +2893,7 @@ export function createDiagramEditor(
       graph.startEditingAtCell(cell)
       // After the editing started: starting it stops any editing before it.
       if (graph.isEditing(cell) && undoManager.undoStack.length > steps) {
-        newCell = { cell, step: undoManager.undoStack.at(-1), removeEmpty: false }
+        newCell = { cell, step: undoManager.undoStack.at(-1), removeEmpty: false, selected: [] }
       }
       return cell
     },

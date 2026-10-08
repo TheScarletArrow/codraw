@@ -20,12 +20,14 @@ import {
 const COPIED_FOR = 2000
 
 const SELECT = 'h-8 max-w-44 rounded-md border bg-background px-2 text-foreground'
+const FIELDSET = 'flex shrink-0 items-center gap-1'
 const toggle = (pressed: boolean) => cn(pressed && 'bg-accent text-accent-foreground')
 
 /**
  * The tools of the selected sequence diagram: new participants, messages, notes and frames, the numbers of messages and
  * the copy as Mermaid, then the properties of the selected part — the kind of a participant; the sender, the receiver,
- * the kind and the activations of a message; where a note stands; the kind and the branches of a frame.
+ * the kind and the activations of a message; where a note stands; the kind and the branches of a frame. A locked diagram
+ * keeps only the copy as Mermaid.
  */
 export function SequenceTools({ editor, sequence }: { editor: DiagramEditor | null; sequence: SelectedSequence }) {
   const [copied, setCopied] = useState(false)
@@ -44,45 +46,47 @@ export function SequenceTools({ editor, sequence }: { editor: DiagramEditor | nu
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-      <Button type="button" variant="ghost" size="sm" title="Добавить участника" onClick={() => editor?.addSequenceParticipant()}>
-        <Plus />
-        Участник
-      </Button>
-      <Button type="button" variant="ghost" size="sm" title="Добавить сообщение" onClick={() => editor?.addSequenceMessage()}>
-        <Plus />
-        Сообщение
-      </Button>
-      <Button type="button" variant="ghost" size="sm" title="Добавить заметку" onClick={() => editor?.addSequenceNote()}>
-        <Plus />
-        Заметка
-      </Button>
-      <select
-        aria-label="Рамка"
-        title={sequence.rows > 0 ? 'Обернуть выделенные строки в рамку' : 'Добавить рамку'}
-        className={SELECT}
-        value=""
-        onChange={(event) => {
-          if (event.target.value) editor?.addSequenceFrame(event.target.value as FrameKind)
-        }}
-      >
-        <option value="">Рамка…</option>
-        {FRAME_KINDS.map((kind) => (
-          <option key={kind.value} value={kind.value}>
-            {kind.label}
-          </option>
-        ))}
-      </select>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-pressed={sequence.numbered}
-        title="Номера сообщений по порядку"
-        className={toggle(sequence.numbered)}
-        onClick={() => editor?.setSequenceNumbering(sequence.diagramId, !sequence.numbered)}
-      >
-        Нумерация
-      </Button>
+      <fieldset disabled={!sequence.canChange} className={FIELDSET}>
+        <Button type="button" variant="ghost" size="sm" title="Добавить участника" onClick={() => editor?.addSequenceParticipant()}>
+          <Plus />
+          Участник
+        </Button>
+        <Button type="button" variant="ghost" size="sm" title="Добавить сообщение" onClick={() => editor?.addSequenceMessage()}>
+          <Plus />
+          Сообщение
+        </Button>
+        <Button type="button" variant="ghost" size="sm" title="Добавить заметку" onClick={() => editor?.addSequenceNote()}>
+          <Plus />
+          Заметка
+        </Button>
+        <select
+          aria-label="Рамка"
+          title={sequence.rows > 0 ? 'Обернуть выделенные строки в рамку' : 'Добавить рамку'}
+          className={SELECT}
+          value=""
+          onChange={(event) => {
+            if (event.target.value) editor?.addSequenceFrame(event.target.value as FrameKind)
+          }}
+        >
+          <option value="">Рамка…</option>
+          {FRAME_KINDS.map((kind) => (
+            <option key={kind.value} value={kind.value}>
+              {kind.label}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={sequence.numbered}
+          title="Номера сообщений по порядку"
+          className={toggle(sequence.numbered)}
+          onClick={() => editor?.setSequenceNumbering(sequence.diagramId, !sequence.numbered)}
+        >
+          Нумерация
+        </Button>
+      </fieldset>
       <Button type="button" variant="ghost" size="sm" title="Скопировать как Mermaid sequenceDiagram" onClick={copyMermaid}>
         Скопировать Mermaid
       </Button>
@@ -91,7 +95,11 @@ export function SequenceTools({ editor, sequence }: { editor: DiagramEditor | nu
           Mermaid скопирован
         </span>
       )}
-      {sequence.part && <PartTools editor={editor} sequence={sequence} part={sequence.part} />}
+      {sequence.part && (
+        <fieldset disabled={!sequence.canChange} className={FIELDSET}>
+          <PartTools editor={editor} sequence={sequence} part={sequence.part} />
+        </fieldset>
+      )}
     </>
   )
 }

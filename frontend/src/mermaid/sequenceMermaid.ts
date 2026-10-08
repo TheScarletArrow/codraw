@@ -30,8 +30,8 @@ const ARROWS: readonly [string, MessageArrow][] = [
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** A name of a participant in a message: no arrows, colons, pluses, commas or semicolons. */
-const NAME = String.raw`[^\-<>:+,;]+?`
+/** A name of a participant in a message: one line without arrows, colons, pluses, commas or semicolons. */
+const NAME = String.raw`[^\-<>:+,;\r\n]+?`
 const MESSAGE = new RegExp(
   String.raw`^\s*(${NAME})\s*(${ARROWS.map(([arrow]) => escapeRegExp(arrow)).join('|')})\s*([+-]?)\s*(${NAME})\s*:(.*)$`,
   'u',
@@ -283,9 +283,10 @@ export function sequenceMermaid(diagram: SequenceDiagram): string {
         frames.push(step.kind)
         break
       case 'else': {
-        // A branch outside any frame draws nothing.
-        const frame = frames.at(-1)
-        if (frame) lines.push(`${indent(depth - 1)}${BRANCH_WORDS[frame] ?? 'else'}${step.text.trim() ? ` ${escapeText(step.text)}` : ''}`)
+        // A branch outside any frame draws nothing; Mermaid has no branches in a frame of a kind without them, e.g. an
+        // `alt` turned into a `loop`, whose rows stay in the frame.
+        const word = BRANCH_WORDS[frames.at(-1) ?? 'opt']
+        if (word) lines.push(`${indent(depth - 1)}${word}${step.text.trim() ? ` ${escapeText(step.text)}` : ''}`)
         break
       }
       case 'end':

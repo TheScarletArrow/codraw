@@ -131,6 +131,8 @@ describe('sequence diagrams of Mermaid', () => {
     expect(parseMessageLine('API-->>-Клиент: 200: OK')).toEqual({ from: 'API', to: 'Клиент', arrow: 'reply', activation: '-', text: '200: OK' })
     expect(parseMessageLine('Просто текст')).toBeNull()
     expect(parseMessageLine('A->>B без двоеточия')).toBeNull()
+    // A text of several lines is no line of Mermaid, even if its last line looks like one.
+    expect(parseMessageLine('Шаг 1\nA->>B: x')).toBeNull()
   })
 
   it('writes a diagram back as Mermaid, which reads as the same diagram', () => {
@@ -165,6 +167,10 @@ describe('sequence diagrams of Mermaid', () => {
     const b = builder.participant('end')
     builder.message(a, b, 'раз; два\nтри #4', 'sync', { activate: [a], deactivate: [b] })
     builder.branch('сирота')
+    builder.frame('loop', 'каждую минуту')
+    builder.branch('ветка alt, ставшего циклом')
+    builder.message(b, a, 'опрос')
+    builder.end()
     builder.frame('critical', '')
     builder.branch('запасной путь')
     const text = sequenceMermaid(builder.diagram)
@@ -174,6 +180,9 @@ describe('sequence diagrams of Mermaid', () => {
     P1->>P2: раз#59; два<br>три #35;4
     deactivate P2
     activate P1
+    loop каждую минуту
+      P2->>P1: опрос
+    end
     critical
     option запасной путь
     end

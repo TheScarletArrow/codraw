@@ -3,6 +3,7 @@ import {
   Geometry,
   GraphLayout,
   InternalEvent,
+  SelectionHandler,
   Shape,
   ShapeRegistry,
   type AbstractCanvas2D,
@@ -330,6 +331,12 @@ export function configureSequences(graph: Graph): () => void {
   // Parts and diagrams take no edges.
   const isValidSource = graph.isValidSource.bind(graph)
   graph.isValidSource = (cell) => !sequenceOf(cell) && isValidSource(cell)
+  // A part dropped outside its diagram, e.g. a message below the last row, stays in it: the layout puts it last.
+  const selection = graph.getPlugin<SelectionHandler>('SelectionHandler')
+  if (selection) {
+    const shouldRemoveCellsFromParent = selection.shouldRemoveCellsFromParent.bind(selection)
+    selection.shouldRemoveCellsFromParent = (parent, cells, event) => !isSequence(parent) && shouldRemoveCellsFromParent(parent, cells, event)
+  }
 
   const redraw = (_sender: unknown, event: EventObject) => {
     const diagrams = new Set<Cell>()
