@@ -6,11 +6,11 @@ test('a shape is found by the technology it stands for and added with Enter for 
   const palette = alice.getByRole('complementary', { name: 'Фигуры' })
 
   await palette.getByRole('searchbox', { name: 'Поиск фигур' }).fill('kafka')
-  await expect(palette.getByRole('group', { name: 'Найденные фигуры' }).getByRole('button')).toHaveText(['Топик событий'])
+  await expect(palette.getByRole('group', { name: 'Найденные фигуры' }).getByRole('button')).toHaveText(['Kafka', 'Топик событий'])
   await palette.getByRole('searchbox', { name: 'Поиск фигур' }).press('Enter')
 
-  await expect.poll(async () => (await vertices(alice)).map((cell) => cell.value)).toEqual(['Топик событий'])
-  await expect.poll(async () => (await vertices(bob)).map((cell) => cell.value)).toEqual(['Топик событий'])
+  await expect.poll(async () => (await vertices(alice)).map((cell) => cell.value)).toEqual(['Kafka'])
+  await expect.poll(async () => (await vertices(bob)).map((cell) => cell.value)).toEqual(['Kafka'])
 
   await palette.getByRole('searchbox', { name: 'Поиск фигур' }).fill('zzz')
   await expect(palette.getByText('Ничего не найдено')).toBeVisible()
