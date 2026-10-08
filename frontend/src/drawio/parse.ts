@@ -20,7 +20,9 @@ import {
   type PointData,
   type StyleValue,
 } from '../diagram/model.ts'
+import { isLegendStyle } from '../diagram/legend.ts'
 import { htmlToText } from './labels.ts'
+import { isLegendPart, legendFromFile } from './legendDrawio.ts'
 import { parseStyle } from './style.ts'
 
 /** The file is not a draw.io diagram. */
@@ -180,7 +182,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
   }
   const reference = (value: string | null) => (value !== null && ids.has(value) ? ids.get(value)! : null)
 
-  const cells: DrawioCell[] = content.map((cell) => {
+  const read: DrawioCell[] = content.map((cell) => {
     const element = cell.element
     const kind = element.getAttribute('edge') === '1' ? 'edge' : 'vertex'
     const styleText = element.getAttribute('style') ?? ''
@@ -209,6 +211,8 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     }
   })
 
+  const cells = withLegends(read)
+
   // Siblings are drawn in the order of the file.
   const siblings = new Map<string, DrawioCell[]>()
   for (const cell of cells) siblings.set(cell.parent!, [...(siblings.get(cell.parent!) ?? []), cell])
@@ -217,6 +221,28 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     group.forEach((cell, index) => (cell.order = keys[index]!))
   })
   return { id, name, cells }
+}
+
+/**
+ * A legend that CoDraw wrote is a legend again: it lists the items of its page itself, so its samples and names, with
+ * what lies on them, are left out.
+ */
+function withLegends(cells: DrawioCell[]): DrawioCell[] {
+  const legends = new Set(cells.filter((cell) => cell.kind === 'vertex' && isLegendStyle(cell.style)).map((cell) => cell.id))
+  if (legends.size === 0) return cells
+  const dropped = new Set(cells.filter((cell) => cell.parent !== null && legends.has(cell.parent) && isLegendPart(cell.style)).map((cell) => cell.id))
+  for (let grown = true; grown; ) {
+    grown = false
+    for (const cell of cells) {
+      if (!dropped.has(cell.id) && cell.parent !== null && dropped.has(cell.parent)) {
+        dropped.add(cell.id)
+        grown = true
+      }
+    }
+  }
+  return cells
+    .filter((cell) => !dropped.has(cell.id))
+    .map((cell) => (legends.has(cell.id) ? { ...cell, style: legendFromFile(cell.style) } : cell))
 }
 
 const isHtml = (style: string) => /(^|;)\s*html=1\s*(;|$)/.test(style)

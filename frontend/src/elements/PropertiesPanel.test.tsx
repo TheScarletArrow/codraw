@@ -35,6 +35,17 @@ const QUEUE_EDGE: SelectionProperties = {
   canChange: true,
 }
 
+const LEGEND: SelectionProperties = {
+  target: 'legend',
+  cellId: 'legend',
+  canChange: true,
+  items: [
+    { key: 'shape:service', type: 'shape', defaultName: 'Сервис', name: '', hidden: false },
+    { key: 'shape:cache', type: 'shape', defaultName: 'Кэш', name: 'Redis', hidden: true },
+    { key: 'edge:x', type: 'edge', defaultName: 'Связь, пунктир', name: '', hidden: false },
+  ],
+}
+
 describe('PropertiesPanel', () => {
   let editor: FakeEditor
   let doc: Y.Doc
@@ -193,5 +204,41 @@ describe('PropertiesPanel', () => {
 
     await userEvent.click(within(panel()).getByRole('button', { name: 'Закрыть' }))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('lists the items of a legend: names them by Enter, gives back their own by an empty name, hides and shows them', async () => {
+    act(() => editor.setState({ properties: LEGEND }))
+
+    expect(within(panel()).getByRole('heading')).toHaveTextContent('Легенда')
+    const items = within(panel()).getByRole('list', { name: 'Пункты легенды' })
+    expect(within(items).getAllByRole('listitem')).toHaveLength(3)
+    expect(field('Имя пункта «Сервис»')).toHaveAttribute('placeholder', 'Сервис')
+    expect(field('Имя пункта «Кэш»')).toHaveValue('Redis')
+
+    await userEvent.type(field('Имя пункта «Связь, пунктир»'), 'Асинхронный вызов{Enter}')
+    expect(editor.setLegendItem).toHaveBeenLastCalledWith('legend', 'edge:x', { name: 'Асинхронный вызов' })
+    await userEvent.clear(field('Имя пункта «Кэш»'))
+    await userEvent.tab()
+    expect(editor.setLegendItem).toHaveBeenLastCalledWith('legend', 'shape:cache', { name: '' })
+
+    await userEvent.type(field('Имя пункта «Сервис»'), 'API{Escape}')
+    expect(field('Имя пункта «Сервис»')).toHaveValue('')
+    expect(editor.setLegendItem).toHaveBeenCalledTimes(2)
+
+    await userEvent.click(within(panel()).getByRole('button', { name: 'Скрыть «Сервис»' }))
+    expect(editor.setLegendItem).toHaveBeenLastCalledWith('legend', 'shape:service', { hidden: true })
+    await userEvent.click(within(panel()).getByRole('button', { name: 'Показать «Redis»' }))
+    expect(editor.setLegendItem).toHaveBeenLastCalledWith('legend', 'shape:cache', { hidden: false })
+  })
+
+  it('shows the items of a legend without fields to a viewer and of a locked legend', () => {
+    act(() => editor.setState({ properties: { ...LEGEND, canChange: false } }))
+
+    expect(within(panel()).queryByRole('textbox')).toBeNull()
+    expect(panel()).toHaveTextContent('Redis')
+    expect(within(panel()).getByRole('button', { name: 'Скрыть «Сервис»' })).toBeDisabled()
+
+    act(() => editor.setState({ properties: { ...LEGEND, items: [] } }))
+    expect(panel()).toHaveTextContent('На странице нет фигур и связей')
   })
 })

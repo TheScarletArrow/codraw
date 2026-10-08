@@ -211,6 +211,7 @@ export function createFakeEditor({
     setEdgeApi: vi.fn(),
     setElementProperties: vi.fn(),
     setEdgeProperties: vi.fn(),
+    setLegendItem: vi.fn(),
     pasteAsSameElement: vi.fn(),
     placeElement: vi.fn(),
     selectedElement: vi.fn(() => null),
