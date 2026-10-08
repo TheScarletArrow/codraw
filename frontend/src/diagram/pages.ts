@@ -47,6 +47,14 @@ function orderAfter(before: PageInfo | undefined, after: PageInfo | undefined): 
   return orderBetween(low, high)
 }
 
+/** An order key that puts a new page right after the page `afterId`, or at the end. */
+export function orderAfterPage(doc: Y.Doc, afterId: string | null): string {
+  const pages = listPages(doc)
+  const index = afterId ? pages.findIndex((page) => page.id === afterId) : -1
+  const position = index >= 0 ? index : pages.length - 1
+  return orderAfter(pages[position], pages[position + 1])
+}
+
 /** Adds an empty page after `afterId` (or at the end) and returns its id. */
 export function addPage(doc: Y.Doc, afterId?: string | null, name?: string): string {
   const pages = listPages(doc)

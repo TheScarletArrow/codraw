@@ -60,6 +60,7 @@ export type MenuCommand =
   | 'detachElement'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'detail'
 
 /** Items that put the selected message of a sequence diagram into a frame of a kind. */
 export type FrameCommand = 'frameAlt' | 'frameOpt' | 'frameLoop' | 'framePar'
@@ -154,6 +155,8 @@ export interface MenuAvailability {
   canDeleteElementEverywhere?: boolean
   /** The selected shapes show more than one element, and the page asks which to keep: «Объединить в один элемент…». */
   canMergeElements?: boolean
+  /** The single selected shape has a page of detail, or the participant may make one, and the page opens it: «Детализировать». */
+  canDetail?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
@@ -170,6 +173,7 @@ const VIEWING_COMMANDS = new Set<MenuCommand>([
   'properties',
   'copyMermaid',
   'whereUsed',
+  'detail',
 ])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
@@ -217,6 +221,7 @@ const COMMENT: Entry[] = [['comment', 'Комментировать']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
 const EDGE_API: Entry = ['edgeApi', 'Описание API…']
 const PROPERTIES: Entry = ['properties', 'Свойства…']
+const DETAIL: Entry = ['detail', 'Детализировать']
 const SHARED: Entry[] = [
   ['whereUsed', 'Где используется…'],
   ['detachElement', 'Отделить от элемента'],
@@ -254,7 +259,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, [...LINK, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, [...LINK, DETAIL, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     CLIPBOARD,
@@ -374,6 +379,7 @@ export function menuItems(
     sharedElement = false,
     canDeleteElementEverywhere = false,
     canMergeElements = false,
+    canDetail = false,
     status = null,
     canBranch = false,
   }: MenuAvailability,
@@ -400,6 +406,7 @@ export function menuItems(
     detachElement: sharedElement,
     deleteElementEverywhere: canDeleteElementEverywhere,
     mergeElements: canMergeElements,
+    detail: canDetail,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]

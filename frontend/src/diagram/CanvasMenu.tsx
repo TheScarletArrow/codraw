@@ -40,6 +40,7 @@ type PageCommand =
   | 'whereUsed'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'detail'
 
 const COMMANDS: Record<
   Exclude<MenuCommand, PageCommand | StatusCommand>,
@@ -91,8 +92,10 @@ const COMMANDS: Record<
  * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
  * link at the point of the click. With `onEdgeApi`, a single edge gets «Описание API…», which asks the page to open the
  * description of its call for editing. With `onProperties`, a single shape or edge that has properties gets «Свойства…»,
- * for viewers too, which asks the page to show them. The menu of locked elements says who locked them. The items of the
- * status set it, and `onStatusChange` hears of the elements whose status they changed.
+ * for viewers too, which asks the page to show them. With `onDetail`, a software system or a container that has a page
+ * of detail, or may get one, gets «Детализировать», which opens that page, made first when there is none. The menu of
+ * locked elements says who locked them. The items of the status set it, and `onStatusChange` hears of the elements whose
+ * status they changed.
  */
 export function CanvasMenu({
   editor,
@@ -103,6 +106,7 @@ export function CanvasMenu({
   onWhereUsed,
   onDeleteElementEverywhere,
   onMergeElements,
+  onDetail,
   onStatusChange,
 }: {
   editor: DiagramEditor | null
@@ -116,6 +120,8 @@ export function CanvasMenu({
   onDeleteElementEverywhere?: (request: ContextMenuRequest) => void
   /** Asks which properties to keep when merging the selected shapes into one element, at the point of the click. */
   onMergeElements?: (request: ContextMenuRequest) => void
+  /** Opens the page of detail of the shape of the menu, which «Детализировать» found or made. */
+  onDetail?: (pageId: string) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
 }) {
   const canComment = onComment !== undefined
@@ -152,6 +158,7 @@ export function CanvasMenu({
           onWhereUsed !== undefined &&
           element?.cellId === next.cellId &&
           (element.elementId !== null || element.properties.kind !== null)
+        const canDetail = onDetail !== undefined && next.cellId !== null && editor.detailOffer(next.cellId) !== null
         if (
           menuItems(next.target, {
             canPaste: false,
@@ -161,6 +168,7 @@ export function CanvasMenu({
             canComment,
             canShowProperties,
             canShowWhereUsed,
+            canDetail,
           }).length === 0
         ) {
           return
@@ -168,7 +176,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties, onWhereUsed],
+    [editor, canComment, onProperties, onWhereUsed, onDetail],
   )
 
   if (!editor || !request) return null
@@ -200,6 +208,12 @@ export function CanvasMenu({
       // The panel of elements takes the keyboard.
       focusTaken.current = true
       if (request.cellId) onWhereUsed?.(request.cellId)
+      return
+    }
+    if (command === 'detail') {
+      // The page of detail takes the canvas.
+      const page = request.cellId ? editor.detailElement(request.cellId) : null
+      if (page) onDetail?.(page)
       return
     }
     if (command === 'deleteElementEverywhere' || command === 'mergeElements') {
@@ -282,6 +296,7 @@ export function CanvasMenu({
             sharedElement: elementCells > 1,
             canDeleteElementEverywhere: onDeleteElementEverywhere !== undefined && elementCells > 1,
             canMergeElements: onMergeElements !== undefined && canMergeElements,
+            canDetail: onDetail !== undefined && request.cellId !== null && editor.detailOffer(request.cellId) !== null,
             status,
             canBranch: canBranch(sequence?.part ?? null),
           }).map((item) => {

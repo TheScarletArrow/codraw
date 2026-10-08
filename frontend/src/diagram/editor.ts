@@ -213,6 +213,7 @@ import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
+import { canDetail, createDetailPage, detailPageOf } from './detail.ts'
 import {
   detachCell,
   elementData,
@@ -994,6 +995,16 @@ export interface DiagramEditor {
    * element with the properties of the element of the cell `keepCellId`, as one undo step; their labels follow.
    */
   mergeElements(keepCellId: string): void
+  /**
+   * What «Детализировать» does for the shape `cellId` (see `detail.ts`): opens its page of detail, makes one — for who
+   * edits the board, when the shape is not locked — or nothing.
+   */
+  detailOffer(cellId: string): 'open' | 'create' | null
+  /**
+   * The page of detail of the shape `cellId`: the one it has, or a new one with the link of the shape to it, made as one
+   * undo step of this page. Returns the id of the page; `null` when the shape gets none.
+   */
+  detailElement(cellId: string): string | null
   /** Makes the shape `cellId` an element of its own with the same properties, as one undo step. */
   detachElement(cellId: string): void
   /**
@@ -3059,6 +3070,14 @@ export function createDiagramEditor(
     return clones.filter((clone): clone is Cell => clone !== null)
   }
   /** The cells of the page that name the element `id`. */
+  /** What «Детализировать» does for the shape `cellId`; see {@link DiagramEditor.detailOffer}. */
+  const detailOffer = (cellId: string): 'open' | 'create' | null => {
+    const cell = model.getCell(cellId)
+    // Only a system or a container goes down a level: not, e.g., a boundary, whose link leads up.
+    if (destroyed || !cell || propertiesTarget(cell) !== 'shape' || !canDetail(document, { pageId, cellId })) return null
+    if (detailPageOf(document, { pageId, cellId }) !== null) return 'open'
+    return !readOnly && isUnlocked(cell) ? 'create' : null
+  }
   const cellsOfElement = (id: string): string[] =>
     Array.from(cells.entries())
       .filter(([, cell]) => cellElementId(cell) === id)
@@ -4249,6 +4268,23 @@ export function createDiagramEditor(
         }
       }, origin)
       if (target !== null) binding.refresh(cellsOfElement(target))
+    },
+    detailOffer(cellId) {
+      return detailOffer(cellId)
+    },
+    detailElement(cellId) {
+      const offer = detailOffer(cellId)
+      if (offer === 'open') return detailPageOf(document, { pageId, cellId })
+      if (offer !== 'create' || destroyed) return null
+      graph.stopEditing(false)
+      let created: { pageId: string; changed: string[] } | null = null
+      document.transact(() => {
+        created = createDetailPage(document, { pageId, cellId }, author)
+      }, origin)
+      if (created === null) return null
+      const { pageId: detail, changed } = created
+      binding.refresh(changed)
+      return detail
     },
     detachElement(cellId) {
       if (readOnly || destroyed) return
