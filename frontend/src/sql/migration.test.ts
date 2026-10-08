@@ -4,6 +4,7 @@ import { snapshotDocument } from '../diagram/diff.ts'
 import { mergedSnapshot } from '../diagram/merge.ts'
 import { getCells, writeCell, type StyleValue } from '../diagram/model.ts'
 import { boardWith, laterState } from '../diagram/testing.ts'
+import { VIEW_KEY } from '../diagram/views.ts'
 import { boardSchema, constraintName, defaultDialect, orderRenames } from './migration.ts'
 import { boardOf, edge, migrate, plan, state, table } from './migrationTesting.ts'
 
@@ -78,6 +79,17 @@ describe('the schema of a state of a board', () => {
 
     expect(schema.tables.map((entry) => entry.name)).toEqual(['users'])
     expect(schema.tables[0]!.columns.map((column) => column.name)).toEqual(['id', 'mail'])
+  })
+
+  it('leaves views out: a migration does not touch them', () => {
+    const before = state(table('users', 'users', { id: 'id uuid PK' }))
+    const after = state(
+      table('users', 'users', { id: 'id uuid PK' }),
+      table('active', 'active_users', { id: 'id uuid', mail: 'email text' }, { order: 'a1', style: { [VIEW_KEY]: true } }),
+    )
+
+    expect(boardSchema(after).tables.map((entry) => entry.name)).toEqual(['users'])
+    expect(migrate(before, after)).toBe('')
   })
 
   it('takes the first of tables, fields and indexes of one name, and names the tables drawn more than once', () => {

@@ -11,6 +11,7 @@ import {
   TECHNOLOGY_KEY,
 } from '../diagram/elementKinds.ts'
 import { LINK_KEY, linkOf } from '../diagram/links.ts'
+import { isViewStyle, viewQueryOf, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import {
   ELEMENT_KEY,
   LAYER_CELL_ID,
@@ -127,6 +128,8 @@ interface RawCell {
   link: string | null
   /** The `codrawApi` attribute of the element around the cell: the description of the call of an edge. */
   api: string | null
+  /** The `codrawViewQuery` attribute of the element around the cell: the query of a view. */
+  query: string | null
 }
 
 /** Converts the cells of a model: the root becomes `0`, all layers become `1`, and the order follows the file. */
@@ -145,6 +148,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
         attrs: {},
         link: null,
         api: null,
+        query: null,
       })
     } else if (element.nodeName === 'object' || element.nodeName === 'UserObject') {
       // A cell with a link or custom properties: the attributes of the wrapper and the cell inside it.
@@ -152,7 +156,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
       if (!cell) continue
       const attrs: Record<string, string> = {}
       for (const attribute of Array.from(element.attributes)) {
-        if (!['id', 'label', 'link', 'placeholders', EDGE_API_KEY].includes(attribute.name)) attrs[attribute.name] = attribute.value
+        if (!['id', 'label', 'link', 'placeholders', EDGE_API_KEY, VIEW_QUERY_KEY].includes(attribute.name)) attrs[attribute.name] = attribute.value
       }
       const label = element.getAttribute('label') ?? ''
       raw.push({
@@ -164,6 +168,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
         attrs,
         link: element.getAttribute('link'),
         api: element.getAttribute(EDGE_API_KEY),
+        query: element.getAttribute(VIEW_QUERY_KEY),
       })
     }
   }
@@ -193,6 +198,9 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     if (link) style[LINK_KEY] = link
     // A description that CoDraw cannot read is dropped.
     if (kind === 'edge' && edgeApiOf({ [EDGE_API_KEY]: cell.api })) style[EDGE_API_KEY] = cell.api!
+    // A query too long to keep is dropped.
+    const query = kind === 'vertex' && isViewStyle(style) ? viewQueryOf({ [VIEW_QUERY_KEY]: cell.query }) : ''
+    if (query) style[VIEW_QUERY_KEY] = query
     Object.assign(style, kind === 'edge' ? edgePropertiesOf(cell.attrs) : elementPropertiesOf(cell.attrs, style))
     const html = isHtml(styleText)
     const parent = reference(cell.parent)

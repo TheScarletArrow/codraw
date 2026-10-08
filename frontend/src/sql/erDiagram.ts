@@ -3,7 +3,8 @@ import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, isTableIndexStyle, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
 import { SOURCE_KEY } from '../diagram/sources.ts'
-import { badgeRoom, tableRows } from '../diagram/tableRows.ts'
+import { badgeRoom, MATERIALIZED_VIEW_BADGE, tableRows, VIEW_BADGE } from '../diagram/tableRows.ts'
+import { isMaterializedStyle, isViewStyle, viewQueryOf, viewStyle } from '../diagram/views.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import {
   tokenize,
@@ -13,10 +14,12 @@ import {
   type SqlIndex,
   type SqlSchema,
   type SqlTable,
+  type SqlView,
 } from './parseSql.ts'
 import { vendorOf } from './dbVendors.ts'
 import { FIELD_WORDS, plainText, sourceRefers, splitField } from './tableField.ts'
 import { indexText, splitIndex } from './tableIndex.ts'
+import { readViewQuery } from './viewQuery.ts'
 
 /** A plain identifier needs no quotes: lower case letters, digits and `_`, not starting with a digit. */
 const PLAIN = /^[a-z_][a-z0-9_$]*$/
@@ -87,17 +90,26 @@ export function parseFieldLabel(label: string): (SqlColumn & { foreignKey: boole
 const estimate = (text: string) => text.length * 7.5
 
 /**
- * Width of a table that fits its name beside the badge of its database, the rows of its fields with their references
- * and the rows of its indexes, estimated from the lengths of their texts.
+ * Width of a table that fits its name beside the badge of its database and, of a view, the badge of the view, the rows
+ * of its fields with their references and the rows of its indexes, estimated from the lengths of their texts.
  */
-export function tableWidth(name: string, labels: string[], references: (string | null)[] = [], indexes: string[] = []): number {
+export function tableWidth(
+  name: string,
+  labels: string[],
+  references: (string | null)[] = [],
+  indexes: string[] = [],
+  view: { materialized: boolean } | null = null,
+): number {
   const rows = tableRows(
     labels.map((text, index) => ({ text, font: {}, reference: references[index] ?? null })),
     estimate,
     indexes.map((text) => ({ text, font: {}, reference: null })),
+    { view: view !== null },
   )
   // Tables get the database of the table of the palette.
-  const header = estimate(name) + 2 * badgeRoom(vendorOf(findShape('table')!.style)!.badge) + 24
+  const vendor = badgeRoom(vendorOf(findShape('table')!.style)!.badge)
+  const badge = view ? Math.max(vendor, badgeRoom(view.materialized ? MATERIALIZED_VIEW_BADGE : VIEW_BADGE)) : vendor
+  const header = estimate(name) + 2 * badge + 24
   return Math.min(560, Math.max(160, Math.ceil(Math.max(header, ...rows.map((row) => row.width)))))
 }
 
@@ -121,6 +133,9 @@ function referencedColumns(foreignKey: SqlForeignKey, table: SqlTable): string[]
   return table.columns.filter((column) => column.primaryKey).map((column) => column.name)
 }
 
+/** An edge from a view to a table or a view that its query reads. */
+const DEPENDENCY_STYLE: Record<string, StyleValue> = { dashed: true, startArrow: 'none', endArrow: 'open' }
+
 /** A relation between two tables whose columns are not known, e.g. of an ER diagram of Mermaid. */
 export interface TableLink {
   /** The table that refers to the other. */
@@ -133,7 +148,8 @@ export interface TableLink {
 /**
  * Tables of an ER diagram for the schema, laid out in layers along their references, with the top-left corner at
  * `origin`: a field per column, an edge from each referencing field to the field it refers to, and an edge between the
- * tables of each of `links`.
+ * tables of each of `links`; then its views with their columns, and a dashed edge from each view to each table or view
+ * of the schema that it reads.
  */
 export async function schemaCells(
   schema: SqlSchema,
@@ -169,6 +185,23 @@ export async function schemaCells(
       ]
     }),
   )
+  const builtViews = new Map(
+    schema.views.map((view) => {
+      const labels = view.columns.map((column) => fieldLabel(column, false))
+      const viewIndexes = view.materialized ? view.indexes : []
+      const indexes = viewIndexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
+      const width = tableWidth(view.name, labels, [], indexes, view)
+      const built = builder.table(view.name, 0, 0, labels, width, indexes, viewStyle(view))
+      return [
+        view.name,
+        {
+          id: built.id,
+          fields: new Map(view.columns.map((column, index) => [column.name, built.fields[index]!])),
+          indexes: new Map(viewIndexes.map((index, at) => [index.name, built.indexes[at]!])),
+        },
+      ]
+    }),
+  )
   const references: { source: string; target: string }[] = []
   const sourceMarks = new Map<string, string>()
   for (const table of schema.tables) {
@@ -196,6 +229,16 @@ export async function schemaCells(
     if (sourcePrefix) sourceMarks.set(edge, `${sourcePrefix}:${link.from}->${link.to}:${link.label}`)
     references.push({ source: from, target: to })
   }
+  for (const view of schema.views) {
+    const from = builtViews.get(view.name)!.id
+    for (const name of new Set(view.dependencies)) {
+      const to = built.get(name)?.id ?? builtViews.get(name)?.id
+      if (!to || to === from) continue
+      const edge = builder.edge(from, to, { style: DEPENDENCY_STYLE })
+      if (sourcePrefix) sourceMarks.set(edge, `${sourcePrefix}:${view.name}=>${name}`)
+      references.push({ source: from, target: to })
+    }
+  }
   const cells = builder.build()
   const byId = new Map(cells.map((cell) => [cell.id, cell]))
   if (sourcePrefix) {
@@ -211,6 +254,12 @@ export async function schemaCells(
         const row = entry.indexes.get(index.name)
         if (row) sourceMarks.set(row, `${sourcePrefix}:${table.name}#index:${index.name}`)
       }
+    }
+    for (const view of schema.views) {
+      const entry = builtViews.get(view.name)!
+      sourceMarks.set(entry.id, `${sourcePrefix}:${view.name}`)
+      for (const [column, field] of entry.fields) sourceMarks.set(field, `${sourcePrefix}:${view.name}.${column}`)
+      for (const [index, row] of entry.indexes) sourceMarks.set(row, `${sourcePrefix}:${view.name}#index:${index}`)
     }
     for (const [id, source] of sourceMarks) {
       const cell = byId.get(id)
@@ -285,11 +334,11 @@ export interface DiagramTable {
  * The tables of a page in the order of `cells`, with the ids of their cells: fields parsed from their text, references
  * from the edges between fields, indexes from the rows of indexes. A base table is a template of fields rather than a
  * table of the database: it is left out with the edges of its fields, and the tables that inherit it have the copies of
- * its fields as their columns.
+ * its fields as their columns. A view is left out too, with the edges of its fields: {@link diagramViews} reads it.
  */
 export function diagramTables(cells: CellData[]): DiagramTable[] {
   const tableCells = cells.filter(
-    (cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) && !isBaseStyle(cell.style),
+    (cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) && !isBaseStyle(cell.style) && !isViewStyle(cell.style),
   )
   const tables: DiagramTable[] = []
   const fieldOf = new Map<string, { table: DiagramTable; field: DiagramField }>()
@@ -337,16 +386,87 @@ export function diagramTables(cells: CellData[]): DiagramTable[] {
 }
 
 /**
- * The schema of the tables of a page: fields parsed from their text, references from the edges between fields, indexes
- * from the rows of indexes, see {@link diagramTables}.
+ * The views of a page in the order of `cells`: columns from the text of their fields, the indexes of a materialized
+ * view from its rows of indexes, the query and what it reads from the style.
+ */
+export function diagramViews(cells: CellData[]): SqlView[] {
+  return cells
+    .filter((cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) && isViewStyle(cell.style))
+    .map((viewCell) => {
+      const materialized = isMaterializedStyle(viewCell.style)
+      const query = viewQueryOf(viewCell.style)
+      const rows = cells.filter((cell) => cell.parent === viewCell.id && cell.kind === 'vertex').sort(compareCells)
+      const columns = rows
+        .filter((row) => !isTableIndexStyle(row.style))
+        .flatMap((row) => {
+          const column = parseFieldLabel(row.value)
+          // A column without a type has none, rather than the `text` of a field of a table.
+          return column ? [{ name: column.name, type: splitField(row.value)?.type ?? '', notNull: false, primaryKey: false, unique: false }] : []
+        })
+      const indexes = materialized
+        ? rows
+            .filter((row) => isTableIndexStyle(row.style))
+            .flatMap((row) => {
+              const parts = splitIndex(row.value)
+              return parts ? [{ name: parts.name, columns: parts.columns, unique: parts.unique, method: parts.method, rest: parts.rest }] : []
+            })
+        : []
+      const dependencies = query ? readViewQuery(tokenize(query), () => null).dependencies : []
+      return { name: plainText(viewCell.value) || 'view', columns, query, materialized, indexes, dependencies }
+    })
+}
+
+/**
+ * The schema of the tables and views of a page: fields parsed from their text, references from the edges between
+ * fields, indexes from the rows of indexes, see {@link diagramTables} and {@link diagramViews}.
  */
 export function diagramSchema(cells: CellData[]): SqlSchema {
-  return { tables: diagramTables(cells).map((entry) => entry.table), skipped: 0 }
+  return { tables: diagramTables(cells).map((entry) => entry.table), views: diagramViews(cells), skipped: 0 }
+}
+
+/** `CREATE [UNIQUE] INDEX name ON table [USING method] (columns) [rest];`. */
+const indexSql = (table: string, index: SqlIndex) =>
+  `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${quoteName(index.name)} ON ${quoteName(table)}` +
+  `${index.method ? ` USING ${index.method}` : ''} (${index.columns})${index.rest ? ` ${index.rest}` : ''};`
+
+/**
+ * Views in an order that a database takes: each after the views it reads, otherwise in their order. Views that read
+ * each other in a circle, which a database does not take anyway, come once each all the same.
+ */
+function viewOrder(views: SqlView[]): SqlView[] {
+  const byName = new Map(views.map((view) => [view.name, view]))
+  const order: SqlView[] = []
+  const visiting = new Set<SqlView>()
+  const visit = (view: SqlView) => {
+    if (order.includes(view) || visiting.has(view)) return
+    visiting.add(view)
+    for (const name of view.dependencies) {
+      const read = byName.get(name)
+      if (read) visit(read)
+    }
+    visiting.delete(view)
+    order.push(view)
+  }
+  views.forEach(visit)
+  return order
+}
+
+/**
+ * `CREATE [MATERIALIZED] VIEW name AS query;` with the indexes of a materialized view. A view without a query is a
+ * stand-in that gives its columns without rows, so that the file runs and the columns come back when it is imported.
+ */
+function viewSql(view: SqlView): string {
+  const head = `CREATE ${view.materialized ? 'MATERIALIZED ' : ''}VIEW ${quoteName(view.name)} AS`
+  const columns = view.columns.map((column) => `${column.type ? `NULL::${column.type}` : 'NULL'} AS ${quoteName(column.name)}`)
+  const create = view.query
+    ? `${head} ${view.query};`
+    : `-- Запрос представления ${view.name.replace(/\s+/g, ' ')} не задан: столбцы без строк\n${head} SELECT ${columns.join(', ')};`
+  return [create, ...(view.materialized ? view.indexes.map((index) => indexSql(view.name, index)) : [])].join('\n')
 }
 
 /**
  * DDL of PostgreSQL that creates the tables, then their indexes, then adds their foreign keys, so that the order of
- * tables never matters.
+ * tables never matters, then creates the views, each after those it reads, with the indexes of materialized ones.
  */
 export function schemaSql(schema: SqlSchema): string {
   const creates = schema.tables.map((table) => {
@@ -365,13 +485,7 @@ export function schemaSql(schema: SqlSchema): string {
     if (keys.length > 1) lines.push(`PRIMARY KEY (${keys.map((column) => quoteName(column.name)).join(', ')})`)
     return `CREATE TABLE ${quoteName(table.name)} (\n${lines.map((line) => `    ${line}`).join(',\n')}\n);`
   })
-  const indexes = schema.tables.flatMap((table) =>
-    table.indexes.map(
-      (index) =>
-        `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${quoteName(index.name)} ON ${quoteName(table.name)}` +
-        `${index.method ? ` USING ${index.method}` : ''} (${index.columns})${index.rest ? ` ${index.rest}` : ''};`,
-    ),
-  )
+  const indexes = schema.tables.flatMap((table) => table.indexes.map((index) => indexSql(table.name, index)))
   const foreignKeys = schema.tables.flatMap((table) =>
     table.foreignKeys.map(
       (key) =>
@@ -379,7 +493,13 @@ export function schemaSql(schema: SqlSchema): string {
         `REFERENCES ${quoteName(key.table)}${key.references.length > 0 ? ` (${key.references.map(quoteName).join(', ')})` : ''};`,
     ),
   )
-  return [...creates, ...[indexes, foreignKeys].filter((lines) => lines.length > 0).map((lines) => lines.join('\n'))].join('\n\n') + '\n'
+  return (
+    [
+      ...creates,
+      ...[indexes, foreignKeys].filter((lines) => lines.length > 0).map((lines) => lines.join('\n')),
+      ...viewOrder(schema.views).map(viewSql),
+    ].join('\n\n') + '\n'
+  )
 }
 
 /** A name that Mermaid takes: letters, digits, `_` and `-`. */

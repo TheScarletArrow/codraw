@@ -27,12 +27,16 @@ const references = (schema: SqlSchema) =>
     table.foreignKeys.map((key) => `${table.name}(${key.columns.join(', ')}) → ${key.table}(${key.references.join(', ')})`),
   )
 
+/** Views as `name: column type`, for short expectations. */
+const views = (schema: SqlSchema) =>
+  Object.fromEntries(schema.views.map((view) => [view.name, view.columns.map((column) => [column.name, column.type].filter(Boolean).join(' '))]))
+
 const indexes = (schema: SqlSchema) =>
   schema.tables.flatMap((table) => table.indexes.map((index) => `${table.name}: ${index.name} (${index.columns})${index.unique ? ' UNIQUE' : ''}`))
 
 /**
- * What a diagram shows of a schema whatever the spelling of the types: tables, columns with their keys, references
- * and indexes, by name.
+ * What a diagram shows of a schema whatever the spelling of the types: tables, columns with their keys, references,
+ * indexes and views with their columns and what they read, by name.
  */
 const shape = (schema: SqlSchema) => ({
   tables: Object.fromEntries(
@@ -44,6 +48,7 @@ const shape = (schema: SqlSchema) => ({
   indexes: indexes(schema)
     .map((index) => index.replace(/ \(.*\)/, ''))
     .sort(),
+  views: schema.views.map((view) => ({ name: view.name, columns: view.columns.map((column) => column.name), reads: view.dependencies })),
 })
 
 describe('dumps of PostgreSQL', () => {
@@ -82,14 +87,28 @@ describe('dumps of PostgreSQL', () => {
       { table: 'products', name: 'products_tags_idx', columns: 'tags', unique: false, method: 'gin', rest: '' },
       { table: 'users', name: 'users_email_lower_idx', columns: 'lower(email)', unique: true, method: 'btree', rest: '' },
     ])
-    // The type, the function, the view and the trigger; settings, owners, rights, comments, sequences, the partition
-    // and the data are not counted.
-    expect(schema.skipped).toBe(4)
+    expect(views(schema)).toEqual({
+      active_orders: [
+        'id integer',
+        'user_id bigint',
+        'status order_status',
+        'invoice_number integer',
+        'created_at timestamp with time zone',
+        'deleted_at timestamp with time zone',
+      ],
+    })
+    expect(schema.views[0]!.query).toBe(
+      'SELECT id,\n    user_id,\n    status,\n    invoice_number,\n    created_at,\n    deleted_at\n   FROM public.orders\n  WHERE (deleted_at IS NULL)',
+    )
+    expect(schema.views[0]!.dependencies).toEqual(['orders'])
+    // The type, the function and the trigger; settings, owners, rights, comments, sequences, the partition and the data
+    // are not counted.
+    expect(schema.skipped).toBe(3)
   })
 
   it('draws the same diagram as the DDL the dump was made from', () => {
     expect(shape(parseSql(pgDump))).toEqual(shape(parseSql(postgresSchema)))
-    expect(parseSql(postgresSchema).skipped).toBe(4)
+    expect(parseSql(postgresSchema).skipped).toBe(3)
   })
 })
 
@@ -119,8 +138,11 @@ describe('dumps of MySQL and MariaDB', () => {
       'orders: orders_user_status_idx (user_id, status)',
       'products: products_title_idx (title)',
     ])
-    // The procedure between DELIMITER ;; and DELIMITER ;: the trigger and the view are in comments /*! … */.
-    expect(schema.skipped).toBe(1)
+    // The final view of mysqldump replaces its stand-in with columns `1 AS id`.
+    expect(views(schema)).toEqual({ paid_orders: ['id int unsigned', 'user_id int unsigned', 'total decimal(12, 2)'] })
+    expect(schema.views[0]!.dependencies).toEqual(['orders'])
+    // The trigger in comments /*! … */ and the procedure between DELIMITER ;; and DELIMITER ;.
+    expect(schema.skipped).toBe(2)
   })
 
   it('reads mariadb-dump with the widths of its integers', () => {
@@ -134,7 +156,7 @@ describe('dumps of MySQL and MariaDB', () => {
       'created_at timestamp NN',
     ])
     expect(shape(schema)).toEqual(shape(parseSql(mysqlDump)))
-    expect(schema.skipped).toBe(1)
+    expect(schema.skipped).toBe(2)
   })
 
   it('draws the same diagram as the DDL the dump was made from', () => {

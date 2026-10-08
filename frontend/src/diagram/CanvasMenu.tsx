@@ -139,6 +139,7 @@ export function CanvasMenu({
     sequence,
     canPasteAsSameElement,
     canMergeElements,
+    tableView,
   } = useEditorState(editor)
   const lockId = useId()
 
@@ -284,6 +285,7 @@ export function CanvasMenu({
             canMergeElements: onMergeElements !== undefined && canMergeElements,
             status,
             canBranch: canBranch(sequence?.part ?? null),
+            canAddIndex: tableView?.view !== true || tableView.materialized,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
             return (

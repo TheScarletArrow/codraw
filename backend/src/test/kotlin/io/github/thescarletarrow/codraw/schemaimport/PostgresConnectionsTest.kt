@@ -109,6 +109,19 @@ class PostgresConnectionsTest {
     }
 
     @Test
+    fun `orders views after the views they read, otherwise by name, and keeps a circle in that order`() {
+        val names = listOf("aaa_report", "active_orders", "big_spenders", "order_totals", "plain")
+        val reads = mapOf(
+            "aaa_report" to listOf("big_spenders", "users"),
+            "big_spenders" to listOf("order_totals"),
+            "order_totals" to listOf("active_orders"),
+        )
+
+        assertEquals(listOf("active_orders", "order_totals", "big_spenders", "aaa_report", "plain"), PostgresSchemaReader.viewOrder(names, reads))
+        assertEquals(listOf("b", "a"), PostgresSchemaReader.viewOrder(listOf("a", "b"), mapOf("a" to listOf("b"), "b" to listOf("a"))))
+    }
+
+    @Test
     fun `writes a request without the user, the password and the database`() {
         val request = SchemaImportRequest("db.example.com", 5432, "shop_db", "reader_user", "pa55word", "public", SslMode.REQUIRE)
 
