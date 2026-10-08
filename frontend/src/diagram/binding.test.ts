@@ -3,7 +3,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { readAttribution } from './attribution.ts'
 import { createUndoManager, DiagramBinding } from './binding.ts'
-import { getCells, initializeDocument, LAYER_CELL_ID, orderBetween, readCell, writeCell, type CellData } from './model.ts'
+import {
+  ELEMENT_KEY,
+  getCells,
+  getElements,
+  initializeDocument,
+  LAYER_CELL_ID,
+  orderBetween,
+  readCell,
+  writeCell,
+  type CellData,
+} from './model.ts'
 import {
   addEdge,
   addVertex,
@@ -443,5 +453,68 @@ describe('who changed a cell', () => {
     for (const client of [alice, bob]) {
       expect(attributionOf(client, cell)).toEqual({ by: ALICE.id, name: 'Алиса', at: T0 + 120_000 })
     }
+  })
+})
+
+describe('elements', () => {
+  const elementStyle = (properties: Record<string, string> = {}) =>
+    ({ [ELEMENT_KEY]: 'e1', codrawName: 'Payments', ...properties }) as CellStyle
+
+  it('writes the properties of a shape into its element and reads them back for others', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+
+    const cell = addVertex(alice.model, 'Payments', elementStyle({ codrawTechnology: 'Kotlin' }))
+
+    expect(getElements(alice.doc).get('e1')!.toJSON()).toEqual({ name: 'Payments', technology: 'Kotlin' })
+    expect(bob.model.getCell(cell.getId()!)!.getStyle()).toEqual(elementStyle({ codrawTechnology: 'Kotlin' }))
+  })
+
+  it('shows the change of an element by another participant on the cells that name it', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const cell = addVertex(alice.model, 'Payments', elementStyle())
+
+    bob.doc.transact(() => getElements(bob.doc).get('e1')!.set('technology', 'Go'), 'test:bob')
+
+    expect(alice.model.getCell(cell.getId()!)!.getStyle()).toEqual(elementStyle({ codrawTechnology: 'Go' }))
+  })
+
+  it('deletes the element with its last cell, and undo brings both back', () => {
+    const alice = createClient()
+    const history = createUndoManager(getCells(alice.doc))
+    const cell = addVertex(alice.model, 'Payments', elementStyle({ codrawOwner: 'Платежи' }))
+    const kept = addVertex(alice.model, 'Billing', { [ELEMENT_KEY]: 'e2', codrawName: 'Billing' } as CellStyle)
+
+    alice.model.remove(cell)
+
+    expect([...getElements(alice.doc).keys()]).toEqual(['e2'])
+    history.undo()
+    expect(getElements(alice.doc).get('e1')!.toJSON()).toEqual({ name: 'Payments', owner: 'Платежи' })
+    expect(alice.model.getCell(cell.getId()!)!.getStyle()).toEqual(elementStyle({ codrawOwner: 'Платежи' }))
+    expect(alice.model.getCell(kept.getId()!)).toBeTruthy()
+  })
+
+  it('deletes the element a cell no longer names', () => {
+    const alice = createClient()
+    const cell = addVertex(alice.model, 'Payments', elementStyle())
+
+    alice.model.setStyle(cell, { ...elementStyle(), [ELEMENT_KEY]: 'e2' } as CellStyle)
+
+    expect([...getElements(alice.doc).keys()]).toEqual(['e2'])
+  })
+
+  it('undoes a change of the properties as one step', () => {
+    const alice = createClient()
+    const history = createUndoManager(getCells(alice.doc))
+    const cell = addVertex(alice.model, 'Payments', elementStyle())
+
+    alice.model.setStyle(cell, elementStyle({ codrawTechnology: 'Kotlin', codrawDescription: 'Платежи' }))
+    history.undo()
+
+    expect(getElements(alice.doc).get('e1')!.toJSON()).toEqual({ name: 'Payments' })
+    expect(alice.model.getCell(cell.getId()!)!.getStyle()).toEqual(elementStyle())
   })
 })

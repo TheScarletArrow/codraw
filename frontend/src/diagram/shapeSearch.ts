@@ -1,8 +1,10 @@
+import { TECHNOLOGIES } from './elementProps.ts'
 import { SHAPE_SECTIONS, type ShapeId, type ShapePreset } from './shapes.ts'
 
 /**
  * Words people search shapes by besides their names: the technologies they stand for and their names in English and
- * Russian. The words of a shape are its label, its id, its section and these.
+ * Russian. The words of a shape are its label, its id, its section, these and the technologies that the properties of
+ * an element suggest for it (see `elementProps.ts`).
  */
 export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
   rectangle: ['rectangle', 'box', 'блок', 'квадрат'],
@@ -87,7 +89,7 @@ const ENTRIES: Entry[] = SHAPE_SECTIONS.flatMap((section) =>
   section.shapes.map((shape) => ({
     shape,
     label: words(shape.label),
-    all: [shape.label, shape.id, section.title, ...SHAPE_KEYWORDS[shape.id]].flatMap(words),
+    all: [shape.label, shape.id, section.title, ...SHAPE_KEYWORDS[shape.id], ...(TECHNOLOGIES[shape.id] ?? [])].flatMap(words),
   })),
 )
 

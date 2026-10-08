@@ -38,7 +38,9 @@ describe('apiGraph', () => {
     const graph = apiGraph([await parse(PETSTORE_YAML)], { models: true })
 
     expect(apiSummary(graph)).toBe('Сервисов: 1, эндпоинтов: 3, топиков: 0, моделей: 2, связей: 2, пропущено ссылок: 0')
-    expect(graph.services).toEqual([{ title: 'Petstore', endpoints: ['GET /pets', 'POST /pets', 'GET /pets/{petId}'] }])
+    expect(graph.services).toEqual([
+      { title: 'Petstore', endpoints: ['GET /pets', 'POST /pets', 'GET /pets/{petId}'], description: '', technology: '' },
+    ])
   })
 
   it('adds no models and no links to them without the models', async () => {
@@ -182,6 +184,29 @@ describe('apiSpecCells', () => {
     expect(right(topic)).toBeLessThanOrEqual(byValue(cells, 'Billing').geometry!.x)
     expect(Math.min(...top(cells).map((cell) => cell.geometry!.x))).toBe(100)
     expect(Math.min(...top(cells).map((cell) => cell.geometry!.y))).toBe(50)
+  })
+
+  it('gives services, topics and links of messages the properties of elements and edges', async () => {
+    const cells = await cellsOf(apiGraph([await parse(ORDERS_ASYNCAPI_YAML), await parse(BILLING_ASYNCAPI_YAML)], { models: true }))
+
+    expect(byValue(cells, 'Orders').style).toMatchObject({
+      codrawElement: expect.any(String),
+      codrawName: 'Orders',
+      codrawKind: 'service',
+      codrawDescription: 'Заказы магазина: создание и отмена.',
+      codrawTechnology: 'Kafka',
+    })
+    // The topic gets the protocols of the documents that have it; another document without servers adds none.
+    expect(byValue(cells, 'orders.created').style).toMatchObject({ codrawName: 'orders.created', codrawKind: 'event-topic', codrawTechnology: 'Kafka' })
+    expect(byValue(cells, 'invoices.issued').style).not.toHaveProperty('codrawTechnology')
+    const sent = edges(cells).find((edge) => edge.value === 'OrderCreated' && nameOf(cells, edge.source) === 'Orders')!
+    expect(sent.style).toMatchObject({ codrawTechnology: 'Kafka', codrawInteraction: 'async' })
+    const received = edges(cells).find((edge) => nameOf(cells, edge.target) === 'Billing')!
+    expect(received.style).toMatchObject({ codrawInteraction: 'async' })
+    expect(received.style).not.toHaveProperty('codrawTechnology')
+    // The label of a service stays its title and endpoints.
+    const petstore = await cellsOf(apiGraph([await parse(PETSTORE_YAML)], { models: false }))
+    expect(byValue(petstore, 'Petstore\nGET /pets\nPOST /pets\nGET /pets/{petId}').style).toMatchObject({ codrawName: 'Petstore' })
   })
 
   it('widens a topic for a long address', async () => {

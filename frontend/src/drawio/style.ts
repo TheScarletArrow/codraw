@@ -1,7 +1,8 @@
 import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
+import { INTERACTION_KEY } from '../diagram/elementKinds.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
-import type { StyleValue } from '../diagram/model.ts'
+import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, type StyleValue } from '../diagram/model.ts'
 
 export type Style = Record<string, StyleValue>
 export type CellKind = 'vertex' | 'edge'
@@ -23,6 +24,7 @@ const BOOLEAN_KEYS = new Set([
   'codrawBaseDefault',
   'codrawFreehand',
   'codrawIndex',
+  'codrawShowTechnology',
   'connectable',
   'curved',
   'dashed',
@@ -167,9 +169,10 @@ const BOARD_KEYS = new Set([LOCKED_BY_KEY])
 
 /**
  * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its
- * style: the link and the description of the call of an edge (see `drawio/serialize.ts`).
+ * style: the link, the description of the call of an edge, the element of a cell and the properties of elements and
+ * edges (see `drawio/serialize.ts`).
  */
-const ATTRIBUTE_KEYS = new Set([LINK_KEY, EDGE_API_KEY])
+const ATTRIBUTE_KEYS = new Set([LINK_KEY, EDGE_API_KEY, ELEMENT_KEY, ...Object.values(ELEMENT_STYLE_KEYS), INTERACTION_KEY])
 
 /** draw.io writes `data:image/png,<base64>`: a `;` would end the style value. */
 const DATA_IMAGE = /^data:image\/([a-z0-9.+-]+),([A-Za-z0-9+/=]+)$/i

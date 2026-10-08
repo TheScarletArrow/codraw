@@ -30,6 +30,7 @@ export type MenuCommand =
   | 'commentHere'
   | 'link'
   | 'edgeApi'
+  | 'properties'
 
 /** Items that set the status of the selection. */
 export type StatusCommand = 'statusDraft' | 'statusReview' | 'statusDone' | 'statusNone'
@@ -98,12 +99,14 @@ export interface MenuAvailability {
   canLink?: boolean
   /** The page shows descriptions of calls, and a single edge is selected: «Описание API…» is offered. */
   canDescribeApi?: boolean
+  /** The page shows properties, and the single selected shape or edge has them: «Свойства…» is offered. */
+  canShowProperties?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
 }
 
 /** Items of a participant who may only view the board. */
-const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'copyStyle', 'selectAll', 'comment', 'commentHere'])
+const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'copyStyle', 'selectAll', 'comment', 'commentHere', 'properties'])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
 const CHANGING_COMMANDS = new Set<MenuCommand>([
@@ -141,6 +144,7 @@ const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
 const COMMENT: Entry[] = [['comment', 'Комментировать']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
 const EDGE_API: Entry = ['edgeApi', 'Описание API…']
+const PROPERTIES: Entry = ['properties', 'Свойства…']
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -166,7 +170,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, [...LINK, PROPERTIES], COMMENT, [DELETE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     CLIPBOARD,
@@ -196,7 +200,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, [...LINK, EDGE_API], COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
   group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
   selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, [DELETE]],
@@ -204,9 +208,9 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
 
 /**
  * Items of the context menu for a target; the ones that cannot be done now are disabled, and so are those that would
-* change locked elements. The status of the selection is offered when it has elements that may have one, with its *
-current status chosen, also for locked elements. A participant who may only view gets only copying, copying a look, *
-selecting and commenting, so their menu may be empty: following a link needs no menu.
+ * change locked elements. The status of the selection is offered when it has elements that may have one, with its
+ * current status chosen, also for locked elements. A participant who may only view gets only copying, copying a look,
+ * selecting, commenting and the properties, so their menu may be empty: following a link needs no menu.
  */
 export function menuItems(
   target: MenuTarget,
@@ -224,6 +228,7 @@ export function menuItems(
     locked = false,
     canLink = false,
     canDescribeApi = false,
+    canShowProperties = false,
     status = null,
   }: MenuAvailability,
 ): MenuItem[] {
@@ -242,6 +247,7 @@ export function menuItems(
     unlock: canUnlock,
     link: canLink,
     edgeApi: canDescribeApi,
+    properties: canShowProperties,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]

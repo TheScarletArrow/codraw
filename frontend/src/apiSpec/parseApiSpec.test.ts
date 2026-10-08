@@ -243,6 +243,17 @@ describe('parseApiSpec: AsyncAPI', () => {
     expect(fields(billing, 'InvoiceIssued')).toEqual(['invoiceId string'])
   })
 
+  it('reads the first paragraph of the description and the protocols of the servers', async () => {
+    const orders = await parse(ORDERS_ASYNCAPI_YAML)
+
+    expect(orders.description).toBe('Заказы магазина: создание и отмена.')
+    expect(orders.protocols).toEqual(['Kafka'])
+    expect((await parse(BILLING_ASYNCAPI_YAML)).protocols).toEqual([])
+    const long = await parse(`openapi: 3.0.0\ninfo:\n  title: A\n  version: '1'\n  description: ${'слово '.repeat(200)}\npaths: {}\n`)
+    expect(long.description).toHaveLength(500)
+    expect(long.description!.endsWith('…')).toBe(true)
+  })
+
   it('finds a channel of AsyncAPI 3 kept among the components once, by its reference from the channels and the operation', async () => {
     const spec = await parse(
       [

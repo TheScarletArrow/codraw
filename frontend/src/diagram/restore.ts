@@ -1,7 +1,10 @@
 import * as Y from 'yjs'
 import { cellOrigin, treeOrder, VOLATILE_KEYS, type CellSnapshot } from './diff.ts'
 import {
+  cellElementId,
+  dropUnusedElements,
   getCells,
+  getElements,
   getPages,
   LAYER_CELL_ID,
   readPage,
@@ -35,16 +38,30 @@ function topLevelNames(doc: Y.Doc): string[] {
 
 /**
  * Makes a page of the board document `live` equal to the page of a version, in one transaction: its cells as
- * {@link restoreDocument} brings them. The board keeps the name and the place of the page; a page deleted since comes
- * back with the name and the order key of the version, so among the pages left it stands where it stood. Other pages
- * stay as they are. Returns `false` when the version has no such page.
+ * {@link restoreDocument} brings them, and the elements they show as the version has them; elements that only the
+ * cells the page had showed go. The board keeps the name and the place of the page; a page deleted since comes back
+ * with the name and the order key of the version, so among the pages left it stands where it stood. Other pages stay as
+ * they are. Returns `false` when the version has no such page.
  */
 export function restorePage(live: Y.Doc, version: Y.Doc, pageId: string): boolean {
   const entry = getPages(version).get(pageId)
   if (!entry) return false
   live.transact(() => {
     if (!getPages(live).has(pageId)) writePage(live, pageId, readPage(entry))
-    syncMap(getCells(live, pageId) as Y.Map<unknown>, getCells(version, pageId) as Y.Map<unknown>)
+    const cells = getCells(live, pageId)
+    const shown = Array.from(cells.values(), (cell) => cellElementId(cell))
+    syncMap(cells as Y.Map<unknown>, getCells(version, pageId) as Y.Map<unknown>)
+    const elements = getElements(live)
+    const versionElements = getElements(version)
+    for (const cell of getCells(version, pageId).values()) {
+      const id = cellElementId(cell)
+      const element = id === null ? undefined : versionElements.get(id)
+      if (!(element instanceof Y.Map)) continue
+      const current = elements.get(id!)
+      if (current instanceof Y.Map) syncMap(current, element)
+      else elements.set(id!, copyMap(element))
+    }
+    dropUnusedElements(live, shown)
   }, RESTORE_ORIGIN)
   return true
 }

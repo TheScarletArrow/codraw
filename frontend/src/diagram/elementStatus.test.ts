@@ -2,9 +2,9 @@ import type { Cell } from '@maxgraph/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { readAttribution, type Author } from './attribution.ts'
-import { createUndoManager } from './binding.ts'
+import { createUndoManager, localOrigin } from './binding.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
-import { getCells, initializeDocument } from './model.ts'
+import { DEFAULT_PAGE_ID, getCells, initializeDocument } from './model.ts'
 import { readStatus } from './status.ts'
 import { connect } from './testing.ts'
 
@@ -26,7 +26,8 @@ describe('statuses of elements in the editor', () => {
     if (!readOnly) initializeDocument(doc)
     const container = document.createElement('div')
     document.body.append(container)
-    const history = createUndoManager(getCells(doc))
+    // The history of the page, as the board gives the editor.
+    const history = createUndoManager(getCells(doc), localOrigin(DEFAULT_PAGE_ID))
     const editor = createDiagramEditor(container, doc, {
       readOnly,
       participantName: participant.name,

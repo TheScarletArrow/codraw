@@ -2,8 +2,12 @@ import * as Y from 'yjs'
 import { writeAttribution, type Author } from './attribution.ts'
 import { newId } from './ids.ts'
 import {
+  cellElementId,
   compareCells,
+  dropUnusedElements,
+  ELEMENT_KEY,
   getCells,
+  getElements,
   getPages,
   LAYER_CELL_ID,
   orderBetween,
@@ -75,9 +79,9 @@ export function movePage(doc: Y.Doc, id: string, index: number) {
 }
 
 /**
- * Copies a page with all its cells right after it and returns the id of the copy. Cells get new ids, so the
- * copy is independent of the original. With an `author`, the copies keep them as who changed them last, as pasted
- * copies do.
+ * Copies a page with all its cells right after it and returns the id of the copy. Cells get new ids, and cells of
+ * elements copies of their elements, so the copy is independent of the original. With an `author`, the copies keep
+ * them as who changed them last, as pasted copies do.
  */
 export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = null): string | null {
   const pages = listPages(doc)
@@ -90,15 +94,31 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
   ])
   for (const cellId of source.keys()) if (!ids.has(cellId)) ids.set(cellId, newId())
   const remap = (value: unknown) => (typeof value === 'string' ? (ids.get(value) ?? value) : value)
+  const elements = getElements(doc)
+  // One copy of each element, should several cells of the page show it; an element the document lacks gets a new id too.
+  const elementCopies = new Map<string, string>()
+  source.forEach((cell) => {
+    const element = cellElementId(cell)
+    if (element !== null && !elementCopies.has(element)) elementCopies.set(element, newId())
+  })
 
   const copyId = newId()
   const at = Date.now()
   doc.transact(() => {
     writePage(doc, copyId, { name: `${pages[index]!.name} (копия)`, order: orderAfter(pages[index], pages[index + 1]) })
+    elementCopies.forEach((copy, element) => {
+      const original = elements.get(element)
+      if (original instanceof Y.Map) elements.set(copy, copyMap(original))
+    })
     const target = getCells(doc, copyId)
     source.forEach((cell, cellId) => {
       if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID) return
-      const copy = copyMap(cell, (key, value) => (REFERENCES.has(key) ? remap(value) : value))
+      const copy = copyMap(
+        cell,
+        (key, value) => (REFERENCES.has(key) ? remap(value) : value),
+        // The style of a cell of an element names the copy of the element.
+        (key, value) => (key === ELEMENT_KEY && typeof value === 'string' ? (elementCopies.get(value) ?? value) : value),
+      )
       // Written into the copy before it is added, so that the document keeps one value of each key. A copy is a new
       // element, which nobody has reviewed: it has no status.
       if (author) writeAttribution(copy, author, at)
@@ -112,25 +132,40 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
 /** Fields of a cell that hold ids of other cells. */
 const REFERENCES = new Set(['parent', 'source', 'target'])
 
+type Transform = (key: string, value: unknown) => unknown
+
+const asIs: Transform = (_, value) => value
+
 /**
  * A detached copy of a cell with values passed through `transform`; nested maps (style, custom properties) are
- * copied too. A detached map cannot be read until it is added to the document, so values are changed on the way.
+ * copied too, their values passed through `nested`. A detached map cannot be read until it is added to the document,
+ * so values are changed on the way.
  */
-function copyMap(map: CellMap, transform: (key: string, value: unknown) => unknown = (_, value) => value): CellMap {
+function copyMap(map: CellMap, transform: Transform = asIs, nested: Transform = asIs): CellMap {
   const copy = new Y.Map<unknown>()
-  map.forEach((value, key) => copy.set(key, value instanceof Y.Map ? copyMap(value) : structuredClone(transform(key, value))))
+  map.forEach((value, key) =>
+    copy.set(key, value instanceof Y.Map ? copyNested(value, nested) : structuredClone(transform(key, value))),
+  )
   return copy
 }
 
-/** Deletes a page and its cells; the last page cannot be deleted. Returns whether the page was deleted. */
+/** A detached copy of a nested map and the maps in it, with values passed through `transform`. */
+const copyNested = (map: CellMap, transform: Transform) => copyMap(map, transform, transform)
+
+/**
+ * Deletes a page and its cells, with the elements that no other page shows; the last page cannot be deleted. Returns
+ * whether the page was deleted.
+ */
 export function deletePage(doc: Y.Doc, id: string): boolean {
   const pages = getPages(doc)
   if (!pages.has(id) || pages.size <= 1) return false
   const cells = getCells(doc, id)
   doc.transact(() => {
+    const elements = Array.from(cells.values(), (cell) => cellElementId(cell))
     pages.delete(id)
     // A top-level type cannot be removed from the document, so the cells are cleared instead.
     Array.from(cells.keys()).forEach((cellId) => cells.delete(cellId))
+    dropUnusedElements(doc, elements)
   }, PAGES_ORIGIN)
   return true
 }

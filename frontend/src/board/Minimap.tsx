@@ -282,6 +282,9 @@ function useSketch(editor: DiagramEditor): PageSketch {
       const off = editor.onViewChange(() => {
         timer ??= setTimeout(changed, SKETCH_INTERVAL_MS)
       })
+      // The page may have changed since the sketch of the first render, unheard: React takes the snapshot again after
+      // subscribing, and the editor gives the same sketch if nothing changed.
+      version.current++
       return () => {
         off()
         clearTimeout(timer)

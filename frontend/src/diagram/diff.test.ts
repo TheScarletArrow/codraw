@@ -16,7 +16,9 @@ import {
 } from './diff.ts'
 import {
   DEFAULT_PAGE_ID,
+  ELEMENT_KEY,
   getCells,
+  getElements,
   getPages,
   orderBetween,
   writeAttrs,
@@ -99,6 +101,15 @@ describe('comparing two states of a board', () => {
     })
 
     expect(changesOf(pageDiff(version, now), 'a')).toEqual({ fields: [], geometry: [], style: ['fillColor', 'dashed', 'fontSize'], attrs: [] })
+  })
+
+  it('compares the properties of the element of a cell as keys of its style', () => {
+    const version = boardWith(shapeData('a', 'a0', { style: { [ELEMENT_KEY]: 'e1', codrawName: 'API', codrawTechnology: 'Java' } }))
+    const now = laterState(version, (doc) => getElements(doc).get('e1')!.set('technology', 'Kotlin'))
+
+    const snapshot = snapshotDocument(now).get(DEFAULT_PAGE_ID)!.cells.get('a')!
+    expect(snapshot.style).toEqual({ [ELEMENT_KEY]: 'e1', codrawName: 'API', codrawTechnology: 'Kotlin' })
+    expect(changesOf(pageDiff(version, now), 'a')).toEqual({ fields: [], geometry: [], style: ['codrawTechnology'], attrs: [] })
   })
 
   it('names what changed in the geometry: position, size, bends and loose ends', () => {

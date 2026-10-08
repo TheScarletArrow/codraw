@@ -365,6 +365,20 @@ describe('shortcutLabel', () => {
     expect(labels('edge', { ...describing, readOnly: true })).not.toContain('Описание API…')
   })
 
+  it('offers the properties of a shape after its link and of an edge after its description, also to viewers', () => {
+    const showing = { ...all, canLink: true, canDescribeApi: true, canShowProperties: true, canComment: true }
+
+    expect(labels('shape', showing).slice(-4)).toEqual(['Ссылка…', 'Свойства…', 'Комментировать', 'Удалить'])
+    expect(labels('edge', showing).slice(-5)).toEqual(['Ссылка…', 'Описание API…', 'Свойства…', 'Комментировать', 'Удалить'])
+    for (const target of ['canvas', 'table', 'field', 'index', 'group', 'selection'] as const) {
+      expect(labels(target, showing)).not.toContain('Свойства…')
+    }
+    expect(labels('shape', { ...showing, canShowProperties: false })).not.toContain('Свойства…')
+    // A locked element and a viewer see the properties without changing them.
+    expect(menuItems('shape', { ...showing, locked: true }).find((item) => item.command === 'properties')).toMatchObject({ disabled: false })
+    expect(labels('edge', { ...showing, readOnly: true })).toEqual(['Копировать стиль', 'Свойства…', 'Комментировать'])
+  })
+
   it('lets a participant who may only view comment, also on a field or an edge', () => {
     const viewing = { ...all, readOnly: true, canComment: true }
 

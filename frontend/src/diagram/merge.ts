@@ -14,6 +14,8 @@ import {
 } from './diff.ts'
 import {
   compareCells,
+  dropUnusedElements,
+  elementIdOf,
   getCells,
   getPages,
   LAYER_CELL_ID,
@@ -73,7 +75,9 @@ export function mergeConflicts(proposal: BoardDiff, board: BoardDiff): MergeConf
  * - elements are merged page by page, see {@link mergeCells}.
  *
  * Merged elements keep the marks of the draft of who changed them last: its author made the change. Locked elements are
- * merged like any other: accepting a proposal is a decision of whoever accepts it, like restoring a version.
+ * merged like any other: accepting a proposal is a decision of whoever accepts it, like restoring a version. The
+ * properties of the elements of cells are merged key by key as keys of their style, and an element whose last cell
+ * goes goes too.
  */
 export function mergeProposal(live: Y.Doc, base: BoardSnapshot, draft: BoardSnapshot) {
   const board = snapshotDocument(live)
@@ -86,6 +90,11 @@ export function mergeProposal(live: Y.Doc, base: BoardSnapshot, draft: BoardSnap
     for (const page of diff.pages) {
       if (page.type === 'removed' && board.has(page.id) && getPages(live).size > 1) removePage(live, page.id)
     }
+    // Elements whose last cells the merge removed go with them.
+    dropUnusedElements(
+      live,
+      [...board.values()].flatMap((page) => [...page.cells.values()].map((cell) => elementIdOf(cell.style))),
+    )
   }, MERGE_ORIGIN)
 }
 

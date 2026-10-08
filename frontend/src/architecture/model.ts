@@ -1,10 +1,13 @@
+import { edgeProperties, ELEMENT_KINDS, FRAME_SHAPES, type C4Kind, type C4Variant } from '../diagram/elementKinds.ts'
+import { elementProperties, hasElement, labelFormat, labelLines as textLines, parseLabel } from '../diagram/elementProps.ts'
 import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
+import type { ShapeId } from '../diagram/shapes.ts'
 
 /** What an element of C4 is. */
-export type ElementKind = 'person' | 'system' | 'container' | 'component'
+export type ElementKind = C4Kind
 
 /** How an element is drawn in C4: a box, a cylinder of data or a pipe of messages. */
-export type ElementVariant = 'plain' | 'database' | 'queue'
+export type ElementVariant = C4Variant
 
 /** What a frame around elements is: a software system, a container, or a group of no kind of C4. */
 export type BoundaryKind = 'system' | 'container' | 'group'
@@ -48,70 +51,10 @@ export interface ArchModel {
   skipped: number
 }
 
-type Mapping = { kind: ElementKind; variant?: ElementVariant; external?: boolean } | { boundary: BoundaryKind | 'c4' }
-
-/** Elements and frames by the shapes of the palette; other shapes are left out. */
-const SHAPES: Record<string, Mapping> = {
-  'c4-person': { kind: 'person' },
-  'c4-system': { kind: 'system' },
-  'c4-container': { kind: 'container' },
-  'c4-component': { kind: 'component' },
-  'c4-database': { kind: 'container', variant: 'database' },
-  'c4-external-system': { kind: 'system', external: true },
-  'c4-boundary': { boundary: 'c4' },
-  user: { kind: 'person' },
-  'external-system': { kind: 'system', external: true },
-  'uml-component': { kind: 'component' },
-  boundary: { boundary: 'group' },
-  'kubernetes-cluster': { boundary: 'group' },
-  'uml-package': { boundary: 'group' },
-  database: { kind: 'container', variant: 'database' },
-  cache: { kind: 'container', variant: 'database' },
-  'object-storage': { kind: 'container', variant: 'database' },
-  'search-index': { kind: 'container', variant: 'database' },
-  'data-warehouse': { kind: 'container', variant: 'database' },
-  queue: { kind: 'container', variant: 'queue' },
-  'event-topic': { kind: 'container', variant: 'queue' },
-  ...Object.fromEntries(
-    [
-      'service',
-      'load-balancer',
-      'api-gateway',
-      'cdn',
-      'server',
-      'container',
-      'firewall',
-      'dns',
-      'scheduler',
-      'function',
-      'browser',
-      'mobile-app',
-      'desktop-app',
-      'iot-device',
-    ].map((id) => [id, { kind: 'container' } as Mapping]),
-  ),
-}
-
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" }
-
 /** The lines of a label; a label of HTML from draw.io becomes its text, a line a `<br>`, `<div>` or `<p>`. */
 export function labelLines(cell: CellData): string[] {
-  let text = cell.value
-  if (cell.style.html === true || cell.style.html === 1 || cell.style.html === '1' || /<(br|div|p|span|b|i)\b/i.test(text)) {
-    text = text
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/?(div|p)\b[^>]*>/gi, '\n')
-      .replace(/<[^>]*>/g, '')
-      .replace(/&(#39|[a-z]+);/gi, (entity, name: string) => ENTITIES[name.toLowerCase()] ?? entity)
-  }
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
+  return textLines(cell.value, cell.style)
 }
-
-/** `[Container: Spring Boot]`: the type and the technology of the second line of a label of C4. */
-const C4_TYPE = /^\[([^:\]]+)(?::\s*([^\]]*))?\]$/
 
 /** A label of a relation: `Использует [HTTPS]`, on one line or two. */
 const RELATION = /^([\s\S]*?)\s*\[([^\]]+)\]\s*$/
@@ -180,32 +123,36 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
   let skipped = 0
   for (const cell of cells) {
     if (!isShape(cell)) continue
-    const mapping = SHAPES[String(cell.style.codrawShape ?? '')]
+    const frame = FRAME_SHAPES[String(cell.style.codrawShape ?? '') as ShapeId]
+    // The kind of an element, or of a shape of the palette as its label tells it; shapes of files are no elements.
+    const properties = elementProperties(cell.style, cell.value)
+    const ofKind = hasElement(cell.style) || Boolean(cell.style.codrawShape)
+    const kind = !frame && ofKind && properties.kind ? ELEMENT_KINDS[properties.kind] : undefined
     // A group of shapes is no shape of its own: its shapes count.
-    if (!mapping) {
+    if (!frame && !kind) {
       if (cell.style.codrawShape || !cells.some((child) => child.parent === cell.id)) skipped += 1
       continue
     }
-    const lines = labelLines(cell)
-    const name = lines[0] ?? ''
+    const name = properties.name
     boxes.set(cell.id, boxOf(cell))
-    if ('boundary' in mapping) {
-      const type = C4_TYPE.exec(lines[1] ?? '')?.[1]?.trim().toLowerCase()
-      const kind: BoundaryKind = mapping.boundary !== 'c4' ? mapping.boundary : type === 'container' ? 'container' : 'system'
-      boundaries.set(cell.id, { type: 'boundary', id: unique(name, kind), kind, name, children: [] })
+    if (frame) {
+      const c4 = properties.kind ? ELEMENT_KINDS[properties.kind]?.c4 : undefined
+      const boundary: BoundaryKind = frame !== 'c4' ? 'group' : c4 === 'container' ? 'container' : 'system'
+      boundaries.set(cell.id, { type: 'boundary', id: unique(name, boundary), kind: boundary, name, children: [] })
       continue
     }
-    const c4 = String(cell.style.codrawShape).startsWith('c4-')
-    const typed = c4 ? C4_TYPE.exec(lines[1] ?? '') : null
+    const c4 = labelFormat(cell.style, properties.kind) === 'c4'
+    // Without a description of its own, a shape of no notation of C4 is described by the other lines of its label.
+    const rest = parseLabel(cell.value, 'plain', cell.style).rest.map((line) => line.trim()).filter(Boolean)
     elements.set(cell.id, {
       type: 'element',
-      id: unique(name, mapping.kind),
-      kind: mapping.kind,
-      variant: mapping.variant ?? 'plain',
-      external: mapping.external ?? false,
+      id: unique(name, kind!.c4),
+      kind: kind!.c4,
+      variant: kind!.variant,
+      external: kind!.external,
       name,
-      technology: typed?.[2]?.trim() ?? '',
-      description: lines.slice(typed ? 2 : 1).join(c4 ? ' ' : '; '),
+      technology: properties.technology,
+      description: properties.description ? properties.description.split('\n').join(c4 ? ' ' : '; ') : c4 ? '' : rest.join('; '),
     })
   }
 
@@ -241,7 +188,8 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
       source: source[1],
       target: target[1],
       description: (parts ? parts[1]! : label).replace(/\s+/g, ' ').trim(),
-      technology: parts?.[2]?.trim() ?? '',
+      // The technology of the edge, or the one its label tells.
+      technology: edgeProperties(edge.style).technology || (parts?.[2]?.trim() ?? ''),
     })
   }
   return { title, roots, relations, skipped }

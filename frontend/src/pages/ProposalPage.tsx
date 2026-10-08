@@ -36,6 +36,7 @@ import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
+import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
@@ -112,6 +113,9 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
+  // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
+  const [propertiesOpen, setPropertiesOpen] = useState(false)
+  const [propertiesRequest, setPropertiesRequest] = useState<PropertiesRequest | null>(null)
 
   const withdraw = useMutation({
     mutationFn: () => withdrawProposal(board.id, proposal.id),
@@ -167,6 +171,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         {/* Nobody else is on a draft, and comments are about the board: no laser pointer and no comment tool. */}
         <EditorToolbar editor={editor} readOnly={readOnly} collaboration={false} />
+        <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
         <ShortcutsHelp readOnly={readOnly} collaboration={false} />
       </div>
       <div
@@ -237,10 +242,27 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 {!readOnly && <QuickConnect editor={editor} />}
                 {!readOnly && <FieldPopover editor={editor} />}
                 {!readOnly && <StickyPanel editor={editor} />}
-                <EdgeApiPanel editor={editor} request={apiRequest} />
+                <SidePanels>
+                  <EdgeApiPanel editor={editor} request={apiRequest} />
+                  {propertiesOpen && (
+                    <PropertiesPanel
+                      editor={editor}
+                      document={document}
+                      request={propertiesRequest}
+                      onClose={() => {
+                        setPropertiesOpen(false)
+                        editor?.focus()
+                      }}
+                    />
+                  )}
+                </SidePanels>
                 <CanvasMenu
                   editor={editor}
                   onEdgeApi={readOnly ? undefined : (cellId) => setApiRequest({ cellId })}
+                  onProperties={(cellId) => {
+                    setPropertiesOpen(true)
+                    setPropertiesRequest({ cellId })
+                  }}
                   onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
                 />
                 {linking && linking.editor === editor && (

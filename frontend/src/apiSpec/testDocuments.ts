@@ -348,6 +348,18 @@ export const ORDERS_ASYNCAPI_YAML = `asyncapi: 3.0.0
 info:
   title: Orders
   version: 1.0.0
+  description: |
+    Заказы магазина:
+    создание и отмена.
+
+    Подробности — в вики.
+servers:
+  production:
+    host: kafka.example.com:9093
+    protocol: kafka-secure
+  local:
+    host: localhost:9092
+    protocol: kafka
 channels:
   orderCreated:
     address: orders.created

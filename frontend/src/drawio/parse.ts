@@ -1,8 +1,25 @@
 import { generateNKeysBetween } from 'fractional-indexing'
 import { newId } from '../diagram/ids.ts'
 import { EDGE_API_KEY, edgeApiOf } from '../diagram/edgeApi.ts'
+import {
+  edgeProperties,
+  edgePropertiesStyle,
+  INTERACTION_KEY,
+  kindOfC4Type,
+  normalizeProperties,
+  propertiesStyle,
+  TECHNOLOGY_KEY,
+} from '../diagram/elementKinds.ts'
 import { LINK_KEY, linkOf } from '../diagram/links.ts'
-import { LAYER_CELL_ID, ROOT_CELL_ID, type CellData, type GeometryData, type PointData } from '../diagram/model.ts'
+import {
+  ELEMENT_KEY,
+  LAYER_CELL_ID,
+  ROOT_CELL_ID,
+  type CellData,
+  type GeometryData,
+  type PointData,
+  type StyleValue,
+} from '../diagram/model.ts'
 import { htmlToText } from './labels.ts'
 import { parseStyle } from './style.ts'
 
@@ -133,13 +150,15 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
       if (!cell) continue
       const attrs: Record<string, string> = {}
       for (const attribute of Array.from(element.attributes)) {
-        if (!['id', 'label', 'link', EDGE_API_KEY].includes(attribute.name)) attrs[attribute.name] = attribute.value
+        if (!['id', 'label', 'link', 'placeholders', EDGE_API_KEY].includes(attribute.name)) attrs[attribute.name] = attribute.value
       }
+      const label = element.getAttribute('label') ?? ''
       raw.push({
         id: element.getAttribute('id') ?? '',
         parent: cell.getAttribute('parent'),
         element: cell,
-        value: element.getAttribute('label') ?? '',
+        // The label of draw.io with placeholders shows the values of the attributes in their places.
+        value: element.getAttribute('placeholders') === '1' ? withPlaceholders(label, attrs, isHtml(cell.getAttribute('style') ?? '')) : label,
         attrs,
         link: element.getAttribute('link'),
         api: element.getAttribute(EDGE_API_KEY),
@@ -172,7 +191,8 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     if (link) style[LINK_KEY] = link
     // A description that CoDraw cannot read is dropped.
     if (kind === 'edge' && edgeApiOf({ [EDGE_API_KEY]: cell.api })) style[EDGE_API_KEY] = cell.api!
-    const html = /(^|;)\s*html=1\s*(;|$)/.test(styleText)
+    Object.assign(style, kind === 'edge' ? edgePropertiesOf(cell.attrs) : elementPropertiesOf(cell.attrs, style))
+    const html = isHtml(styleText)
     const parent = reference(cell.parent)
     return {
       id: ids.get(cell.id)!,
@@ -197,6 +217,76 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     group.forEach((cell, index) => (cell.order = keys[index]!))
   })
   return { id, name, cells }
+}
+
+const isHtml = (style: string) => /(^|;)\s*html=1\s*(;|$)/.test(style)
+
+const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }
+
+/**
+ * A label of draw.io with placeholders: `%name%` becomes the value of the attribute `name` of its element, escaped in a
+ * label of HTML; `%%` stays, as do placeholders of no attribute, e.g. `%page%`.
+ */
+function withPlaceholders(label: string, attrs: Record<string, string>, html: boolean): string {
+  return label.replace(/%([^%\s"'=;{}]+)%/g, (placeholder, name: string) => {
+    if (!Object.hasOwn(attrs, name)) return placeholder
+    const value = attrs[name]!
+    return html ? value.replace(/[&<>"]/g, (char) => HTML_ESCAPES[char]!) : value
+  })
+}
+
+/** Attributes that make the properties of an element in the files of CoDraw. */
+const CODRAW_PROPERTIES = ['name', 'kind', 'technology', 'description', 'owner', 'tags'] as const
+
+/** Attributes of the shapes of C4 of draw.io. */
+const C4_PROPERTIES = ['c4Name', 'c4Type', 'c4Technology', 'c4Description'] as const
+
+/** Takes the attributes `names` out of the custom properties. */
+function take(attrs: Record<string, string>, names: readonly string[]): Record<string, string> {
+  const taken: Record<string, string> = {}
+  for (const name of names) {
+    if (!Object.hasOwn(attrs, name)) continue
+    taken[name] = attrs[name]!
+    delete attrs[name]
+  }
+  return taken
+}
+
+/**
+ * The properties of the element of a shape, as style keys, from the attributes of its `<object>`: those of CoDraw with
+ * `codrawElement`, or those of a shape of C4 of draw.io; nothing otherwise. The attributes taken leave the custom
+ * properties; a shape of properties without an element gets a new one.
+ */
+function elementPropertiesOf(attrs: Record<string, string>, style: Record<string, StyleValue>): Record<string, StyleValue> {
+  let properties
+  if (attrs[ELEMENT_KEY]) {
+    properties = normalizeProperties(take(attrs, CODRAW_PROPERTIES))
+  } else if (C4_PROPERTIES.some((name) => Object.hasOwn(attrs, name))) {
+    const c4 = take(attrs, C4_PROPERTIES)
+    const type = c4.c4Type ?? ''
+    // draw.io draws a database of C4 as a container in a cylinder.
+    const cylinder = String(style.shape ?? '').startsWith('cylinder')
+    const kind = /^container$/i.test(type.trim()) && cylinder ? 'c4-database' : kindOfC4Type(type, null)
+    properties = normalizeProperties({ name: c4.c4Name, kind, technology: c4.c4Technology, description: c4.c4Description })
+  } else {
+    return {}
+  }
+  const element = take(attrs, [ELEMENT_KEY])[ELEMENT_KEY] || newId()
+  const keys: Record<string, StyleValue> = { [ELEMENT_KEY]: element }
+  for (const [key, value] of Object.entries(propertiesStyle(properties))) if (value !== undefined) keys[key] = value
+  return keys
+}
+
+/** The properties of an edge, as style keys, from `technology` and `interaction` of its `<object>`, or `c4Technology`. */
+function edgePropertiesOf(attrs: Record<string, string>): Record<string, StyleValue> {
+  const taken = take(attrs, ['technology', 'interaction', 'c4Technology'])
+  const properties = edgeProperties({
+    [TECHNOLOGY_KEY]: taken.technology ?? taken.c4Technology,
+    [INTERACTION_KEY]: taken.interaction,
+  })
+  const keys: Record<string, StyleValue> = {}
+  for (const [key, value] of Object.entries(edgePropertiesStyle(properties))) if (value !== undefined) keys[key] = value
+  return keys
 }
 
 const number = (element: Element, name: string) => {

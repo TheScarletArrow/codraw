@@ -90,6 +90,7 @@ export function createFakeEditor({
     edgeApi: null,
     stickies: null,
     status: null,
+    properties: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -192,6 +193,8 @@ export function createFakeEditor({
     setRotation: vi.fn(),
     setLink: vi.fn(),
     setEdgeApi: vi.fn(),
+    setElementProperties: vi.fn(),
+    setEdgeProperties: vi.fn(),
     getLinks: () => links,
     onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),

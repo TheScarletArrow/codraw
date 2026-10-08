@@ -1,5 +1,6 @@
 import * as Y from 'yjs'
-import { getCells } from './model.ts'
+import { TECHNOLOGY_KEY } from './elementKinds.ts'
+import { cellElementId, getCells, getElements, type CellMap } from './model.ts'
 import { listPages } from './pages.ts'
 import { readingOrder } from './readingOrder.ts'
 
@@ -18,19 +19,38 @@ export function searchText(text: string): string {
 }
 
 /**
+ * The text of the properties of a cell that its label does not show: the technology, description, owner and tags of the
+ * element of a shape, the technology of an edge.
+ */
+function propertiesText(doc: Y.Doc, cell: CellMap | undefined): string {
+  if (!(cell instanceof Y.Map)) return ''
+  const element = cellElementId(cell)
+  const map = element === null ? undefined : getElements(doc).get(element)
+  const style = cell.get('style')
+  const values = map instanceof Y.Map ? ['technology', 'description', 'owner', 'tags'].map((field) => map.get(field)) : []
+  if (cell.get('kind') === 'edge' && style instanceof Y.Map) values.push(style.get(TECHNOLOGY_KEY))
+  return values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .filter((value): value is string => typeof value === 'string')
+    .join('\n')
+}
+
+/**
  * Elements of all pages of the board whose text has `query`, as {@link searchText} compares them, one match per element:
  * the pages in their order; on a page in the order of reading (see {@link readingOrder}): top to bottom and, at one
  * height, left to right, the children of an element — the fields and indexes of a table, the shapes of a group — right
- * after it. Empty for a blank query.
+ * after it. The text of an element is its label and the properties its label does not show (see {@link propertiesText}).
+ * Empty for a blank query.
  */
 export function searchCanvas(doc: Y.Doc, query: string): CanvasMatch[] {
   const wanted = searchText(query).trim()
   if (!wanted) return []
-  return listPages(doc).flatMap((page) =>
-    readingOrder(getCells(doc, page.id))
-      .filter((node) => searchText(node.value).includes(wanted))
-      .map((node) => ({ pageId: page.id, cellId: node.id })),
-  )
+  return listPages(doc).flatMap((page) => {
+    const cells = getCells(doc, page.id)
+    return readingOrder(cells)
+      .filter((node) => searchText(node.value).includes(wanted) || searchText(propertiesText(doc, cells.get(node.id))).includes(wanted))
+      .map((node) => ({ pageId: page.id, cellId: node.id }))
+  })
 }
 
 /**

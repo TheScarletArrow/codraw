@@ -12,10 +12,12 @@ import {
 import type { MergeConflicts } from '../diagram/merge.ts'
 import type { Box, Point } from '../diagram/editor.ts'
 import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
+import { INTERACTION_KEY, SHOW_TECHNOLOGY_KEY, type ElementProperties } from '../diagram/elementKinds.ts'
+import { elementProperties } from '../diagram/elementProps.ts'
 import { isFreehandStyle } from '../diagram/freehand.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from '../diagram/locks.ts'
-import type { PointData } from '../diagram/model.ts'
+import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, isElementStyleKey, type PointData } from '../diagram/model.ts'
 import { isImageStyle } from '../diagram/images.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
 import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
@@ -161,6 +163,32 @@ const STYLE_WORDS: Record<string, string> = {
   [LOCKED_BY_KEY]: 'закрепление',
   [LINK_KEY]: 'ссылка',
   [EDGE_API_KEY]: 'описание API',
+  [SHOW_TECHNOLOGY_KEY]: 'технология на схеме',
+  // The properties of an edge; those of a shape are said by what changed in them (see {@link propertyWords}).
+  [ELEMENT_STYLE_KEYS.technology]: 'технология',
+  [INTERACTION_KEY]: 'вид связи',
+}
+
+/** Words for the properties of an element of a shape. */
+const PROPERTY_WORDS: Readonly<Record<keyof ElementProperties, string>> = {
+  name: 'имя',
+  kind: 'тип',
+  technology: 'технология',
+  description: 'описание',
+  owner: 'владелец',
+  tags: 'теги',
+}
+
+/**
+ * The properties of a shape that differ between two states, those its label tells included: an element that keeps the
+ * properties its label told changes none of them.
+ */
+function propertyWords(before: CellSnapshot, after: CellSnapshot): string[] {
+  const earlier = elementProperties(before.style, before.value)
+  const later = elementProperties(after.style, after.value)
+  return (Object.keys(PROPERTY_WORDS) as (keyof ElementProperties)[])
+    .filter((field) => JSON.stringify(earlier[field]) !== JSON.stringify(later[field]))
+    .map((field) => PROPERTY_WORDS[field])
 }
 
 const GEOMETRY_WORDS: Record<string, string> = {
@@ -177,7 +205,8 @@ const GEOMETRY_WORDS: Record<string, string> = {
 
 /**
  * What changed in a changed element, in words, each once, in the order of the fields, geometry, style, properties; a
- * status as the element has it now: «статус «Готово»» or «статус снят».
+ * status as the element has it now: «статус «Готово»» or «статус снят»; the properties of the element of a shape by
+ * name: «технология», «владелец».
  */
 function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Kinds): string[] {
   const { fields, geometry, style, attrs } = change.changes
@@ -206,10 +235,13 @@ function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Ki
   }
   // A line drawn by hand moves with its ends and bends together.
   const geometryWord = (key: string) => (isFreehandStyle(cell.style) ? 'положение' : (GEOMETRY_WORDS[key] ?? 'положение'))
+  // The properties of the element of a shape, and the element that keeps them, are said by what changed in them.
+  const ofElement = (key: string) => cell.kind === 'vertex' && (key === ELEMENT_KEY || isElementStyleKey(key))
   const words = [
     ...fields.map(fieldWord),
     ...geometry.map(geometryWord),
-    ...style.map((key) => STYLE_WORDS[key] ?? 'стиль'),
+    ...style.filter((key) => !ofElement(key)).map((key) => STYLE_WORDS[key] ?? 'стиль'),
+    ...(style.some(ofElement) ? propertyWords(change.before, cell) : []),
     ...attrs.map(() => 'свойства'),
   ]
   return [...new Set(words)]
