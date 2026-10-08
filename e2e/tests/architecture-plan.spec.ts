@@ -55,8 +55,7 @@ test('what will appear and what will go: the difference for everybody, a view fo
 
   // One undo step brings the plan back.
   await alice.keyboard.press('Escape')
-  await alice.getByTestId('diagram-canvas').focus()
-  await alice.keyboard.press('Control+z')
+  await alice.getByRole('button', { name: 'Отменить' }).click()
   await expect.poll(async () => (await vertices(bob)).length).toBe(2)
   await expect.poll(async () => (await look(bob, database)).stroke).toBe('#dc2626')
 
