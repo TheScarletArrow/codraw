@@ -57,12 +57,12 @@
 
 ## 6. Документация и проверка
 
-- [ ] 6.1 docs: README (возможности, раздел «Диаграммы последовательности», раздел «SQL и Mermaid», пункт плана),
+- [x] 6.1 docs: README (возможности, раздел «Диаграммы последовательности», раздел «SQL и Mermaid», пункт плана),
   «Что нового» 0.10.0 и `version` в `frontend/package.json`; проверка: тесты «Что нового»
-- [ ] 6.2 e2e: `sequence-diagrams.spec.ts` — два участника: добавление, вставка в середину, Enter, отмена; импорт
+- [x] 6.2 e2e: `sequence-diagrams.spec.ts` — два участника: добавление, вставка в середину, Enter, отмена; импорт
   Mermaid; `.drawio` туда и обратно; обновить списки `context-menu.spec.ts` и `templates.spec.ts`, если меняются;
   проверка: `pnpm --filter @codraw/e2e typecheck` и прогон спецификаций
-- [ ] 6.3 Проверка: `pnpm typecheck`, `pnpm lint`, `pnpm --filter @codraw/frontend test`, `pnpm --filter
+- [x] 6.3 Проверка: `pnpm typecheck`, `pnpm lint`, `pnpm --filter @codraw/frontend test`, `pnpm --filter
   @codraw/frontend build` (maxGraph не в главном пакете), `openspec validate --all --strict`
 
 ## Workflow follow-up
