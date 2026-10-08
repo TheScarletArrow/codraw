@@ -96,6 +96,7 @@ const COMMANDS: Record<
  */
 export function CanvasMenu({
   editor,
+  onAnalyze,
   onComment,
   onLink,
   onEdgeApi,
@@ -106,6 +107,7 @@ export function CanvasMenu({
   onStatusChange,
 }: {
   editor: DiagramEditor | null
+  onAnalyze?: (cellIds: string[]) => void
   onComment?: (target: CommentTarget) => void
   onLink?: (request: ContextMenuRequest) => void
   onEdgeApi?: (cellId: string) => void
@@ -261,6 +263,13 @@ export function CanvasMenu({
           </p>
         )}
         <div role="menu" aria-label="Действия" aria-describedby={locked ? lockId : undefined} className="flex flex-col">
+          {onAnalyze && ['shape', 'table', 'group', 'selection'].includes(request.target) && (
+            <Button type="button" role="menuitem" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => {
+              const ids = editor.graph?.getSelectionCells().flatMap((cell) => cell.id ? [cell.id] : []) ?? (request.cellId ? [request.cellId] : [])
+              close()
+              onAnalyze(ids)
+            }}>{request.target === 'selection' ? 'Путь между…' : 'Зависимости…'}</Button>
+          )}
           {menuItems(request.target, {
             canPaste,
             canUndo,

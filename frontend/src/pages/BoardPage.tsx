@@ -74,6 +74,7 @@ import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
+import { DependencyAnalysis, type AnalysisRequest } from '../analysis/DependencyAnalysis.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
 import { LinkDialog } from '../links/LinkDialog.tsx'
@@ -371,6 +372,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const [propertiesRequest, setPropertiesRequest] = useState<PropertiesRequest | null>(null)
   // The panel of the elements of the board, and the element whose cells the menu or a badge asked for.
   const [elementsOpen, setElementsOpen] = useState(false)
+  const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest | null>(null)
   const [elementsRequest, setElementsRequest] = useState<ElementsRequest | null>(null)
   const showWhereUsed = (key: string) => {
     setElementsOpen(true)
@@ -748,6 +750,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   </SidePanels>
                   <CanvasMenu
                     editor={editor}
+                    onAnalyze={(cellIds) => editor && setAnalysisRequest({ pageId: editor.pageId, cellIds })}
                     onEdgeApi={readOnly ? undefined : (cellId) => setApiRequest({ cellId })}
                     onProperties={(cellId) => {
                       setPropertiesOpen(true)
@@ -793,6 +796,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   )}
                   {!readOnly && <EmptyBoardTemplates editor={editor} onlyPage={pages.length === 1} />}
                   <Minimap editor={editor} awareness={awareness} onNavigate={following.stop} />
+                  {document && editor && <DependencyAnalysis document={document} editor={editor} request={analysisRequest} onShow={showCell} />}
                 </>
               ) : (
                 <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>
