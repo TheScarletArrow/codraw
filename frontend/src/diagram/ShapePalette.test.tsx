@@ -23,6 +23,7 @@ describe('ShapePalette', () => {
       ['Клиенты', 4],
       ['UML', 5],
       ['C4', 7],
+      ['Провайдеры', 10],
     ])
   })
 
@@ -64,10 +65,10 @@ describe('ShapePalette', () => {
 
     expect(screen.queryByRole('group', { name: 'C4' })).toBeNull()
     const found = screen.getByRole('group', { name: 'Найденные фигуры' })
-    expect(within(found).getAllByRole('button').map((button) => button.textContent)).toEqual(['Топик событий'])
+    expect(within(found).getAllByRole('button').map((button) => button.textContent)).toEqual(['Kafka', 'Топик событий'])
 
     await userEvent.keyboard('{Enter}')
-    expect(editor.addShape).toHaveBeenCalledWith('event-topic')
+    expect(editor.addShape).toHaveBeenCalledWith('provider-kafka')
   })
 
   it('tells when nothing is found, and Escape brings the sections back', async () => {

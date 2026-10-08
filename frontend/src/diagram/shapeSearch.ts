@@ -7,6 +7,16 @@ import { SHAPE_SECTIONS, type ShapeId, type ShapePreset } from './shapes.ts'
  * an element suggest for it (see `elementProps.ts`).
  */
 export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
+  'provider-postgresql': ['postgres', 'pg', 'постгрес', 'sql', 'database', 'бд'],
+  'provider-oracle': ['оракл', 'sql', 'database', 'бд'],
+  'provider-elasticsearch': ['elastic', 'эластик', 'search', 'поиск'],
+  'provider-kafka': ['apache kafka', 'кафка', 'broker', 'брокер', 'stream'],
+  'provider-mysql': ['sql', 'database', 'бд'],
+  'provider-mongodb': ['mongo', 'монго', 'nosql', 'database', 'бд'],
+  'provider-redis': ['редис', 'cache', 'кэш', 'кеш'],
+  'provider-rabbitmq': ['rabbit', 'rabbit mq', 'queue', 'очередь', 'broker', 'брокер'],
+  'provider-docker': ['докер', 'container', 'контейнер'],
+  'provider-kubernetes': ['k8s', 'кубернетес', 'cluster', 'кластер'],
   rectangle: ['rectangle', 'box', 'блок', 'квадрат'],
   rounded: ['rounded', 'скруглённый', 'блок'],
   ellipse: ['ellipse', 'circle', 'круг', 'овал'],

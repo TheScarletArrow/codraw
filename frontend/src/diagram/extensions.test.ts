@@ -80,6 +80,7 @@ describe('diagram extensions', () => {
       'doubleEllipse',
       'swimlane',
       'document',
+      'image',
       'mxgraph.c4.person2',
       SEQUENCE_SHAPE,
     ]
