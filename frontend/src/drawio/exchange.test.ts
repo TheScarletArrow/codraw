@@ -21,6 +21,7 @@ import {
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { findShape, markedStyle } from '../diagram/shapes.ts'
 import { readStatus, writeStatus } from '../diagram/status.ts'
+import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
 import { parseDrawio } from './parse.ts'
@@ -287,6 +288,23 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).pay!.style[EDGE_API_KEY]).toBe(api)
     expect(pageCells(copy, DEFAULT_PAGE_ID).pay!.attrs).toEqual({})
     expect(pageCells(copy, DEFAULT_PAGE_ID).bad!.style).not.toHaveProperty(EDGE_API_KEY)
+  })
+
+  it('writes a view with its badge keys in the style and its query on an <object>, and reads them back', async () => {
+    const query = "SELECT user_id, count(*) AS orders FROM orders WHERE status = 'paid'; -- a=b"
+    const table = { ...markedStyle(findShape('table')!), [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query }
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('stats', { value: 'user_stats', style: table })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain('codrawView=1;codrawViewMaterialized=1;')
+    expect(xml).toContain(`<object label="user_stats" ${VIEW_QUERY_KEY}="SELECT user_id, count(*) AS orders FROM orders WHERE status = 'paid'; -- a=b"`)
+    const stats = pageCells(copy, DEFAULT_PAGE_ID).stats!
+    expect(stats.style).toMatchObject({ [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query })
+    expect(stats.attrs).toEqual({})
   })
 
   it('writes no link that CoDraw would not open, nor one that a board kept among the custom properties', () => {

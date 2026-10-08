@@ -141,6 +141,20 @@ describe('clipboard format', () => {
     expect(clipboardContent(dataToCells(base)).html).toBeNull()
   })
 
+  it('writes views alone as SQL with their query, and reads DDL with views alone as a diagram of views', async () => {
+    const builder = new DiagramBuilder()
+    builder.table('active_users', 0, 0, ['id uuid'], 220, [], { codrawView: true, codrawViewQuery: 'SELECT id FROM users WHERE active' })
+    const { text, html } = clipboardContent(dataToCells(builder.build()))
+
+    expect(text).toBe('CREATE VIEW active_users AS SELECT id FROM users WHERE active;\n')
+    expect(html).toContain('data-codraw=')
+    const content = await readClipboardText('CREATE VIEW recent AS SELECT 1 AS one;')
+    const [view] = content?.kind === 'diagram' ? content.cells : []
+    expect(view!.getValue()).toBe('recent')
+    expect(view!.getStyle()).toMatchObject({ codrawView: true, codrawViewQuery: 'SELECT 1 AS one' })
+    expect(view!.getChildren().map((field) => field.getValue())).toEqual(['one integer'])
+  })
+
   it('reads DDL with tables as a laid out diagram, and text that only has SQL words as text', async () => {
     const content = await readClipboardText('CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL);')
     expect(content?.kind).toBe('diagram')

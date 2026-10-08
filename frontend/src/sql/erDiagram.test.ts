@@ -14,6 +14,7 @@ import {
   schemaSql,
 } from './erDiagram.ts'
 import { parseSql } from './parseSql.ts'
+import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 
 const DDL = `
   CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL UNIQUE, "Full Name" text);
@@ -220,5 +221,82 @@ describe('the schema of a diagram', () => {
     expect(mermaid).toContain('    users |o--o{ boards : "reviewer_id"')
     expect(mermaid).toContain('    boards ||--o{ board_members : "board_id"')
     expect(mermaid).toContain('        uuid board_id PK, FK')
+  })
+})
+
+describe('views of a schema', () => {
+  const VIEWS = `
+    CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL, deleted_at timestamptz);
+    CREATE TABLE orders (id bigint PRIMARY KEY, user_id uuid REFERENCES users, total numeric(10, 2));
+    CREATE VIEW active_users AS SELECT id, email FROM users WHERE deleted_at IS NULL;
+    CREATE MATERIALIZED VIEW user_totals AS
+      SELECT a.id AS user_id, sum(o.total) AS total FROM active_users a JOIN orders o ON o.user_id = a.id GROUP BY a.id
+    WITH NO DATA;
+    CREATE UNIQUE INDEX ON user_totals (user_id);
+  `
+
+  it('makes a view per view with its columns, query and badge keys, and dashed edges to what it reads', async () => {
+    const cells = await schemaCells(parseSql(VIEWS), { x: 0, y: 0 }, undefined, [], 'sql')
+    const active = byValue(cells, 'active_users')
+    const totals = byValue(cells, 'user_totals')
+
+    expect(tables(cells).map((cell) => cell.value)).toEqual(['users', 'orders', 'active_users', 'user_totals'])
+    expect(active.style).toMatchObject({ [VIEW_KEY]: true, [VIEW_QUERY_KEY]: 'SELECT id, email FROM users WHERE deleted_at IS NULL', dbVendor: 'postgresql' })
+    expect(active.style[MATERIALIZED_KEY]).toBeUndefined()
+    expect(fields(cells, active)).toEqual(['id uuid', 'email text'])
+    expect(totals.style).toMatchObject({ [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, codrawSource: 'sql:user_totals' })
+    expect(fields(cells, totals)).toEqual(['user_id uuid', 'total', 'user_totals_user_id_idx (user_id) UNIQUE'])
+
+    const dependencies = cells.filter((cell) => cell.kind === 'edge' && cell.style.dashed)
+    expect(dependencies.map((edge) => [cells.find((cell) => cell.id === edge.source)!.value, cells.find((cell) => cell.id === edge.target)!.value])).toEqual([
+      ['active_users', 'users'],
+      ['user_totals', 'active_users'],
+      ['user_totals', 'orders'],
+    ])
+    expect(dependencies[0]!.style).toMatchObject({ endArrow: 'open', codrawSource: 'sql:active_users=>users' })
+    // A view is wider than a table of the same name, for its badge.
+    expect(active.geometry!.width).toBeGreaterThanOrEqual(160)
+  })
+
+  it('goes from DDL to cells and back to views after the tables, each after those it reads, but not to Mermaid', async () => {
+    const schema = diagramSchema(await schemaCells(parseSql(VIEWS), { x: 0, y: 0 }))
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['users', 'orders'])
+    expect(schema.views.map((view) => view.name)).toEqual(['active_users', 'user_totals'])
+    expect(schema.views[1]).toMatchObject({ materialized: true, dependencies: ['active_users', 'orders'] })
+    const sql = schemaSql(schema)
+    expect(sql).toContain('ALTER TABLE orders ADD FOREIGN KEY (user_id) REFERENCES users (id);\n\nCREATE VIEW active_users AS SELECT id, email')
+    expect(sql).toContain(
+      'CREATE MATERIALIZED VIEW user_totals AS SELECT a.id AS user_id, sum(o.total) AS total FROM active_users a JOIN orders o ON o.user_id = a.id GROUP BY a.id;\n' +
+        'CREATE UNIQUE INDEX user_totals_user_id_idx ON user_totals (user_id);\n',
+    )
+    expect(parseSql(sql).views.map((view) => view.name)).toEqual(['active_users', 'user_totals'])
+    expect(schemaMermaid(schema)).not.toContain('active_users')
+  })
+
+  it('writes views that read others after them, the indexes of plain views not, and a stand-in for a view without a query', () => {
+    const builder = new DiagramBuilder()
+    builder.table('report', 0, 0, ['total bigint'], 220, ['report_idx (total)'], { [VIEW_KEY]: true, [VIEW_QUERY_KEY]: 'SELECT count(*) AS total FROM base' })
+    builder.table('base', 0, 0, ['id uuid'], 220, [], { [VIEW_KEY]: true, [VIEW_QUERY_KEY]: 'SELECT id FROM users' })
+    builder.table('draft', 0, 0, ['id uuid', '"Full Name"'], 220, [], { [VIEW_KEY]: true })
+
+    expect(schemaSql(diagramSchema(builder.build()))).toBe(
+      [
+        'CREATE VIEW base AS SELECT id FROM users;',
+        'CREATE VIEW report AS SELECT count(*) AS total FROM base;',
+        '-- Запрос представления draft не задан: столбцы без строк\nCREATE VIEW draft AS SELECT NULL::uuid AS id, NULL AS "Full Name";',
+      ].join('\n\n') + '\n',
+    )
+  })
+
+  it('leaves the edges of the fields of views out of the foreign keys of tables', () => {
+    const builder = new DiagramBuilder()
+    const users = builder.table('users', 0, 0, ['id uuid PK'])
+    const active = builder.table('active_users', 400, 0, ['user_id uuid'], 220, [], { [VIEW_KEY]: true })
+    builder.edge(active.fields[0]!, users.fields[0]!)
+
+    const schema = diagramSchema(builder.build())
+    expect(schema.tables.map((table) => [table.name, table.foreignKeys])).toEqual([['users', []]])
+    expect(schema.views.map((view) => view.name)).toEqual(['active_users'])
   })
 })

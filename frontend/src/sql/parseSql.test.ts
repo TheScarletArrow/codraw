@@ -9,6 +9,10 @@ const columns = (schema: SqlSchema, table: string) =>
       [column.name, column.type, column.primaryKey && 'PK', column.notNull && 'NN', column.unique && 'U'].filter(Boolean).join(' '),
     )
 
+/** Columns of a view as `name type`, or the name alone without a type. */
+const viewColumns = (schema: SqlSchema, view: string) =>
+  schema.views.find((candidate) => candidate.name === view)!.columns.map((column) => [column.name, column.type].filter(Boolean).join(' '))
+
 const keys = (schema: SqlSchema, table: string) =>
   schema.tables.find((candidate) => candidate.name === table)!.foreignKeys.map(({ columns, table, references }) => ({ columns, table, references }))
 
@@ -102,7 +106,7 @@ describe('parsing DDL', () => {
     const schema = parseSql(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
       CREATE TABLE notes (id serial PRIMARY KEY, body text);
-      CREATE VIEW recent_notes AS SELECT * FROM notes;
+      CREATE TYPE mood AS ENUM ('ok', 'sad');
       CREATE FUNCTION touch() RETURNS trigger AS $$ BEGIN NEW.body := 'x;y'; RETURN NEW; END; $$ LANGUAGE plpgsql;
       INSERT INTO notes (body) VALUES ('a; b');
       CREATE TABLE copy AS SELECT * FROM notes;
@@ -110,7 +114,7 @@ describe('parsing DDL', () => {
     `)
 
     expect(schema.tables.map((table) => table.name)).toEqual(['notes'])
-    // The view, the function, the copy of a query and the change of a table that is not there; the extension and the
+    // The type, the function, the copy of a query and the change of a table that is not there; the extension and the
     // data describe no table.
     expect(schema.skipped).toBe(4)
   })
@@ -372,5 +376,109 @@ describe('parsing DDL', () => {
 
     expect(schema.tables.map((table) => table.name)).toEqual(['users', 'boards'])
     expect(columns(schema, 'users')).toEqual(['id uuid PK NN', 'email text NN', 'name text'])
+  })
+})
+
+describe('parsing views', () => {
+  it('reads a view with the columns of its select, typed by the tables it reads, and its query as written', () => {
+    const schema = parseSql(`
+      CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL);
+      CREATE TABLE orders (id bigint PRIMARY KEY, user_id uuid REFERENCES users);
+      CREATE VIEW user_orders AS SELECT u.id, u.email, count(o.id) AS orders
+        FROM users u LEFT JOIN orders o ON o.user_id = u.id GROUP BY u.id;
+    `)
+
+    expect(schema.tables.map((table) => table.name)).toEqual(['users', 'orders'])
+    expect(schema.views).toEqual([
+      {
+        name: 'user_orders',
+        columns: [
+          { name: 'id', type: 'uuid', notNull: false, primaryKey: false, unique: false },
+          { name: 'email', type: 'text', notNull: false, primaryKey: false, unique: false },
+          { name: 'orders', type: 'bigint', notNull: false, primaryKey: false, unique: false },
+        ],
+        query: 'SELECT u.id, u.email, count(o.id) AS orders\n        FROM users u LEFT JOIN orders o ON o.user_id = u.id GROUP BY u.id',
+        materialized: false,
+        indexes: [],
+        dependencies: ['users', 'orders'],
+      },
+    ])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('reads materialized views with their indexes, names their columns by the list, and leaves WITH NO DATA out', () => {
+    const schema = parseSql(`
+      CREATE TABLE orders (id bigserial PRIMARY KEY, user_id uuid NOT NULL, amount numeric(12, 2));
+      CREATE MATERIALIZED VIEW IF NOT EXISTS order_totals (user_id, total) AS
+        SELECT user_id, sum(amount)::numeric(12, 2) FROM orders GROUP BY user_id
+      WITH NO DATA;
+      CREATE UNIQUE INDEX ON order_totals (user_id);
+      CREATE INDEX order_totals_total_idx ON order_totals (total);
+      ALTER INDEX order_totals_total_idx RENAME TO order_totals_sum_idx;
+      REFRESH MATERIALIZED VIEW order_totals;
+    `)
+
+    const [view] = schema.views
+    expect(view!.materialized).toBe(true)
+    expect(view!.query).toBe('SELECT user_id, sum(amount)::numeric(12, 2) FROM orders GROUP BY user_id')
+    expect(viewColumns(schema, 'order_totals')).toEqual(['user_id uuid', 'total numeric(12, 2)'])
+    expect(view!.indexes.map((index) => `${index.name} (${index.columns})${index.unique ? ' UNIQUE' : ''}`)).toEqual([
+      'order_totals_user_id_idx (user_id) UNIQUE',
+      'order_totals_sum_idx (total)',
+    ])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('follows views through migrations: replaced, renamed, columns renamed, dropped, and tables renamed under them', () => {
+    const schema = parseSql(`
+      CREATE TABLE notes (id serial PRIMARY KEY, body text);
+      CREATE VIEW recent AS SELECT * FROM notes;
+      CREATE OR REPLACE VIEW recent AS SELECT *, length(body) AS size FROM notes;
+      ALTER VIEW recent RENAME TO recent_notes;
+      ALTER VIEW IF EXISTS recent_notes RENAME COLUMN size TO body_length;
+      ALTER VIEW recent_notes ALTER COLUMN body SET DEFAULT '';
+      CREATE VIEW old_notes AS SELECT id FROM notes;
+      DROP VIEW IF EXISTS old_notes, gone_notes CASCADE;
+      ALTER TABLE notes RENAME TO memos;
+    `)
+
+    expect(schema.views.map((view) => view.name)).toEqual(['recent_notes'])
+    expect(viewColumns(schema, 'recent_notes')).toEqual(['id integer', 'body text', 'body_length'])
+    expect(schema.views[0]!.dependencies).toEqual(['memos'])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('counts changes of views that are not there and indexes of plain views as skipped', () => {
+    const schema = parseSql(`
+      CREATE TABLE notes (id int);
+      CREATE VIEW all_notes AS SELECT * FROM notes;
+      ALTER VIEW missing RENAME TO other;
+      CREATE INDEX ON all_notes (id);
+    `)
+
+    expect(schema.views.map((view) => view.name)).toEqual(['all_notes'])
+    expect(schema.skipped).toBe(2)
+  })
+
+  it('reads the views of MySQL with ALGORITHM, DEFINER and SQL SECURITY, and from executable comments of dumps', () => {
+    const schema = parseSql(`
+      CREATE TABLE \`orders\` (\`id\` int unsigned NOT NULL, \`total\` decimal(12,2) NOT NULL, PRIMARY KEY (\`id\`));
+      /*!50001 CREATE VIEW \`paid\` AS SELECT 1 AS \`id\`, 1 AS \`total\`*/;
+      /*!50001 CREATE ALGORITHM=UNDEFINED */
+      /*!50013 DEFINER=\`root\`@\`localhost\` SQL SECURITY DEFINER */
+      /*!50001 VIEW \`paid\` AS select \`orders\`.\`id\` AS \`id\`,\`orders\`.\`total\` AS \`total\` from \`orders\` */;
+      /*M!999999\\- enable the sandbox mode */
+      CREATE OR REPLACE DEFINER = CURRENT_USER SQL SECURITY INVOKER VIEW big AS SELECT id FROM orders WHERE total > 100;
+    `)
+
+    expect(schema.views.map((view) => view.name)).toEqual(['paid', 'big'])
+    expect(viewColumns(schema, 'paid')).toEqual(['id int unsigned', 'total decimal(12, 2)'])
+    expect(schema.views[0]!.query).toBe('select `orders`.`id` AS `id`,`orders`.`total` AS `total` from `orders`')
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('reads executable comments of MySQL in files only, not in the text of a field', () => {
+    expect(tokenize('/*!40101 SET NAMES utf8 */').map((token) => token.value)).toEqual([])
+    expect(tokenize('/*!40101 SET NAMES utf8 */', { script: true }).map((token) => token.value)).toEqual(['SET', 'NAMES', 'UTF8'])
   })
 })

@@ -145,6 +145,41 @@ describe('SqlMenu', () => {
     expect(screen.getByRole('button', { name: 'Архитектура как код…' })).toBeEnabled()
   })
 
+  it('counts the views of the page and copies them as SQL, but offers no Mermaid for views alone', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
+    const document = new Y.Doc()
+    initializeDocument(document)
+    const builder = new DiagramBuilder()
+    builder.table('active_users', 40, 40, ['id uuid'], 220, [], { codrawView: true, codrawViewQuery: 'SELECT id FROM users' })
+    document.transact(() => builder.build().forEach((cell) => writeCell(getCells(document, DEFAULT_PAGE_ID), cell)))
+    renderMenu({ document })
+
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    expect(menu()).toHaveTextContent('Таблиц на странице: 0, представлений: 1')
+    expect(screen.getByRole('button', { name: 'Скопировать Mermaid' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Скопировать SQL' }))
+
+    expect(writeText).toHaveBeenLastCalledWith('CREATE VIEW active_users AS SELECT id FROM users;\n')
+  })
+
+  it('counts the views of pasted DDL and adds them with the tables', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
+    await user.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await user.paste('CREATE TABLE teams (id uuid PRIMARY KEY, name text); CREATE VIEW named AS SELECT name FROM teams;')
+    expect(screen.getByRole('status')).toHaveTextContent('Таблиц: 1, представлений: 1, связей: 0, индексов: 0, пропущено операторов: 0')
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells.find((cell) => cell.value === 'named')?.style).toMatchObject({ codrawView: true, codrawSource: 'sql:named' })
+    expect(cells.find((cell) => cell.value === 'name text' && cell.parent === cells.find((view) => view.value === 'named')!.id)).toBeDefined()
+  })
+
   it('adds the tables of pasted DDL to the right of the page, as one insertion', async () => {
     const user = userEvent.setup()
     const { editor } = renderMenu()

@@ -82,8 +82,8 @@ export class DiagramBuilder {
   }
 
   /**
-   * Adds a table of a database with its fields under the name and the rows of its indexes under the fields; returns the
-   * ids of the table and of its fields.
+   * Adds a table of a database with its fields under the name and the rows of its indexes under the fields, with the keys
+   * of `style` added to its own, e.g. those of a view; returns the ids of the table and of its fields.
    */
   table(
     name: string,
@@ -92,12 +92,14 @@ export class DiagramBuilder {
     fields: string[],
     width = 220,
     indexes: string[] = [],
+    style: ShapeStyle = {},
   ): { id: string; fields: string[]; indexes: string[] } {
     const indexesTop = TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT + TABLE_INDEX_GAP
     const id = this.shape('table', x, y, {
       value: name,
       width,
       height: indexes.length > 0 ? indexesTop + indexes.length * TABLE_FIELD_HEIGHT : TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT,
+      style,
     })
     const row = (value: string, top: number, style: Record<string, StyleValue>) =>
       this.add({
