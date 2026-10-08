@@ -80,6 +80,7 @@ export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
   'c4-database': ['c4', 'database', 'db', 'бд'],
   'c4-external-system': ['c4', 'external', 'внешняя'],
   'c4-boundary': ['c4', 'boundary', 'граница', 'рамка'],
+  legend: ['legend', 'key', 'notation', 'легенда', 'условные обозначения', 'обозначения', 'нотация'],
 }
 
 /** Lower case, «ё» as «е», words split by anything that is not a letter or a digit. */
@@ -97,13 +98,19 @@ interface Entry {
   all: string[]
 }
 
+/** A shape of two sections, the legend, is found once, with the words of both. */
 const ENTRIES: Entry[] = SHAPE_SECTIONS.flatMap((section) =>
   section.shapes.map((shape) => ({
     shape,
     label: words(shape.label),
     all: [shape.label, shape.id, section.title, ...SHAPE_KEYWORDS[shape.id], ...(TECHNOLOGIES[shape.id] ?? [])].flatMap(words),
   })),
-)
+).reduce<Entry[]>((entries, entry) => {
+  const found = entries.find((other) => other.shape.id === entry.shape.id)
+  if (found) found.all.push(...entry.all)
+  else entries.push(entry)
+  return entries
+}, [])
 
 /** Every word of the query starts one of the words. */
 const matches = (query: string[], candidates: string[]) =>

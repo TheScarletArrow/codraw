@@ -43,7 +43,7 @@ describe('shape presets', () => {
       ['BPMN', ['Задача', 'Событие', 'Шлюз', 'Объект данных', 'Пул / дорожки']],
       [
         'Архитектура',
-        ['Сервис', 'База данных', 'Очередь', 'Кэш', 'Пользователь', 'Внешняя система', 'Документ', 'Граница'],
+        ['Сервис', 'База данных', 'Очередь', 'Кэш', 'Пользователь', 'Внешняя система', 'Документ', 'Граница', 'Легенда'],
       ],
       [
         'Инфраструктура',
@@ -57,11 +57,13 @@ describe('shape presets', () => {
       ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка', 'Диаграмма последовательности']],
       [
         'C4',
-        ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы'],
+        ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы', 'Легенда'],
       ],
       ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
     expect(new Set(SHAPES.map((shape) => shape.id)).size).toBe(SHAPES.length)
+    // The legend of two sections is one shape of the palette.
+    expect(SHAPES.filter((shape) => shape.id === 'legend')).toHaveLength(1)
   })
 
   it('keep the whole style in the document', () => {
@@ -212,7 +214,16 @@ describe('shape groups', () => {
   })
 
   it('hold every shape of the palette but frames, text and stickies, in the group of its section', () => {
-    expect([...UNGROUPED_SHAPES]).toEqual(['text', 'sticky', 'sequence', 'boundary', 'bpmn-pool', 'kubernetes-cluster', 'c4-boundary'])
+    expect([...UNGROUPED_SHAPES]).toEqual([
+      'text',
+      'sticky',
+      'sequence',
+      'legend',
+      'boundary',
+      'bpmn-pool',
+      'kubernetes-cluster',
+      'c4-boundary',
+    ])
     for (const section of SHAPE_SECTIONS) {
       for (const shape of section.shapes) {
         expect(shapeGroup(shape.id)).toBe(UNGROUPED_SHAPES.has(shape.id) ? null : section.group)

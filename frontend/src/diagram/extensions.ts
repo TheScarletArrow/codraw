@@ -17,6 +17,7 @@ import {
   type ShapeConstructor,
 } from '@maxgraph/core'
 import { IMAGE_PLACEHOLDER } from './images.ts'
+import { BROWSER_BAR_HEIGHT } from './shapes.ts'
 
 /**
  * A rectangle without fill and with `pointerEvents=0` lets clicks inside it reach the shapes under it, as in
@@ -517,9 +518,6 @@ class ClockShape extends Shape {
     c.stroke()
   }
 }
-
-/** Height of the title bar of `codraw.browser`; its caption sits below the bar. */
-export const BROWSER_BAR_HEIGHT = 16
 
 /** `codraw.browser`: a browser window with dots and an address field in its title bar. */
 class BrowserShape extends Shape {

@@ -1,4 +1,4 @@
-import { ListTree, X } from 'lucide-react'
+import { Eye, EyeOff, ListTree, X } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
@@ -84,7 +84,7 @@ export function PropertiesPanel({
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
         <h2 className="mr-auto text-sm font-semibold">
-          {properties?.target === 'edge' ? 'Свойства связи' : 'Свойства'}
+          {properties?.target === 'edge' ? 'Свойства связи' : properties?.target === 'legend' ? 'Легенда' : 'Свойства'}
         </h2>
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
           <X />
@@ -93,6 +93,8 @@ export function PropertiesPanel({
       <div className="overflow-y-auto p-3">
         {!editor || !properties ? (
           <p className="text-sm text-muted-foreground">Выделите фигуру или связь</p>
+        ) : properties.target === 'legend' ? (
+          <LegendForm key={properties.cellId} editor={editor} selection={properties} />
         ) : properties.target === 'edge' ? (
           properties.canChange ? (
             <EdgeForm key={properties.cellId} editor={editor} cellId={properties.cellId} properties={properties.properties} used={used} onUsed={readUsed} />
@@ -110,6 +112,7 @@ export function PropertiesPanel({
 }
 
 type ShapeSelection = Extract<SelectionProperties, { target: 'shape' }>
+type LegendSelection = Extract<SelectionProperties, { target: 'legend' }>
 
 const fieldClass = 'w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground'
 
@@ -263,6 +266,58 @@ function ShapeForm({
           onCommit={(tags) => change({ tags: parseTags(tags) })}
         />
       </Field>
+    </form>
+  )
+}
+
+/**
+ * The items of a legend, hidden ones too: a field of the name of each, with the name the legend gives it by default
+ * as the placeholder, and a button that hides or shows it. Viewers and a locked legend show the names only.
+ */
+function LegendForm({ editor, selection }: { editor: DiagramEditor; selection: LegendSelection }) {
+  const id = useId()
+  const { cellId, items, canChange } = selection
+  if (items.length === 0) return <p className="text-sm text-muted-foreground">На странице нет фигур и связей</p>
+  return (
+    <form className="flex flex-col gap-2" onSubmit={(event) => event.preventDefault()}>
+      {canChange && <p className="text-xs text-muted-foreground">Пустое имя — название по умолчанию</p>}
+      <ul aria-label="Пункты легенды" className="flex flex-col gap-1.5">
+        {items.map((item, index) => {
+          const shown = item.name || item.defaultName
+          const toggle = item.hidden ? `Показать «${shown}»` : `Скрыть «${shown}»`
+          return (
+            <li key={item.key} className={cn('flex items-center gap-1', item.hidden && 'opacity-60')}>
+              {canChange ? (
+                <>
+                  <label htmlFor={`${id}-${index}`} className="sr-only">
+                    {`Имя пункта «${item.defaultName}»`}
+                  </label>
+                  <TextField
+                    id={`${id}-${index}`}
+                    value={item.name}
+                    placeholder={item.defaultName}
+                    onCommit={(name) => editor.setLegendItem(cellId, item.key, { name })}
+                  />
+                </>
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-sm">{shown}</span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={toggle}
+                title={item.hidden ? 'Показать' : 'Скрыть'}
+                aria-pressed={item.hidden}
+                disabled={!canChange}
+                onClick={() => editor.setLegendItem(cellId, item.key, { hidden: !item.hidden })}
+              >
+                {item.hidden ? <EyeOff /> : <Eye />}
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
     </form>
   )
 }

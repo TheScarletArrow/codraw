@@ -1,5 +1,6 @@
 import { edgeProperties, ELEMENT_KINDS, FRAME_SHAPES, type C4Kind, type C4Variant } from '../diagram/elementKinds.ts'
 import { elementProperties, hasElement, labelFormat, labelLines as textLines, parseLabel } from '../diagram/elementProps.ts'
+import { isLegendStyle } from '../diagram/legendKeys.ts'
 import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
 
@@ -122,7 +123,8 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
   const boxes = new Map<string, Box>()
   let skipped = 0
   for (const cell of cells) {
-    if (!isShape(cell)) continue
+    // A legend tells what the page has: it is no element and nothing left out.
+    if (!isShape(cell) || isLegendStyle(cell.style)) continue
     const frame = FRAME_SHAPES[String(cell.style.codrawShape ?? '') as ShapeId]
     // The kind of an element, or of a shape of the palette as its label tells it; shapes of files are no elements.
     const properties = elementProperties(cell.style, cell.value)

@@ -12,6 +12,7 @@ import {
   type ElementProperties,
 } from './elementKinds.ts'
 import { isImageStyle } from './images.ts'
+import { isLegendStyle } from './legendKeys.ts'
 import { cellElementId, ELEMENT_STYLE_KEYS, elementIdOf, getCells, getElements, getPages } from './model.ts'
 import { isSequenceStyle, sequencePartOf } from './sequence.ts'
 import {
@@ -51,11 +52,11 @@ export function shapeIdOf(style: Record<string, unknown>): ShapeId | null {
 }
 
 /**
- * A shape that may be an element: not a table, a sticky, a text, a list, a grid, a picture, nor a box without fill and
- * border, which is a text or a group. What holds a cell (an edge, a table) the editor tells.
+ * A shape that may be an element: not a table, a sticky, a text, a list, a grid, a picture, a legend, nor a box without
+ * fill and border, which is a text or a group. What holds a cell (an edge, a table) the editor tells.
  */
 export function canBeElement(style: Record<string, unknown>): boolean {
-  if (isTableStyle(style as ShapeStyle) || isStickyStyle(style) || isImageStyle(style)) return false
+  if (isTableStyle(style as ShapeStyle) || isStickyStyle(style) || isImageStyle(style) || isLegendStyle(style)) return false
   if (isSequenceStyle(style) || sequencePartOf(style) !== null) return false
   if (['text', 'grid-table', 'list', 'numbered-list'].includes(String(style.codrawShape ?? ''))) return false
   return !(style.fillColor === 'none' && style.strokeColor === 'none')
