@@ -17,6 +17,7 @@ import {
 } from '../api/boards.ts'
 import { fetchFolders, FOLDERS_QUERY_KEY, type BoardFolder } from '../api/folders.ts'
 import { BoardActions } from '../board/BoardActions.tsx'
+import { BoardTrash } from '../board/BoardTrash.tsx'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { BoardFilters } from '../boardList/BoardFilters.tsx'
 import {
@@ -297,6 +298,7 @@ export function BoardsPage() {
           Политика конфиденциальности
         </Link>
       </nav>
+      <BoardTrash />
     </section>
   )
 }

@@ -146,10 +146,24 @@ export function searchBoards(query: string, signal?: AbortSignal): Promise<Board
   return request(`/api/boards/search?q=${encodeURIComponent(query)}`, { signal })
 }
 
-/** Deletes a board of the current user for good, with its document. */
+/** Moves a board to the owner's trash for 30 days. */
 export function deleteBoard(id: string): Promise<void> {
   return request(`/api/boards/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
+
+export interface TrashedBoard {
+  id: string
+  title: string
+  deletedAt: string
+  expiresAt: string
+}
+
+export const TRASH_QUERY_KEY = ['board-trash'] as const
+export const fetchTrash = (): Promise<TrashedBoard[]> => request('/api/boards/trash')
+export const restoreTrashedBoard = (id: string): Promise<Board> =>
+  request(`/api/boards/trash/${encodeURIComponent(id)}/restore`, { method: 'POST' })
+export const purgeTrashedBoard = (id: string): Promise<void> =>
+  request(`/api/boards/trash/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
 export function fetchCollabToken(boardId: string): Promise<CollabToken> {
   return request(`/api/boards/${encodeURIComponent(boardId)}/collab-token`, { method: 'POST' })

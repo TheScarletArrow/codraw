@@ -54,7 +54,42 @@ class BoardService(
     fun seenAt(userId: UUID, boards: List<Board>): Map<UUID, Instant> = reads.seenAt(userId, boards.mapNotNull { it.id })
 
     /** Returns the board of any user; what the caller may do with it depends on [roleOf]. */
-    fun find(id: UUID): Board? = boards.findByIdOrNull(id)
+    fun find(id: UUID): Board? = boards.findByIdOrNull(id)?.takeIf { it.deletedAt == null }
+
+    fun trash(ownerId: UUID): List<Board> = boards.trashOf(ownerId, now().minus(TRASH_RETENTION))
+
+    fun deleted(id: UUID): Board? = boards.findByIdOrNull(id)?.takeIf { it.deletedAt != null }
+
+    /** Keeps all related data for recovery; active API and collab lookups no longer find the board. */
+    @Transactional
+    fun moveToTrash(board: Board) {
+        checkNotNull(users.lock(board.ownerId))
+        if (!boards.moveToTrash(checkNotNull(board.id), board.ownerId, now())) throw BoardOwnerChangedException()
+    }
+
+    /** Creating and restoring serialize on the owner, so recovery cannot exceed the active-board quota. */
+    @Transactional
+    fun restore(board: Board): Board {
+        checkNotNull(users.lock(board.ownerId))
+        if (boards.countByOwnerId(board.ownerId) >= limits.boardsPerUser) {
+            metrics.limitReached(Limit.BOARDS)
+            throw BoardLimitReachedException(limits.boardsPerUser)
+        }
+        if (!boards.restore(checkNotNull(board.id), board.ownerId, now().minus(TRASH_RETENTION))) {
+            throw org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Board not found in trash")
+        }
+        return checkNotNull(find(board.id))
+    }
+
+    @Transactional
+    fun purgeTrash(board: Board) {
+        checkNotNull(users.lock(board.ownerId))
+        val id = checkNotNull(board.id)
+        if (!boards.purgeTrash(id, board.ownerId)) {
+            throw org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Board not found in trash")
+        }
+        events.publishEvent(BoardDeleted(id))
+    }
 
     /** The role of the user [userId] on the [board], with their role as a member; `null` when it gives them none. */
     fun roleOf(board: Board, userId: UUID): BoardRole? =
@@ -184,6 +219,7 @@ class BoardService(
     companion object {
         /** The most boards the list of boards shared with a user holds. */
         const val SHARED_LIMIT = 50
+        val TRASH_RETENTION: java.time.Duration = java.time.Duration.ofDays(30)
     }
 }
 

@@ -1267,7 +1267,7 @@ describe('BoardPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
       await userEvent.click(screen.getByRole('menuitem', { name: 'Удалить доску' }))
       const confirmation = screen.getByRole('alertdialog', { name: 'Удаление доски' })
-      expect(confirmation).toHaveTextContent('Удалить доску «Архитектура»? Её нельзя будет восстановить.')
+      expect(confirmation).toHaveTextContent('Переместить доску «Архитектура» в корзину? Её можно восстановить в течение 30 дней.')
       await userEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }))
 
       await waitFor(() => expect(provider.router.state.location.pathname).toBe('/'))

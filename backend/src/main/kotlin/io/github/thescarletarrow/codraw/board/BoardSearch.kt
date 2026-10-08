@@ -46,8 +46,8 @@ class BoardSearch(private val jdbc: JdbcClient) {
         ),
         matches AS (
             SELECT d.board_id, d.search_text, strpos(translate(lower(d.search_text), 'ё', 'е'), :key) AS position
-            FROM openable o JOIN board_documents d ON d.board_id = o.board_id
-            WHERE d.search_text IS NOT NULL
+            FROM openable o JOIN board_documents d ON d.board_id = o.board_id JOIN boards b ON b.id = d.board_id
+            WHERE d.search_text IS NOT NULL AND b.deleted_at IS NULL
         )
         SELECT board_id, greatest(position - :before - 1, 1) AS start,
                substr(search_text, greatest(position - :before - 1, 1), :length) AS window,

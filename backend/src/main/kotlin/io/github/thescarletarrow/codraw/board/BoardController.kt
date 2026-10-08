@@ -127,8 +127,32 @@ class BoardController(
 
     @DeleteMapping("/{id}")
     fun delete(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<Void> {
-        boards.delete(ownBoard(id, principal))
+        boards.moveToTrash(ownBoard(id, principal))
         return ResponseEntity.noContent().build()
+    }
+
+    @GetMapping("/trash")
+    fun trash(@AuthenticationPrincipal principal: OAuth2User): List<TrashedBoardResponse> =
+        boards.trash(principal.userId).map { board ->
+            val at = checkNotNull(board.deletedAt)
+            TrashedBoardResponse(checkNotNull(board.id), board.title, at, at.plus(BoardService.TRASH_RETENTION))
+        }
+
+    @PostMapping("/trash/{id}/restore")
+    fun restore(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse =
+        boards.restore(ownTrashedBoard(id, principal)).toResponse(currentUser(principal), BoardRole.OWNER)
+
+    @DeleteMapping("/trash/{id}")
+    fun purge(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<Void> {
+        boards.purgeTrash(ownTrashedBoard(id, principal))
+        return ResponseEntity.noContent().build()
+    }
+
+    private fun ownTrashedBoard(id: String, principal: OAuth2User): Board {
+        val board = BoardIds.parse(id)?.let(boards::deleted)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found in trash")
+        if (board.ownerId != principal.userId) throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change the board")
+        return board
     }
 
     @ExceptionHandler
@@ -160,6 +184,8 @@ data class CreateBoardRequest(
     @field:Size(max = TITLE_MAX_LENGTH)
     val title: String,
 )
+
+data class TrashedBoardResponse(val id: UUID, val title: String, val deletedAt: Instant, val expiresAt: Instant)
 
 /** At least one of the fields; a missing field stays as it is. */
 data class UpdateBoardRequest(
