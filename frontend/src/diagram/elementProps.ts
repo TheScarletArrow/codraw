@@ -13,6 +13,7 @@ import {
 } from './elementKinds.ts'
 import { isImageStyle } from './images.ts'
 import { cellElementId, ELEMENT_STYLE_KEYS, elementIdOf, getCells, getElements, getPages } from './model.ts'
+import { isSequenceStyle, sequencePartOf } from './sequence.ts'
 import {
   findShape,
   isStickyStyle,
@@ -55,6 +56,7 @@ export function shapeIdOf(style: Record<string, unknown>): ShapeId | null {
  */
 export function canBeElement(style: Record<string, unknown>): boolean {
   if (isTableStyle(style as ShapeStyle) || isStickyStyle(style) || isImageStyle(style)) return false
+  if (isSequenceStyle(style) || sequencePartOf(style) !== null) return false
   if (['text', 'grid-table', 'list'].includes(String(style.codrawShape ?? ''))) return false
   return !(style.fillColor === 'none' && style.strokeColor === 'none')
 }

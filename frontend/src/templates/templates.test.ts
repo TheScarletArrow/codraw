@@ -136,4 +136,20 @@ describe('inserting a template', () => {
       expect(getElements(doc).size).toBe(0)
     }
   })
+
+  it('lays out signing in with OAuth as one numbered sequence diagram with a frame', () => {
+    const cells = template('oauth-login').build()
+    const top = cells.filter((cell) => cell.parent === LAYER_CELL_ID)
+    expect(top).toHaveLength(1)
+    expect(top[0]).toMatchObject({ value: 'Вход через OAuth', style: { shape: 'codraw.sequence', codrawSeqNumbers: true } })
+    const parts = cells.filter((cell) => cell.parent === top[0]!.id)
+    expect(parts.filter((cell) => cell.style.codrawSeq === 'participant').map((cell) => cell.value)).toEqual([
+      'Пользователь',
+      'Приложение',
+      'Сервер авторизации',
+      'API',
+    ])
+    expect(parts.filter((cell) => cell.style.codrawSeq === 'frame').map((cell) => cell.style.codrawSeqFrame)).toEqual(['alt'])
+    expect(parts.filter((cell) => cell.style.codrawSeq === 'message')).toHaveLength(11)
+  })
 })

@@ -38,6 +38,7 @@ const NO_EDITOR: EditorState = {
   stickies: null,
   status: null,
   properties: null,
+  sequence: null,
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

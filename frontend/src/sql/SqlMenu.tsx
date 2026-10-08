@@ -54,8 +54,13 @@ function importedDiagram(text: string): { diagram: MermaidDiagram | null; error:
   if (text.trim() === '') return { diagram: null, error: null }
   try {
     const diagram = parseMermaid(text)
-    const empty = diagram.kind === 'flowchart' ? diagram.nodes.length === 0 : diagram.tables.length === 0
-    return { diagram: empty ? null : diagram, error: empty ? 'В тексте нет ни одного узла или таблицы' : null }
+    const empty =
+      diagram.kind === 'flowchart'
+        ? diagram.nodes.length === 0
+        : diagram.kind === 'er'
+          ? diagram.tables.length === 0
+          : diagram.diagram.participants.length === 0
+    return { diagram: empty ? null : diagram, error: empty ? 'В тексте нет ни одного узла, таблицы или участника' : null }
   } catch (error) {
     if (error instanceof MermaidError) return { diagram: null, error: error.message }
     throw error
@@ -69,7 +74,7 @@ const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) =>
 
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
- * a flowchart or an ER diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose, manifests of
+ * a flowchart, an ER diagram or a sequence diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose, manifests of
  * Kubernetes and builds of Gradle become a diagram of the page.
  */
 export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, pageCount, readOnly }: SqlMenuProps) {
@@ -207,7 +212,9 @@ export function SqlMenu({ editor, document: doc, pageId, boardTitle, pageName, p
               </p>
             ) : (
               <p role="status" className="text-xs text-muted-foreground">
-                {mermaid.diagram ? mermaidSummary(mermaid.diagram) : 'Блок-схема (flowchart, graph) или ER-диаграмма (erDiagram)'}
+                {mermaid.diagram
+                  ? mermaidSummary(mermaid.diagram)
+                  : 'Блок-схема (flowchart, graph), ER-диаграмма (erDiagram) или диаграмма последовательности (sequenceDiagram)'}
               </p>
             )}
             {message && (

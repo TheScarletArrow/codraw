@@ -1,6 +1,7 @@
 import type { CellStyle } from '@maxgraph/core'
 import { STICKY_COLORS } from './colors.ts'
 import { BROWSER_BAR_HEIGHT } from './extensions.ts'
+import { SEQUENCE_PRESET, SEQUENCE_SHAPE } from './sequence.ts'
 
 export type ShapeId =
   | 'rectangle'
@@ -57,6 +58,7 @@ export type ShapeId =
   | 'uml-interface'
   | 'uml-package'
   | 'uml-note'
+  | 'sequence'
   | 'c4-person'
   | 'c4-system'
   | 'c4-container'
@@ -602,6 +604,15 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         value: 'Заметка',
         style: { shape: 'note', fillColor: '#fff2cc', strokeColor: '#d6b656' },
       },
+      {
+        id: SEQUENCE_PRESET,
+        label: 'Диаграмма последовательности',
+        // Its parts and their layout set its size; see `sequence.ts`.
+        width: 320,
+        height: 240,
+        value: 'Сценарий',
+        style: { shape: SEQUENCE_SHAPE },
+      },
     ],
   },
   {
@@ -675,10 +686,14 @@ export function findShape(id: string): ShapePreset | undefined {
   return SHAPES.find((shape) => shape.id === id)
 }
 
-/** Frames, text and stickies: they belong to no group, so nothing is connected to them with the arrows. */
+/**
+ * Frames, text, stickies and sequence diagrams: they belong to no group, so nothing is connected to them with the
+ * arrows.
+ */
 export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>([
   'text',
   'sticky',
+  'sequence',
   'boundary',
   'bpmn-pool',
   'kubernetes-cluster',

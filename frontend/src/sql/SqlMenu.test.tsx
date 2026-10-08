@@ -189,17 +189,38 @@ describe('SqlMenu', () => {
     expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
   })
 
+  it('adds a sequence diagram of Mermaid to the right of the page', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт Mermaid…' }))
+
+    await user.click(screen.getByRole('textbox', { name: 'Mermaid' }))
+    await user.paste('sequenceDiagram\n  A->>B: Запрос\n  alt есть\n    B-->>A: Да\n  end\n  Note over A: заметка\n  rect red')
+    expect(screen.getByRole('status')).toHaveTextContent('Участников: 2, сообщений: 2, рамок: 1, заметок: 1, пропущено строк: 1')
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells[0]).toMatchObject({ style: { shape: 'codraw.sequence' }, geometry: { x: 700 } })
+    expect(cells.filter((cell) => cell.parent === cells[0]!.id)).toHaveLength(7)
+  })
+
   it('says which kinds of Mermaid it draws', async () => {
     const user = userEvent.setup()
     renderMenu()
     await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     await user.click(screen.getByRole('button', { name: 'Импорт Mermaid…' }))
-    expect(screen.getByRole('status')).toHaveTextContent('Блок-схема (flowchart, graph) или ER-диаграмма (erDiagram)')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Блок-схема (flowchart, graph), ER-диаграмма (erDiagram) или диаграмма последовательности (sequenceDiagram)',
+    )
 
     await user.click(screen.getByRole('textbox', { name: 'Mermaid' }))
-    await user.paste('sequenceDiagram\n  A->>B: hi')
+    await user.paste('classDiagram\n  A <|-- B')
 
-    expect(screen.getByRole('alert')).toHaveTextContent('CoDraw рисует из Mermaid блок-схемы (flowchart, graph) и ER-диаграммы')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'CoDraw рисует из Mermaid блок-схемы (flowchart, graph), ER-диаграммы (erDiagram) и диаграммы последовательности',
+    )
     expect(screen.getByRole('button', { name: 'Добавить на страницу' })).toBeDisabled()
   })
 

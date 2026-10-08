@@ -42,6 +42,43 @@ describe('CanvasMenu', () => {
     expect(within(screen.getByRole('menu')).getAllByRole('separator')).toHaveLength(4)
   })
 
+  it('wraps a message of a sequence diagram into a frame and copies the diagram as Mermaid', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    vi.mocked(editor.sequenceMermaid).mockReturnValue('sequenceDiagram\n')
+    rightClick('message')
+    expect(screen.getByText('Рамка')).toBeVisible()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'loop — цикл' }))
+    expect(editor.addSequenceFrame).toHaveBeenCalledWith('loop')
+
+    rightClick('message')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Добавить сообщение ниже' }))
+    expect(editor.addSequenceMessage).toHaveBeenCalled()
+
+    rightClick('sequence')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Скопировать Mermaid' }))
+    expect(editor.sequenceMermaid).toHaveBeenCalledWith('cell-1')
+    expect(writeText).toHaveBeenCalledWith('sequenceDiagram\n')
+  })
+
+  it('adds a branch to a selected frame that has branches', async () => {
+    act(() =>
+      editor.setState({
+        sequence: {
+          diagramId: 'd',
+          numbered: false,
+          participants: [],
+          part: { type: 'frame', cellId: 'cell-1', kind: 'alt', frameId: 'cell-1' },
+          rows: 1,
+          canChange: true,
+        },
+      }),
+    )
+    rightClick('frame')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Добавить ветку' }))
+    expect(editor.addSequenceBranch).toHaveBeenCalled()
+  })
+
   it('shows the shortcut of an item', () => {
     rightClick('shape')
 

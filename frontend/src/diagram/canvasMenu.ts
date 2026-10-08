@@ -1,7 +1,25 @@
+import { FRAME_KINDS, type FrameKind } from './sequence.ts'
 import type { ElementStatus, SelectionStatus } from './status.ts'
 
-/** What a right click on the canvas is about: nothing selected, one element of a kind, or several elements. */
-export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'index' | 'edge' | 'group' | 'selection'
+/**
+ * What a right click on the canvas is about: nothing selected, one element of a kind, or several elements. A sequence
+ * diagram and each kind of its parts have menus of their own.
+ */
+export type MenuTarget =
+  | 'canvas'
+  | 'shape'
+  | 'table'
+  | 'field'
+  | 'index'
+  | 'edge'
+  | 'group'
+  | 'selection'
+  | 'sequence'
+  | 'participant'
+  | 'message'
+  | 'note'
+  | 'frame'
+  | 'branch'
 
 export type MenuCommand =
   | 'paste'
@@ -31,6 +49,25 @@ export type MenuCommand =
   | 'link'
   | 'edgeApi'
   | 'properties'
+  | 'addParticipant'
+  | 'addMessage'
+  | 'addNote'
+  | FrameCommand
+  | 'addBranch'
+  | 'copyMermaid'
+
+/** Items that put the selected message of a sequence diagram into a frame of a kind. */
+export type FrameCommand = 'frameAlt' | 'frameOpt' | 'frameLoop' | 'framePar'
+
+/** The kind of the frame each item of frames adds. */
+export const FRAME_COMMANDS: Record<FrameCommand, FrameKind> = {
+  frameAlt: 'alt',
+  frameOpt: 'opt',
+  frameLoop: 'loop',
+  framePar: 'par',
+}
+
+export const isFrameCommand = (command: MenuCommand): command is FrameCommand => command in FRAME_COMMANDS
 
 /** Items that set the status of the selection. */
 export type StatusCommand = 'statusDraft' | 'statusReview' | 'statusDone' | 'statusNone'
@@ -103,10 +140,20 @@ export interface MenuAvailability {
   canShowProperties?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
+  /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
+  canBranch?: boolean
 }
 
 /** Items of a participant who may only view the board. */
-const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'copyStyle', 'selectAll', 'comment', 'commentHere', 'properties'])
+const VIEWING_COMMANDS = new Set<MenuCommand>([
+  'copy',
+  'copyStyle',
+  'selectAll',
+  'comment',
+  'commentHere',
+  'properties',
+  'copyMermaid',
+])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
 const CHANGING_COMMANDS = new Set<MenuCommand>([
@@ -123,6 +170,11 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'link',
   'edgeApi',
   'delete',
+  'addParticipant',
+  'addMessage',
+  'addNote',
+  ...(Object.keys(FRAME_COMMANDS) as FrameCommand[]),
+  'addBranch',
 ])
 
 type Entry = [MenuCommand, string, Shortcut?]
@@ -149,6 +201,12 @@ const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
 ]
+const COPY_MERMAID: Entry[] = [['copyMermaid', 'Скопировать Mermaid']]
+const FRAMES: Entry[] = (Object.entries(FRAME_COMMANDS) as [FrameCommand, FrameKind][]).map(([command, kind]) => [
+  command,
+  FRAME_KINDS.find((frame) => frame.value === kind)!.label,
+])
+const BRANCH: Entry = ['addBranch', 'Добавить ветку']
 const STATUS: Entry[] = [
   ['statusDraft', 'Черновик'],
   ['statusReview', 'Нужно ревью'],
@@ -204,13 +262,58 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   // A group and several elements have no look of their own to copy.
   group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
   selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, [DELETE]],
+  sequence: [
+    [EDIT_LABEL, ['addParticipant', 'Добавить участника'], ['addMessage', 'Добавить сообщение']],
+    COPY_MERMAID,
+    CLIPBOARD,
+    STYLE,
+    ORDER,
+    LOCK,
+    STATUS,
+    LINK,
+    COMMENT,
+    [DELETE],
+  ],
+  participant: [
+    [
+      ['editLabel', 'Изменить', 'F2'],
+      ['addParticipant', 'Добавить участника справа'],
+      ['addMessage', 'Добавить сообщение'],
+    ],
+    COPY_MERMAID,
+    COMMENT,
+    [['delete', 'Удалить участника', 'Delete']],
+  ],
+  message: [
+    [
+      ['editLabel', 'Изменить', 'F2'],
+      ['addMessage', 'Добавить сообщение ниже'],
+      ['addNote', 'Добавить заметку ниже'],
+    ],
+    FRAMES,
+    COPY_MERMAID,
+    COMMENT,
+    [['delete', 'Удалить сообщение', 'Delete']],
+  ],
+  note: [
+    [
+      ['editLabel', 'Изменить', 'F2'],
+      ['addMessage', 'Добавить сообщение ниже'],
+    ],
+    COPY_MERMAID,
+    COMMENT,
+    [['delete', 'Удалить заметку', 'Delete']],
+  ],
+  frame: [[['editLabel', 'Изменить условие', 'F2'], BRANCH], COPY_MERMAID, COMMENT, [['delete', 'Удалить рамку', 'Delete']]],
+  branch: [[['editLabel', 'Изменить условие', 'F2'], BRANCH], COPY_MERMAID, COMMENT, [['delete', 'Удалить ветку', 'Delete']]],
 }
 
 /**
  * Items of the context menu for a target; the ones that cannot be done now are disabled, and so are those that would
  * change locked elements. The status of the selection is offered when it has elements that may have one, with its
- * current status chosen, also for locked elements. A participant who may only view gets only copying, copying a look,
- * selecting, commenting and the properties, so their menu may be empty: following a link needs no menu.
+ * current status chosen, also for locked elements. «Добавить ветку» is offered for a frame of a sequence diagram that has
+ * branches and for its branches. A participant who may only view gets only copying, copying a look, selecting,
+ * commenting, the properties and copying Mermaid, so their menu may be empty: following a link needs no menu.
  */
 export function menuItems(
   target: MenuTarget,
@@ -230,6 +333,7 @@ export function menuItems(
     canDescribeApi = false,
     canShowProperties = false,
     status = null,
+    canBranch = false,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
@@ -248,6 +352,7 @@ export function menuItems(
     link: canLink,
     edgeApi: canDescribeApi,
     properties: canShowProperties,
+    addBranch: canBranch,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]
@@ -264,6 +369,8 @@ export function menuItems(
         disabled: (unavailable[command] ?? false) || (locked && CHANGING_COMMANDS.has(command)),
         separatorBefore: groupIndex > 0 && index === 0,
       }
+      // The frames a message goes into are a group of their own.
+      if (isFrameCommand(command)) return index === 0 ? { ...item, heading: 'Рамка' } : item
       if (!isStatusCommand(command)) return item
       // Different statuses choose none of them.
       return {

@@ -1,4 +1,5 @@
 import { TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
+import { LINE_HEIGHT } from './textMeasure.ts'
 
 /** Sizes that «Уменьшить текст» and «Увеличить текст» step through, as in text editors. */
 export const FONT_SIZES = [6, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72, 96] as const
@@ -6,11 +7,7 @@ export const FONT_SIZES = [6, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 
 export const MIN_FONT_SIZE = FONT_SIZES[0]
 export const MAX_FONT_SIZE = FONT_SIZES[FONT_SIZES.length - 1]
 
-/** Text size of shapes and edges without their own, set by the default styles of the editor. */
-export const DEFAULT_FONT_SIZE = 13
-
-/** Line height of maxGraph labels relative to the text size. */
-export const LINE_HEIGHT = 1.2
+export { DEFAULT_FONT_SIZE, LINE_HEIGHT } from './textMeasure.ts'
 
 export function clampFontSize(size: number): number {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(size)))

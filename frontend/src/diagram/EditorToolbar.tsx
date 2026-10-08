@@ -35,6 +35,7 @@ import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
 import { lockLabel } from './locks.ts'
 import { NumberField } from './NumberField.tsx'
+import { SequenceTools } from './SequenceTools.tsx'
 import { TableTools } from './TableTools.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
 import { useEditorState } from './useEditorState.ts'
@@ -219,6 +220,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     lock,
     canCopyStyle,
     canPasteStyle,
+    sequence,
   } = useEditorState(editor)
 
   return (
@@ -229,6 +231,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
         {tableSelected && (
           <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />
         )}
+        {sequence && <SequenceTools editor={editor} sequence={sequence} />}
         {colors && (
           <>
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />

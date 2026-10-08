@@ -137,15 +137,17 @@ describe('ER diagrams of Mermaid', () => {
 })
 
 describe('kinds of Mermaid', () => {
-  it('tells flowcharts and ER diagrams from other text', () => {
+  it('tells flowcharts, ER diagrams and sequence diagrams from other text', () => {
     expect(isMermaid('flowchart LR\n a --> b')).toBe(true)
     expect(isMermaid('%% схема\ngraph TD\n a --> b')).toBe(true)
     expect(isMermaid('erDiagram\n A ||--o{ B : x')).toBe(true)
     expect(isMermaid('graphs are everywhere')).toBe(false)
-    expect(isMermaid('sequenceDiagram\n A->>B: hi')).toBe(false)
+    expect(isMermaid('sequenceDiagram\n A->>B: hi')).toBe(true)
+    expect(isMermaid('classDiagram\n A <|-- B')).toBe(false)
   })
 
   it('refuses other kinds of diagrams', () => {
-    expect(() => parseMermaid('sequenceDiagram\n  A->>B: hi')).toThrow(MermaidError)
+    expect(() => parseMermaid('classDiagram\n  A <|-- B')).toThrow(MermaidError)
+    expect(() => parseMermaid('classDiagram\n  A <|-- B')).toThrow(/диаграммы последовательности \(sequenceDiagram\)/)
   })
 })

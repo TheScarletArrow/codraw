@@ -1,6 +1,7 @@
 import { StyleDefaultsConfig, type AbstractGraph, type Cell, type CellState } from '@maxgraph/core'
 import type { Box, Point } from './editor.ts'
 import { rotatedBounds, rotationOf } from './rotation.ts'
+import { isSequenceStyle } from './sequence.ts'
 import { isTableStyle, type ShapeStyle } from './shapes.ts'
 
 /** A shape of a {@link PageSketch}: its box in coordinates of the page and how it is painted. */
@@ -30,7 +31,8 @@ export interface SketchEdge {
 
 /**
  * The page as the canvas draws it, simplified for a picture of the whole page: a box for every shape, a whole table
- * without its fields, the shapes of a group without the group, and the lines of edges along their routes; no labels.
+ * without its fields, a whole sequence diagram without its parts, the shapes of a group without the group, and the lines
+ * of edges along their routes; no labels.
  */
 export interface PageSketch {
   shapes: SketchShape[]
@@ -113,8 +115,8 @@ export function sketchPage(graph: AbstractGraph): PageSketch {
         addEdge(state)
       } else if (cell.isVertex()) {
         addShape(cell, state)
-        // A table draws its fields itself.
-        if (!isTableStyle(cell.getStyle() as ShapeStyle)) visit(cell)
+        // A table draws its fields itself, and a sequence diagram its parts.
+        if (!isTableStyle(cell.getStyle() as ShapeStyle) && !isSequenceStyle(cell.getStyle() as Record<string, unknown>)) visit(cell)
       }
     }
   }

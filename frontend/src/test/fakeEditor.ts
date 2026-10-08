@@ -91,6 +91,7 @@ export function createFakeEditor({
     stickies: null,
     status: null,
     properties: null,
+    sequence: null,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -147,6 +148,17 @@ export function createFakeEditor({
     addTableIndex: vi.fn(() => null),
     setIndexProps: vi.fn(),
     setTableVendor: vi.fn(),
+    addSequenceParticipant: vi.fn(() => null),
+    addSequenceMessage: vi.fn(() => null),
+    addSequenceNote: vi.fn(() => null),
+    addSequenceFrame: vi.fn(() => null),
+    addSequenceBranch: vi.fn(() => null),
+    setSequenceParticipant: vi.fn(),
+    setSequenceMessage: vi.fn(),
+    setSequenceNote: vi.fn(),
+    setSequenceFrame: vi.fn(),
+    setSequenceNumbering: vi.fn(),
+    sequenceMermaid: vi.fn(() => null),
     addConnectedShape: vi.fn(() => null),
     copy: vi.fn(),
     cut: vi.fn(),

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import {
+  FRAME_COMMANDS,
   isStatusCommand,
   menuItems,
   shortcutLabel,
@@ -11,12 +12,17 @@ import {
   type MenuCommand,
   type StatusCommand,
 } from './canvasMenu.ts'
-import { readSystemClipboard } from './clipboard.ts'
-import type { ContextMenuRequest, DiagramEditor, Point } from './editor.ts'
+import { readSystemClipboard, writeSystemClipboard } from './clipboard.ts'
+import type { ContextMenuRequest, DiagramEditor, Point, SequencePartState } from './editor.ts'
 import { lockLabel } from './locks.ts'
+import { BRANCH_WORDS } from './sequence.ts'
 import type { ElementStatus } from './status.ts'
 import { StatusIcon } from './StatusIcon.tsx'
 import { useEditorState } from './useEditorState.ts'
+
+/** The selected part of a sequence diagram is a frame, or a branch of one, whose kind has branches. */
+const canBranch = (part: SequencePartState | null) =>
+  (part?.type === 'frame' || part?.type === 'branch') && BRANCH_WORDS[part.kind] !== undefined
 
 /** What a new thread of comments is about: an element, or a point of the page in diagram coordinates. */
 export type CommentTarget = { cellId: string } | { point: Point }
@@ -42,6 +48,18 @@ const COMMANDS: Record<
   editLabel: (editor) => editor.editLabel(),
   addField: (editor) => editor.addTableField(),
   addIndex: (editor) => editor.addTableIndex(),
+  addParticipant: (editor) => editor.addSequenceParticipant(),
+  addMessage: (editor) => editor.addSequenceMessage(),
+  addNote: (editor) => editor.addSequenceNote(),
+  frameAlt: (editor) => editor.addSequenceFrame(FRAME_COMMANDS.frameAlt),
+  frameOpt: (editor) => editor.addSequenceFrame(FRAME_COMMANDS.frameOpt),
+  frameLoop: (editor) => editor.addSequenceFrame(FRAME_COMMANDS.frameLoop),
+  framePar: (editor) => editor.addSequenceFrame(FRAME_COMMANDS.framePar),
+  addBranch: (editor) => editor.addSequenceBranch(),
+  copyMermaid: (editor, { cellId }) => {
+    const text = cellId ? editor.sequenceMermaid(cellId) : null
+    if (text) writeSystemClipboard(text)
+  },
   cut: (editor) => editor.cut(),
   copy: (editor) => editor.copy(),
   duplicate: (editor) => editor.duplicate(),
@@ -87,7 +105,7 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, edgeApi, status, properties } =
+  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, edgeApi, status, properties, sequence } =
     useEditorState(editor)
   const lockId = useId()
 
@@ -203,6 +221,7 @@ export function CanvasMenu({
             canDescribeApi: onEdgeApi !== undefined && edgeApi !== null && edgeApi.cellId === request.cellId,
             canShowProperties: onProperties !== undefined && properties !== null && properties.cellId === request.cellId,
             status,
+            canBranch: canBranch(sequence?.part ?? null),
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
             return (

@@ -11,7 +11,7 @@ describe('EmptyBoardTemplates', () => {
     render(<EmptyBoardTemplates editor={editor} onlyPage />)
 
     const card = screen.getByRole('region', { name: 'Начните с шаблона' })
-    expect(within(card).getAllByRole('button', { name: /ER-диаграмма|C4|Микросервисы|Kubernetes/ })).toHaveLength(4)
+    expect(within(card).getAllByRole('button', { name: /ER-диаграмма|C4|Микросервисы|Kubernetes|OAuth/ })).toHaveLength(5)
     await userEvent.click(within(card).getByRole('button', { name: /C4: контейнеры/ }))
 
     expect(editor.insertCells).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ kind: 'edge' })]))

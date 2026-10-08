@@ -124,6 +124,14 @@ export function ShapeIcon({ shape }: { shape: ShapeId }) {
           <path d="M7.2 6.2 12.8 11.8M12.8 6.2 7.2 11.8" />
         </>
       )}
+      {shape === 'sequence' && (
+        <>
+          <rect x="1.5" y="1.5" width="6" height="4" />
+          <rect x="12.5" y="1.5" width="6" height="4" />
+          <path d="M4.5 5.5V16.5M15.5 5.5V16.5" strokeDasharray="1.5 1.5" />
+          <path d="M4.5 10H15M12.5 8 15 10 12.5 12" fill="none" />
+        </>
+      )}
       {shape === 'bpmn-pool' && (
         <>
           <rect x="1.5" y="3" width="17" height="12" />

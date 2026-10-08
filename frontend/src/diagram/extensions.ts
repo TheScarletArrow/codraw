@@ -3,6 +3,9 @@ import {
   CylinderShape,
   EdgeMarkerRegistry,
   ImageShape,
+  PerimeterRegistry,
+  Point,
+  Rectangle,
   RectangleShape,
   Shape,
   ShapeRegistry,
@@ -10,6 +13,7 @@ import {
   SvgCanvas2D,
   type AbstractCanvas2D,
   type MarkerFactoryFunction,
+  type PerimeterFunction,
   type ShapeConstructor,
 } from '@maxgraph/core'
 import { IMAGE_PLACEHOLDER } from './images.ts'
@@ -583,6 +587,112 @@ class ChipShape extends Shape {
   }
 }
 
+/** The height of the header of a lifeline of draw.io without `size`, and the tab of a frame without `width` and `height`. */
+const LIFELINE_SIZE = 40
+const FRAME_TAB = { width: 60, height: 30, corner: 10 }
+
+/** A number of a style, or `fallback` for none or something that is not a positive number. */
+function positive(style: unknown, key: string, fallback: number): number {
+  const value = Number(styleValue(style, key))
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/**
+ * draw.io `umlLifeline`: a header `size` high — the shape named by `participant`, e.g. `umlActor`, or a box — and a
+ * dashed line down its middle, as draw.io draws the lifelines of its sequence diagrams. The label is in the header.
+ */
+class LifelineShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    const size = Math.min(h, positive(this.style, 'size', LIFELINE_SIZE))
+    const participant = styleValue(this.style, 'participant')
+    const Header = typeof participant === 'string' ? ShapeRegistry.get(participant) : undefined
+    if (Header && Header !== LifelineShape && this.state) {
+      const header = new Header()
+      header.apply(this.state)
+      c.save()
+      header.paintVertexShape(c, x, y, w, size)
+      c.restore()
+    } else {
+      if (this.isRounded) c.roundrect(x, y, w, size, 8, 8)
+      else c.rect(x, y, w, size)
+      c.fillAndStroke()
+    }
+    if (size >= h) return
+    c.setShadow(false)
+    c.setDashed(String(styleValue(this.style, 'lifelineDashed') ?? '1') !== '0', true)
+    c.begin()
+    c.moveTo(x + w / 2, y + size)
+    c.lineTo(x + w / 2, y + h)
+    c.stroke()
+  }
+
+  override getLabelBounds(rect: Rectangle) {
+    return new Rectangle(rect.x, rect.y, rect.width, Math.min(rect.height, positive(this.style, 'size', LIFELINE_SIZE) * this.scale))
+  }
+}
+
+/** draw.io `umlFrame`: a frame with its label in a tab at the top-left corner, `width` by `height`. */
+class UmlFrameShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    const { corner } = FRAME_TAB
+    const tabWidth = Math.min(w, Math.max(corner, positive(this.style, 'width', FRAME_TAB.width)))
+    const tabHeight = Math.min(h, Math.max(corner * 1.5, positive(this.style, 'height', FRAME_TAB.height)))
+    // Clicks inside a frame with `pointerEvents=0` reach what it frames; its border and its tab still select it.
+    const through = styleValue(this.style, 'pointerEvents') === false
+    c.begin()
+    c.moveTo(x, y)
+    c.lineTo(x + tabWidth, y)
+    c.lineTo(x + tabWidth, y + Math.max(0, tabHeight - corner * 1.5))
+    c.lineTo(x + Math.max(0, tabWidth - corner), y + tabHeight)
+    c.lineTo(x, y + tabHeight)
+    c.close()
+    c.fillAndStroke()
+    if (through) c.pointerEvents = false
+    c.begin()
+    c.moveTo(x + tabWidth, y)
+    c.lineTo(x + w, y)
+    c.lineTo(x + w, y + h)
+    c.lineTo(x, y + h)
+    c.lineTo(x, y + tabHeight)
+    c.stroke()
+  }
+
+  override getLabelBounds(rect: Rectangle) {
+    const width = Math.max(FRAME_TAB.corner, positive(this.style, 'width', FRAME_TAB.width)) * this.scale
+    const height = Math.max(FRAME_TAB.corner * 1.5, positive(this.style, 'height', FRAME_TAB.height)) * this.scale
+    return new Rectangle(rect.x, rect.y, Math.min(rect.width, width), Math.min(rect.height, height))
+  }
+}
+
+/** draw.io `umlActor`: a stick figure. */
+class UmlActorShape extends Shape {
+  override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    c.ellipse(x + w / 4, y, w / 2, h / 4)
+    c.fillAndStroke()
+    c.begin()
+    c.moveTo(x + w / 2, y + h / 4)
+    c.lineTo(x + w / 2, y + (2 * h) / 3)
+    c.moveTo(x + w / 2, y + h / 3)
+    c.lineTo(x, y + h / 3)
+    c.moveTo(x + w / 2, y + h / 3)
+    c.lineTo(x + w, y + h / 3)
+    c.moveTo(x + w / 2, y + (2 * h) / 3)
+    c.lineTo(x, y + h)
+    c.moveTo(x + w / 2, y + (2 * h) / 3)
+    c.lineTo(x + w, y + h)
+    c.stroke()
+  }
+}
+
+/**
+ * draw.io `lifelinePerimeter`: an edge ends on the dashed line of a lifeline, at the height it comes from, below the
+ * header.
+ */
+const lifelinePerimeter: PerimeterFunction = (bounds, vertex, next) => {
+  const size = positive(vertex.style, 'size', LIFELINE_SIZE) * vertex.view.scale
+  return new Point(bounds.getCenterX(), Math.min(bounds.y + bounds.height, Math.max(bounds.y + size, next.y)))
+}
+
 /** Marker values for the ends of an edge, as draw.io names them. */
 export const EDGE_MARKERS = [
   { value: 'classic', label: 'Стрелка' },
@@ -689,6 +799,9 @@ export const SYSTEM_DESIGN_SHAPES = {
   'codraw.mobile': MobileShape,
   'codraw.desktop': DesktopShape,
   'codraw.chip': ChipShape,
+  umlLifeline: LifelineShape,
+  umlFrame: UmlFrameShape,
+  umlActor: UmlActorShape,
 } satisfies Record<string, ShapeConstructor>
 
 /** Shadows of shapes with `shadow=1` as draw.io draws them: black, a quarter opaque, instead of opaque grey. */
@@ -709,6 +822,7 @@ export function registerDiagramExtensions() {
   // The cylinder of the draw.io palette.
   ShapeRegistry.add('cylinder3', CylinderShape)
   for (const [name, shape] of Object.entries(SYSTEM_DESIGN_SHAPES)) ShapeRegistry.add(name, shape)
+  PerimeterRegistry.add('lifelinePerimeter', lifelinePerimeter)
   for (const [name, parts] of Object.entries(CROWS_FEET)) {
     EdgeMarkerRegistry.add(name, crowsFoot(parts))
   }
