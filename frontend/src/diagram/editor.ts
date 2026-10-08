@@ -4763,6 +4763,7 @@ export function createDiagramEditor(
       model.removeListener(fitTexts)
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
+      model.removeListener(handleLayerChanges)
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
