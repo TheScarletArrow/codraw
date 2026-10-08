@@ -40,10 +40,10 @@
 - [x] 4.1 frontend: политика конфиденциальности — библиотеки фигур; проверка: тест страницы политики
 - [x] 4.2 docs: README (возможности, раздел «Библиотеки фигур», пределы, персональные данные), «Что нового» 0.13.0 и
   `version` в `frontend/package.json`; проверка: тесты «Что нового»
-- [ ] 4.3 e2e: `shape-libraries.spec.ts` — сохранение группы со связью, вставка двумя участниками, независимые копии,
+- [x] 4.3 e2e: `shape-libraries.spec.ts` — сохранение группы со связью, вставка двумя участниками, независимые копии,
   замена и удаление без изменения копий, свой SVG в `.drawio`, чужая библиотека недоступна; проверка: `pnpm --filter
   @codraw/e2e typecheck` и прогон спецификации
-- [ ] 4.4 Проверка: `./gradlew build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `openspec validate
+- [x] 4.4 Проверка: `./gradlew build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `openspec validate
   --all --strict`
 
 ## Workflow follow-up
