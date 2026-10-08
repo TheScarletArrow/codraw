@@ -191,7 +191,7 @@ export async function schemaCells(
       const viewIndexes = view.materialized ? view.indexes : []
       const indexes = viewIndexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
       const width = tableWidth(view.name, labels, [], indexes, view)
-      const built = builder.table(view.name, 0, 0, labels, width, indexes, viewStyle(view) as ShapeStyle)
+      const built = builder.table(view.name, 0, 0, labels, width, indexes, viewStyle(view))
       return [
         view.name,
         {

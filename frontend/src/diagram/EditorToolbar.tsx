@@ -211,6 +211,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     field,
     index,
     tableBase,
+    tableView,
     edgeMarkers,
     colors,
     line,
@@ -231,7 +232,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
       {sequence && <SequenceTools editor={editor} sequence={sequence} />}
       <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
         {tableSelected && (
-          <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />
+          <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} view={tableView} />
         )}
         {colors && (
           <>

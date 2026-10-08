@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { FieldPopover } from './FieldPopover.tsx'
 
-const FIELD = { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: false, inheritedFrom: null }
+const FIELD = { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: false, inheritedFrom: null, inView: false }
 
 describe('FieldPopover', () => {
   let editor: FakeEditor
@@ -49,7 +49,7 @@ describe('FieldPopover', () => {
   })
 
   it('is not shown for an inherited field, which is edited in its base table', () => {
-    act(() => editor.setState({ field: { ...FIELD, inheritedFrom: 'BaseEntity' }, tableVendor: null }))
+    act(() => editor.setState({ field: { ...FIELD, inheritedFrom: 'BaseEntity', inView: false }, tableVendor: null }))
 
     expect(screen.queryByRole('group', { name: 'Свойства поля' })).toBeNull()
   })

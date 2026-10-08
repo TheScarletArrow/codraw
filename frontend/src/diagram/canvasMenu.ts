@@ -158,6 +158,8 @@ export interface MenuAvailability {
   status?: SelectionStatus | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
   canBranch?: boolean
+  /** The selected table may have indexes, not being a view that is not materialized: «Добавить индекс» is offered. */
+  canAddIndex?: boolean
 }
 
 /** Items of a participant who may only view the board. */
@@ -376,6 +378,7 @@ export function menuItems(
     canMergeElements = false,
     status = null,
     canBranch = false,
+    canAddIndex = true,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
@@ -396,6 +399,7 @@ export function menuItems(
     edgeApi: canDescribeApi,
     properties: canShowProperties,
     addBranch: canBranch,
+    addIndex: canAddIndex,
     whereUsed: canShowWhereUsed,
     detachElement: sharedElement,
     deleteElementEverywhere: canDeleteElementEverywhere,

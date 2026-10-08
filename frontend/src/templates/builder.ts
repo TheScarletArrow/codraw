@@ -92,14 +92,14 @@ export class DiagramBuilder {
     fields: string[],
     width = 220,
     indexes: string[] = [],
-    style: ShapeStyle = {},
+    style: Record<string, StyleValue> = {},
   ): { id: string; fields: string[]; indexes: string[] } {
     const indexesTop = TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT + TABLE_INDEX_GAP
     const id = this.shape('table', x, y, {
       value: name,
       width,
       height: indexes.length > 0 ? indexesTop + indexes.length * TABLE_FIELD_HEIGHT : TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT,
-      style,
+      style: style as ShapeStyle,
     })
     const row = (value: string, top: number, style: Record<string, StyleValue>) =>
       this.add({

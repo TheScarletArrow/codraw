@@ -292,7 +292,7 @@ describe('exportDrawio', () => {
 
   it('writes a view with its badge keys in the style and its query on an <object>, and reads them back', async () => {
     const query = "SELECT user_id, count(*) AS orders FROM orders WHERE status = 'paid'; -- a=b"
-    const table = { ...markedStyle(findShape('table')!), [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query }
+    const table = { ...fromStyle(markedStyle(findShape('table')!) as never), [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query }
     const doc = board()
     doc.transact(() => writeCell(getCells(doc), cell('stats', { value: 'user_stats', style: table })))
 

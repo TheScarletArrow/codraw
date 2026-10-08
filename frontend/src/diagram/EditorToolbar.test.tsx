@@ -74,7 +74,7 @@ describe('EditorToolbar', () => {
       editor.setState({
         tableSelected: true,
         tableVendor: 'mysql',
-        field: { cellId: 'field', tableId: 'table', type: 'int', notNull: false, primaryKey: false, unique: false, inheritedFrom: null },
+        field: { cellId: 'field', tableId: 'table', type: 'int', notNull: false, primaryKey: false, unique: false, inheritedFrom: null, inView: false },
       }),
     )
     const type = screen.getByRole('combobox', { name: 'Тип поля' })
@@ -91,7 +91,7 @@ describe('EditorToolbar', () => {
   })
 
   it('applies a type chosen from the list at once and brings the current type back on Escape', async () => {
-    act(() => editor.setState({ tableSelected: true, tableVendor: null, field: { cellId: 'field', tableId: 'table', type: 'uuid', notNull: false, primaryKey: false, unique: false, inheritedFrom: null } }))
+    act(() => editor.setState({ tableSelected: true, tableVendor: null, field: { cellId: 'field', tableId: 'table', type: 'uuid', notNull: false, primaryKey: false, unique: false, inheritedFrom: null, inView: false } }))
     const type = screen.getByRole('combobox', { name: 'Тип поля' })
 
     fireEvent.change(type, { target: { value: 'timestamptz' } })
@@ -103,7 +103,7 @@ describe('EditorToolbar', () => {
   })
 
   it('sets the nullability and the keys of the selected field', async () => {
-    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql', field: { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: true, inheritedFrom: null } }))
+    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql', field: { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: true, inheritedFrom: null, inView: false } }))
 
     expect(screen.getByRole('button', { name: 'NULL' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'UNIQUE' })).toHaveAttribute('aria-pressed', 'true')
@@ -138,8 +138,57 @@ describe('EditorToolbar', () => {
     expect(editor.setDefaultBase).toHaveBeenLastCalledWith(false)
   })
 
+  it('makes the selected table a view, materialized, with a query applied from its window', async () => {
+    const tableBase = { base: false, defaultBase: false, baseId: null, options: [] }
+    act(() => editor.setState({ tableSelected: true, tableBase, tableView: { view: false, materialized: false, query: '' } }))
+
+    expect(screen.getByRole('button', { name: 'Представление' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('button', { name: 'Материализованное' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Базовая' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Представление' }))
+    expect(editor.setViewTable).toHaveBeenLastCalledWith(true)
+
+    act(() => editor.setState({ tableSelected: true, tableBase, tableView: { view: true, materialized: false, query: 'SELECT 1' } }))
+    // A view has no base, and a view that is not materialized no indexes.
+    expect(screen.queryByRole('button', { name: 'Базовая' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'База таблицы' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Добавить индекс' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Материализованное' }))
+    expect(editor.setViewMaterialized).toHaveBeenLastCalledWith(true)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Запрос…' }))
+    const query = screen.getByRole('textbox', { name: 'Запрос' })
+    expect(query).toHaveValue('SELECT 1')
+    await userEvent.clear(query)
+    await userEvent.type(query, 'SELECT id FROM users')
+    await userEvent.click(screen.getByRole('button', { name: 'Применить' }))
+    expect(editor.setViewQuery).toHaveBeenLastCalledWith('SELECT id FROM users')
+    expect(screen.queryByRole('textbox', { name: 'Запрос' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Запрос…' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Запрос' }), ' WHERE x')
+    await userEvent.keyboard('{Escape}')
+    expect(editor.setViewQuery).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Запрос…' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Запрос' }), ';{Control>}{Enter}{/Control}')
+    expect(editor.setViewQuery).toHaveBeenLastCalledWith('SELECT 1;')
+
+    act(() => editor.setState({ tableSelected: true, tableBase, tableView: { view: true, materialized: true, query: '' } }))
+    expect(screen.getByRole('button', { name: 'Добавить индекс' })).toBeInTheDocument()
+  })
+
+  it('offers the type alone for a column of a view', () => {
+    const field = { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: false, inheritedFrom: null, inView: true }
+    act(() => editor.setState({ tableSelected: true, field, tableView: { view: true, materialized: false, query: '' } }))
+
+    expect(screen.getByRole('combobox', { name: 'Тип поля' })).toHaveValue('text')
+    expect(screen.queryByRole('button', { name: 'NULL' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'PK' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'UNIQUE' })).toBeNull()
+  })
+
   it('names the base table of an inherited field instead of its properties', () => {
-    const field = { cellId: 'field', tableId: 'table', type: 'uuid', notNull: true, primaryKey: true, unique: false, inheritedFrom: 'BaseEntity' }
+    const field = { cellId: 'field', tableId: 'table', type: 'uuid', notNull: true, primaryKey: true, unique: false, inheritedFrom: 'BaseEntity', inView: false }
     act(() => editor.setState({ tableSelected: true, field }))
 
     expect(screen.getByText('Из BaseEntity')).toBeInTheDocument()
@@ -148,7 +197,7 @@ describe('EditorToolbar', () => {
   })
 
   it('keeps a primary key NOT NULL', () => {
-    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql', field: { cellId: 'field', tableId: 'table', type: 'uuid', notNull: true, primaryKey: true, unique: false, inheritedFrom: null } }))
+    act(() => editor.setState({ tableSelected: true, tableVendor: 'postgresql', field: { cellId: 'field', tableId: 'table', type: 'uuid', notNull: true, primaryKey: true, unique: false, inheritedFrom: null, inView: false } }))
 
     expect(screen.getByRole('button', { name: 'NOT NULL' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'NOT NULL' })).toBeDisabled()
