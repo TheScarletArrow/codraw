@@ -112,6 +112,8 @@ import {
   type LabelFormat,
 } from './elementProps.ts'
 import { registerDiagramExtensions } from './extensions.ts'
+import { GridTableLayout, isGridTable, populateGridTable } from './gridTables.ts'
+import { configureLists, formatList, handleListEnter, listKind, type ListKind } from './lists.ts'
 import { newId } from './ids.ts'
 import {
   cellImageUrls,
@@ -357,6 +359,7 @@ export interface SelectionText {
    * that allow it, `null` when no selected shape allows it.
    */
   textWrap: boolean | null
+  list?: ListKind | null
 }
 
 /** Position and size of the selected shapes; `null` for a value that differs between them. */
@@ -919,6 +922,7 @@ export interface DiagramEditor {
   setFontFamily(family: string): void
   /** Aligns the text of the objects {@link setFontSize} would change, as one undo step. */
   setTextAlign(align: TextAlign): void
+  setList(kind: ListKind | null): void
   /** Sets the width or the dash of the lines of the selected objects, or the shape of the selected edges, as one undo step. */
   setLineStyle(changes: { width?: number; dash?: LineDash; edgeShape?: EdgeShape }): void
   /** Turns on or off the width that follows the label for the selected shapes that allow it; on, it fits them at once. */
@@ -1401,6 +1405,7 @@ const CHANGING_COMMANDS = [
   'stepFontSize',
   'toggleFontStyle',
   'setTextAlign',
+  'setList',
   'setLineStyle',
   'setAutoWidth',
   'setTextWrap',
@@ -1458,6 +1463,7 @@ export function createDiagramEditor(
   configureStyles(graph)
   configureTableFields(graph)
   configureElementLabels(graph)
+  configureLists(graph)
   configureTextWrap(graph)
   const unconfigureSequences = configureSequences(graph)
   const unconfigureLegends = configureLegends(graph)
@@ -1485,10 +1491,19 @@ export function createDiagramEditor(
   }
   const layoutManager = new LayoutManager(graph)
   const tableLayout = new TableLayout(graph)
+  const gridTableLayout = new GridTableLayout(graph)
   const sequenceLayout = new SequenceDiagramLayout(graph)
   const legendLayout = new LegendGraphLayout(graph)
   layoutManager.getLayout = (cell) =>
-    isTable(cell) ? tableLayout : isSequence(cell) ? sequenceLayout : isLegend(cell) ? legendLayout : null
+    isTable(cell)
+      ? tableLayout
+      : isGridTable(cell)
+        ? gridTableLayout
+        : isSequence(cell)
+          ? sequenceLayout
+          : isLegend(cell)
+            ? legendLayout
+            : null
   // The text of a part of a sequence diagram sets its room, and so the layout of the diagram.
   const getCellsForChange = layoutManager.getCellsForChange.bind(layoutManager)
   layoutManager.getCellsForChange = (change) =>
@@ -1512,6 +1527,17 @@ export function createDiagramEditor(
   const cellEditor = graph.getPlugin<CellEditorHandler>('CellEditorHandler')
   // Commit a label when its editor loses focus, e.g. when the user clicks the palette or the toolbar.
   if (cellEditor) cellEditor.blurEnabled = true
+  if (cellEditor) {
+    const resize = cellEditor.resize.bind(cellEditor)
+    cellEditor.resize = () => {
+      resize()
+      const cell = cellEditor.getEditingCell()
+      const shape = (cell?.getStyle() as ShapeStyle | undefined)?.codrawShape
+      if (cellEditor.textarea && (shape === 'list' || shape === 'numbered-list' || listKind(cellEditor.textarea.textContent ?? ''))) {
+        cellEditor.textarea.style.whiteSpace = 'pre-wrap'
+      }
+    }
+  }
   /** The message whose text Enter applied: the next message follows it once the editing stops. */
   let nextMessageAfter: Cell | null = null
   // The name of a table, a field and an index are a line each: Enter applies them, as Escape cancels them. So are the
@@ -1521,6 +1547,7 @@ export function createDiagramEditor(
     const isStopEditingEvent = cellEditor.isStopEditingEvent.bind(cellEditor)
     cellEditor.isStopEditingEvent = (event) => {
       const cell = cellEditor.getEditingCell()
+      if (cellEditor.textarea && !isTable(cell) && !isColumnField(cell) && !isIndexRow(cell) && !isSequencePart(cell) && handleListEnter(event, cellEditor.textarea)) return false
       const part = partOf(cell)
       const line =
         isTable(cell) || isColumnField(cell) || isIndexRow(cell) || isSequence(cell) || isLegend(cell) || (part !== null && part !== 'note')
@@ -1538,6 +1565,11 @@ export function createDiagramEditor(
   const handleEditingStarted = (_sender: unknown, event: EventObject) => {
     const cell = event.getProperty('cell') as Cell
     const textarea = cellEditor?.textarea
+    if (isGridTable(cell.getParent()) && textarea) {
+      namedField = cell
+      textarea.style.minWidth = `${Math.max(20, (cell.getGeometry()?.width ?? 80) - 12)}px`
+      return
+    }
     if (!(isColumnField(cell) || isIndexRow(cell)) || !textarea) return
     namedField = cell
     const row = tableRowsOf(graph, cell.getParent()!).get(cell)
@@ -1564,6 +1596,18 @@ export function createDiagramEditor(
   if (cellEditor) {
     const startEditing = cellEditor.startEditing.bind(cellEditor)
     cellEditor.startEditing = (cell: Cell, trigger?: MouseEvent | null) => {
+      if (!graph.isCellEditable(cell)) return
+      if (isGridTable(cell) && graph.isCellEditable(cell)) {
+        populateGridTable(graph, cell)
+        const state = graph.getView().getState(cell)
+        const bounds = container.getBoundingClientRect()
+        const style = cell.getStyle() as Record<string, unknown>
+        const rows = Number(style.gridRows) || 4
+        const columns = Number(style.gridColumns) || 3
+        const column = trigger && state ? Math.max(0, Math.min(columns - 1, Math.floor((trigger.clientX - bounds.left + container.scrollLeft - state.x) / state.width * columns))) : 0
+        const row = trigger && state ? Math.max(0, Math.min(rows - 1, Math.floor((trigger.clientY - bounds.top + container.scrollTop - state.y) / state.height * rows))) : 0
+        cell = cell.getChildAt(row * columns + column) ?? cell
+      }
       startEditing(cell, trigger)
       const id = cellEditor.getEditingCell()?.getId()
       if (id) setEditing({ cellId: id, changedRemotely: false })
@@ -1932,6 +1976,7 @@ export function createDiagramEditor(
       align: same(cells.map((cell) => alignOf(graph.getCellStyle(cell)))),
       autoWidth: shapes.length > 0 ? shapes.every((cell) => hasAutoWidth(cell.getStyle())) : null,
       textWrap: wrapping.length > 0 ? wrapping.every((cell) => hasTextWrap(cell.getStyle())) : null,
+      list: same(cells.map((cell) => listKind(String(cell.getValue() ?? '')))),
     }
   }
   const selectionLine = (): SelectionLine | null => {
@@ -2790,6 +2835,7 @@ export function createDiagramEditor(
       })
       childY += child.height
     }
+    if (isGridTable(cell)) populateGridTable(graph, cell)
     fitAutoWidth([cell])
     return cell
   }
@@ -3909,6 +3955,19 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       // Centred is the default of shapes and edges; fields of tables store their left alignment.
       setStyleValue(cells, 'align', align === 'center' ? undefined : align)
+    },
+    setList(kind) {
+      graph.stopEditing(false)
+      const selected = unlocked(graph.getSelectionCells()).filter((cell) =>
+        cell.isVertex() && !isTable(cell) && !isGridTable(cell) && !isTable(cell.getParent()) && !isSequence(cell) && !isSequencePart(cell),
+      )
+      model.batchUpdate(() => {
+        for (const cell of selected) {
+          graph.cellLabelChanged(cell, formatList(String(cell.getValue() ?? ''), kind), false)
+          if (kind) setStyleValue([cell], 'align', 'left')
+        }
+        fitAutoWidth(selected)
+      })
     },
     setLineStyle({ width, dash, edgeShape }) {
       editor.setPencilLine({ width, dash })

@@ -82,7 +82,9 @@ SHAPES.forEach((shape, index) => {
 /** The item of a shape, or `null` for a shape that no legend lists. */
 function shapeItem(record: LegendRecord, parent: LegendRecord | undefined): (LegendItem & { order: number }) | null {
   const style = record.style
-  if (isLegendStyle(style) || isStickyStyle(style) || isImageStyle(style) || isSequenceStyle(style)) return null
+  if (isLegendStyle(style) || isStickyStyle(style) || isSequenceStyle(style)) return null
+  // A picture of the participant is no kind of shapes; a logo of the palette, e.g. Kafka, is.
+  if (isImageStyle(style) && !findShape(String(style.codrawShape ?? ''))) return null
   if (sequencePartOf(style) !== null || TEXT_SHAPES.has(String(style.codrawShape ?? ''))) return null
   // A field of a table, a part of a sequence diagram, a label of an edge.
   if (parent && (parent.kind === 'edge' || isTableStyle(parent.style as ShapeStyle) || isSequenceStyle(parent.style))) return null

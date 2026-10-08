@@ -156,6 +156,8 @@ function paintShapeSample(c: AbstractCanvas2D, graph: Graph, laid: LegendRowLayo
     // Shapes take their bounds and colors from their state too, so they are made without them.
     const sample = new (Sample as unknown as new () => Shape)()
     sample.apply(state)
+    // The renderer gives a picture its address apart from its style; a logo of the palette has one.
+    if (typeof state.style.image === 'string') Object.assign(sample, { imageSrc: state.style.image })
     sample.scale = 1
     sample.bounds = new Rectangle(x + box.x, y + box.y, box.width, box.height)
     sample.paint(c)

@@ -74,6 +74,12 @@ describe('the items of a legend', () => {
     ])
   })
 
+  it('lists a logo of the palette, but not a picture of the participant', () => {
+    const logo = { id: 'k', kind: 'vertex' as const, parent: '1', style: { shape: 'image', image: 'data:image/svg+xml;base64,PHN2Zy8+', codrawShape: 'provider-kafka' } }
+    const picture = { id: 'p', kind: 'vertex' as const, parent: '1', style: { shape: 'image', image: 'https://example.com/a.png' } }
+    expect(legendItems([picture, logo]).map((item) => [item.key, item.name])).toEqual([['shape:provider-kafka', 'Kafka']])
+  })
+
   it('leaves out text, stickies, pictures, tables with their fields, sequence diagrams, groups, labels and legends', () => {
     const items = legendItems([
       shape('t', 'text'),

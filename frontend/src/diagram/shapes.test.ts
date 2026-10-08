@@ -38,7 +38,7 @@ describe('shape presets', () => {
         ],
       ],
       ['База данных', ['Таблица']],
-      ['Структуры', ['Сетка таблицы', 'Список']],
+      ['Структуры', ['Сетка таблицы', 'Список', 'Нумерованный список']],
       ['Блок-схемы', ['Процесс', 'Терминатор', 'Условие', 'Данные', 'Документ процесса', 'Подпроцесс']],
       ['BPMN', ['Задача', 'Событие', 'Шлюз', 'Объект данных', 'Пул / дорожки']],
       [
@@ -59,6 +59,7 @@ describe('shape presets', () => {
         'C4',
         ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы', 'Легенда'],
       ],
+      ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
     expect(new Set(SHAPES.map((shape) => shape.id)).size).toBe(SHAPES.length)
     // The legend of two sections is one shape of the palette.
@@ -208,6 +209,7 @@ describe('shape groups', () => {
       'system',
       'uml',
       'c4',
+      'system',
     ])
   })
 
@@ -232,7 +234,7 @@ describe('shape groups', () => {
   it('list the shapes of a group in the order of the palette', () => {
     expect(ids(groupShapes('tables'))).toEqual(['table'])
     expect(ids(groupShapes('basic'))).toEqual(['rectangle', 'rounded', 'ellipse', 'rhombus', 'triangle', 'hexagon', 'pentagon', 'star'])
-    expect(ids(groupShapes('elements'))).toEqual(['grid-table', 'list'])
+    expect(ids(groupShapes('elements'))).toEqual(['grid-table', 'list', 'numbered-list'])
     expect(ids(groupShapes('flowchart'))).toEqual([
       'flow-process',
       'flow-terminator',
