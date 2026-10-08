@@ -519,6 +519,20 @@ describe('CanvasMenu', () => {
     })
   })
 
+  it('marks the selection as what will appear or will go', async () => {
+    act(() => editor.setState({ selectionPlan: { value: null, mixed: false } }))
+    rightClick('edge')
+    const plans = within(screen.getByRole('menu')).getAllByRole('menuitemradio').filter((item) => ['Есть', 'Появится', 'Уйдёт'].includes(item.getAttribute('aria-label')!))
+    expect(plans.map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')])).toEqual([
+      ['Есть', 'true'],
+      ['Появится', 'false'],
+      ['Уйдёт', 'false'],
+    ])
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Появится' }))
+    expect(editor.setPlan).toHaveBeenCalledWith('added')
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   describe('one element on several pages', () => {
     const properties = { name: 'Payments', kind: 'c4-container' as const, technology: '', description: '', owner: '', tags: [] }
     const place = (pageId: string, cellIds: string[]) => ({ pageId, pageName: pageId, cellIds, locked: [] })

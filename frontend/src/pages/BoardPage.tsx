@@ -11,6 +11,7 @@ import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposals, type Proposal } from '../api/proposals.ts'
 import { requestReview } from '../api/reviews.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { usePlanView } from '../board/usePlanView.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
@@ -233,6 +234,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     [setSearchParams],
   )
   const selectPage = useCallback((id: string) => changeParams((params) => params.set('page', id)), [changeParams])
+  const { view: planView, changeView: changePlanView } = usePlanView(editor)
   // An unknown page, e.g. one deleted by another participant, is replaced with the first page.
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
@@ -523,7 +525,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onProposalCreated={proposalCreated}
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-        <EditorToolbar editor={editor} readOnly={readOnly} />
+        <EditorToolbar editor={editor} readOnly={readOnly} planView={planView} onPlanViewChange={changePlanView} />
         <Participants
           participants={participants}
           pages={pages}

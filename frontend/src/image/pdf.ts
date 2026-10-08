@@ -28,12 +28,14 @@ export function pdfPages(doc: Y.Doc): PageInfo[] {
 
 /**
  * Images of the pages of a PDF of the whole board, see {@link pdfPages}. The page of the editor is drawn by the editor,
- * as for the other buttons of the export; the others are drawn out of sight once their edges are routed.
+ * as for the other buttons of the export; the others are drawn out of sight once their edges are routed, in the view of
+ * the plan of the editor.
  */
 export async function boardImages(doc: Y.Doc, editor: DiagramEditor, options: SvgOptions = {}): Promise<ExportedImage[]> {
   const images: ExportedImage[] = []
+  const view = editor.getState().plan.view
   for (const page of pdfPages(doc)) {
-    const image = page.id === editor.pageId ? editor.exportSvg(options) : await renderPage(doc, page.id, options)
+    const image = page.id === editor.pageId ? editor.exportSvg(options) : await renderPage(doc, page.id, options, view)
     if (image) images.push(image)
   }
   return images

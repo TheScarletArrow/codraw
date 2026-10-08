@@ -244,6 +244,27 @@ describe('menuItems', () => {
     }
   })
 
+  it('offers what will appear and what will go after the statuses, for edges too, chosen as the selection has it', () => {
+    const planned = { ...all, status: { value: null, mixed: false }, plan: { value: 'added' as const, mixed: false } }
+
+    expect(labels('shape', planned).slice(-5)).toEqual(['Без статуса', 'Есть', 'Появится', 'Уйдёт', 'Удалить'])
+    const items = menuItems('shape', planned).filter((item) => item.command.startsWith('plan'))
+    expect(items.map(({ command, heading, separatorBefore, checked }) => [command, heading, separatorBefore, checked])).toEqual([
+      ['planNone', 'Изменение', true, false],
+      ['planAdded', undefined, false, true],
+      ['planRemoved', undefined, false, false],
+    ])
+    expect(labels('edge', { ...all, plan: { value: null, mixed: false } })).toEqual(expect.arrayContaining(['Есть', 'Появится', 'Уйдёт']))
+    for (const target of ['table', 'group', 'selection'] as const) expect(labels(target, planned)).toContain('Уйдёт')
+    expect(labels('field', planned)).not.toContain('Уйдёт')
+    // Different marks choose none of them; a lock keeps them; a viewer has none.
+    const mixed = menuItems('shape', { ...planned, plan: { value: null, mixed: true } })
+    expect(mixed.filter((item) => item.command.startsWith('plan') && item.checked).map((item) => item.command)).toEqual([])
+    expect(menuItems('shape', { ...planned, locked: true }).find((item) => item.command === 'planRemoved')).toMatchObject({ disabled: true })
+    expect(labels('shape', { ...planned, readOnly: true })).not.toContain('Появится')
+    expect(labels('shape', { ...planned, plan: null })).not.toContain('Появится')
+  })
+
   it('offers the statuses after locking for shapes, tables, groups and several elements with them', () => {
     const marked = { ...all, canLock: true, status: { value: null, mixed: false } }
 

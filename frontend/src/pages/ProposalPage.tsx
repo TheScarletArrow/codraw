@@ -8,6 +8,7 @@ import { fetchBoard, type Board } from '../api/boards.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposal, withdrawProposal, type Proposal } from '../api/proposals.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { usePlanView } from '../board/usePlanView.ts'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { Minimap } from '../board/Minimap.tsx'
@@ -111,6 +112,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
     (id: string) => setSearchParams((params) => new URLSearchParams({ ...Object.fromEntries(params), page: id }), { replace: true }),
     [setSearchParams],
   )
+  const { view: planView, changeView: changePlanView } = usePlanView(editor)
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
   }, [currentPage, requestedPage, selectPage])
@@ -198,7 +200,13 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         {/* Nobody else is on a draft, and comments are about the board: no laser pointer and no comment tool. */}
-        <EditorToolbar editor={editor} readOnly={readOnly} collaboration={false} />
+        <EditorToolbar
+          editor={editor}
+          readOnly={readOnly}
+          collaboration={false}
+          planView={planView}
+          onPlanViewChange={changePlanView}
+        />
         <div className="flex shrink-0 items-center gap-1">
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />

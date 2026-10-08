@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ArrangePicker } from './ArrangePicker.tsx'
 import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
+import type { PlanView } from './plan.ts'
+import { PlanViewPicker } from './PlanViewPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionLock, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
@@ -48,9 +50,12 @@ interface EditorToolbarProps {
   readOnly?: boolean
   /** The page works on a board with others: the laser pointer and the comment tool are shown. */
   collaboration?: boolean
+  /** How the participant shows the page (see `plan.ts`), and how it changes it; without it, the choice is not offered. */
+  planView?: PlanView
+  onPlanViewChange?: (view: PlanView) => void
 }
 
-export function EditorToolbar({ editor, readOnly = false, collaboration = true }: EditorToolbarProps) {
+export function EditorToolbar({ editor, readOnly = false, collaboration = true, planView, onPlanViewChange }: EditorToolbarProps) {
   const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
 
   return (
@@ -173,6 +178,7 @@ export function EditorToolbar({ editor, readOnly = false, collaboration = true }
         </Button>
       )}
       {!readOnly && <AutoLayoutPicker editor={editor} />}
+      {planView && onPlanViewChange && <PlanViewPicker editor={editor} readOnly={readOnly} view={planView} onChange={onPlanViewChange} />}
       {!readOnly && (pencil ? <PencilTools editor={editor} /> : <EditingTools editor={editor} />)}
     </div>
   )
