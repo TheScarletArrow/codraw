@@ -108,6 +108,13 @@ describe('views', () => {
     makeView(editor, users)
     expect(isBaseTable(users)).toBe(false)
     expect(style(users)).not.toHaveProperty('codrawBaseDefault')
+
+    // Nor does a view become one again, or get a base.
+    editor.setBaseTable(true)
+    expect(isBaseTable(users)).toBe(false)
+    editor.graph.setSelectionCell(active)
+    editor.setTableBase(audited.getId()!)
+    expect(baseTableId(active)).toBeNull()
   })
 
   it('adds indexes to a materialized view only, and shows its columns without nullability', () => {

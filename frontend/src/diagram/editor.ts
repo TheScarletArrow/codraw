@@ -3203,7 +3203,8 @@ export function createDiagramEditor(
     },
     setBaseTable(enabled) {
       const table = selectedTable()
-      if (!table || !isUnlocked(table) || isBaseTable(table) === enabled) return
+      // A view is no template of fields.
+      if (!table || !isUnlocked(table) || isBaseTable(table) === enabled || (enabled && isViewTable(table))) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleValue([table], BASE_KEY, enabled ? true : undefined)
@@ -3222,7 +3223,8 @@ export function createDiagramEditor(
     },
     setTableBase(baseId) {
       const table = selectedTable()
-      if (!table || !isUnlocked(table) || baseTableId(table) === baseId) return
+      // The columns of a view are those of its query, inherited from no base.
+      if (!table || !isUnlocked(table) || baseTableId(table) === baseId || (baseId !== null && isViewTable(table))) return
       if (baseId !== null && !baseOptions(table, pageTables(graph)).some((base) => base.getId() === baseId)) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
