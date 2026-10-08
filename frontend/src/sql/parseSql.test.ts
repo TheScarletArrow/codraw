@@ -477,6 +477,54 @@ describe('parsing views', () => {
     expect(schema.skipped).toBe(0)
   })
 
+  it('reads the views that the import from a live database writes, in the order of what they read', () => {
+    const schema = parseSql(`-- Schema shop of PostgreSQL 18.1
+
+CREATE TABLE orders (
+    id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+    user_id bigint NOT NULL,
+    total numeric(10,2),
+    deleted_at timestamp with time zone
+);
+
+CREATE VIEW active_orders AS
+ SELECT id,
+    user_id,
+    total,
+    deleted_at
+   FROM shop.orders
+  WHERE (deleted_at IS NULL);
+
+CREATE MATERIALIZED VIEW order_totals AS
+ SELECT user_id,
+    sum(total) AS total
+   FROM shop.active_orders
+  GROUP BY user_id
+  WITH NO DATA;
+
+CREATE VIEW big_spenders AS
+ SELECT user_id
+   FROM shop.order_totals
+  WHERE (total > (100)::numeric);
+
+ALTER TABLE ONLY orders
+    ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
+
+CREATE UNIQUE INDEX order_totals_user_id_idx ON shop.order_totals USING btree (user_id);
+`)
+
+    expect(schema.views.map((view) => [view.name, view.materialized, view.dependencies])).toEqual([
+      ['active_orders', false, ['orders']],
+      ['order_totals', true, ['active_orders']],
+      ['big_spenders', false, ['order_totals']],
+    ])
+    expect(viewColumns(schema, 'order_totals')).toEqual(['user_id bigint', 'total'])
+    expect(viewColumns(schema, 'big_spenders')).toEqual(['user_id bigint'])
+    expect(schema.views[1]!.query).toBe('SELECT user_id,\n    sum(total) AS total\n   FROM shop.active_orders\n  GROUP BY user_id')
+    expect(schema.views[1]!.indexes.map((index) => index.name)).toEqual(['order_totals_user_id_idx'])
+    expect(schema.skipped).toBe(0)
+  })
+
   it('reads executable comments of MySQL in files only, not in the text of a field', () => {
     expect(tokenize('/*!40101 SET NAMES utf8 */').map((token) => token.value)).toEqual([])
     expect(tokenize('/*!40101 SET NAMES utf8 */', { script: true }).map((token) => token.value)).toEqual(['SET', 'NAMES', 'UTF8'])
