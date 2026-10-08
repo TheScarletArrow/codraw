@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useLayoutEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fitMap, toMap } from '../diagram/minimap.ts'
 import { DEFAULT_PAGE_ID } from '../diagram/model.ts'
@@ -168,6 +169,22 @@ describe('Minimap', () => {
 
     act(() => vi.advanceTimersByTime(150))
     expect(shapes()).toBe(2)
+  })
+
+  it('takes a change of the page made between its first picture and listening to the canvas', () => {
+    // A layout effect runs after the minimap took the sketch and before it listens, as any task may in between.
+    function PlaceNear() {
+      useLayoutEffect(() => editor.placeCell('near', { x: 100, y: 100, width: 50, height: 50 }), [])
+      return null
+    }
+    render(
+      <>
+        <Minimap editor={editor} />
+        <PlaceNear />
+      </>,
+    )
+
+    expect(screen.getByTestId('minimap').querySelectorAll('g rect')).toHaveLength(2)
   })
 
   it('collapses and expands with its button and remembers it in the browser', async () => {
