@@ -17,6 +17,7 @@ import {
   dropUnusedElements,
   elementIdOf,
   getCells,
+  getElements,
   getPages,
   LAYER_CELL_ID,
   writeAttrs,
@@ -24,9 +25,11 @@ import {
   writePage,
   type CellMap,
   type CellsMap,
+  type ElementData,
   type GeometryData,
 } from './model.ts'
 import { cellsToRestore } from './restore.ts'
+import { relabelElementCells } from './sharedElements.ts'
 import { isTableIndexStyle, isTableStyle, TABLE_FIELD_HEIGHT, TABLE_INDEX_GAP } from './shapes.ts'
 
 /**
@@ -76,13 +79,14 @@ export function mergeConflicts(proposal: BoardDiff, board: BoardDiff): MergeConf
  *
  * Merged elements keep the marks of the draft of who changed them last: its author made the change. Locked elements are
  * merged like any other: accepting a proposal is a decision of whoever accepts it, like restoring a version. The
- * properties of the elements of cells are merged key by key as keys of their style, and an element whose last cell
- * goes goes too.
+ * properties of the elements of cells are merged key by key as keys of their style, the cells of an element whose
+ * properties changed show them on every page, and an element whose last cell goes goes too.
  */
 export function mergeProposal(live: Y.Doc, base: BoardSnapshot, draft: BoardSnapshot) {
   const board = snapshotDocument(live)
   const diff = diffSnapshots(base, draft)
   live.transact(() => {
+    const before = getElements(live).toJSON() as Record<string, ElementData>
     // Pages come before others go, so that the board never runs out of pages on the way.
     for (const page of diff.pages) {
       if (page.type !== 'removed') mergePage(live, page, board.get(page.id) ?? null)
@@ -90,6 +94,12 @@ export function mergeProposal(live: Y.Doc, base: BoardSnapshot, draft: BoardSnap
     for (const page of diff.pages) {
       if (page.type === 'removed' && board.has(page.id) && getPages(live).size > 1) removePage(live, page.id)
     }
+    // The cells of the elements whose properties the merge changed show them, on every page.
+    const changed = new Map<string, ElementData | undefined>()
+    getElements(live).forEach((element, id) => {
+      if (!sameValue(element.toJSON(), before[id])) changed.set(id, before[id])
+    })
+    relabelElementCells(live, changed)
     // Elements whose last cells the merge removed go with them.
     dropUnusedElements(
       live,

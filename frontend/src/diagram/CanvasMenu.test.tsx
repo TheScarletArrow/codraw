@@ -481,4 +481,67 @@ describe('CanvasMenu', () => {
       expect(onComment).toHaveBeenCalledWith({ point: { x: 300, y: 200 } })
     })
   })
+
+  describe('one element on several pages', () => {
+    const properties = { name: 'Payments', kind: 'c4-container' as const, technology: '', description: '', owner: '', tags: [] }
+    const place = (pageId: string, cellIds: string[]) => ({ pageId, pageName: pageId, cellIds, locked: [] })
+    const onWhereUsed = vi.fn()
+    const onDeleteElementEverywhere = vi.fn()
+    const onMergeElements = vi.fn()
+
+    beforeEach(() => {
+      document.body.innerHTML = ''
+      onWhereUsed.mockReset()
+      onDeleteElementEverywhere.mockReset()
+      onMergeElements.mockReset()
+      render(
+        <CanvasMenu
+          editor={editor}
+          onWhereUsed={onWhereUsed}
+          onDeleteElementEverywhere={onDeleteElementEverywhere}
+          onMergeElements={onMergeElements}
+        />,
+      )
+    })
+
+    it('shows where the element is used, detaches the cell and removes the element from all pages', async () => {
+      vi.mocked(editor.selectedElement).mockReturnValue({
+        cellId: 'cell-1',
+        elementId: 'e1',
+        properties,
+        places: [place('page-1', ['cell-1']), place('page-2', ['cell-9'])],
+        canChange: true,
+      })
+      rightClick('shape')
+
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Где используется…' }))
+      expect(onWhereUsed).toHaveBeenCalledWith('cell-1')
+      rightClick('shape')
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Отделить от элемента' }))
+      expect(editor.detachElement).toHaveBeenCalledWith('cell-1')
+      rightClick('shape')
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Удалить со всех страниц…' }))
+      expect(onDeleteElementEverywhere).toHaveBeenCalledWith(expect.objectContaining({ cellId: 'cell-1', x: 100, y: 50 }))
+    })
+
+    it('offers neither detaching nor removing from all pages for an element with one cell', () => {
+      vi.mocked(editor.selectedElement).mockReturnValue({ cellId: 'cell-1', elementId: 'e1', properties, places: [place('page-1', ['cell-1'])], canChange: true })
+      rightClick('shape')
+
+      expect(screen.getByRole('menuitem', { name: 'Где используется…' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Отделить от элемента' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: 'Удалить со всех страниц…' })).toBeNull()
+    })
+
+    it('pastes as the same element at the point of the click, and merges the selected shapes', async () => {
+      act(() => editor.setState({ canPasteAsSameElement: true, canMergeElements: true }))
+      rightClick('canvas')
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Вставить как тот же элемент' }))
+      expect(editor.pasteAsSameElement).toHaveBeenCalledWith({ x: 300, y: 200 })
+
+      rightClick('selection')
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Объединить в один элемент…' }))
+      expect(onMergeElements).toHaveBeenCalledWith(expect.objectContaining({ target: 'selection' }))
+    })
+  })
 })

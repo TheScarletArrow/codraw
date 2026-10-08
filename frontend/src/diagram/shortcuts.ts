@@ -27,6 +27,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Mod+C'], action: 'Копировать' },
       { keys: ['Mod+X'], action: 'Вырезать', editing: true },
       { keys: ['Mod+V'], action: 'Вставить, в том числе изображение', editing: true },
+      { keys: ['Mod+Shift+V'], action: 'Вставить как тот же элемент', editing: true },
       { keys: ['Mod+D'], action: 'Дублировать', editing: true },
       { keys: ['Mod+Alt+C'], action: 'Копировать стиль' },
       { keys: ['Mod+Alt+V'], action: 'Вставить стиль', editing: true },

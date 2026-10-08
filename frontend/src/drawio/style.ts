@@ -2,7 +2,7 @@ import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
 import { INTERACTION_KEY } from '../diagram/elementKinds.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
-import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, type StyleValue } from '../diagram/model.ts'
+import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, OWN_LINES_KEY, type StyleValue } from '../diagram/model.ts'
 
 export type Style = Record<string, StyleValue>
 export type CellKind = 'vertex' | 'edge'
@@ -163,9 +163,9 @@ const DROPPED_KEYS = new Set(['html'])
 
 /**
  * Keys of CoDraw that stay on the board: who locked a cell is the name of a participant, which neither a file nor the
- * clipboard carries, and which a file cannot claim either.
+ * clipboard carries, and which a file cannot claim either; the lines a cell keeps aside belong to its board.
  */
-const BOARD_KEYS = new Set([LOCKED_BY_KEY])
+const BOARD_KEYS = new Set([LOCKED_BY_KEY, OWN_LINES_KEY])
 
 /**
  * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its

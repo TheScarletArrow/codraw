@@ -5,6 +5,7 @@ export type MenuTarget = 'canvas' | 'shape' | 'table' | 'field' | 'index' | 'edg
 
 export type MenuCommand =
   | 'paste'
+  | 'pasteAsSameElement'
   | 'selectAll'
   | 'addSticky'
   | 'undo'
@@ -31,6 +32,10 @@ export type MenuCommand =
   | 'link'
   | 'edgeApi'
   | 'properties'
+  | 'whereUsed'
+  | 'detachElement'
+  | 'deleteElementEverywhere'
+  | 'mergeElements'
 
 /** Items that set the status of the selection. */
 export type StatusCommand = 'statusDraft' | 'statusReview' | 'statusDone' | 'statusNone'
@@ -50,6 +55,7 @@ export type Shortcut =
   | 'Mod+X'
   | 'Mod+C'
   | 'Mod+V'
+  | 'Mod+Shift+V'
   | 'Mod+D'
   | 'Mod+Alt+C'
   | 'Mod+Alt+V'
@@ -101,12 +107,30 @@ export interface MenuAvailability {
   canDescribeApi?: boolean
   /** The page shows properties, and the single selected shape or edge has them: «Свойства…» is offered. */
   canShowProperties?: boolean
+  /** The clipboard of the tab holds copied cells: «Вставить как тот же элемент» is enabled. */
+  canPasteAsSameElement?: boolean
+  /** The page shows where elements are, and the single selected shape may be an element: «Где используется…». */
+  canShowWhereUsed?: boolean
+  /** The element of the single selected shape has other cells: «Отделить от элемента» is offered. */
+  sharedElement?: boolean
+  /** The element is shared, and the page confirms removing it from all pages: «Удалить со всех страниц…». */
+  canDeleteElementEverywhere?: boolean
+  /** The selected shapes show more than one element, and the page asks which to keep: «Объединить в один элемент…». */
+  canMergeElements?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
 }
 
 /** Items of a participant who may only view the board. */
-const VIEWING_COMMANDS = new Set<MenuCommand>(['copy', 'copyStyle', 'selectAll', 'comment', 'commentHere', 'properties'])
+const VIEWING_COMMANDS = new Set<MenuCommand>([
+  'copy',
+  'copyStyle',
+  'selectAll',
+  'comment',
+  'commentHere',
+  'properties',
+  'whereUsed',
+])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
 const CHANGING_COMMANDS = new Set<MenuCommand>([
@@ -123,6 +147,9 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'link',
   'edgeApi',
   'delete',
+  'detachElement',
+  'deleteElementEverywhere',
+  'mergeElements',
 ])
 
 type Entry = [MenuCommand, string, Shortcut?]
@@ -145,6 +172,11 @@ const COMMENT: Entry[] = [['comment', 'Комментировать']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
 const EDGE_API: Entry = ['edgeApi', 'Описание API…']
 const PROPERTIES: Entry = ['properties', 'Свойства…']
+const SHARED: Entry[] = [
+  ['whereUsed', 'Где используется…'],
+  ['detachElement', 'Отделить от элемента'],
+]
+const DELETE_EVERYWHERE: Entry = ['deleteElementEverywhere', 'Удалить со всех страниц…']
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -161,6 +193,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   canvas: [
     [
       ['paste', 'Вставить', 'Mod+V'],
+      ['pasteAsSameElement', 'Вставить как тот же элемент', 'Mod+Shift+V'],
       ['selectAll', 'Выделить всё', 'Mod+A'],
       ['addSticky', 'Добавить стикер', 'N'],
     ],
@@ -170,7 +203,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, [...LINK, PROPERTIES], COMMENT, [DELETE]],
+  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, [...LINK, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     CLIPBOARD,
@@ -203,7 +236,18 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
   group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
-  selection: [[['group', 'Сгруппировать', 'Mod+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, [DELETE]],
+  selection: [
+    [
+      ['group', 'Сгруппировать', 'Mod+G'],
+      ['mergeElements', 'Объединить в один элемент…'],
+    ],
+    CLIPBOARD,
+    [PASTE_STYLE],
+    ORDER,
+    LOCK,
+    STATUS,
+    [DELETE],
+  ],
 }
 
 /**
@@ -229,11 +273,17 @@ export function menuItems(
     canLink = false,
     canDescribeApi = false,
     canShowProperties = false,
+    canPasteAsSameElement = false,
+    canShowWhereUsed = false,
+    sharedElement = false,
+    canDeleteElementEverywhere = false,
+    canMergeElements = false,
     status = null,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
     paste: !canPaste,
+    pasteAsSameElement: !canPasteAsSameElement,
     undo: !canUndo,
     redo: !canRedo,
     group: !canGroup,
@@ -248,6 +298,10 @@ export function menuItems(
     link: canLink,
     edgeApi: canDescribeApi,
     properties: canShowProperties,
+    whereUsed: canShowWhereUsed,
+    detachElement: sharedElement,
+    deleteElementEverywhere: canDeleteElementEverywhere,
+    mergeElements: canMergeElements,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
   }
   const groups = MENUS[target]

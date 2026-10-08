@@ -11,6 +11,7 @@ import {
   ELEMENT_KEY,
   getCells,
   getElements,
+  initializeDocument,
   LAYER_CELL_ID,
   readAttrs,
   writeAttrs,
@@ -589,5 +590,26 @@ describe('mergeConflicts', () => {
 
     expect(conflicts.pages).toEqual(new Set([removed, renamed]))
     expect(conflicts.cells).toEqual(new Map([[removed, new Set(['db'])]]))
+  })
+})
+
+describe('accepting a proposal with an element on several pages', () => {
+  it('relabels the cells of an element on pages the draft did not change', () => {
+    const base = new Y.Doc()
+    initializeDocument(base)
+    const second = addPage(base, DEFAULT_PAGE_ID)
+    const payments = { codrawShape: 'c4-container', [ELEMENT_KEY]: 'e1', codrawName: 'Payments', codrawKind: 'c4-container' }
+    base.transact(() => {
+      writeCell(getCells(base), shapeData('a', 'a0', { value: 'Payments\n[Container]', style: payments }))
+      writeCell(getCells(base, second), shapeData('b', 'a0', { value: 'Payments\n[Container]', style: payments }))
+    })
+    const { board, accept } = proposal(base, (draft) => {
+      change(draft, 'a', { value: 'Billing\n[Container]', style: { ...payments, codrawName: 'Billing' } })
+    })
+
+    accept()
+
+    expect(getElements(board).get('e1')!.get('name')).toBe('Billing')
+    expect(getCells(board, second).get('b')!.get('value')).toBe('Billing\n[Container]')
   })
 })

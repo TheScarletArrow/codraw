@@ -120,6 +120,7 @@ test('a field and the empty canvas get their own menus', async ({ browser }) => 
   await rightClick(page, await emptyPoint(page))
   expect(await menuLabels(page)).toEqual([
     'Вставить',
+    'Вставить как тот же элемент',
     'Выделить всё',
     'Добавить стикер',
     'Отменить',
@@ -146,8 +147,8 @@ test('a right click on one of the selected shapes keeps the whole selection', as
 
   await rightClick(page, center(await cellBox(page, service)))
 
-  // The menu of several elements: grouping first.
-  expect((await menuLabels(page)).slice(0, 2)).toEqual(['Сгруппировать', 'Вырезать'])
+  // The menu of several elements: grouping first, then merging a service and a database into one element.
+  expect((await menuLabels(page)).slice(0, 3)).toEqual(['Сгруппировать', 'Объединить в один элемент…', 'Вырезать'])
   expect((await selectedIds(page)).sort()).toEqual([service, database].sort())
 
   await page.context().close()

@@ -152,9 +152,13 @@ export function parseLabel(value: string, format: LabelFormat, style: Record<str
   }
 }
 
-/** The lines of its own of a plain label: those after the name and the technology the cell shows. */
+/**
+ * The lines of its own of a plain label: those after the name and the technology the cell shows; a cell that shows no
+ * technology, e.g. one without it, has no line of it.
+ */
 export function ownLines(style: Record<string, unknown>, value: string): string[] {
-  if (hasProperties(style) && !showsTechnology(style, value)) return labelText(value, style).split('\n').slice(1)
+  const shown = showsTechnology(style, value) && (!hasProperties(style) || styleText(style, ELEMENT_STYLE_KEYS.technology) !== '')
+  if (hasProperties(style) && !shown) return labelText(value, style).split('\n').slice(1)
   return parseLabel(value, 'plain', style).rest
 }
 
