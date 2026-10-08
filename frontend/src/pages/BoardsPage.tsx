@@ -53,6 +53,7 @@ import { DRAWIO_FILE_TYPES, setPendingImport, titleFromFileName } from '../drawi
 import { DrawioFormatError, parseDrawio } from '../drawio/parse.ts'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { TemplateCards } from '../templates/TemplateCards.tsx'
+import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
 import { templatePage, type BoardTemplate } from '../templates/templates.ts'
 
 export const NEW_BOARD_TITLE = 'Новая доска'
@@ -169,6 +170,7 @@ export function BoardsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-2xl font-semibold">Доски</h2>
         <div className="flex flex-wrap gap-2">
+          <PersonalTemplates />
           <input
             ref={fileInput}
             type="file"

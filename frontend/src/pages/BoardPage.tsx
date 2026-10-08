@@ -64,6 +64,7 @@ import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
 import type { ElementStatus } from '../diagram/status.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
+import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
 import { takePendingImport } from '../drawio/files.ts'
 import { importPages } from '../drawio/importPages.ts'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
@@ -504,6 +505,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           author={author}
           images={imageHost}
         />
+        <PersonalTemplates document={document} editor={editor} title={board.title} images={imageHost} />
         <ImageExportMenu
           editor={editor}
           document={document}

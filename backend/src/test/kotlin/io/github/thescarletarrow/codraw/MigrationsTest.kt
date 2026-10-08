@@ -56,7 +56,7 @@ class MigrationsTest {
 
     @Test
     fun `V1 to V19 create tables on an empty database and U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(18, flyway().migrate().migrationsExecuted)
+        assertEquals(18, flyway("19").migrate().migrationsExecuted)
         assertEquals(imagesTables, appTables())
         assertEquals(
             setOf("id", "board_id", "sha256", "content_type", "size", "width", "height", "created_at"),
@@ -132,7 +132,7 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(18, flyway().migrate().migrationsExecuted)
+        assertEquals(18, flyway("19").migrate().migrationsExecuted)
         assertEquals(imagesTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
@@ -249,7 +249,7 @@ class MigrationsTest {
 
     @Test
     fun `V19 keeps a file of a board once, only raster types, and the rows of images of a deleted board`() {
-        assertEquals(18, flyway().migrate().migrationsExecuted)
+        assertEquals(18, flyway("19").migrate().migrationsExecuted)
         val insert = { board: String, sha: String, type: String ->
             jdbcClient.sql(
                 """
