@@ -21,8 +21,10 @@ import {
   deleteCell,
   dropUnusedElements,
   ELEMENT_KEY,
+  elementIdOf,
   getCells,
   getElements,
+  isElementStyleKey,
   LAYER_CELL_ID,
   orderBetween,
   readCell,
@@ -30,11 +32,13 @@ import {
   writeCell,
   type CellData,
   type CellsMap,
+  type ElementData,
   type GeometryData,
   type PointData,
   type StyleValue,
 } from './model.ts'
 import { isStickyStyle } from './shapes.ts'
+import { elementData, healLabels, relabelElementCells, RELABEL_ORIGIN } from './sharedElements.ts'
 
 /** Origin of transactions made by this client through the editor. Undo tracks only these. */
 export const LOCAL_ORIGIN = 'codraw:local'
@@ -61,7 +65,12 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  *   element re-reads the cells of the page that name it.
  *
  * The cells of elements carry their properties as style keys (see `model.ts`); deleting such cells, or naming another
- * element, deletes in the same transaction the elements that no cell names any longer.
+ * element, deletes in the same transaction the elements that no cell names any longer. A local change of the
+ * properties of an element rewrites, in the same transaction, the labels of its other cells on all pages (see
+ * `sharedElements.ts`); those of this page that the change did not touch are read into the model after it. The labels
+ * of the cells of this page that do not tell the properties of their elements, e.g. after two participants changed one
+ * element at the same time, are put right when the page opens and when an element changes otherwise than through this
+ * binding.
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
  * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.
@@ -76,12 +85,17 @@ export class DiagramBinding {
   private readonly readOnly: boolean
   private readonly author: Author | null
 
+  /**
+   * With `healOnOpen`, the labels of the cells of shared elements of the page are put right when it opens: a draft of a
+   * proposal, which nobody else changes, would take it for a change of its author.
+   */
   constructor(
     model: GraphDataModel,
     cells: CellsMap,
     origin: unknown = LOCAL_ORIGIN,
     readOnly = false,
     author: Author | null = null,
+    healOnOpen = true,
   ) {
     this.model = model
     this.cells = cells
@@ -99,6 +113,7 @@ export class DiagramBinding {
       cellAdded(cell)
     }
     this.applyRemote(new Set(cells.keys()))
+    if (healOnOpen) this.applyRemote(new Set(this.heal(undefined, true)))
     cells.observeDeep(this.handleRemoteChanges)
     this.elements?.observeDeep(this.handleElementChanges)
     model.addListener(InternalEvent.CHANGE, this.handleLocalChanges)
@@ -107,6 +122,11 @@ export class DiagramBinding {
   /** The model is being changed to match the document: changes of other participants, undo, the stored cells. */
   isApplyingRemote(): boolean {
     return this.applyingRemote
+  }
+
+  /** Reads the cells `ids` of the page into the model, e.g. after a command changed them in the document. */
+  refresh(ids: Iterable<string>) {
+    this.applyRemote(new Set(ids))
   }
 
   destroy() {
@@ -147,6 +167,30 @@ export class DiagramBinding {
       if (element !== null && changed.has(element)) ids.add(id)
     })
     this.applyRemote(ids)
+    this.heal(ids)
+  }
+
+  /**
+   * Puts right the labels of the cells of the page (`ids`, or all) that do not tell the properties of their elements,
+   * in a transaction that no history undoes, and returns their ids; once the binding observes the cells, the model gets
+   * them as any change of the document that is not its own.
+   */
+  private heal(ids?: Iterable<string>, sharedOnly = false): string[] {
+    const doc = this.cells.doc
+    if (this.readOnly || !doc) return []
+    let healed: string[] = []
+    doc.transact(() => {
+      healed = healLabels(this.cells, ids, sharedOnly)
+    }, RELABEL_ORIGIN)
+    return healed
+  }
+
+  /** The id of the page whose cells the binding holds. */
+  private pageId(): string | null {
+    for (const [name, type] of this.cells.doc?.share ?? []) {
+      if ((type as unknown) === this.cells && name.startsWith('cells:')) return name.slice('cells:'.length)
+    }
+    return null
   }
 
   private readonly handleLocalChanges = (_sender: unknown, event: EventObject) => {
@@ -179,17 +223,26 @@ export class DiagramBinding {
     alive.sort(compareModelPosition)
 
     const doc = this.cells.doc!
+    // Cells of this page that the change of an element changed without the model: the other cells of the element.
+    const relabeled = new Set<string>()
     doc.transact(() => {
       const removedElements = removed.map((id) => cellElementId(this.cells.get(id)))
       removed.forEach((id) => deleteCell(this.cells, id))
       const at = Date.now()
+      const written = new Set(alive.map((cell) => cell.getId()!))
+      // The properties of the elements of the written cells before the change, and those the change changed.
+      const before = new Map<string, ElementData | undefined>()
+      const changedElements = new Set<string>()
       for (const cell of alive) {
         const data = this.toCellData(cell)
         // A cell that names another element now leaves the one it named.
         const named = cellElementId(this.cells.get(data.id))
         if (named !== null && named !== data.style[ELEMENT_KEY]) removedElements.push(named)
+        const element = elementIdOf(data.style)
+        if (element !== null && !before.has(element)) before.set(element, elementData(doc, element))
         // Cells the change touched but left as they were keep who changed them last, and so do those it only locked.
         const write = writeCell(this.cells, data)
+        if (element !== null && write.style.some(isElementStyleKey)) changedElements.add(element)
         const entry = this.cells.get(data.id)!
         if (this.author && isAttributedWrite(write)) writeAttribution(entry, this.author, at)
         // Who wrote a sticky changes with its text only, not when the sticky is moved or recolored.
@@ -197,8 +250,21 @@ export class DiagramBinding {
           writeTextAuthor(entry, data.value.trim() ? this.author : null)
         }
       }
+      for (const element of before.keys()) if (!changedElements.has(element)) before.delete(element)
+      const page = this.pageId()
+      for (const ref of relabelElementCells(doc, before, (ref) => ref.pageId === page && written.has(ref.cellId))) {
+        const entry = getCells(doc, ref.pageId).get(ref.cellId)!
+        if (this.author) writeAttribution(entry, this.author, at)
+      }
+      // Even without a new label, e.g. after a change of the owner, the model shows them with the new properties: a
+      // later change of such a cell must not write the old ones back.
+      this.cells.forEach((cell, id) => {
+        const element = cellElementId(cell)
+        if (element !== null && before.has(element) && !written.has(id)) relabeled.add(id)
+      })
       dropUnusedElements(doc, removedElements)
     }, this.origin)
+    this.applyRemote(relabeled)
   }
 
   /** Makes the model match Yjs for the given cell ids. */
@@ -407,9 +473,16 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * changes are never undone.
  */
 export function createUndoManager(cells: CellsMap, origin: unknown = LOCAL_ORIGIN): Y.UndoManager {
-  const scope = cells.doc ? [cells, getElements(cells.doc)] : [cells]
-  // The binding writes one transaction per user action, so every transaction is its own undo step.
-  return new Y.UndoManager(scope, { trackedOrigins: new Set([origin]), captureTimeout: 0 })
+  // The whole document: a change of an element rewrites the labels of its cells on other pages in the same step. The
+  // origin keeps what was done on other pages out.
+  const scope = cells.doc ?? cells
+  // The binding writes one transaction per user action, so every transaction is its own undo step; one that changed
+  // nothing is none, as it was with types as the scope.
+  return new Y.UndoManager(scope, {
+    trackedOrigins: new Set([origin]),
+    captureTimeout: 0,
+    captureTransaction: (transaction) => transaction.changed.size > 0,
+  })
 }
 
 /**

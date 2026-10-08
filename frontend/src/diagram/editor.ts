@@ -82,7 +82,7 @@ import {
 import { createCell, createUndoManager, DiagramBinding, localOrigin, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
-import { canReadSystemClipboard, clipboard, writeSystemClipboard } from './clipboard.ts'
+import { canReadSystemClipboard, clipboard, writeSystemClipboard, type ClipboardSource } from './clipboard.ts'
 import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { apiLabel, EDGE_API_KEY, edgeApiOf, writeEdgeApi, type EdgeApi } from './edgeApi.ts'
@@ -139,7 +139,6 @@ import {
 } from './locks.ts'
 import { sketchPage, type PageSketch } from './minimap.ts'
 import { sequenceMermaid as mermaidOfSequence } from '../mermaid/sequenceMermaid.ts'
-import { compareCells, DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, type CellData, type StyleValue } from './model.ts'
 import {
   ACTIVATE_KEY,
   ARROW_KEY,
@@ -178,11 +177,41 @@ import {
   sequenceOf,
   withDependentParts,
 } from './sequenceShapes.ts'
+import {
+  cellElementId,
+  compareCells,
+  DEFAULT_PAGE_ID,
+  ELEMENT_KEY,
+  elementIdOf,
+  getCells,
+  getPages,
+  OWN_LINES_KEY,
+  readCell,
+  type CellData,
+  type StyleValue,
+} from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
+import {
+  detachCell,
+  elementData,
+  elementPlaces,
+  elementUses,
+  cellLabel,
+  ensureElement,
+  isLockedCell,
+  mayBeElement,
+  mergeElements as mergeDocumentElements,
+  RELABEL_ORIGIN,
+  removeElementCells,
+  styleWith,
+  type CellRef,
+  type ElementDrag,
+  type ElementPlace,
+} from './sharedElements.ts'
 import {
   commonStatus,
   readStatus,
@@ -447,6 +476,31 @@ export type SelectionProperties =
 /** Changes of the properties of a shape, and whether its plain label shows the technology. */
 export type ElementPropertiesChange = Partial<ElementProperties> & { showTechnology?: boolean }
 
+/** The element that the single selected shape shows, and where; see {@link DiagramEditor.selectedElement}. */
+export interface SelectionElement {
+  cellId: string
+  /** `null` for a shape that is no element yet: its label tells its properties. */
+  elementId: string | null
+  properties: ElementProperties
+  /** The pages with the cells of the element, in their order; empty for a shape that is no element yet. */
+  places: ElementPlace[]
+  /** The participant may change the element through this cell: they edit the board and the cell is not locked. */
+  canChange: boolean
+}
+
+/** An element whose properties «Объединить в один элемент» may keep; see {@link DiagramEditor.mergeCandidates}. */
+export interface MergeCandidate {
+  /** A selected cell of the element. */
+  cellId: string
+  elementId: string | null
+  properties: ElementProperties
+  /** Number of pages with cells of the element; 1 for a shape that is no element yet. */
+  pages: number
+}
+
+/** An element of the board to add a cell of: by its id, or a shape that is no element yet. */
+export type ElementSource = ElementDrag
+
 /** The selected stickies, which the panel of stickies changes; see {@link DiagramEditor.setStickyColor}. */
 export interface SelectedStickies {
   cellIds: string[]
@@ -595,6 +649,10 @@ export interface EditorState {
   properties: SelectionProperties | null
   /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
   sequence: SelectedSequence | null
+  /** The clipboard of the browser tab holds copied cells: «Вставить как тот же элемент» pastes them. */
+  canPasteAsSameElement: boolean
+  /** The selection has shapes of at least two elements, or of shapes that are no elements yet, that may be merged. */
+  canMergeElements: boolean
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -876,6 +934,33 @@ export interface DiagramEditor {
   /** Changes the technology or the interaction of the edge `cellId` of the page, as one undo step; the label stays. */
   setEdgeProperties(cellId: string, changes: Partial<EdgeProperties>): void
   /**
+   * Pastes the cells copied in this tab as {@link paste} does, but a shape that may be an element becomes another cell
+   * of the element of the shape it was copied from, with the properties of the element now; that shape becomes an
+   * element if it is none yet. Cells copied on another board are pasted as new elements. One undo step.
+   */
+  pasteAsSameElement(at?: Point): void
+  /**
+   * Adds a cell of an element with its middle at `at`, as one undo step: with the look, the size and the label of one of
+   * its cells, one on this page if there is one; a shape that is no element yet becomes one with it. Selects it.
+   */
+  placeElement(source: ElementSource, at: Point): void
+  /** The element of the single selected shape that may be one, and the pages with its cells; `null` without one. */
+  selectedElement(): SelectionElement | null
+  /** The elements of the selected shapes that may be merged into one, each once, in the order of the selection. */
+  mergeCandidates(): MergeCandidate[]
+  /**
+   * Makes the selected shapes that may be elements, and all the cells of their elements on all pages, cells of one
+   * element with the properties of the element of the cell `keepCellId`, as one undo step; their labels follow.
+   */
+  mergeElements(keepCellId: string): void
+  /** Makes the shape `cellId` an element of its own with the same properties, as one undo step. */
+  detachElement(cellId: string): void
+  /**
+   * Removes the cells of the element of the shape `cellId` from all pages, with their edges and what they hold, as one
+   * undo step of this page; locked cells stay.
+   */
+  deleteElementEverywhere(cellId: string): void
+  /**
    * The links of the elements of the page that CoDraw opens, in the order of the tree; the same array until the page
    * changes.
    */
@@ -1098,6 +1183,7 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
   // As «Копировать», copying a look changes nothing: a participant who may only view pastes it on a board of their own.
   { keys: 'Mod+Alt+C', editing: false, run: (editor) => editor.copyStyle() },
   { keys: 'Mod+Alt+V', editing: true, run: (editor) => editor.pasteStyle() },
+  { keys: 'Mod+Shift+V', editing: true, run: (editor) => editor.pasteAsSameElement() },
   { keys: 'F2', editing: true, run: (editor) => editor.editLabel() },
   { keys: 'N', editing: true, run: (editor) => editor.addSticky() },
   { keys: 'Mod+B', editing: true, run: (editor) => editor.toggleFontStyle('bold') },
@@ -1369,7 +1455,8 @@ export function createDiagramEditor(
       : getCellsForChange(change)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
-  const binding = new DiagramBinding(model, cells, origin, readOnly, author)
+  // A draft of a proposal, without others, would take putting labels right for a change of its author.
+  const binding = new DiagramBinding(model, cells, origin, readOnly, author, collaboration)
   // New routes redraw edges without a change of the model: the picture on the screen moved all the same.
   const stopEdgeRouting = startEdgeRouting(graph, undefined, () => {
     if (destroyed) return
@@ -1488,6 +1575,26 @@ export function createDiagramEditor(
   const isUnlocked = (cell: Cell) => lockHolder(cell) === null
   /** The cells that the commands change: those that can. */
   const unlocked = (cells: Cell[]) => cells.filter(isUnlocked)
+  /**
+   * The selected shapes that are not locked and are elements, or stand for something: a service, a database, a
+   * container, not a rectangle.
+   */
+  const mergeableCells = (): Cell[] =>
+    graph.getSelectionCells().filter((cell) => {
+      if (propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return false
+      const style = cell.getStyle() as Record<string, unknown>
+      return elementIdOf(style) !== null || elementProperties(style, String(cell.getValue() ?? '')).kind !== null
+    })
+  /** The selected shapes by their elements, each element once; a shape that is no element yet is one of its own. */
+  const selectedElements = (): Cell[] => {
+    const seen = new Set<string>()
+    return mergeableCells().filter((cell) => {
+      const key = elementIdOf(cell.getStyle() as Record<string, unknown>) ?? `cell:${cell.getId()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
   /** What locking a cell locks: a field or an index with its table, a part of a sequence diagram with it, any other cell itself. */
   const lockTarget = (cell: Cell) => (isTable(cell.getParent()) || isSequencePart(cell) ? cell.getParent()! : cell)
   const selectedTable = (): Cell | null => {
@@ -2085,6 +2192,8 @@ export function createDiagramEditor(
       status: selectionStatus(),
       properties: selectionProperties(),
       sequence: selectionSequence(),
+      canPasteAsSameElement: !readOnly && clipboard.read() !== null,
+      canMergeElements: !readOnly && selectedElements().length >= 2,
     }
   }
   // The links of the page, found again after a change of the page, before the listeners below hear of it.
@@ -2733,18 +2842,28 @@ export function createDiagramEditor(
     graph.stopEditing(false)
     model.batchUpdate(() => setStyleKeys(cell, changes))
   }
-  /** Adds clones of `cells` moved by (dx, dy) as one undo step and selects them. */
-  const insertCopies = (cells: Cell[], dx: number, dy: number) => {
+  /**
+   * Adds clones of `cells` moved by (dx, dy) as one undo step and selects them; with `sameElements`, the clones name the
+   * elements that `cells` name.
+   */
+  const insertCopies = (cells: Cell[], dx: number, dy: number, sameElements = false) => {
     graph.stopEditing(false)
-    graph.setSelectionCells(graph.importCells(cells, dx, dy, graph.getDefaultParent()))
+    const importCells = () => graph.importCells(cells, dx, dy, graph.getDefaultParent())
+    graph.setSelectionCells(sameElements ? keepElements(importCells) : importCells())
     container.focus({ preventScroll: true })
   }
   /** Puts clones of `cells` into the clipboard of the tab and their text into the clipboard of the system. */
   const copyCells = (cells: Cell[], data?: DataTransfer | null) => {
-    // Clones without a graph: the copied cells may change or be removed before they are pasted.
-    const clones = graph.cloneCells(cells, false)
+    // Clones without a graph: the copied cells may change or be removed before they are pasted. They keep the elements
+    // of the cells for «Вставить как тот же элемент»; a paste gives them new ones.
+    const clones = keepElements(() => graph.cloneCells(cells, false))
+    const sources = new Map<Cell, string>()
+    pairCells(cells, clones, (cell, clone) => {
+      const id = cell.getId()
+      if (id) sources.set(clone, id)
+    })
     const { text, html } = clipboardContent(clones)
-    clipboard.put(clones, text)
+    clipboard.put(clones, text, { document, pageId, cells: sources })
     if (!data) writeSystemClipboard(text, html)
     else {
       data.setData('text/plain', text)
@@ -2756,32 +2875,89 @@ export function createDiagramEditor(
    * Adds copies of clipboard cells: with their top-left corner at `at`, or shifted further with every paste. Pictures
    * that the board must store are stored first, and the copies point at them; the clipboard keeps the cells as they are.
    */
-  const pasteCells = (cells: Cell[] | null, at?: Point) => {
+  const pasteCells = (cells: Cell[] | null, at?: Point, same: ClipboardSource | null = null) => {
     if (!cells) return
     // Taken at once, so that pastes keep their shifts while pictures are stored.
     const shift = at ? 0 : clipboard.nextPaste() * PASTE_OFFSET
-    const insert = (copies: Cell[]) => {
-      if (!at) return insertCopies(copies, shift, shift)
-      const bounds = graph.getBoundingBoxFromGeometry(copies, false)
-      insertCopies(copies, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0))
+    const insert = (copies: Cell[], sources: ReadonlyMap<Cell, string>) => {
+      const place = (inserted: Cell[]) => {
+        if (!at) return insertCopies(inserted, shift, shift, same !== null)
+        const bounds = graph.getBoundingBoxFromGeometry(inserted, false)
+        insertCopies(inserted, at.x - (bounds?.x ?? 0), at.y - (bounds?.y ?? 0), same !== null)
+      }
+      if (!same) return place(copies)
+      // One change: the shapes copied that become elements, and the cells pasted.
+      document.transact(() => place(asSameElements(copies, sources, same.pageId)), origin)
     }
     const host = images
     const pictures = host ? cellImageUrls(cells).filter((url) => needsStoring(url, host)) : []
     if (!host || pictures.length === 0) {
-      insert(cells)
+      insert(cells, same?.cells ?? new Map())
       return
     }
     void storeImages(pictures, host).then((stored) => {
       if (destroyed) return
-      const copies = graph.cloneCells(cells, false)
+      const clone = () => graph.cloneCells(cells, false)
+      const copies = same ? keepElements(clone) : clone()
+      const sources = new Map<Cell, string>()
+      if (same) pairCells(cells, copies, (cell, copy) => same.cells.has(cell) && sources.set(copy, same.cells.get(cell)!))
       // As in the clipboard: without a parent, maxGraph would take an edge for the label of an edge and drop it.
       const holder = new Cell()
       copies.forEach((copy) => holder.insert(copy))
       replaceCellImages(copies, stored)
-      insert(copies)
+      insert(copies, sources)
       notify()
     })
   }
+  /**
+   * Clones of `cells` whose shapes that may be elements name the elements of the cells of the page `pageId` they were
+   * copied from (`sources`), with their properties now and labels made of them; a source that is no element yet becomes
+   * one. Call inside the transaction of the paste.
+   */
+  const asSameElements = (cells: Cell[], sources: ReadonlyMap<Cell, string>, sourcePage: string): Cell[] => {
+    const clones = keepElements(() => graph.cloneCells(cells, false))
+    const holder = new Cell()
+    clones.forEach((clone) => clone && holder.insert(clone))
+    const refreshed: string[] = []
+    const at = Date.now()
+    pairCells(cells, clones, (cell, clone) => {
+      if (propertiesTarget(clone) !== 'shape') return
+      const style = clone.getStyle() as Record<string, StyleValue>
+      // The element of the shape copied as it is now, e.g. after merging or detaching; the copied one once it is gone.
+      const source = sources.get(cell)
+      const sourceCells = getCells(document, sourcePage)
+      const entry = source ? sourceCells.get(source) : undefined
+      let id: string | null = null
+      if (entry && isLockedCell(sourceCells, source!)) {
+        // A locked shape does not change: an element it has is shared, none is made for it.
+        id = cellElementId(entry) ?? newId()
+      } else if (entry) {
+        const before = cellElementId(entry)
+        id = ensureElement(document, { pageId: sourcePage, cellId: source! })
+        if (id !== null && id !== before) {
+          if (author) writeAttribution(entry, author, at)
+          if (sourcePage === pageId) refreshed.push(source!)
+        }
+      }
+      id ??= elementIdOf(style) ?? newId()
+      const data = elementData(document, id)
+      if (data && Object.keys(data).length > 0) {
+        const next = cellLabel(style, String(clone.getValue() ?? ''), id, data)
+        clone.setValue(next.label)
+        const { [OWN_LINES_KEY]: _kept, ...rest } = styleWith(style, data)
+        clone.setStyle({ ...rest, ...(next.ownLines !== null && { [OWN_LINES_KEY]: next.ownLines }), [ELEMENT_KEY]: id } as CellStyle)
+      } else {
+        clone.setStyle({ ...style, [ELEMENT_KEY]: id } as CellStyle)
+      }
+    })
+    binding.refresh(refreshed)
+    return clones.filter((clone): clone is Cell => clone !== null)
+  }
+  /** The cells of the page that name the element `id`. */
+  const cellsOfElement = (id: string): string[] =>
+    Array.from(cells.entries())
+      .filter(([, cell]) => cellElementId(cell) === id)
+      .map(([cellId]) => cellId)
   /** Adds image shapes of stored images in a row whose middle is at `center`, as one change, and selects them. */
   const insertImages = (stored: StoredImage[], center: Point) => {
     const sizes = stored.map((image) => fittedImageSize(image.width, image.height))
@@ -3794,21 +3970,35 @@ export function createDiagramEditor(
       const current = elementProperties(style, value)
       const { showTechnology, ...properties } = changes
       let next = normalizeProperties({ ...current, ...properties })
-      // A label of C4 has no lines of its own: those of a plain label become the description, unless it has one.
-      if (labelFormat(style, current.kind) === 'plain' && labelFormat(style, next.kind) === 'c4' && !next.description) {
-        next = normalizeProperties({ ...next, description: ownLines(style, value).join('\n') })
+      const was = labelFormat(style, current.kind)
+      const now = labelFormat(style, next.kind)
+      // A label of C4 has no lines of its own: those of a plain label become the description, unless it has one, and
+      // are kept aside then (see `OWN_LINES_KEY`); a plain label again gets them back.
+      const kept = typeof style[OWN_LINES_KEY] === 'string' ? (style[OWN_LINES_KEY] as string) : undefined
+      let aside = kept
+      if (was === 'plain' && now === 'c4') {
+        const lines = ownLines(style, value)
+        if (!next.description) next = normalizeProperties({ ...next, description: lines.join('\n') })
+        else if (lines.some((line) => line.trim())) aside = lines.join('\n')
       }
       const shown = showsTechnology(style, value)
-      const show = labelFormat(style, next.kind) === 'plain' && (showTechnology ?? shown)
+      // A cell keeps its showing of the technology while its label is of C4, which shows the technology its own way.
+      const ownShowing = style[SHOW_TECHNOLOGY_KEY] === true || style[SHOW_TECHNOLOGY_KEY] === 1 || style[SHOW_TECHNOLOGY_KEY] === '1'
+      const show = now === 'plain' && (showTechnology ?? (was === 'c4' ? ownShowing : shown))
       if (sameProperties(current, next) && show === shown) return
-      const label = relabel(next, style, value, show)
+      const restored = was === 'c4' && now === 'plain'
+      const label = restored
+        ? composeLabel(next, style, { showTechnology: show, rest: kept === undefined ? [] : kept.split('\n') })
+        : relabel(next, style, value, show)
+      if (restored) aside = undefined
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleKeys(cell, {
-          // A shape without an element becomes one.
-          [ELEMENT_KEY]: (style[ELEMENT_KEY] as string | undefined) || newId(),
+          // A shape without an element becomes one, named by the cell: two participants make the same one.
+          [ELEMENT_KEY]: (style[ELEMENT_KEY] as string | undefined) || cellId,
           ...propertiesStyle(next),
-          [SHOW_TECHNOLOGY_KEY]: show || undefined,
+          [SHOW_TECHNOLOGY_KEY]: now === 'c4' ? (style[SHOW_TECHNOLOGY_KEY] as StyleValue | undefined) : show || undefined,
+          [OWN_LINES_KEY]: aside,
         })
         if (label !== value) model.setValue(cell, label)
       })
@@ -3825,6 +4015,123 @@ export function createDiagramEditor(
       if (next.technology === current.technology && next.interaction === current.interaction) return
       graph.stopEditing(false)
       model.batchUpdate(() => setStyleKeys(cell, edgePropertiesStyle(next)))
+    },
+    pasteAsSameElement(at) {
+      const copied = clipboard.read()
+      if (readOnly || destroyed || !copied) return
+      const source = clipboard.source()
+      // On another board, or from the clipboard of the system, nothing is the same element.
+      pasteCells(copied, at, source?.document === document ? source : null)
+    },
+    placeElement(source, at) {
+      if (readOnly || destroyed) return
+      graph.stopEditing(false)
+      let added: Cell | null = null
+      document.transact(() => {
+        let id: string | null
+        let sample: CellRef | undefined
+        if ('elementId' in source) {
+          id = source.elementId
+          const uses = elementUses(document).get(id) ?? []
+          sample = uses.find((use) => use.pageId === pageId) ?? uses[0]
+        } else {
+          sample = source.cell
+          const sampleCells = getCells(document, sample.pageId)
+          const entry = sampleCells.get(sample.cellId)
+          // A locked shape does not change: the new cell is an element of its own with the properties of its label.
+          if (!entry || isLockedCell(sampleCells, sample.cellId)) id = entry && mayBeElement(sampleCells, sample.cellId) ? newId() : null
+          else {
+            id = ensureElement(document, sample)
+            if (id !== null && author) writeAttribution(entry, author, Date.now())
+            if (id !== null && sample.pageId === pageId) binding.refresh([sample.cellId])
+          }
+        }
+        const entry = sample && getCells(document, sample.pageId).get(sample.cellId)
+        if (id === null || !entry) return
+        const data = readCell(sample!.cellId, entry)
+        // The look of the cell, not its lock nor its link; a shape that is no element gives the properties of its label.
+        const { [LOCKED_KEY]: _locked, [LOCKED_BY_KEY]: _lockedBy, [LINK_KEY]: _link, ...style } =
+          elementIdOf(data.style) === null ? { ...data.style, ...labelPropertiesStyle(data.style, data.value) } : data.style
+        const width = data.geometry?.width ?? 120
+        const height = data.geometry?.height ?? 60
+        const snap = (value: number) => graph.snap(value)
+        added = graph.insertVertex({
+          parent: graph.getDefaultParent(),
+          value: data.value,
+          position: [snap(at.x - width / 2), snap(at.y - height / 2)],
+          size: [width, height],
+          style: { ...style, [ELEMENT_KEY]: id } as CellStyle,
+        })
+      }, origin)
+      if (!added) return
+      graph.setSelectionCell(added)
+      container.focus({ preventScroll: true })
+    },
+    selectedElement() {
+      const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
+      if (!cell || propertiesTarget(cell) !== 'shape') return null
+      const style = cell.getStyle() as Record<string, unknown>
+      const elementId = elementIdOf(style)
+      return {
+        cellId: cell.getId()!,
+        elementId,
+        properties: elementProperties(style, String(cell.getValue() ?? '')),
+        places: elementId === null ? [] : elementPlaces(document, elementId),
+        canChange: !readOnly && isUnlocked(cell),
+      }
+    },
+    mergeCandidates() {
+      return selectedElements().map((cell) => {
+        const style = cell.getStyle() as Record<string, unknown>
+        const elementId = elementIdOf(style)
+        return {
+          cellId: cell.getId()!,
+          elementId,
+          properties: elementProperties(style, String(cell.getValue() ?? '')),
+          pages: elementId === null ? 1 : Math.max(1, elementPlaces(document, elementId).length),
+        }
+      })
+    },
+    mergeElements(keepCellId) {
+      if (readOnly || destroyed || selectedElements().length < 2) return
+      const refs = mergeableCells().map((cell) => ({ pageId, cellId: cell.getId()! }))
+      if (!refs.some((ref) => ref.cellId === keepCellId)) return
+      graph.stopEditing(false)
+      let target: string | null = null
+      document.transact(() => {
+        const merged = mergeDocumentElements(document, refs, { pageId, cellId: keepCellId })
+        if (!merged) return
+        target = merged.id
+        if (!author) return
+        const at = Date.now()
+        for (const ref of [{ pageId, cellId: keepCellId }, ...merged.cells]) {
+          const entry = getCells(document, ref.pageId).get(ref.cellId)
+          if (entry) writeAttribution(entry, author, at)
+        }
+      }, origin)
+      if (target !== null) binding.refresh(cellsOfElement(target))
+    },
+    detachElement(cellId) {
+      if (readOnly || destroyed) return
+      const cell = model.getCell(cellId)
+      if (!cell || propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return
+      graph.stopEditing(false)
+      document.transact(() => {
+        if (detachCell(document, { pageId, cellId }) !== null && author) writeAttribution(cells.get(cellId)!, author, Date.now())
+      }, origin)
+      binding.refresh([cellId])
+    },
+    deleteElementEverywhere(cellId) {
+      if (readOnly || destroyed) return
+      const cell = model.getCell(cellId)
+      const id = cell ? elementIdOf(cell.getStyle() as Record<string, unknown>) : null
+      if (!cell || id === null || propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return
+      graph.stopEditing(false)
+      let removed: CellRef[] = []
+      document.transact(() => {
+        removed = removeElementCells(document, id)
+      }, origin)
+      binding.refresh(removed.filter((ref) => ref.pageId === pageId).map((ref) => ref.cellId))
     },
     getLinks() {
       pageLinks ??= findLinks()
@@ -3936,10 +4243,12 @@ export function createDiagramEditor(
     undo() {
       graph.stopEditing(false)
       undoManager.undo()
+      dropCellsOfMissingPages(document)
     },
     redo() {
       graph.stopEditing(false)
       undoManager.redo()
+      dropCellsOfMissingPages(document)
     },
     zoomIn: () => graph.zoomIn(),
     zoomOut: () => graph.zoomOut(),
@@ -4065,14 +4374,64 @@ function propertiesTarget(cell: Cell): 'shape' | 'edge' | null {
   return canBeElement(cell.getStyle() as Record<string, unknown>) ? 'shape' : null
 }
 
+/** While set, clones keep the elements of the cells they copy: those of the clipboard, and the cells of the same elements. */
+let keepingElements = false
+
+/** Runs `run` with clones that keep the elements of the cells they copy (see {@link renewElements}). */
+function keepElements<T>(run: () => T): T {
+  const previous = keepingElements
+  keepingElements = true
+  try {
+    return run()
+  } finally {
+    keepingElements = previous
+  }
+}
+
+/** Calls `visit` with each cell of `originals` and its clone in `clones`, the cells inside them too. */
+function pairCells(originals: readonly (Cell | null)[], clones: readonly (Cell | null)[], visit: (original: Cell, clone: Cell) => void) {
+  originals.forEach((original, index) => {
+    const clone = clones[index]
+    if (!original || !clone) return
+    visit(original, clone)
+    pairCells(original.getChildren(), clone.getChildren(), visit)
+  })
+}
+
 /**
- * Gives a copy of cells new elements: the copy and the cells in it that name an element name a new one, and the
- * properties they carry as style keys become its properties once the copy is added.
+ * Gives a copy of cells new elements: the copy and the cells in it that name an element name a new one, the same one
+ * for the cells of one element (`renewed`, by the element copied), and the properties they carry as style keys become
+ * its properties once the copy is added.
  */
-function renewElements(cell: Cell) {
+function renewElements(cell: Cell, renewed: Map<string, string>) {
   const style = cell.getStyle() as Record<string, unknown>
-  if (typeof style[ELEMENT_KEY] === 'string') cell.setStyle({ ...style, [ELEMENT_KEY]: newId() } as CellStyle)
-  cell.getChildren().forEach(renewElements)
+  const id = style[ELEMENT_KEY]
+  if (typeof id === 'string') {
+    if (!renewed.has(id)) renewed.set(id, newId())
+    cell.setStyle({ ...style, [ELEMENT_KEY]: renewed.get(id)! } as CellStyle)
+  }
+  cell.getChildren().forEach((child) => renewElements(child, renewed))
+}
+
+/**
+ * Removes the cells of pages that the board no longer has, which an undo of a change of several pages may bring back
+ * after one of them was deleted; nothing would show them. No history tracks it.
+ */
+function dropCellsOfMissingPages(doc: Y.Doc) {
+  const pages = getPages(doc)
+  const orphans = [...doc.share.keys()]
+    .filter((name) => name.startsWith('cells:') && !pages.has(name.slice('cells:'.length)))
+    .map((name) => doc.getMap(name))
+    .filter((cells) => cells.size > 0)
+  if (orphans.length === 0) return
+  doc.transact(() => orphans.forEach((cells) => cells.clear()), RELABEL_ORIGIN)
+}
+
+/** The style keys of the properties that the label of a shape that is no element tells. */
+function labelPropertiesStyle(style: Record<string, StyleValue>, value: string): Record<string, StyleValue> {
+  return Object.fromEntries(
+    Object.entries(propertiesStyle(elementProperties(style, value))).filter((entry): entry is [string, StyleValue] => entry[1] !== undefined),
+  )
 }
 
 /** An edge that connects, or may connect, shapes: not a line drawn by hand, which has no ends and no shape of an edge. */
@@ -4470,8 +4829,10 @@ function configureLocks(graph: Graph): () => void {
     const clones = cloneCells(...args)
     // maxGraph leaves no clone of an edge that would be invalid without its ends.
     clones.forEach((clone) => clone && unlockCopy(clone))
-    // A copy is an element of its own.
-    clones.forEach((clone) => clone && renewElements(clone))
+    // A copy is an element of its own, unless it is to be a cell of the same element (see `keepElements`); the copies of
+    // the cells of one element are cells of one new element.
+    const renewed = new Map<string, string>()
+    if (!keepingElements) clones.forEach((clone) => clone && renewElements(clone, renewed))
     return clones
   }
   // The handles of a selected cell are made with it, when it is selected: a cell locked or unlocked since, by the

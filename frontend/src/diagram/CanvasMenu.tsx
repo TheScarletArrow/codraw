@@ -31,7 +31,15 @@ export type CommentTarget = { cellId: string } | { point: Point }
  * The items that the page does rather than the editor: those that start a thread, the window of a link, the panel of
  * the description of a call and the panel of properties.
  */
-type PageCommand = 'comment' | 'commentHere' | 'link' | 'edgeApi' | 'properties'
+type PageCommand =
+  | 'comment'
+  | 'commentHere'
+  | 'link'
+  | 'edgeApi'
+  | 'properties'
+  | 'whereUsed'
+  | 'deleteElementEverywhere'
+  | 'mergeElements'
 
 const COMMANDS: Record<
   Exclude<MenuCommand, PageCommand | StatusCommand>,
@@ -40,6 +48,7 @@ const COMMANDS: Record<
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
   paste: (editor, { point }) =>
     void readSystemClipboard().then((content) => editor.paste(point, content?.text, content?.html, content?.images)),
+  pasteAsSameElement: (editor, { point }) => editor.pasteAsSameElement(point),
   selectAll: (editor) => editor.selectAll(),
   // At the point of the click, editing its text at once.
   addSticky: (editor, { point }) => editor.addSticky(point),
@@ -73,6 +82,7 @@ const COMMANDS: Record<
   lock: (editor) => editor.setLocked(true),
   unlock: (editor) => editor.setLocked(false),
   delete: (editor) => editor.deleteSelection(),
+  detachElement: (editor, { cellId }) => cellId && editor.detachElement(cellId),
 }
 
 /**
@@ -90,6 +100,9 @@ export function CanvasMenu({
   onLink,
   onEdgeApi,
   onProperties,
+  onWhereUsed,
+  onDeleteElementEverywhere,
+  onMergeElements,
   onStatusChange,
 }: {
   editor: DiagramEditor | null
@@ -97,6 +110,12 @@ export function CanvasMenu({
   onLink?: (request: ContextMenuRequest) => void
   onEdgeApi?: (cellId: string) => void
   onProperties?: (cellId: string) => void
+  /** Shows where the element of the shape `cellId` is used, e.g. in the panel «Элементы доски». */
+  onWhereUsed?: (cellId: string) => void
+  /** Asks to confirm removing the element of the shape of the menu from all pages, at the point of the click. */
+  onDeleteElementEverywhere?: (request: ContextMenuRequest) => void
+  /** Asks which properties to keep when merging the selected shapes into one element, at the point of the click. */
+  onMergeElements?: (request: ContextMenuRequest) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
 }) {
   const canComment = onComment !== undefined
@@ -105,8 +124,22 @@ export function CanvasMenu({
   const openRequest = useRef<ContextMenuRequest | null>(null)
   // The chosen item gave the keyboard to a field outside the canvas, e.g. of a new comment.
   const focusTaken = useRef(false)
-  const { canPaste, canUndo, canRedo, canGroup, canCopyStyle, canPasteStyle, lock, link, edgeApi, status, properties, sequence } =
-    useEditorState(editor)
+  const {
+    canPaste,
+    canUndo,
+    canRedo,
+    canGroup,
+    canCopyStyle,
+    canPasteStyle,
+    lock,
+    link,
+    edgeApi,
+    status,
+    properties,
+    sequence,
+    canPasteAsSameElement,
+    canMergeElements,
+  } = useEditorState(editor)
   const lockId = useId()
 
   useEffect(
@@ -114,6 +147,11 @@ export function CanvasMenu({
       editor?.onContextMenu((next) => {
         // A participant who may only view has nothing to do with, e.g., an edge.
         const canShowProperties = onProperties !== undefined && editor.getState().properties?.cellId === next.cellId
+        const element = editor.selectedElement()
+        const canShowWhereUsed =
+          onWhereUsed !== undefined &&
+          element?.cellId === next.cellId &&
+          (element.elementId !== null || element.properties.kind !== null)
         if (
           menuItems(next.target, {
             canPaste: false,
@@ -122,6 +160,7 @@ export function CanvasMenu({
             readOnly: editor.readOnly,
             canComment,
             canShowProperties,
+            canShowWhereUsed,
           }).length === 0
         ) {
           return
@@ -129,7 +168,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties],
+    [editor, canComment, onProperties, onWhereUsed],
   )
 
   if (!editor || !request) return null
@@ -157,6 +196,18 @@ export function CanvasMenu({
       if (request.cellId) onProperties?.(request.cellId)
       return
     }
+    if (command === 'whereUsed') {
+      // The panel of elements takes the keyboard.
+      focusTaken.current = true
+      if (request.cellId) onWhereUsed?.(request.cellId)
+      return
+    }
+    if (command === 'deleteElementEverywhere' || command === 'mergeElements') {
+      // The window of the confirmation or of the choice takes the keyboard.
+      focusTaken.current = true
+      ;(command === 'mergeElements' ? onMergeElements : onDeleteElementEverywhere)?.(request)
+      return
+    }
     if (isStatusCommand(command)) {
       const changed = editor.setStatus(STATUS_COMMANDS[command])
       if (changed.length > 0) onStatusChange?.(STATUS_COMMANDS[command], changed)
@@ -174,6 +225,10 @@ export function CanvasMenu({
 
   // Viewers do not lock, but a locked element is as unchangeable for them as everything else.
   const locked = !editor.readOnly && (lock?.all ?? false)
+  // The element of the shape clicked, with the pages of its cells.
+  const element = request.cellId ? editor.selectedElement() : null
+  const elementHere = element !== null && element.cellId === request.cellId
+  const elementCells = elementHere ? element.places.reduce((count, place) => count + place.cellIds.length, 0) : 0
 
   return (
     <Popover open onOpenChange={(open) => !open && close()}>
@@ -189,7 +244,8 @@ export function CanvasMenu({
         side="bottom"
         align="start"
         sideOffset={2}
-        className="w-64 p-1"
+        // A long menu, e.g. of a shape with its statuses, scrolls on a low screen instead of going off it.
+        className="max-h-[var(--radix-popover-content-available-height)] w-64 overflow-y-auto p-1"
         // The keyboard goes back to the canvas, unless the chosen item started editing a label or a comment, or another
         // menu is open already: taking the focus from that menu would close it.
         onCloseAutoFocus={(event) => {
@@ -220,6 +276,12 @@ export function CanvasMenu({
             canLink: onLink !== undefined && link !== null && link.cellId === request.cellId,
             canDescribeApi: onEdgeApi !== undefined && edgeApi !== null && edgeApi.cellId === request.cellId,
             canShowProperties: onProperties !== undefined && properties !== null && properties.cellId === request.cellId,
+            canPasteAsSameElement,
+            // A shape that stands for nothing, e.g. a rectangle that is no element, is nowhere else.
+            canShowWhereUsed: onWhereUsed !== undefined && elementHere && (element.elementId !== null || element.properties.kind !== null),
+            sharedElement: elementCells > 1,
+            canDeleteElementEverywhere: onDeleteElementEverywhere !== undefined && elementCells > 1,
+            canMergeElements: onMergeElements !== undefined && canMergeElements,
             status,
             canBranch: canBranch(sequence?.part ?? null),
           }).map((item) => {

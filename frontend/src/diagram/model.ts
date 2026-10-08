@@ -96,6 +96,12 @@ export function getCells(doc: Y.Doc, pageId = DEFAULT_PAGE_ID): CellsMap {
 export const ELEMENT_KEY = 'codrawElement'
 
 /**
+ * Style key of a cell with the lines of its own of its plain label, kept aside while its element is of a kind of C4,
+ * whose label has no lines of its own, and given back when it is not any longer. A file does not carry it.
+ */
+export const OWN_LINES_KEY = 'codrawOwnLines'
+
+/**
  * The properties of an element of the architecture as the document keeps them; an empty property has no key. `kind` is
  * a shape of the palette, `tags` are words.
  */

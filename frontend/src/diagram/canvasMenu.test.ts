@@ -6,7 +6,14 @@ const labels = (target: MenuTarget, availability: MenuAvailability = all) => men
 
 describe('menuItems', () => {
   it('offers paste, select all, a sticky, undo and redo on the empty canvas', () => {
-    expect(labels('canvas')).toEqual(['Вставить', 'Выделить всё', 'Добавить стикер', 'Отменить', 'Повторить'])
+    expect(labels('canvas')).toEqual([
+      'Вставить',
+      'Вставить как тот же элемент',
+      'Выделить всё',
+      'Добавить стикер',
+      'Отменить',
+      'Повторить',
+    ])
     expect(menuItems('canvas', all).find((item) => item.command === 'addSticky')).toMatchObject({ shortcut: 'N', disabled: false })
     expect(labels('canvas', { ...all, readOnly: true })).not.toContain('Добавить стикер')
   })
@@ -108,7 +115,44 @@ describe('menuItems', () => {
   it('disables paste with an empty clipboard and undo or redo with nothing to undo or redo', () => {
     const items = menuItems('canvas', { canPaste: false, canUndo: false, canRedo: true })
 
-    expect(items.filter((item) => item.disabled).map((item) => item.label)).toEqual(['Вставить', 'Отменить'])
+    expect(items.filter((item) => item.disabled).map((item) => item.label)).toEqual([
+      'Вставить',
+      'Вставить как тот же элемент',
+      'Отменить',
+    ])
+  })
+
+  it('pastes as the same element with its shortcut once the tab has copied cells', () => {
+    const item = menuItems('canvas', { ...all, canPasteAsSameElement: true }).find((entry) => entry.command === 'pasteAsSameElement')
+
+    expect(item).toMatchObject({ label: 'Вставить как тот же элемент', shortcut: 'Mod+Shift+V', disabled: false })
+    expect(labels('canvas', { ...all, readOnly: true })).not.toContain('Вставить как тот же элемент')
+  })
+
+  it('offers where an element is used after its properties, and detaching and deleting from all pages when it is shared', () => {
+    const shared = { ...all, canShowProperties: true, canShowWhereUsed: true, sharedElement: true, canDeleteElementEverywhere: true }
+
+    expect(labels('shape', shared).slice(-5)).toEqual([
+      'Свойства…',
+      'Где используется…',
+      'Отделить от элемента',
+      'Удалить',
+      'Удалить со всех страниц…',
+    ])
+    expect(labels('shape', { ...shared, sharedElement: false })).not.toContain('Отделить от элемента')
+    expect(labels('shape', { ...shared, canDeleteElementEverywhere: false })).not.toContain('Удалить со всех страниц…')
+    expect(labels('shape', { ...shared, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Свойства…', 'Где используется…'])
+    const locked = menuItems('shape', { ...shared, locked: true }).filter((item) => item.disabled).map((item) => item.label)
+    expect(locked).toEqual(expect.arrayContaining(['Отделить от элемента', 'Удалить со всех страниц…']))
+    expect(locked).not.toContain('Где используется…')
+  })
+
+  it('offers merging several shapes into one element', () => {
+    expect(labels('selection', { ...all, canGroup: true, canMergeElements: true }).slice(0, 2)).toEqual([
+      'Сгруппировать',
+      'Объединить в один элемент…',
+    ])
+    expect(labels('selection', all)).not.toContain('Объединить в один элемент…')
   })
 
   it('offers locking after the order, and after reversing for an edge, but not for a field or an index', () => {
@@ -322,6 +366,7 @@ describe('shortcutLabel', () => {
 
     expect(items.map((item) => item.label)).toEqual([
       'Вставить',
+      'Вставить как тот же элемент',
       'Выделить всё',
       'Добавить стикер',
       'Отменить',

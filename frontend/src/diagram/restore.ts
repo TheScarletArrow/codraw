@@ -11,9 +11,11 @@ import {
   writeAttrs,
   writePage,
   type CellMap,
+  type ElementData,
   type GeometryData,
   type PointData,
 } from './model.ts'
+import { elementData, relabelElementCells } from './sharedElements.ts'
 
 /** Origin of the transaction that restores a version or a page; the undo histories of the pages do not track it. */
 export const RESTORE_ORIGIN = 'codraw:restore'
@@ -41,7 +43,8 @@ function topLevelNames(doc: Y.Doc): string[] {
  * {@link restoreDocument} brings them, and the elements they show as the version has them; elements that only the
  * cells the page had showed go. The board keeps the name and the place of the page; a page deleted since comes back
  * with the name and the order key of the version, so among the pages left it stands where it stood. Other pages stay as
- * they are. Returns `false` when the version has no such page.
+ * they are, but for the labels of the cells of the elements of the page, which tell their properties as the version
+ * has them. Returns `false` when the version has no such page.
  */
 export function restorePage(live: Y.Doc, version: Y.Doc, pageId: string): boolean {
   const entry = getPages(version).get(pageId)
@@ -53,14 +56,21 @@ export function restorePage(live: Y.Doc, version: Y.Doc, pageId: string): boolea
     syncMap(cells as Y.Map<unknown>, getCells(version, pageId) as Y.Map<unknown>)
     const elements = getElements(live)
     const versionElements = getElements(version)
+    const before = new Map<string, ElementData | undefined>()
     for (const cell of getCells(version, pageId).values()) {
       const id = cellElementId(cell)
       const element = id === null ? undefined : versionElements.get(id)
       if (!(element instanceof Y.Map)) continue
+      // Only the elements that the version changes relabel their cells elsewhere.
+      if (!before.has(id!) && JSON.stringify(elementData(live, id!)) !== JSON.stringify(element.toJSON())) {
+        before.set(id!, elementData(live, id!))
+      }
       const current = elements.get(id!)
       if (current instanceof Y.Map) syncMap(current, element)
       else elements.set(id!, copyMap(element))
     }
+    // The cells of these elements on other pages show their properties as the version has them.
+    relabelElementCells(live, before, (ref) => ref.pageId === pageId)
     dropUnusedElements(live, shown)
   }, RESTORE_ORIGIN)
   return true
