@@ -61,7 +61,10 @@ export function restorePage(live: Y.Doc, version: Y.Doc, pageId: string): boolea
       const id = cellElementId(cell)
       const element = id === null ? undefined : versionElements.get(id)
       if (!(element instanceof Y.Map)) continue
-      if (!before.has(id!)) before.set(id!, elementData(live, id!))
+      // Only the elements that the version changes relabel their cells elsewhere.
+      if (!before.has(id!) && JSON.stringify(elementData(live, id!)) !== JSON.stringify(element.toJSON())) {
+        before.set(id!, elementData(live, id!))
+      }
       const current = elements.get(id!)
       if (current instanceof Y.Map) syncMap(current, element)
       else elements.set(id!, copyMap(element))

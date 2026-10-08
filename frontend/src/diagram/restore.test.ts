@@ -177,6 +177,23 @@ describe('restorePage', () => {
     expect(getElements(live).get('e1')!.get('name')).toBe('Payments')
   })
 
+  it('relabels nothing on other pages for the elements of the page that the version does not change', () => {
+    const live = new Y.Doc()
+    initializeDocument(live)
+    const second = addPage(live, DEFAULT_PAGE_ID)
+    const payments = { codrawShape: 'c4-container', [ELEMENT_KEY]: 'e1', codrawName: 'Payments', codrawKind: 'c4-container' }
+    live.transact(() => {
+      writeCell(getCells(live), shapeData('a', 'a0', { value: 'Payments\n[Container]', style: payments }))
+      writeCell(getCells(live, second), shapeData('b', 'a0', { value: 'Payments!\n[Container]', style: payments }))
+    })
+    const version = copyOf(live)
+    live.transact(() => getCells(live).get('a')!.set('geometry', { x: 50, y: 50, width: 240, height: 120 }))
+
+    restorePage(live, version, DEFAULT_PAGE_ID)
+
+    expect(getCells(live, second).get('b')!.get('value')).toBe('Payments!\n[Container]')
+  })
+
   it('makes the content of a page as the version has it and keeps its name, its place and the other pages', () => {
     const { doc: live, first, schema } = threePages()
     const version = copyOf(live)

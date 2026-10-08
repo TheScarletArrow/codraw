@@ -145,6 +145,8 @@ import {
   ELEMENT_KEY,
   elementIdOf,
   getCells,
+  getPages,
+  OWN_LINES_KEY,
   readCell,
   type CellData,
   type StyleValue,
@@ -159,9 +161,12 @@ import {
   elementData,
   elementPlaces,
   elementUses,
+  cellLabel,
   ensureElement,
-  labelWith,
+  isLockedCell,
+  mayBeElement,
   mergeElements as mergeDocumentElements,
+  RELABEL_ORIGIN,
   removeElementCells,
   styleWith,
   type CellRef,
@@ -1300,7 +1305,8 @@ export function createDiagramEditor(
   layoutManager.getLayout = (cell) => (isTable(cell) ? tableLayout : null)
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
-  const binding = new DiagramBinding(model, cells, origin, readOnly, author)
+  // A draft of a proposal, without others, would take putting labels right for a change of its author.
+  const binding = new DiagramBinding(model, cells, origin, readOnly, author, collaboration)
   // New routes redraw edges without a change of the model: the picture on the screen moved all the same.
   const stopEdgeRouting = startEdgeRouting(graph, undefined, () => {
     if (destroyed) return
@@ -2608,20 +2614,33 @@ export function createDiagramEditor(
     const holder = new Cell()
     clones.forEach((clone) => clone && holder.insert(clone))
     const refreshed: string[] = []
+    const at = Date.now()
     pairCells(cells, clones, (cell, clone) => {
       if (propertiesTarget(clone) !== 'shape') return
       const style = clone.getStyle() as Record<string, StyleValue>
-      let id = elementIdOf(style)
-      if (id === null) {
-        const source = sources.get(cell)
-        id = source ? ensureElement(document, { pageId: sourcePage, cellId: source }) : null
-        if (id !== null && sourcePage === pageId) refreshed.push(source!)
+      // The element of the shape copied as it is now, e.g. after merging or detaching; the copied one once it is gone.
+      const source = sources.get(cell)
+      const sourceCells = getCells(document, sourcePage)
+      const entry = source ? sourceCells.get(source) : undefined
+      let id: string | null = null
+      if (entry && isLockedCell(sourceCells, source!)) {
+        // A locked shape does not change: an element it has is shared, none is made for it.
+        id = cellElementId(entry) ?? newId()
+      } else if (entry) {
+        const before = cellElementId(entry)
+        id = ensureElement(document, { pageId: sourcePage, cellId: source! })
+        if (id !== null && id !== before) {
+          if (author) writeAttribution(entry, author, at)
+          if (sourcePage === pageId) refreshed.push(source!)
+        }
       }
-      id ??= newId()
+      id ??= elementIdOf(style) ?? newId()
       const data = elementData(document, id)
       if (data && Object.keys(data).length > 0) {
-        clone.setValue(labelWith(style, String(clone.getValue() ?? ''), id, data))
-        clone.setStyle({ ...styleWith(style, data), [ELEMENT_KEY]: id } as CellStyle)
+        const next = cellLabel(style, String(clone.getValue() ?? ''), id, data)
+        clone.setValue(next.label)
+        const { [OWN_LINES_KEY]: _kept, ...rest } = styleWith(style, data)
+        clone.setStyle({ ...rest, ...(next.ownLines !== null && { [OWN_LINES_KEY]: next.ownLines }), [ELEMENT_KEY]: id } as CellStyle)
       } else {
         clone.setStyle({ ...style, [ELEMENT_KEY]: id } as CellStyle)
       }
@@ -3505,21 +3524,35 @@ export function createDiagramEditor(
       const current = elementProperties(style, value)
       const { showTechnology, ...properties } = changes
       let next = normalizeProperties({ ...current, ...properties })
-      // A label of C4 has no lines of its own: those of a plain label become the description, unless it has one.
-      if (labelFormat(style, current.kind) === 'plain' && labelFormat(style, next.kind) === 'c4' && !next.description) {
-        next = normalizeProperties({ ...next, description: ownLines(style, value).join('\n') })
+      const was = labelFormat(style, current.kind)
+      const now = labelFormat(style, next.kind)
+      // A label of C4 has no lines of its own: those of a plain label become the description, unless it has one, and
+      // are kept aside then (see `OWN_LINES_KEY`); a plain label again gets them back.
+      const kept = typeof style[OWN_LINES_KEY] === 'string' ? (style[OWN_LINES_KEY] as string) : undefined
+      let aside = kept
+      if (was === 'plain' && now === 'c4') {
+        const lines = ownLines(style, value)
+        if (!next.description) next = normalizeProperties({ ...next, description: lines.join('\n') })
+        else if (lines.some((line) => line.trim())) aside = lines.join('\n')
       }
       const shown = showsTechnology(style, value)
-      const show = labelFormat(style, next.kind) === 'plain' && (showTechnology ?? shown)
+      // A cell keeps its showing of the technology while its label is of C4, which shows the technology its own way.
+      const ownShowing = style[SHOW_TECHNOLOGY_KEY] === true || style[SHOW_TECHNOLOGY_KEY] === 1 || style[SHOW_TECHNOLOGY_KEY] === '1'
+      const show = now === 'plain' && (showTechnology ?? (was === 'c4' ? ownShowing : shown))
       if (sameProperties(current, next) && show === shown) return
-      const label = relabel(next, style, value, show)
+      const restored = was === 'c4' && now === 'plain'
+      const label = restored
+        ? composeLabel(next, style, { showTechnology: show, rest: kept === undefined ? [] : kept.split('\n') })
+        : relabel(next, style, value, show)
+      if (restored) aside = undefined
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleKeys(cell, {
-          // A shape without an element becomes one.
-          [ELEMENT_KEY]: (style[ELEMENT_KEY] as string | undefined) || newId(),
+          // A shape without an element becomes one, named by the cell: two participants make the same one.
+          [ELEMENT_KEY]: (style[ELEMENT_KEY] as string | undefined) || cellId,
           ...propertiesStyle(next),
-          [SHOW_TECHNOLOGY_KEY]: show || undefined,
+          [SHOW_TECHNOLOGY_KEY]: now === 'c4' ? (style[SHOW_TECHNOLOGY_KEY] as StyleValue | undefined) : show || undefined,
+          [OWN_LINES_KEY]: aside,
         })
         if (label !== value) model.setValue(cell, label)
       })
@@ -3557,14 +3590,22 @@ export function createDiagramEditor(
           sample = uses.find((use) => use.pageId === pageId) ?? uses[0]
         } else {
           sample = source.cell
-          id = ensureElement(document, sample)
-          if (id !== null && sample.pageId === pageId) binding.refresh([sample.cellId])
+          const sampleCells = getCells(document, sample.pageId)
+          const entry = sampleCells.get(sample.cellId)
+          // A locked shape does not change: the new cell is an element of its own with the properties of its label.
+          if (!entry || isLockedCell(sampleCells, sample.cellId)) id = entry && mayBeElement(sampleCells, sample.cellId) ? newId() : null
+          else {
+            id = ensureElement(document, sample)
+            if (id !== null && author) writeAttribution(entry, author, Date.now())
+            if (id !== null && sample.pageId === pageId) binding.refresh([sample.cellId])
+          }
         }
         const entry = sample && getCells(document, sample.pageId).get(sample.cellId)
         if (id === null || !entry) return
         const data = readCell(sample!.cellId, entry)
-        // The look of the cell, not its lock nor its link.
-        const { [LOCKED_KEY]: _locked, [LOCKED_BY_KEY]: _lockedBy, [LINK_KEY]: _link, ...style } = data.style
+        // The look of the cell, not its lock nor its link; a shape that is no element gives the properties of its label.
+        const { [LOCKED_KEY]: _locked, [LOCKED_BY_KEY]: _lockedBy, [LINK_KEY]: _link, ...style } =
+          elementIdOf(data.style) === null ? { ...data.style, ...labelPropertiesStyle(data.style, data.value) } : data.style
         const width = data.geometry?.width ?? 120
         const height = data.geometry?.height ?? 60
         const snap = (value: number) => graph.snap(value)
@@ -3612,7 +3653,15 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       let target: string | null = null
       document.transact(() => {
-        target = mergeDocumentElements(document, refs, { pageId, cellId: keepCellId })
+        const merged = mergeDocumentElements(document, refs, { pageId, cellId: keepCellId })
+        if (!merged) return
+        target = merged.id
+        if (!author) return
+        const at = Date.now()
+        for (const ref of [{ pageId, cellId: keepCellId }, ...merged.cells]) {
+          const entry = getCells(document, ref.pageId).get(ref.cellId)
+          if (entry) writeAttribution(entry, author, at)
+        }
       }, origin)
       if (target !== null) binding.refresh(cellsOfElement(target))
     },
@@ -3621,7 +3670,9 @@ export function createDiagramEditor(
       const cell = model.getCell(cellId)
       if (!cell || propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return
       graph.stopEditing(false)
-      document.transact(() => detachCell(document, { pageId, cellId }), origin)
+      document.transact(() => {
+        if (detachCell(document, { pageId, cellId }) !== null && author) writeAttribution(cells.get(cellId)!, author, Date.now())
+      }, origin)
       binding.refresh([cellId])
     },
     deleteElementEverywhere(cellId) {
@@ -3746,10 +3797,12 @@ export function createDiagramEditor(
     undo() {
       graph.stopEditing(false)
       undoManager.undo()
+      dropCellsOfMissingPages(document)
     },
     redo() {
       graph.stopEditing(false)
       undoManager.redo()
+      dropCellsOfMissingPages(document)
     },
     zoomIn: () => graph.zoomIn(),
     zoomOut: () => graph.zoomOut(),
@@ -3896,13 +3949,39 @@ function pairCells(originals: readonly (Cell | null)[], clones: readonly (Cell |
 }
 
 /**
- * Gives a copy of cells new elements: the copy and the cells in it that name an element name a new one, and the
- * properties they carry as style keys become its properties once the copy is added.
+ * Gives a copy of cells new elements: the copy and the cells in it that name an element name a new one, the same one
+ * for the cells of one element (`renewed`, by the element copied), and the properties they carry as style keys become
+ * its properties once the copy is added.
  */
-function renewElements(cell: Cell) {
+function renewElements(cell: Cell, renewed: Map<string, string>) {
   const style = cell.getStyle() as Record<string, unknown>
-  if (typeof style[ELEMENT_KEY] === 'string') cell.setStyle({ ...style, [ELEMENT_KEY]: newId() } as CellStyle)
-  cell.getChildren().forEach(renewElements)
+  const id = style[ELEMENT_KEY]
+  if (typeof id === 'string') {
+    if (!renewed.has(id)) renewed.set(id, newId())
+    cell.setStyle({ ...style, [ELEMENT_KEY]: renewed.get(id)! } as CellStyle)
+  }
+  cell.getChildren().forEach((child) => renewElements(child, renewed))
+}
+
+/**
+ * Removes the cells of pages that the board no longer has, which an undo of a change of several pages may bring back
+ * after one of them was deleted; nothing would show them. No history tracks it.
+ */
+function dropCellsOfMissingPages(doc: Y.Doc) {
+  const pages = getPages(doc)
+  const orphans = [...doc.share.keys()]
+    .filter((name) => name.startsWith('cells:') && !pages.has(name.slice('cells:'.length)))
+    .map((name) => doc.getMap(name))
+    .filter((cells) => cells.size > 0)
+  if (orphans.length === 0) return
+  doc.transact(() => orphans.forEach((cells) => cells.clear()), RELABEL_ORIGIN)
+}
+
+/** The style keys of the properties that the label of a shape that is no element tells. */
+function labelPropertiesStyle(style: Record<string, StyleValue>, value: string): Record<string, StyleValue> {
+  return Object.fromEntries(
+    Object.entries(propertiesStyle(elementProperties(style, value))).filter((entry): entry is [string, StyleValue] => entry[1] !== undefined),
+  )
 }
 
 /** An edge that connects, or may connect, shapes: not a line drawn by hand, which has no ends and no shape of an edge. */
@@ -4291,8 +4370,10 @@ function configureLocks(graph: Graph): () => void {
     const clones = cloneCells(...args)
     // maxGraph leaves no clone of an edge that would be invalid without its ends.
     clones.forEach((clone) => clone && unlockCopy(clone))
-    // A copy is an element of its own, unless it is to be a cell of the same element (see `keepElements`).
-    if (!keepingElements) clones.forEach((clone) => clone && renewElements(clone))
+    // A copy is an element of its own, unless it is to be a cell of the same element (see `keepElements`); the copies of
+    // the cells of one element are cells of one new element.
+    const renewed = new Map<string, string>()
+    if (!keepingElements) clones.forEach((clone) => clone && renewElements(clone, renewed))
     return clones
   }
   // The handles of a selected cell are made with it, when it is selected: a cell locked or unlocked since, by the

@@ -4,7 +4,9 @@ import * as Y from 'yjs'
 import { PageHistories } from './binding.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, getElements, initializeDocument, readCell } from './model.ts'
-import { addPage } from './pages.ts'
+import { readAttribution } from './attribution.ts'
+import { addPage, deletePage } from './pages.ts'
+import { connect } from './testing.ts'
 import type { ShapeId } from './shapes.ts'
 
 describe('one element on several pages in the editor', () => {
@@ -29,6 +31,7 @@ describe('one element on several pages in the editor', () => {
       pageId,
       readOnly,
       participantName: 'Алиса',
+      participantId: 'alice',
       undoManager: histories?.get(pageId),
     })
     editors.push(editor)
@@ -259,5 +262,131 @@ describe('one element on several pages in the editor', () => {
     viewer.pasteAsSameElement({ x: 0, y: 0 })
     viewer.placeElement({ elementId: elementIdOf(doc, DEFAULT_PAGE_ID, api.getId()!) as string }, { x: 0, y: 0 })
     expect(getCells(doc).size).toBe(4)
+  })
+
+  it('shows a change of the owner on the second cell of the element on the page, whose move keeps it', () => {
+    const { doc } = board()
+    const editor = open(doc, DEFAULT_PAGE_ID)
+    const payments = shape(editor, 'c4-container', 'Payments\n[Container]')
+    editor.copy()
+    editor.pasteAsSameElement({ x: 600, y: 200 })
+    const second = editor.graph.getSelectionCell()
+
+    editor.setElementProperties(payments.getId()!, { owner: 'Платежи', tags: ['pci'] })
+    editor.graph.setSelectionCell(second)
+    expect(editor.getState().properties).toMatchObject({ properties: { owner: 'Платежи', tags: ['pci'] } })
+    editor.moveSelection(10, 0)
+
+    expect(getElements(doc).get(elementIdOf(doc, DEFAULT_PAGE_ID, payments.getId()!) as string)!.toJSON()).toMatchObject({
+      owner: 'Платежи',
+      tags: ['pci'],
+    })
+  })
+
+  it('pastes the copy of a locked shape without changing it, as a new element', () => {
+    const { doc, second } = board()
+    const first = open(doc, DEFAULT_PAGE_ID)
+    const locked = shape(first, 'c4-container', 'Payments\n[Container: технология]\nОписание')
+    first.setLocked(true)
+    first.copy()
+    first.destroy()
+
+    const other = open(doc, second)
+    other.pasteAsSameElement({ x: 100, y: 100 })
+
+    expect(stored(doc, DEFAULT_PAGE_ID, locked.getId()!).style).not.toHaveProperty(ELEMENT_KEY)
+    expect(stored(doc, DEFAULT_PAGE_ID, locked.getId()!).value).toBe('Payments\n[Container: технология]\nОписание')
+    expect(shapesOf(other)).toHaveLength(1)
+  })
+
+  it('pastes two cells of one element as cells of one new element', () => {
+    const { doc } = board()
+    const editor = open(doc, DEFAULT_PAGE_ID)
+    const api = shape(editor, 'c4-container', 'API\n[Container: Java]')
+    editor.setElementProperties(api.getId()!, { owner: 'Заказы' })
+    editor.copy()
+    editor.pasteAsSameElement({ x: 600, y: 200 })
+    const again = editor.graph.getSelectionCell()
+    editor.graph.setSelectionCells([api, again])
+    editor.copy()
+
+    editor.paste({ x: 100, y: 500 })
+    const copies = editor.graph.getSelectionCells()
+
+    const ids = copies.map((copy) => elementIdOf(doc, DEFAULT_PAGE_ID, copy.getId()!))
+    expect(ids[0]).not.toBe(elementIdOf(doc, DEFAULT_PAGE_ID, api.getId()!))
+    expect(ids[1]).toBe(ids[0])
+  })
+
+  it('pastes a copy as a cell of the element its shape has now, after it was merged into another', () => {
+    const { doc } = board()
+    const editor = open(doc, DEFAULT_PAGE_ID)
+    const payments = shape(editor, 'c4-container', 'Payments\n[Container]')
+    editor.setElementProperties(payments.getId()!, { owner: 'Платежи' })
+    const billing = shape(editor, 'c4-container', 'Billing\n[Container]', { x: 600, y: 200 })
+    editor.setElementProperties(billing.getId()!, { owner: 'Биллинг' })
+    editor.graph.setSelectionCell(payments)
+    editor.copy()
+    editor.graph.setSelectionCells([payments, billing])
+    editor.mergeElements(billing.getId()!)
+
+    editor.pasteAsSameElement({ x: 100, y: 500 })
+    const pasted = editor.graph.getSelectionCell()
+
+    expect(elementIdOf(doc, DEFAULT_PAGE_ID, pasted.getId()!)).toBe(elementIdOf(doc, DEFAULT_PAGE_ID, billing.getId()!))
+    expect(pasted.getValue()).toBe('Billing\n[Container]')
+    expect(getElements(doc).size).toBe(1)
+  })
+
+  it('leaves no cells of a deleted page when an undo brings back what was removed from all pages', () => {
+    const { doc, second, histories } = board()
+    const first = open(doc, DEFAULT_PAGE_ID, histories)
+    const api = shape(first, 'c4-container', 'API\n[Container]')
+    first.copy()
+    first.destroy()
+    const other = open(doc, second, histories)
+    other.pasteAsSameElement({ x: 100, y: 100 })
+    other.destroy()
+    const back = open(doc, DEFAULT_PAGE_ID, histories)
+    back.graph.setSelectionCell(back.graph.getDataModel().getCell(api.getId()!)!)
+    back.deleteElementEverywhere(api.getId()!)
+    deletePage(doc, second)
+
+    back.undo()
+
+    expect(getCells(doc).has(api.getId()!)).toBe(true)
+    expect(getCells(doc, second).size).toBe(0)
+  })
+
+  it('makes one element, no second one left over, of a shape whose properties two participants change at the same time', () => {
+    const { doc } = board()
+    const editor = open(doc, DEFAULT_PAGE_ID)
+    const cache = shape(editor, 'cache', 'Кэш')
+    const theirs = new Y.Doc()
+    Y.applyUpdate(theirs, Y.encodeStateAsUpdate(doc))
+    const network = connect(doc, theirs)
+    const their = open(theirs, DEFAULT_PAGE_ID)
+    network.disconnect()
+
+    editor.setElementProperties(cache.getId()!, { technology: 'Redis' })
+    their.setElementProperties(cache.getId()!, { owner: 'Платформа' })
+    network.reconnect()
+
+    // Both made the element named by the cell; one of the two new elements stays, as a change of one key would.
+    expect([...getElements(doc).keys()]).toEqual([cache.getId()])
+    expect([...getElements(theirs).keys()]).toEqual([cache.getId()])
+    expect(elementIdOf(doc, DEFAULT_PAGE_ID, cache.getId()!)).toBe(cache.getId())
+  })
+
+  it('names who merged or detached in the cells it changed, on other pages too', () => {
+    const { doc, second } = board()
+    const first = open(doc, DEFAULT_PAGE_ID)
+    const api = shape(first, 'c4-container', 'API\n[Container]')
+    first.copy()
+    first.destroy()
+    const other = open(doc, second)
+    other.pasteAsSameElement({ x: 100, y: 100 })
+
+    expect(readAttribution(getCells(doc).get(api.getId()!))).toMatchObject({ name: 'Алиса' })
   })
 })

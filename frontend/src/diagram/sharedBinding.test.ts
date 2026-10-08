@@ -123,4 +123,19 @@ describe('cells of one element on several pages', () => {
     expect(valueOf(doc, DEFAULT_PAGE_ID, 'a')).toBe(LABEL)
     expect(editing.cell('a').getValue()).toBe(LABEL)
   })
+
+  it('leaves on opening the label of an element with one cell, e.g. edited in draw.io, and of a draft of a proposal', () => {
+    const { doc, second } = board()
+    doc.transact(() => {
+      getCells(doc, second).delete('b')
+      writeCell(getCells(doc, second), shapeData('alone', 'a1', { value: 'Billing\n[Container]', style: { ...PAYMENTS, [ELEMENT_KEY]: 'e9' } }))
+      getCells(doc).get('a')!.set('value', 'Payments\n[Container]')
+      writeCell(getCells(doc, second), shapeData('b', 'a0', { value: LABEL, style: PAYMENTS }))
+    })
+
+    new DiagramBinding(new GraphDataModel(), getCells(doc), localOrigin(DEFAULT_PAGE_ID), false, null, false)
+    expect(valueOf(doc, DEFAULT_PAGE_ID, 'a')).toBe('Payments\n[Container]')
+    canvas(doc, second)
+    expect(valueOf(doc, second, 'alone')).toBe('Billing\n[Container]')
+  })
 })

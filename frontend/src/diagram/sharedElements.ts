@@ -1,6 +1,6 @@
 import * as Y from 'yjs'
-import type { ElementProperties } from './elementKinds.ts'
-import { canBeElement, elementProperties, labelText, relabel, showsTechnology } from './elementProps.ts'
+import { SHOW_TECHNOLOGY_KEY, type ElementProperties } from './elementKinds.ts'
+import { canBeElement, composeLabel, elementProperties, labelFormat, labelText, ownLines, relabel, showsTechnology } from './elementProps.ts'
 import { newId } from './ids.ts'
 import { isLockedStyle } from './locks.ts'
 import {
@@ -11,6 +11,7 @@ import {
   getCells,
   getElements,
   isElementStyleKey,
+  OWN_LINES_KEY,
   readCell,
   writeCell,
   type CellMap,
@@ -126,19 +127,59 @@ export function elementUses(doc: Y.Doc): Map<string, CellRef[]> {
   return uses
 }
 
-/**
- * The label `value` of a cell with the style `before` once it shows the element `id` with the properties `data`: of
- * them, with the lines of its own and the technology shown as the cell had them.
- */
-export function labelWith(before: Record<string, StyleValue>, value: string, id: string, data: ElementData | undefined): string {
-  const after = { ...styleWith(before, data), [ELEMENT_KEY]: id }
-  return relabel(elementProperties(after, value), before, value, showsTechnology(before, value))
+/** The label of a cell, and the lines of its own that it keeps aside under {@link OWN_LINES_KEY}: `null` for none. */
+export interface CellLabel {
+  label: string
+  ownLines: string | null
 }
 
-/** The label of a cell with the properties of its element now, its own lines and its own showing of the technology. */
-function labelNow(own: Record<string, StyleValue>, before: Record<string, StyleValue>, value: string, doc: Y.Doc): string {
+const isOn = (value: unknown) => value === true || value === 1 || value === '1'
+
+/**
+ * The label `value` of a cell with the style `before` once it shows the element `id` with the properties `data`: of
+ * them, with the lines of its own and the technology shown as the cell had them. A plain label whose element becomes of
+ * a kind of C4 keeps its lines of its own aside, and gets them back, with its own showing of the technology, once it is
+ * plain again.
+ */
+export function cellLabel(before: Record<string, StyleValue>, value: string, id: string, data: ElementData | undefined): CellLabel {
+  const after = { ...styleWith(before, data), [ELEMENT_KEY]: id }
+  const properties = elementProperties(after, value)
+  const was = labelFormat(before, elementProperties(before, value).kind)
+  const now = labelFormat(after, properties.kind)
+  const kept = typeof before[OWN_LINES_KEY] === 'string' ? (before[OWN_LINES_KEY] as string) : null
+  if (was === 'plain' && now === 'c4') {
+    const lines = ownLines(before, value)
+    return { label: composeLabel(properties, after), ownLines: lines.some((line) => line.trim()) ? lines.join('\n') : kept }
+  }
+  if (was === 'c4' && now === 'plain') {
+    const rest = kept === null ? [] : kept.split('\n')
+    return { label: composeLabel(properties, after, { showTechnology: isOn(before[SHOW_TECHNOLOGY_KEY]), rest }), ownLines: null }
+  }
+  return { label: relabel(properties, before, value, showsTechnology(before, value)), ownLines: kept }
+}
+
+/** The label of a cell with the properties of its element now; see {@link cellLabel}. */
+function labelNow(own: Record<string, StyleValue>, before: Record<string, StyleValue>, value: string, doc: Y.Doc): CellLabel {
   const id = own[ELEMENT_KEY]
-  return typeof id === 'string' ? labelWith(before, value, id, elementData(doc, id)) : value
+  return typeof id === 'string' ? cellLabel(before, value, id, elementData(doc, id)) : { label: value, ownLines: null }
+}
+
+/** Writes a label and the lines kept aside into a cell of the document; returns whether either changed. */
+function writeLabel(cell: CellMap, next: CellLabel): boolean {
+  let changed = false
+  if (cell.get('value') !== next.label) {
+    cell.set('value', next.label)
+    changed = true
+  }
+  const style = cell.get('style')
+  if (!(style instanceof Y.Map)) return changed
+  const kept = style.get(OWN_LINES_KEY)
+  if (next.ownLines === null ? kept !== undefined : kept !== next.ownLines) {
+    if (next.ownLines === null) style.delete(OWN_LINES_KEY)
+    else style.set(OWN_LINES_KEY, next.ownLines)
+    changed = true
+  }
+  return changed
 }
 
 /**
@@ -160,10 +201,7 @@ export function relabelElementCells(
       if (id === null || !before.has(id) || skip({ pageId: page.id, cellId })) return
       const own = ownStyle(cell)
       const value = String(cell.get('value') ?? '')
-      const label = labelNow(own, styleWith(own, before.get(id)), value, doc)
-      if (label === value) return
-      cell.set('value', label)
-      changed.push({ pageId: page.id, cellId })
+      if (writeLabel(cell, labelNow(own, styleWith(own, before.get(id)), value, doc))) changed.push({ pageId: page.id, cellId })
     })
   }
   return changed
@@ -172,23 +210,26 @@ export function relabelElementCells(
 /**
  * Puts right the labels of the cells of a page (those of `ids`, or all) that do not tell the properties of their
  * elements, e.g. after two participants changed different properties of one element at the same time: the properties
- * merge, the labels do not. A label of HTML, from draw.io, stays as it is: its lines are not lines of text. Returns the
- * ids of the cells it changed.
+ * merge, the labels do not. With `sharedOnly`, only those of elements with cells elsewhere too: a cell alone may have a
+ * label of its own, e.g. edited in draw.io. A label of HTML, from draw.io, stays as it is: its lines are not lines of
+ * text. Returns the ids of the cells it changed.
  */
-export function healLabels(cells: CellsMap, ids?: Iterable<string>): string[] {
+export function healLabels(cells: CellsMap, ids?: Iterable<string>, sharedOnly = false): string[] {
   const doc = cells.doc
   if (!doc) return []
   const healed: string[] = []
   const elements = getElements(doc)
+  let uses: Map<string, CellRef[]> | null = null
   for (const cellId of ids ?? cells.keys()) {
     const cell = cells.get(cellId)
     const id = cell instanceof Y.Map ? cellElementId(cell) : null
     if (id === null || !elements.has(id)) continue
     const own = ownStyle(cell!)
-    if (own.html === true || own.html === 1 || own.html === '1') continue
+    if (isOn(own.html)) continue
+    if (sharedOnly && ((uses ??= elementUses(doc)).get(id)?.length ?? 0) < 2) continue
     const value = String(cell!.get('value') ?? '')
     const current = styleWith(own, elementData(doc, id))
-    const label = labelNow(own, current, value, doc)
+    const { label } = labelNow(own, current, value, doc)
     if (label === value || label === labelText(value, own)) continue
     cell!.set('value', label)
     healed.push(cellId)
@@ -211,10 +252,11 @@ export function ensureElement(doc: Y.Doc, ref: CellRef): string | null {
   if (element instanceof Y.Map && element.size > 0) return named
   const data = readCell(ref.cellId, cell)
   const properties = elementProperties(data.style, data.value)
-  const id = named ?? newId()
+  // The id of the cell: two participants who make it an element at the same time make the same one.
+  const id = named ?? ref.cellId
   const style = { ...styleWith(data.style, undefined), ...definedStyle(properties), [ELEMENT_KEY]: id }
   // As the first change of its properties does, the label is made of them: e.g. the words of the palette go.
-  const value = labelWith(data.style, data.value, id, propertiesData(properties))
+  const { label: value } = cellLabel(data.style, data.value, id, propertiesData(properties))
   writeCell(cells, { ...data, value, style })
   return id
 }
@@ -260,10 +302,10 @@ export function detachCell(doc: Y.Doc, ref: CellRef): string | null {
 /**
  * Makes the shapes `refs`, and all the cells of all pages that show their elements, cells of one element with the
  * properties of `keep`: its element, or a new one with the properties its label tells. Their labels are made of these
- * properties; the elements merged into it go. Returns the element, or `null` when `keep` may not be an element. Call
- * inside a transaction.
+ * properties; the elements merged into it go. Returns the element and the cells that joined it, or `null` when `keep`
+ * may not be an element. Call inside a transaction.
  */
-export function mergeElements(doc: Y.Doc, refs: readonly CellRef[], keep: CellRef): string | null {
+export function mergeElements(doc: Y.Doc, refs: readonly CellRef[], keep: CellRef): { id: string; cells: CellRef[] } | null {
   const target = ensureElement(doc, keep)
   if (target === null) return null
   const merged = new Set<string>()
@@ -276,28 +318,29 @@ export function mergeElements(doc: Y.Doc, refs: readonly CellRef[], keep: CellRe
     if (id === null) anonymous.push(ref)
     else if (id !== target) merged.add(id)
   }
-  const join = (cells: CellsMap, cellId: string) => {
+  const joined: CellRef[] = []
+  const join = (pageId: string, cells: CellsMap, cellId: string) => {
     const cell = cells.get(cellId)!
     const own = ownStyle(cell)
     const before = readCell(cellId, cell).style
     const value = String(cell.get('value') ?? '')
     const style = cell.get('style') as Y.Map<StyleValue>
     style.set(ELEMENT_KEY, target)
-    const label = labelNow({ ...own, [ELEMENT_KEY]: target }, before, value, doc)
-    if (label !== value) cell.set('value', label)
+    writeLabel(cell, labelNow({ ...own, [ELEMENT_KEY]: target }, before, value, doc))
+    joined.push({ pageId, cellId })
   }
-  for (const ref of anonymous) join(getCells(doc, ref.pageId), ref.cellId)
+  for (const ref of anonymous) join(ref.pageId, getCells(doc, ref.pageId), ref.cellId)
   if (merged.size > 0) {
     for (const page of listPages(doc)) {
       const cells = getCells(doc, page.id)
       cells.forEach((cell, cellId) => {
         const id = cell instanceof Y.Map ? cellElementId(cell) : null
-        if (id !== null && merged.has(id)) join(cells, cellId)
+        if (id !== null && merged.has(id)) join(page.id, cells, cellId)
       })
     }
   }
   dropUnusedElements(doc, merged)
-  return target
+  return { id: target, cells: joined }
 }
 
 /** The cell `id` of a page is locked, itself or by a group above it, as a lock on the canvas holds it. */
@@ -319,7 +362,10 @@ export interface ElementPlace {
   pageId: string
   pageName: string
   cellIds: string[]
-  /** Its cells that are locked: removing the element from all pages leaves them. */
+  /**
+   * Its cells that removing the element from all pages leaves, as removing them on the canvas would: those that are
+   * locked, or hold a locked cell, or have a locked edge.
+   */
   locked: string[]
 }
 
@@ -333,7 +379,7 @@ export function elementPlaces(doc: Y.Doc, id: string): ElementPlace[] {
     cells.forEach((cell, cellId) => {
       if (!(cell instanceof Y.Map) || cellElementId(cell) !== id) return
       cellIds.push(cellId)
-      if (isLockedCell(cells, cellId)) locked.push(cellId)
+      if ([...removal(cells, [cellId])].some((removed) => isLockedCell(cells, removed))) locked.push(cellId)
     })
     if (cellIds.length > 0) places.push({ pageId: page.id, pageName: page.name, cellIds, locked })
   }
@@ -376,9 +422,9 @@ function removal(cells: CellsMap, ids: Iterable<string>): Set<string> {
 }
 
 /**
- * Removes the cells of the element `id` from all pages, with what they hold and their edges; locked cells stay, and so
- * does the element while they do. Elements of other removed cells that no cell shows any longer go too. Returns the
- * removed cells. Call inside a transaction.
+ * Removes the cells of the element `id` from all pages, with what they hold and their edges; cells that a lock keeps
+ * (see {@link ElementPlace.locked}) stay, and so does the element while they do. Elements of other removed cells that
+ * no cell shows any longer go too. Returns the removed cells. Call inside a transaction.
  */
 export function removeElementCells(doc: Y.Doc, id: string): CellRef[] {
   const removedRefs: CellRef[] = []

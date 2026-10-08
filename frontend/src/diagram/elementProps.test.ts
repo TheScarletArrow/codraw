@@ -15,6 +15,7 @@ import {
   elementProperties,
   KIND_SECTIONS,
   labelFormat,
+  ownLines,
   parseLabel,
   propertiesOfLabel,
   relabel,
@@ -298,5 +299,14 @@ describe('edges', () => {
   it('have a technology and an interaction', () => {
     expect(edgeProperties({ codrawTechnology: ' Kafka ', codrawInteraction: 'async' })).toEqual({ technology: 'Kafka', interaction: 'async' })
     expect(edgeProperties({ codrawInteraction: 'maybe' })).toEqual({ technology: '', interaction: null })
+  })
+})
+
+describe('lines of its own of a plain label', () => {
+  it('takes the second line in brackets for a line of its own when the cell shows no technology it has', () => {
+    const style = { codrawShape: 'service', codrawElement: 'e1', codrawName: 'Orders', codrawShowTechnology: true }
+
+    expect(ownLines(style, 'Orders\n[v2]')).toEqual(['[v2]'])
+    expect(ownLines({ ...style, codrawTechnology: 'Go' }, 'Orders\n[Go]\n[v2]')).toEqual(['[v2]'])
   })
 })

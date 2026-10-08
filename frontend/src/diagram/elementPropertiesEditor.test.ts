@@ -116,6 +116,19 @@ describe('properties of elements in the editor', () => {
     expect(elementOf(doc, cell)).toMatchObject({ kind: 'c4-container', description: 'GET /pets\nPOST /pets' })
   })
 
+  it('keeps the lines of its own aside when the element becomes of a kind of C4 with a description, and gives them back', () => {
+    const { editor } = open()
+    const cell = shape(editor, 'service', 'Petstore\n[Go]\nGET /pets')
+    editor.setElementProperties(cell.getId()!, { technology: 'Go', showTechnology: true, description: 'Магазин' })
+
+    editor.setElementProperties(cell.getId()!, { kind: 'c4-container' })
+    expect(cell.getValue()).toBe('Petstore\n[Container: Go]\nМагазин')
+    editor.setElementProperties(cell.getId()!, { kind: 'service' })
+
+    expect(cell.getValue()).toBe('Petstore\n[Go]\nGET /pets')
+    expect(cell.getStyle()).not.toHaveProperty('codrawOwnLines')
+  })
+
   it('changes nothing without a change, and makes no element of it', () => {
     const { doc, editor } = open()
     const cell = shape(editor, 'c4-container', 'API\n[Container: Java]')

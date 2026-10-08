@@ -85,12 +85,17 @@ export class DiagramBinding {
   private readonly readOnly: boolean
   private readonly author: Author | null
 
+  /**
+   * With `healOnOpen`, the labels of the cells of shared elements of the page are put right when it opens: a draft of a
+   * proposal, which nobody else changes, would take it for a change of its author.
+   */
   constructor(
     model: GraphDataModel,
     cells: CellsMap,
     origin: unknown = LOCAL_ORIGIN,
     readOnly = false,
     author: Author | null = null,
+    healOnOpen = true,
   ) {
     this.model = model
     this.cells = cells
@@ -108,7 +113,7 @@ export class DiagramBinding {
       cellAdded(cell)
     }
     this.applyRemote(new Set(cells.keys()))
-    this.applyRemote(new Set(this.heal()))
+    if (healOnOpen) this.applyRemote(new Set(this.heal(undefined, true)))
     cells.observeDeep(this.handleRemoteChanges)
     this.elements?.observeDeep(this.handleElementChanges)
     model.addListener(InternalEvent.CHANGE, this.handleLocalChanges)
@@ -170,12 +175,12 @@ export class DiagramBinding {
    * in a transaction that no history undoes, and returns their ids; once the binding observes the cells, the model gets
    * them as any change of the document that is not its own.
    */
-  private heal(ids?: Iterable<string>): string[] {
+  private heal(ids?: Iterable<string>, sharedOnly = false): string[] {
     const doc = this.cells.doc
     if (this.readOnly || !doc) return []
     let healed: string[] = []
     doc.transact(() => {
-      healed = healLabels(this.cells, ids)
+      healed = healLabels(this.cells, ids, sharedOnly)
     }, RELABEL_ORIGIN)
     return healed
   }
@@ -218,8 +223,8 @@ export class DiagramBinding {
     alive.sort(compareModelPosition)
 
     const doc = this.cells.doc!
-    // Cells of this page whose labels the change of an element rewrote without the model.
-    const relabeled: string[] = []
+    // Cells of this page that the change of an element changed without the model: the other cells of the element.
+    const relabeled = new Set<string>()
     doc.transact(() => {
       const removedElements = removed.map((id) => cellElementId(this.cells.get(id)))
       removed.forEach((id) => deleteCell(this.cells, id))
@@ -250,11 +255,16 @@ export class DiagramBinding {
       for (const ref of relabelElementCells(doc, before, (ref) => ref.pageId === page && written.has(ref.cellId))) {
         const entry = getCells(doc, ref.pageId).get(ref.cellId)!
         if (this.author) writeAttribution(entry, this.author, at)
-        if (ref.pageId === page) relabeled.push(ref.cellId)
       }
+      // Even without a new label, e.g. after a change of the owner, the model shows them with the new properties: a
+      // later change of such a cell must not write the old ones back.
+      this.cells.forEach((cell, id) => {
+        const element = cellElementId(cell)
+        if (element !== null && before.has(element) && !written.has(id)) relabeled.add(id)
+      })
       dropUnusedElements(doc, removedElements)
     }, this.origin)
-    this.applyRemote(new Set(relabeled))
+    this.applyRemote(relabeled)
   }
 
   /** Makes the model match Yjs for the given cell ids. */

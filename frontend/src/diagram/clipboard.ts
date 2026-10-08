@@ -17,7 +17,12 @@ export interface ClipboardSource {
  * boards of the browser tab: a new editor is created for every page, but the clipboard stays. The cells are clones
  * that no graph holds.
  */
-let content: { cells: Cell[]; text: string; pastes: number; source: ClipboardSource | null } | null = null
+let content: { cells: Cell[]; text: string; pastes: number; source: StoredSource | null } | null = null
+
+/** The source as the clipboard keeps it: the document of a board left long ago may go. */
+interface StoredSource extends Omit<ClipboardSource, 'document'> {
+  document: WeakRef<Y.Doc>
+}
 
 export const clipboard = {
   put(cells: Cell[], text = '', source: ClipboardSource | null = null) {
@@ -25,14 +30,16 @@ export const clipboard = {
     // geometry of an edge is relative: a holder keeps copied edges from being taken for labels.
     const holder = new Cell()
     cells.forEach((cell) => holder.insert(cell))
-    content = { cells, text, pastes: 0, source }
+    content = { cells, text, pastes: 0, source: source && { ...source, document: new WeakRef(source.document) } }
   },
   read(): Cell[] | null {
     return content?.cells ?? null
   },
   /** Where the copied cells come from; `null` when they come from the clipboard of the system. */
   source(): ClipboardSource | null {
-    return content?.source ?? null
+    const source = content?.source
+    const document = source?.document.deref()
+    return source && document ? { ...source, document } : null
   },
   /** The text of the clipboard of the system that the copied cells were written as; `null` when nothing is copied. */
   text(): string | null {

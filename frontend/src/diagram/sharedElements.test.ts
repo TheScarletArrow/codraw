@@ -7,6 +7,7 @@ import {
   getElements,
   initializeDocument,
   LAYER_CELL_ID,
+  OWN_LINES_KEY,
   readCell,
   writeCell,
   type CellData,
@@ -27,7 +28,7 @@ import { parseApiSpec } from '../apiSpec/parseApiSpec.ts'
 import { ORDERS_ASYNCAPI_YAML, PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
 import { importPages } from '../drawio/importPages.ts'
 import { BOARD_TEMPLATES, templatePage } from '../templates/templates.ts'
-import { edgeData, shapeData } from './testing.ts'
+import { connect, edgeData, shapeData } from './testing.ts'
 
 const CONTAINER = { codrawShape: 'c4-container' }
 const SERVICE = { codrawShape: 'service' }
@@ -108,6 +109,29 @@ describe('shared elements', () => {
     expect(valueOf(doc, DEFAULT_PAGE_ID, 'd')).toBe('Заказы\n[Go]')
   })
 
+  it('keeps the lines of its own of a plain cell aside while the element is of a kind of C4, and gives them back', () => {
+    const { doc, second } = shared()
+    const style = { ...SERVICE, [ELEMENT_KEY]: 'e2', codrawShowTechnology: true, codrawName: 'Orders', codrawTechnology: 'Go' }
+    put(doc, DEFAULT_PAGE_ID, shapeData('d', 'a1', { value: 'Orders\n[Go]\nGET /orders', style }))
+    const change = (kind: string) => {
+      const before = getElements(doc).get('e2')!.toJSON()
+      doc.transact(() => {
+        getElements(doc).get('e2')!.set('kind', kind)
+        relabelElementCells(doc, new Map([['e2', before]]))
+      })
+    }
+
+    change('c4-container')
+    expect(valueOf(doc, DEFAULT_PAGE_ID, 'd')).toBe('Orders\n[Container: Go]')
+    expect(valueOf(doc, second, 'c')).toBe('Orders\n[Container: Go]')
+    expect(readCell('d', getCells(doc).get('d')!).style).toMatchObject({ [OWN_LINES_KEY]: 'GET /orders' })
+
+    change('service')
+    expect(valueOf(doc, DEFAULT_PAGE_ID, 'd')).toBe('Orders\n[Go]\nGET /orders')
+    expect(valueOf(doc, second, 'c')).toBe('Orders\nGET /orders')
+    expect(readCell('d', getCells(doc).get('d')!).style).not.toHaveProperty(OWN_LINES_KEY)
+  })
+
   it('puts right the labels that do not tell the properties, and leaves the others and labels of HTML', () => {
     const { doc, second } = shared()
     put(doc, second, shapeData('h', 'a2', { value: '<b>Payments</b>', style: { ...CONTAINER, html: 1, [ELEMENT_KEY]: 'e1' } }))
@@ -134,6 +158,8 @@ describe('shared elements', () => {
 
     let id: string | null = null
     doc.transact(() => (id = ensureElement(doc, { pageId: DEFAULT_PAGE_ID, cellId: 'a' })))
+    // Named by the cell: two participants who do it at the same time make one element.
+    expect(id).toBe('a')
     doc.transact(() => ensureElement(doc, { pageId: DEFAULT_PAGE_ID, cellId: 'lost' }))
 
     expect(getElements(doc).get(id!)!.toJSON()).toEqual({
@@ -155,6 +181,24 @@ describe('shared elements', () => {
     doc.transact(() => ensureElement(doc, { pageId: DEFAULT_PAGE_ID, cellId: 'p' }))
 
     expect(valueOf(doc, DEFAULT_PAGE_ID, 'p')).toBe('Контейнер\n[Container]')
+  })
+
+  it('makes the same element of a shape that two participants paste as the same element at the same time', () => {
+    const { doc } = board()
+    put(doc, DEFAULT_PAGE_ID, shapeData('p', 'a0', { value: 'Payments\n[Container]', style: CONTAINER }))
+    const theirs = new Y.Doc()
+    Y.applyUpdate(theirs, Y.encodeStateAsUpdate(doc))
+    const network = connect(doc, theirs)
+    network.disconnect()
+
+    doc.transact(() => ensureElement(doc, { pageId: DEFAULT_PAGE_ID, cellId: 'p' }))
+    theirs.transact(() => ensureElement(theirs, { pageId: DEFAULT_PAGE_ID, cellId: 'p' }))
+    network.reconnect()
+
+    for (const each of [doc, theirs]) {
+      expect(elementOf(each, DEFAULT_PAGE_ID, 'p')).toBe('p')
+      expect(getElements(each).get('p')!.toJSON()).toEqual({ name: 'Payments', kind: 'c4-container' })
+    }
   })
 
   it('detaches a cell into an element of its own with the same properties', () => {
@@ -222,6 +266,25 @@ describe('shared elements', () => {
     ])
     expect([...getCells(doc, second).keys()].filter((id) => id !== LAYER_CELL_ID && id !== '0')).toEqual(['c'])
     expect(getElements(doc).has('e1')).toBe(false)
+  })
+
+  it('keeps a cell when removing an element from all pages if a locked edge ends at it or it holds a locked cell', () => {
+    const { doc, second } = shared()
+    put(
+      doc,
+      DEFAULT_PAGE_ID,
+      shapeData('db', 'a1', { value: 'БД' }),
+      edgeData('flow', 'a2', 'a', 'db', { style: { locked: true } }),
+    )
+    put(doc, second, shapeData('inner', 'a0', { parent: 'b', value: 'Внутри', style: { locked: true } }))
+
+    expect(elementPlaces(doc, 'e1').map((place) => place.locked)).toEqual([['a'], ['b']])
+    doc.transact(() => removeElementCells(doc, 'e1'))
+
+    expect(getCells(doc).has('a')).toBe(true)
+    expect(getCells(doc).has('flow')).toBe(true)
+    expect(getCells(doc, second).has('inner')).toBe(true)
+    expect(getElements(doc).has('e1')).toBe(true)
   })
 
   it('keeps a locked cell when removing an element from all pages, and the element with it', () => {
