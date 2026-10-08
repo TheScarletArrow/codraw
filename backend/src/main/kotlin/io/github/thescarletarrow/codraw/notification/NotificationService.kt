@@ -13,11 +13,13 @@ import java.util.UUID
 
 /**
  * Notifications of users about what others did that concerns them. The actions call it in their own transactions, so
- * that a notification comes with its action or not at all; whoever acts gets no notification about it.
+ * that a notification comes with its action or not at all; whoever acts gets no notification about it. A new
+ * notification queues its messages to the channels of its recipient outside of CoDraw in the same transaction.
  */
 @Service
 class NotificationService(
     private val notifications: Notifications,
+    private val deliveries: NotificationDeliveries,
     private val limits: LimitProperties,
     private val properties: NotificationProperties,
     private val clock: Clock,
@@ -116,7 +118,9 @@ class NotificationService(
             throw ReviewRequestLimitException(limits.reviewRequestsPerHour)
         }
         val notifiedAfter = now - properties.reviewRequestInterval
-        if (notifications.addReviewRequest(board.ownerId, board.boardId, pageId, cellId, actorId, now, notifiedAfter)) {
+        val id = notifications.addReviewRequest(board.ownerId, board.boardId, pageId, cellId, actorId, now, notifiedAfter)
+        if (id != null) {
+            queue(listOf(id), NotificationKind.REVIEW_REQUEST, now)
             // Others create the notifications of a user: the oldest go, so that nobody fills the database of another.
             notifications.keepNewest(setOf(board.ownerId), limits.notificationsPerUser)
         }
@@ -130,7 +134,7 @@ class NotificationService(
         val stored = notifications.page(userId, before, PAGE_SIZE + 1)
         val page = stored.take(PAGE_SIZE)
         return NotificationPage(
-            notifications = page.map { it.toNotification(userId) },
+            notifications = page.map(::view),
             next = if (stored.size > PAGE_SIZE) page.last().id else null,
         )
     }
@@ -163,14 +167,24 @@ class NotificationService(
     ) {
         val recipients = userIds - actorId
         if (recipients.isEmpty()) return
-        notifications.add(recipients, kind, boardId, commentId, threadId, actorId, role, now(), proposalId)
+        val now = now()
+        val ids = notifications.add(recipients, kind, boardId, commentId, threadId, actorId, role, now, proposalId)
+        queue(ids, kind, now)
         // Others create the notifications of a user: the oldest go, so that nobody fills the database of another.
         notifications.keepNewest(recipients, limits.notificationsPerUser)
     }
 
-    private fun StoredNotification.toNotification(userId: UUID): Notification {
+    /** Queues the new notifications [ids] of the [kind] to the channels of their recipients, due after the delay. */
+    private fun queue(ids: List<UUID>, kind: NotificationKind, at: Instant) =
+        deliveries.enqueue(ids, NotificationEvent.of(kind), at, at + properties.delivery.delay)
+
+    /**
+     * The notification as its recipient sees it now: about a board that they have no role on now it tells only what
+     * happened and when.
+     */
+    fun view(stored: StoredNotification): Notification = with(stored) {
         val access = board.roleOf(userId, memberRole) != null
-        return Notification(
+        Notification(
             id = id,
             kind = kind,
             boardId = board.boardId,

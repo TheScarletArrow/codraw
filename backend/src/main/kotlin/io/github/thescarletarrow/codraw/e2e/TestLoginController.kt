@@ -59,7 +59,8 @@ class TestLoginSecurityConfiguration {
     @Order(0)
     fun testLoginSecurity(http: HttpSecurity): SecurityFilterChain {
         http {
-            securityMatcher(TestLoginController.PATH)
+            // The letters of the tests too: they are read without a sign-in, like the test login itself.
+            securityMatcher(TestLoginController.PATH, TestEmailController.PATH)
             authorizeHttpRequests { authorize(anyRequest, permitAll) }
             csrf { disable() }
         }

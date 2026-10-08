@@ -26,6 +26,21 @@ enum class Limit(val tag: String) {
     SCHEMA_IMPORTS("schema-imports"),
     IMAGE("image"),
     IMAGES("images"),
+    CONFIRMATION_EMAILS("confirmation-emails"),
+}
+
+/** How an attempt to send a message of a notification to a channel ended; the tag of [CodrawMetrics.notificationDelivery]. */
+enum class DeliveryResult(val tag: String) {
+    SENT("sent"),
+
+    /** It did not go and is tried again later. */
+    RETRIED("retried"),
+
+    /** The recipient refused it, or it did not go in all the attempts. */
+    FAILED("failed"),
+
+    /** Not sent: the notification was read, or the settings or the access of the recipient changed meanwhile. */
+    SKIPPED("skipped"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */
@@ -123,6 +138,16 @@ class CodrawMetrics(registry: MeterRegistry) {
             .register(registry)
     }
 
+    private val notificationDeliveries = listOf("email", "webhook").associateWith { channel ->
+        DeliveryResult.entries.associateWith { result ->
+            Counter.builder("codraw.notifications.deliveries")
+                .description("Attempts to send messages of notifications to email addresses and chats of users")
+                .tag("channel", channel)
+                .tag("result", result.tag)
+                .register(registry)
+        }
+    }
+
     fun boardCreated() = boardsCreated.increment()
 
     fun guestCreated() = guestsCreated.increment()
@@ -134,6 +159,10 @@ class CodrawMetrics(registry: MeterRegistry) {
     fun clientError(kind: ClientErrorKind) = clientErrors.getValue(kind).increment()
 
     fun schemaImport(result: SchemaImportResult) = schemaImports.getValue(result).increment()
+
+    /** An attempt to send a message to a channel, `email` or `webhook`, ended with the [result]. */
+    fun notificationDelivery(channel: String, result: DeliveryResult) =
+        notificationDeliveries.getValue(channel).getValue(result).increment()
 
     fun imageStored(size: Long) = imagesStored.record(size.toDouble())
 

@@ -18,6 +18,16 @@ codraw:
   notifications:
     # Tests run the cleanup themselves.
     cleanup-cron: "-"
+    app-url: https://codraw.example.com
+    email:
+      from: CoDraw <codraw@example.com>
+    webhook:
+      # Webhooks of the tests listen on this machine.
+      allowed-hosts: hooks.slack.com,localhost
+      allow-http: true
+    delivery:
+      # Tests send the queue themselves.
+      cron: "-"
   images:
     # Tests run the cleanup themselves.
     cleanup-cron: "-"

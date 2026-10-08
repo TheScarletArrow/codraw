@@ -1,19 +1,9 @@
 package io.github.thescarletarrow.codraw.notification
 
 import org.slf4j.LoggerFactory
-import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Clock
-import java.time.Duration
-
-@ConfigurationProperties("codraw.notifications")
-data class NotificationProperties(
-    /** A notification is deleted once it is this old, read or not. */
-    val retention: Duration = Duration.ofDays(90),
-    /** The owner of a board gets at most one notification about a request to review an element within this time. */
-    val reviewRequestInterval: Duration = Duration.ofMinutes(10),
-)
 
 /**
  * Deletes notifications older than the retention. Their number per user is kept within the limit as they come, but a
