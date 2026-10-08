@@ -91,6 +91,8 @@ export function createFakeEditor({
     stickies: null,
     status: null,
     properties: null,
+    canPasteAsSameElement: false,
+    canMergeElements: false,
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -195,6 +197,13 @@ export function createFakeEditor({
     setEdgeApi: vi.fn(),
     setElementProperties: vi.fn(),
     setEdgeProperties: vi.fn(),
+    pasteAsSameElement: vi.fn(),
+    placeElement: vi.fn(),
+    selectedElement: vi.fn(() => null),
+    mergeCandidates: vi.fn(() => []),
+    mergeElements: vi.fn(),
+    detachElement: vi.fn(),
+    deleteElementEverywhere: vi.fn(),
     getLinks: () => links,
     onLinkOpen: (listener) => listen(linkListeners, listener),
     toDiagramPoint: vi.fn((x: number, y: number) => ({ x, y })),

@@ -1,22 +1,38 @@
 import { Cell } from '@maxgraph/core'
+import type * as Y from 'yjs'
+
+/**
+ * Where copied cells come from: the document of the board, the page, and the id of the cell each clone (also those
+ * inside others) is a copy of. «Вставить как тот же элемент» makes the clones cells of the elements of these cells on
+ * the same board.
+ */
+export interface ClipboardSource {
+  document: Y.Doc
+  pageId: string
+  cells: ReadonlyMap<Cell, string>
+}
 
 /**
  * Copied cells and the text they went to the clipboard of the system with, shared by the editors of all pages and
  * boards of the browser tab: a new editor is created for every page, but the clipboard stays. The cells are clones
  * that no graph holds.
  */
-let content: { cells: Cell[]; text: string; pastes: number } | null = null
+let content: { cells: Cell[]; text: string; pastes: number; source: ClipboardSource | null } | null = null
 
 export const clipboard = {
-  put(cells: Cell[], text = '') {
+  put(cells: Cell[], text = '', source: ClipboardSource | null = null) {
     // `importCells` takes a cell with a relative geometry and no parent for the label of an edge and drops it, and the
     // geometry of an edge is relative: a holder keeps copied edges from being taken for labels.
     const holder = new Cell()
     cells.forEach((cell) => holder.insert(cell))
-    content = { cells, text, pastes: 0 }
+    content = { cells, text, pastes: 0, source }
   },
   read(): Cell[] | null {
     return content?.cells ?? null
+  },
+  /** Where the copied cells come from; `null` when they come from the clipboard of the system. */
+  source(): ClipboardSource | null {
+    return content?.source ?? null
   },
   /** The text of the clipboard of the system that the copied cells were written as; `null` when nothing is copied. */
   text(): string | null {
