@@ -17,5 +17,5 @@
 
 ## 4. Документация и проверка
 
-- [ ] 4.1 docs: README — раздел «Миграция SQL» и «План работ»; «Что нового» 0.13.0 и версия frontend; проверка: тест «Что нового»
-- [ ] 4.2 проверка: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`
+- [x] 4.1 docs: README — раздел «Миграция SQL» и «План работ»; «Что нового» 0.13.0 и версия frontend; проверка: тест «Что нового»
+- [x] 4.2 проверка: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`

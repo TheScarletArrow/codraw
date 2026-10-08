@@ -740,6 +740,11 @@ describe('a migration of views', () => {
 
     expect(migrate(before, state(USERS_TABLE, active('active_users', 'SELECT id,  email\nFROM users   WHERE active')))).toBe('')
     expect(migrate(before, state(USERS_TABLE, active('active_users', ACTIVE, { id: 'id uuid', mail: 'mail text' })))).toBe('')
+    const colored = table('active', 'active_users', { id: 'id uuid', mail: 'email text' }, {
+      order: 'a1',
+      style: { [VIEW_KEY]: true, [VIEW_QUERY_KEY]: ACTIVE, fillColor: '#ffcc00' },
+    })
+    expect(migrate(before, state(USERS_TABLE, colored))).toBe('')
   })
 
   it('drops and creates a view that becomes materialized or plain, with the indexes of a materialized one', () => {
