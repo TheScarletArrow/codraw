@@ -27,7 +27,7 @@ test('the checks list the remarks of the board for every participant, go to the 
   await alice.getByRole('button', { name: /^Проверки/ }).click()
   await expect(alice.getByRole('button', { name: 'Проверки: 4 замечания' })).toBeVisible()
   await expect(checks(alice).getByRole('region', { name: 'Связь без подписи' })).toContainText('«Сервис» → «База данных»')
-  const technology = checks(alice).getByRole('region', { name: 'Без технологии' })
+  const technology = checks(alice).getByRole('region', { name: 'Без технологии', exact: true })
   await expect(technology).toContainText('Без технологии (2)')
 
   // A remark goes to its element.
@@ -50,7 +50,7 @@ test('the checks list the remarks of the board for every participant, go to the 
   await expect(properties(alice).getByLabel('Имя', { exact: true })).toHaveValue('Сервис')
   await properties(alice).getByLabel('Технология').fill('Kotlin')
   await properties(alice).getByLabel('Технология').press('Enter')
-  await expect(checks(bob).getByRole('region', { name: 'Без технологии' })).toContainText('Без технологии (1)')
+  await expect(checks(bob).getByRole('region', { name: 'Без технологии', exact: true })).toContainText('Без технологии (1)')
   await expect(bob.getByRole('button', { name: 'Проверки: 1 замечание' })).toBeVisible()
 
   await close()
