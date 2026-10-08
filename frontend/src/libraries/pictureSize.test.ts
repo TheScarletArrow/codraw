@@ -13,15 +13,15 @@ const riff = (chunk: string, data: number[]) => bytes('RIFF', [0, 0, 0, 0], 'WEB
 
 describe('the size of a picture from its header', () => {
   it('reads PNG, GIF, JPEG and the three kinds of WebP', () => {
-    expect(pictureSize(png(120, 45))).toEqual({ width: 120, height: 45 })
-    expect(pictureSize(bytes('GIF89a', u16le(17), u16le(300)))).toEqual({ width: 17, height: 300 })
+    expect(pictureSize(png(120, 45))).toEqual({ type: 'image/png', width: 120, height: 45 })
+    expect(pictureSize(bytes('GIF89a', u16le(17), u16le(300)))).toEqual({ type: 'image/gif', width: 17, height: 300 })
     // A start of the image, an APP0 segment of 16 bytes, then a frame of 33 × 64.
     const jpeg = bytes([0xff, 0xd8, 0xff, 0xe0, 0, 16], new Array<number>(14).fill(0), [0xff, 0xc0, 0, 17, 8, 0, 33, 0, 64, 3])
-    expect(pictureSize(jpeg)).toEqual({ width: 64, height: 33 })
-    expect(pictureSize(riff('VP8 ', [0, 0, 0, 0x9d, 0x01, 0x2a, ...u16le(300), ...u16le(150), 0, 0, 0, 0]))).toEqual({ width: 300, height: 150 })
+    expect(pictureSize(jpeg)).toEqual({ type: 'image/jpeg', width: 64, height: 33 })
+    expect(pictureSize(riff('VP8 ', [0, 0, 0, 0x9d, 0x01, 0x2a, ...u16le(300), ...u16le(150), 0, 0, 0, 0]))).toEqual({ type: 'image/webp', width: 300, height: 150 })
     const bits = 999 | (1 << 14)
-    expect(pictureSize(riff('VP8L', [0x2f, bits & 0xff, (bits >>> 8) & 0xff, (bits >>> 16) & 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toEqual({ width: 1000, height: 2 })
-    expect(pictureSize(riff('VP8X', [0, 0, 0, 0, ...u24le(3999), ...u24le(2999), 0]))).toEqual({ width: 4000, height: 3000 })
+    expect(pictureSize(riff('VP8L', [0x2f, bits & 0xff, (bits >>> 8) & 0xff, (bits >>> 16) & 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toEqual({ type: 'image/webp', width: 1000, height: 2 })
+    expect(pictureSize(riff('VP8X', [0, 0, 0, 0, ...u24le(3999), ...u24le(2999), 0]))).toEqual({ type: 'image/webp', width: 4000, height: 3000 })
   })
 
   it('is null for SVG, text, a broken header and a picture without pixels', () => {

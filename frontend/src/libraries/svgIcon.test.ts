@@ -37,6 +37,23 @@ describe('cleaning SVG for a library', () => {
     expect(root.querySelector('circle')).not.toBeNull()
   })
 
+  it('keeps references inside the picture with spaces before a quote, and drops escapes of CSS and sets of images', () => {
+    const icon = cleanSvg(
+      `<svg xmlns="http://www.w3.org/2000/svg"><style>.a { fill: url( '#g') }</style>` +
+        `<rect fill="url( '#g')" stroke="url(\u00A0#g)" style="background: u\\72l(https://example.com/x)"/>` +
+        `<circle style="cursor: -webkit-image-set('https://example.com/x' 1x)"/><style>@\\69mport "https://example.com/a.css";</style></svg>`,
+    )!
+
+    const root = parse(icon.svg)
+    expect(root.querySelector('style')?.textContent).toBe(".a { fill: url( '#g') }")
+    expect(root.querySelectorAll('style')).toHaveLength(1)
+    expect(root.querySelector('rect')?.getAttribute('fill')).toBe("url( '#g')")
+    // Spaces of Unicode are no spaces of CSS, as the backend reads it.
+    expect(root.querySelector('rect')?.hasAttribute('stroke')).toBe(false)
+    expect(root.querySelector('rect')?.hasAttribute('style')).toBe(false)
+    expect(root.querySelector('circle')?.hasAttribute('style')).toBe(false)
+  })
+
   it('gives an SVG without its own size the size of its viewBox, and one side the other one', () => {
     expect(cleanSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32"/>')).toMatchObject({ width: 48, height: 32 })
     const half = cleanSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" viewBox="0 0 48 32"/>')!

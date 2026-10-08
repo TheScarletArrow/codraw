@@ -4,15 +4,30 @@ const XML_NS = 'http://www.w3.org/XML/1998/namespace'
 const XMLNS_NS = 'http://www.w3.org/2000/xmlns/'
 
 /** Elements that run code, show other documents or change the picture over time. */
-const FORBIDDEN = new Set(['script', 'foreignObject', 'set', 'animate', 'animateMotion', 'animateTransform', 'discard'])
+const FORBIDDEN = new Set(['script', 'foreignObject', 'set', 'animate', 'animateColor', 'animateMotion', 'animateTransform', 'discard'])
 
 const EMBEDDED_IMAGE = /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]*$/i
 
-/** A reference in a style to anything but an element of the picture, or a way to run code; `url('#a')` is fine. */
-const UNSAFE_STYLE = /url\(\s*(?!['"]?\s*#)|expression\s*\(|@import|javascript:|behavior\s*:/i
+/** The spaces of CSS, as the backend reads them: no other Unicode spaces. */
+const SPACE = '[ \\t\\n\\r\\f]'
 
-/** Attributes whose value may be a reference to an element: `url(#id)` is all they may hold. */
-const UNSAFE_REFERENCE = /url\(\s*(?!['"]?\s*#)/i
+/**
+ * `url(` of anything but an element of the picture: `url('#a')` is fine. The spaces before a quote are taken whole, as
+ * the quantifiers of the backend that give nothing back take them.
+ */
+const OUTSIDE_URL = `url\\(${SPACE}*(?!${SPACE})(?!['"]?${SPACE}*#)`
+
+/**
+ * A reference in a style to anything but an element of the picture, a way to run code, or an escape of CSS, which
+ * could hide either.
+ */
+const UNSAFE_STYLE = new RegExp(
+  `${OUTSIDE_URL}|expression${SPACE}*\\(|@import|javascript:|behavior${SPACE}*:|image-set${SPACE}*\\(|\\bsrc${SPACE}*\\(|\\\\`,
+  'i',
+)
+
+/** Attributes whose value may be a reference to an element: `url(#id)` is all they may hold, and no escape of CSS. */
+const UNSAFE_REFERENCE = new RegExp(`${OUTSIDE_URL}|image-set${SPACE}*\\(|\\\\`, 'i')
 
 /** An SVG picture made safe to keep in a library, with its size when it tells one. */
 export interface SvgIcon {

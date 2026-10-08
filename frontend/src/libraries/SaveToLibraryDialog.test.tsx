@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ShapeLibrary } from '../api/libraries.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { SaveToLibraryDialog } from './SaveToLibraryDialog.tsx'
-import type { LibraryShelf } from './useLibraries.ts'
+import type { LibraryShelf, SaveResult } from './useLibraries.ts'
 
 const LIBRARIES: ShapeLibrary[] = [
   { id: 'l1', name: 'Платежи', components: [] },
@@ -12,7 +12,7 @@ const LIBRARIES: ShapeLibrary[] = [
 ]
 const request = { x: 100, y: 50, point: { x: 300, y: 200 }, target: 'shape' as const, cellId: 'cell-1' }
 
-function open(libraries: ShapeLibrary[] | undefined, saved: string | null = null) {
+function open(libraries: ShapeLibrary[] | undefined, saved: SaveResult = { error: null, libraryId: 'l1' }) {
   const editor = createFakeEditor()
   editor.selectionComponent = vi.fn(() => ({ cells: [], image: null, name: 'Сервис' }))
   const shelf = { libraries, saveSelection: vi.fn(async () => saved) } as unknown as LibraryShelf
@@ -50,11 +50,30 @@ describe('SaveToLibraryDialog', () => {
   })
 
   it('stays open with the reason when saving fails', async () => {
-    const { onClose } = open(LIBRARIES, 'В библиотеке уже 200 компонентов — больше не поместится')
+    const { onClose } = open(LIBRARIES, { error: 'В библиотеке уже 200 компонентов — больше не поместится', libraryId: 'l1' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('В библиотеке уже 200 компонентов — больше не поместится')
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('saves again into the new library it made when the component did not fit into it, not into another new one', async () => {
+    const editor = createFakeEditor()
+    editor.selectionComponent = vi.fn(() => ({ cells: [], image: null, name: 'Сервис' }))
+    const saveSelection = vi.fn(async () => ({ error: 'Изображение больше 2 МБ', libraryId: 'l9' }))
+    const shelf = { libraries: [], saveSelection } as unknown as LibraryShelf
+    const { rerender } = render(<SaveToLibraryDialog editor={editor} shelf={shelf} request={request} onClose={() => {}} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await screen.findByRole('alert')
+    // The list of libraries has the new one by now.
+    const withNew = { libraries: [{ id: 'l9', name: 'Мои фигуры', components: [] }], saveSelection } as unknown as LibraryShelf
+    rerender(<SaveToLibraryDialog editor={editor} shelf={withNew} request={request} onClose={() => {}} />)
+    expect(screen.getByRole('combobox', { name: 'Библиотека' })).toHaveValue('l9')
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(saveSelection).toHaveBeenNthCalledWith(1, editor, { newLibrary: 'Мои фигуры' }, 'Сервис')
+    expect(saveSelection).toHaveBeenNthCalledWith(2, editor, { libraryId: 'l9' }, 'Сервис')
   })
 })

@@ -50,10 +50,18 @@ export function SaveToLibraryDialog({
     setSaving(true)
     setError(null)
     const target = choice === NEW_LIBRARY ? { newLibrary: newName.trim() } : { libraryId: choice }
-    const failure = await shelf.saveSelection(editor, target, name)
+    const saved = await shelf.saveSelection(editor, target, name)
     setSaving(false)
-    if (failure) setError(failure)
-    else close()
+    if (!saved.error) {
+      close()
+      return
+    }
+    setError(saved.error)
+    // A new library is made even when the component did not fit into it: saving again goes there, not into another one.
+    if (saved.libraryId) {
+      chosen.current = true
+      setChoice(saved.libraryId)
+    }
   }
   const ready = name.trim() !== '' && (choice !== NEW_LIBRARY || newName.trim() !== '')
 

@@ -654,6 +654,11 @@ export interface EditorState {
    * participant who may only view.
    */
   canPasteStyle: boolean
+  /**
+   * The selection has an element that is not locked to give a look to, e.g. of a component of a library (see
+   * {@link DiagramEditor.applyComponentStyle}); never for a participant who only views.
+   */
+  canTakeStyle: boolean
   /** {@link DiagramEditor.autoLayout} lays out the selection: it has two shapes, tables or groups at least. */
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
@@ -2223,9 +2228,10 @@ export function createDiagramEditor(
     })
     return true
   }
+  /** The selection has a cell that is not locked to give a look to. */
+  const canTakeStyle = () => [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
   /** A look is copied, and the selection has a cell that is not locked to paste it into. */
-  const canPasteStyle = () =>
-    styleClipboard.read() !== null && [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
+  const canPasteStyle = () => styleClipboard.read() !== null && canTakeStyle()
 
   // The label of a shape with auto width changes inside this event, so the new width is a part of the same change; a
   // field or a table also changes the references that the fields of other tables show.
@@ -2337,6 +2343,7 @@ export function createDiagramEditor(
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex() || isFreehand(cell)),
       canCopyStyle: styleSource() !== null,
       canPasteStyle: !readOnly && canPasteStyle(),
+      canTakeStyle: !readOnly && canTakeStyle(),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser: tool === 'laser',
       commentTool: tool === 'comment',
@@ -3617,10 +3624,10 @@ export function createDiagramEditor(
       if (destroyed) return false
       const holder = new Cell()
       cells.forEach((cell) => holder.insert(cell))
-      // The first shape that has a look of its own, inside groups too; without one, the first edge.
+      // The first shape, a text too, inside groups too; without shapes, the first edge.
       const shapes = (list: Cell[]): Cell[] =>
         list.flatMap((cell) => (cell.isEdge() ? [] : isGroup(cell) ? shapes(cell.getChildren()) : [cell]))
-      const source = shapes(cells).find((cell) => styleKindOf(cell) === 'shape') ?? cells.find((cell) => cell.isEdge())
+      const source = shapes(cells)[0] ?? cells.find((cell) => cell.isEdge())
       const kind = source ? styleKindOf(source) : null
       return source !== undefined && kind !== null && applyLook(copyLook(lookOf(source), kind))
     },

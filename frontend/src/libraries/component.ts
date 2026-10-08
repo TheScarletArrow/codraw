@@ -22,6 +22,52 @@ export class MissingPicturesError extends Error {
   }
 }
 
+/**
+ * A picture of the selection at an address that is neither inside it nor at another site, e.g. a stencil of draw.io
+ * (`img/lib/…`), which the canvas cannot show either; a library keeps no such reference.
+ */
+export class OutsidePicturesError extends Error {
+  constructor() {
+    super('The selection has pictures at addresses that a library does not keep')
+    this.name = 'OutsidePicturesError'
+  }
+}
+
+/** An SVG written into its address, as draw.io and CoDraw write them: base64, or encoded as an address. */
+const SVG_DATA_URI = /^data:image\/svg\+xml(;base64)?,(.*)$/is
+
+/** The text of an SVG in a `data:` address; `null` for one that cannot be decoded. */
+function svgOf(url: string): string | null {
+  const match = SVG_DATA_URI.exec(url)
+  if (!match) return null
+  try {
+    if (match[1] || /^[A-Za-z0-9+/=\s]*$/.test(match[2]!)) {
+      const binary = atob(match[2]!.replace(/\s/g, ''))
+      return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)))
+    }
+    return decodeURIComponent(match[2]!)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The picture that a library keeps instead of the address `url` of a picture of the selection: a picture of a board
+ * downloaded into a `data:` address, an SVG cleaned (see {@link cleanSvg}); `undefined` for one that stays as it is (a
+ * raster `data:` picture, an address of another site), `null` for one that cannot be kept.
+ */
+async function keptPicture(url: string): Promise<string | null | undefined> {
+  if (boardImageOf(url)) {
+    const picture = await downloadPicture(url)
+    if (!picture) throw new MissingPicturesError()
+    return blobToDataUri(picture)
+  }
+  if (/^https?:\/\//i.test(url) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(url)) return undefined
+  const svg = SVG_DATA_URI.test(url) ? svgOf(url) : null
+  const icon = svg === null ? null : cleanSvg(svg)
+  return icon ? svgDataUri(icon.svg) : null
+}
+
 /** A name of a component as the backend keeps it: without spaces around it, not longer than it allows. */
 export function componentName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').slice(0, COMPONENT_NAME_MAX_LENGTH).trim()
@@ -29,22 +75,19 @@ export function componentName(name: string): string {
 
 /**
  * The selection of the editor as a component of a library, named `name` or after the selection: what copying takes,
- * with the pictures of boards written into it, so that it shows them without access to the board, and a preview.
- * `null` when nothing is selected that copying takes; rejects with {@link MissingPicturesError} when a picture of the
- * board could not be downloaded.
+ * with the pictures of boards written into it, so that it shows them without access to the board, its SVG pictures
+ * cleaned as the backend expects, and a preview. `null` when nothing is selected that copying takes; rejects with
+ * {@link MissingPicturesError} when a picture of the board could not be downloaded, and with
+ * {@link OutsidePicturesError} for a picture that a library cannot keep.
  */
 export async function selectionDraft(editor: DiagramEditor, name?: string): Promise<ComponentDraft | null> {
   const selection = editor.selectionComponent()
   if (!selection) return null
-  const urls = [...new Set(cellImageUrls(selection.cells))].filter((url) => boardImageOf(url) !== null)
-  const pictures = await Promise.all(
-    urls.map(async (url) => {
-      const picture = await downloadPicture(url)
-      return [url, picture && (await blobToDataUri(picture))] as const
-    }),
-  )
-  if (pictures.some(([, uri]) => !uri)) throw new MissingPicturesError()
-  replaceCellImages(selection.cells, new Map(pictures as (readonly [string, string])[]))
+  const urls = [...new Set(cellImageUrls(selection.cells))]
+  const pictures = await Promise.all(urls.map(async (url) => [url, await keptPicture(url)] as const))
+  if (pictures.some(([, kept]) => kept === null)) throw new OutsidePicturesError()
+  const kept = pictures.filter((entry): entry is readonly [string, string] => typeof entry[1] === 'string')
+  replaceCellImages(selection.cells, new Map(kept))
   return {
     name: componentName(name ?? selection.name) || 'Компонент',
     content: cellsXml(selection.cells),
@@ -73,7 +116,8 @@ export async function fileDraft(file: File, imageLimit: number): Promise<Compone
   } else {
     const natural = pictureSize(new Uint8Array(await file.arrayBuffer()))
     if (!natural) return UNSUPPORTED_LIBRARY_IMAGE
-    picture = await blobToDataUri(file)
+    // Of the type its bytes have: a JPEG named «.png» is still a JPEG, which the backend checks.
+    picture = await blobToDataUri(new Blob([file], { type: natural.type }))
     size = fittedImageSize(natural.width, natural.height)
   }
   const content = cellsModelXml([

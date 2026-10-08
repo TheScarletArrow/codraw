@@ -27,7 +27,7 @@ function fakeShelf(change: Partial<LibraryShelf> = {}): LibraryShelf {
     createLibrary: vi.fn(async () => null),
     renameLibrary: vi.fn(async () => {}),
     deleteLibrary: vi.fn(async () => {}),
-    saveSelection: vi.fn(async () => null),
+    saveSelection: vi.fn(async () => ({ error: null, libraryId: null })),
     addSelection: vi.fn(async () => {}),
     replaceWithSelection: vi.fn(async () => {}),
     renameComponent: vi.fn(async () => {}),
@@ -149,10 +149,20 @@ describe('libraries in the panel of shapes', () => {
 
   it('renames a component, replaces it with the selection, applies its look and deletes it after a confirmation', async () => {
     const { editor, shelf } = open()
+    let menu = await menuOf('Меню компонента «Шлюз оплаты»')
+    expect(within(menu).getByRole('menuitem', { name: 'Заменить выделенным' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitem', { name: 'Применить стиль к выделенному' })).toBeDisabled()
+    await userEvent.keyboard('{Escape}')
+    // Edges alone take a look, but are no component.
+    act(() => editor.setState({ canTakeStyle: true }))
+    menu = await menuOf('Меню компонента «Шлюз оплаты»')
+    expect(within(menu).getByRole('menuitem', { name: 'Заменить выделенным' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitem', { name: 'Применить стиль к выделенному' })).toBeEnabled()
+    await userEvent.keyboard('{Escape}')
     act(() => editor.setState({ canCopy: true }))
     const gateway = LIBRARIES[0]!.components[0]!
 
-    let menu = await menuOf('Меню компонента «Шлюз оплаты»')
+    menu = await menuOf('Меню компонента «Шлюз оплаты»')
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Заменить выделенным' }))
     expect(shelf.replaceWithSelection).toHaveBeenCalledWith(editor, 'l1', 'c1')
 

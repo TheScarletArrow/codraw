@@ -11,6 +11,14 @@ import { LIBRARY_FILE_TYPES } from './component.ts'
 import { COMPONENT_DRAG_TYPE, componentDragData } from './drag.ts'
 import type { LibraryShelf } from './useLibraries.ts'
 
+/** What the selection of the canvas lets the menus do; read once for the whole panel. */
+interface Selection {
+  /** Something is selected that copying takes: it can be saved into a library. */
+  canCopy: boolean
+  /** Something is selected that can take a look. */
+  canTakeStyle: boolean
+}
+
 /** «с 1 компонентом», «с 3 компонентами». */
 const withComponents = (count: number) =>
   `с ${count} ${count % 10 === 1 && count % 100 !== 11 ? 'компонентом' : 'компонентами'}`
@@ -69,6 +77,8 @@ export function ComponentButton({
 export function LibrarySections({ shelf, editor }: { shelf: LibraryShelf; editor: DiagramEditor | null }) {
   const [creating, setCreating] = useState(false)
   const { libraries, unavailable, error, pending } = shelf
+  const { canCopy, canTakeStyle } = useEditorState(editor)
+  const selection = { canCopy: editor !== null && canCopy, canTakeStyle: editor !== null && canTakeStyle }
 
   return (
     <section aria-label="Мои библиотеки" className="flex flex-col gap-1">
@@ -121,13 +131,25 @@ export function LibrarySections({ shelf, editor }: { shelf: LibraryShelf; editor
           </p>
         )
       ) : (
-        libraries.map((library) => <LibrarySection key={library.id} shelf={shelf} editor={editor} library={library} />)
+        libraries.map((library) => (
+          <LibrarySection key={library.id} shelf={shelf} editor={editor} library={library} selection={selection} />
+        ))
       )}
     </section>
   )
 }
 
-function LibrarySection({ shelf, editor, library }: { shelf: LibraryShelf; editor: DiagramEditor | null; library: ShapeLibrary }) {
+function LibrarySection({
+  shelf,
+  editor,
+  library,
+  selection,
+}: {
+  shelf: LibraryShelf
+  editor: DiagramEditor | null
+  library: ShapeLibrary
+  selection: Selection
+}) {
   const [renaming, setRenaming] = useState(false)
   return (
     <div className="relative">
@@ -143,7 +165,7 @@ function LibrarySection({ shelf, editor, library }: { shelf: LibraryShelf; edito
           }}
         />
       ) : (
-        <LibraryMenu shelf={shelf} editor={editor} library={library} onRename={() => setRenaming(true)} />
+        <LibraryMenu shelf={shelf} editor={editor} library={library} selection={selection} onRename={() => setRenaming(true)} />
       )}
       <details open aria-label={library.name} className="group">
         <summary
@@ -160,7 +182,14 @@ function LibrarySection({ shelf, editor, library }: { shelf: LibraryShelf; edito
             <p className="px-2 text-xs text-muted-foreground">Пусто: добавьте выделенное или изображения в меню библиотеки</p>
           ) : (
             library.components.map((component) => (
-              <ComponentRow key={component.id} shelf={shelf} editor={editor} library={library} component={component} />
+              <ComponentRow
+                key={component.id}
+                shelf={shelf}
+                editor={editor}
+                library={library}
+                component={component}
+                selection={selection}
+              />
             ))
           )}
         </div>
@@ -174,11 +203,13 @@ function ComponentRow({
   editor,
   library,
   component,
+  selection,
 }: {
   shelf: LibraryShelf
   editor: DiagramEditor | null
   library: ShapeLibrary
   component: LibraryComponentSummary
+  selection: Selection
 }) {
   const [renaming, setRenaming] = useState(false)
   if (renaming) {
@@ -198,7 +229,14 @@ function ComponentRow({
   return (
     <div className="relative">
       <ComponentButton shelf={shelf} editor={editor} library={library} component={component} className="pr-7" />
-      <ComponentMenu shelf={shelf} editor={editor} library={library} component={component} onRename={() => setRenaming(true)} />
+      <ComponentMenu
+        shelf={shelf}
+        editor={editor}
+        library={library}
+        component={component}
+        selection={selection}
+        onRename={() => setRenaming(true)}
+      />
     </div>
   )
 }
@@ -290,14 +328,15 @@ function LibraryMenu({
   shelf,
   editor,
   library,
+  selection,
   onRename,
 }: {
   shelf: LibraryShelf
   editor: DiagramEditor | null
   library: ShapeLibrary
+  selection: Selection
   onRename: () => void
 }) {
-  const { canCopy } = useEditorState(editor)
   const files = useRef<HTMLInputElement>(null)
   const count = library.components.length
   return (
@@ -319,7 +358,7 @@ function LibraryMenu({
         {(close, confirm) => (
           <>
             <MenuItem
-              disabled={!editor || !canCopy}
+              disabled={!selection.canCopy}
               onSelect={() => {
                 close()
                 if (editor) void shelf.addSelection(editor, library.id)
@@ -368,15 +407,16 @@ function ComponentMenu({
   editor,
   library,
   component,
+  selection,
   onRename,
 }: {
   shelf: LibraryShelf
   editor: DiagramEditor | null
   library: ShapeLibrary
   component: LibraryComponentSummary
+  selection: Selection
   onRename: () => void
 }) {
-  const { canCopy } = useEditorState(editor)
   return (
     <Menu label={`Меню компонента «${component.name}»`} title={`Компонент «${component.name}»`}>
       {(close, confirm) => (
@@ -390,7 +430,7 @@ function ComponentMenu({
             Переименовать
           </MenuItem>
           <MenuItem
-            disabled={!editor || !canCopy}
+            disabled={!selection.canCopy}
             onSelect={() => {
               close()
               if (editor) void shelf.replaceWithSelection(editor, library.id, component.id)
@@ -399,7 +439,7 @@ function ComponentMenu({
             Заменить выделенным
           </MenuItem>
           <MenuItem
-            disabled={!editor || !canCopy}
+            disabled={!selection.canTakeStyle}
             onSelect={() => {
               close()
               if (editor) void shelf.applyStyle(editor, library.id, component)

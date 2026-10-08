@@ -26,6 +26,7 @@ class SvgIconsTest {
                   </defs>
                   <use xlink:href="#p" class="a"/>
                   <use href="#p" style="fill: url('#g')"/>
+                  <use href="#p" fill="url( '#g')" stroke="url(  #g)"/>
                   <image width="4" height="4" href="data:image/png;base64,iVBORw0KGgo="/>
                 </svg>
                 """.trimIndent(),
@@ -49,6 +50,11 @@ class SvgIconsTest {
             """<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill: url(https://example.com/x)"/></svg>""",
             """<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(https://example.com/a.css);</style></svg>""",
             """<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(https://example.com/#g)"/></svg>""",
+            """<svg xmlns="http://www.w3.org/2000/svg"><rect style="background-image: u\72l(https://example.com/x)"/></svg>""",
+            """<svg xmlns="http://www.w3.org/2000/svg"><style>@\69mport "https://example.com/a.css";</style></svg>""",
+            """<svg xmlns="http://www.w3.org/2000/svg"><rect style="cursor: -webkit-image-set('https://example.com/x' 1x)"/></svg>""",
+            """<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\72l(https://example.com/x)"/></svg>""",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect fill=\"url(\u00A0#g)\"/></svg>",
             """<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="https://inkscape.org"><i:meta/></svg>""",
             """<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="https://inkscape.org" i:label="x"/>""",
             """<?xml-stylesheet href="https://example.com/a.css"?><svg xmlns="http://www.w3.org/2000/svg"/>""",

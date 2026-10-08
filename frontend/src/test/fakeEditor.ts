@@ -78,6 +78,7 @@ export function createFakeEditor({
     canCopy: false,
     canCopyStyle: false,
     canPasteStyle: false,
+    canTakeStyle: false,
     layoutSelection: false,
     laser: false,
     commentTool: false,

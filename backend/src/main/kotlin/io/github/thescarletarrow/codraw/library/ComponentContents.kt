@@ -39,6 +39,9 @@ object ComponentContents {
 
     private val PREVIEW = Regex("^data:image/png;base64,([A-Za-z0-9+/]*={0,2})$")
 
+    /** The path of a picture of a board of the site, in a full address. */
+    private val SITE_PICTURE = Regex("^https?://[^/?#]*/api/(boards|libraries)/", RegexOption.IGNORE_CASE)
+
     private val RASTER_TYPES = mapOf(
         "png" to ImageType.PNG,
         "jpeg" to ImageType.JPEG,
@@ -68,7 +71,7 @@ object ComponentContents {
         if (elements.none { it.tagName == "mxCell" && (it.getAttribute("vertex") == "1" || it.getAttribute("edge") == "1") }) {
             throw InvalidComponentException("The component has no shapes and no edges")
         }
-        val pictures = elements.filter { it.hasAttribute("style") }.mapNotNull { imageOf(it.getAttribute("style")) }.toSet()
+        val pictures = elements.filter { it.hasAttribute("style") }.flatMap { imagesOf(it.getAttribute("style")) }.toSet()
         pictures.forEach { checkPicture(it, imageLimit) }
     }
 
@@ -77,22 +80,30 @@ object ComponentContents {
         val data = PREVIEW.matchEntire(preview)?.groupValues?.get(1)
             ?.takeIf { it.length <= (PREVIEW_MAX_BYTES + 2) / 3 * 4 }
             ?: throw InvalidComponentException("The preview is no small PNG as a data: address")
-        val bytes = Base64.getDecoder().decode(data)
+        val bytes = decodeBase64(data) ?: throw InvalidComponentException("The preview is no base64")
         val info = ImageFormats.sniff(bytes)
         if (bytes.size > PREVIEW_MAX_BYTES || info?.type != ImageType.PNG || info.width > PREVIEW_MAX_SIDE || info.height > PREVIEW_MAX_SIDE) {
             throw InvalidComponentException("The preview is no PNG of at most $PREVIEW_MAX_SIDE × $PREVIEW_MAX_SIDE pixels")
         }
     }
 
-    /** The value of the key `image` of a style of draw.io, `key=value` pairs separated by `;`. */
-    private fun imageOf(style: String): String? = style.split(';').firstNotNullOfOrNull { entry ->
+    /**
+     * The pictures of a style of draw.io, `key=value` pairs separated by `;`: the values of `image` and of the keys of
+     * other pictures, e.g. `indicatorImage`, every one of them — a key given twice is read by its last value.
+     */
+    private fun imagesOf(style: String): List<String> = style.split(';').mapNotNull { entry ->
         val separator = entry.indexOf('=')
-        if (separator > 0 && entry.substring(0, separator).trim() == "image") entry.substring(separator + 1).trim() else null
-    }?.takeIf { it.isNotEmpty() }
+        val key = if (separator > 0) entry.substring(0, separator).trim() else ""
+        if (key == "image" || key.endsWith("Image")) entry.substring(separator + 1).trim().takeIf { it.isNotEmpty() } else null
+    }
 
     private fun checkPicture(url: String, imageLimit: Long) {
         // Addresses of other sites stay, as in files of draw.io: browsers do not show them on CoDraw, nobody fetches them.
-        if (url.startsWith("https://", ignoreCase = true) || url.startsWith("http://", ignoreCase = true)) return
+        // The pictures of boards and libraries are not the component's, at whatever address of the site.
+        if (url.startsWith("https://", ignoreCase = true) || url.startsWith("http://", ignoreCase = true)) {
+            if (SITE_PICTURE.containsMatchIn(url)) throw InvalidComponentException("A picture of the component is a picture of the site")
+            return
+        }
         if (!url.startsWith("data:", ignoreCase = true)) {
             throw InvalidComponentException("A picture of the component is not inside it: ${url.take(100)}")
         }

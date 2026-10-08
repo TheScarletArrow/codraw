@@ -7,7 +7,7 @@ import type { ShapeLibrary } from '../api/libraries.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { mockFetch, type MockResponse } from '../test/render.tsx'
-import { useLibraries } from './useLibraries.ts'
+import { OUTSIDE_PICTURES, useLibraries, type SaveResult } from './useLibraries.ts'
 
 vi.mock('./preview.ts', () => ({
   previewOf: vi.fn(async () => null),
@@ -60,12 +60,12 @@ describe('useLibraries', () => {
     })
     const editor = editorWithSelection()
 
-    let failure: string | null = 'not yet'
+    let saved: SaveResult | null = null
     await act(async () => {
-      failure = await result.current.saveSelection(editor, { newLibrary: 'Мои фигуры' }, 'Сервис')
+      saved = await result.current.saveSelection(editor, { newLibrary: 'Мои фигуры' }, 'Сервис')
     })
 
-    expect(failure).toBeNull()
+    expect(saved).toEqual({ error: null, libraryId: 'l2' })
     expect(sent(fetchMock, 'POST', '/api/libraries')).toEqual([{ name: 'Мои фигуры' }])
     const [component] = sent(fetchMock, 'POST', '/api/libraries/l2/components')
     expect(component).toMatchObject({ name: 'Сервис', preview: 'data:image/png;base64,AAAA' })
@@ -75,16 +75,32 @@ describe('useLibraries', () => {
   it('tells why saving failed, in words', async () => {
     const { result } = open({ 'POST /api/libraries/l1/components': { status: 409, body: { limit: 200, scope: 'components' } } })
 
-    let failure: string | null = null
+    let saved: SaveResult | null = null
     await act(async () => {
-      failure = await result.current.saveSelection(editorWithSelection(), { libraryId: 'l1' })
+      saved = await result.current.saveSelection(editorWithSelection(), { libraryId: 'l1' })
     })
-    expect(failure).toBe('В библиотеке уже 200 компонентов — больше не поместится')
+    expect(saved).toEqual({ error: 'В библиотеке уже 200 компонентов — больше не поместится', libraryId: 'l1' })
 
     await act(() => result.current.addSelection(editorWithSelection(), 'l1'))
     expect(result.current.error).toBe('В библиотеке уже 200 компонентов — больше не поместится')
     act(() => result.current.dismissError())
     expect(result.current.error).toBeNull()
+  })
+
+  it('tells to take out of the selection a picture at an address that a library does not keep', async () => {
+    const { result, fetchMock } = open()
+    const editor = createFakeEditor()
+    const stencil = new Cell('', new Geometry(0, 0, 50, 50), { shape: 'image', image: 'img/lib/azure2/compute/VM.svg' } as never)
+    stencil.setVertex(true)
+    editor.selectionComponent = vi.fn(() => ({ cells: [stencil], image: null, name: 'VM' }))
+
+    let saved: SaveResult | null = null
+    await act(async () => {
+      saved = await result.current.saveSelection(editor, { libraryId: 'l1' })
+    })
+
+    expect(saved).toEqual({ error: OUTSIDE_PICTURES, libraryId: 'l1' })
+    expect(sent(fetchMock, 'POST', '/api/libraries/l1/components')).toEqual([])
   })
 
   it('adds a copy of a component, downloading its content once for the time it was changed', async () => {

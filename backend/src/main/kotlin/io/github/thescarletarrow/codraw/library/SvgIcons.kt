@@ -17,18 +17,27 @@ object SvgIcons {
     private const val XLINK = "http://www.w3.org/1999/xlink"
 
     /** Elements that run code, show other documents or change the picture over time. */
-    private val FORBIDDEN = setOf("script", "foreignObject", "set", "animate", "animateMotion", "animateTransform", "discard")
+    private val FORBIDDEN = setOf("script", "foreignObject", "set", "animate", "animateColor", "animateMotion", "animateTransform", "discard")
 
     private val EMBEDDED_IMAGE = Regex("^data:image/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\\s]*$", RegexOption.IGNORE_CASE)
 
-    /**
-     * A reference in a style to anything but an element of the picture, or a way to run code. The quantifiers do not
-     * give back: `url('#a')` must not pass for `url(` before a quote.
-     */
-    private val UNSAFE_STYLE = Regex("url\\(\\s*+['\"]?+\\s*+(?!#)|expression\\s*\\(|@import|javascript:|behavior\\s*:", RegexOption.IGNORE_CASE)
+    /** The spaces of CSS; other Unicode spaces are no spaces there. */
+    private const val SPACE = "[ \\t\\n\\r\\f]"
 
-    /** Attributes whose value may be a reference to an element: `url(#id)` is all they may hold. */
-    private val UNSAFE_REFERENCE = Regex("url\\(\\s*+['\"]?+\\s*+(?!#)", RegexOption.IGNORE_CASE)
+    /** `url(` of anything but an element of the picture: the quantifiers give nothing back, so `url('#a')` is fine. */
+    private const val OUTSIDE_URL = "url\\($SPACE*+['\"]?+$SPACE*+(?!#)"
+
+    /**
+     * A reference in a style to anything but an element of the picture, a way to run code, or an escape of CSS, which
+     * could hide either.
+     */
+    private val UNSAFE_STYLE = Regex(
+        "$OUTSIDE_URL|expression$SPACE*\\(|@import|javascript:|behavior$SPACE*:|image-set$SPACE*\\(|\\bsrc$SPACE*\\(|\\\\",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Attributes whose value may be a reference to an element: `url(#id)` is all they may hold, and no escape of CSS. */
+    private val UNSAFE_REFERENCE = Regex("$OUTSIDE_URL|image-set$SPACE*\\(|\\\\", RegexOption.IGNORE_CASE)
 
     /**
      * The bytes are an SVG document whose root is `<svg>`, without DTD and processing instructions, of SVG elements only,

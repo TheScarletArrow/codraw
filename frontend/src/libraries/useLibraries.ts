@@ -17,7 +17,7 @@ import {
   type ShapeLibrary,
 } from '../api/libraries.ts'
 import type { DiagramEditor, Point } from '../diagram/editor.ts'
-import { fileDraft, MissingPicturesError, selectionDraft } from './component.ts'
+import { fileDraft, MissingPicturesError, OutsidePicturesError, selectionDraft } from './component.ts'
 import { readComponentDrag } from './drag.ts'
 import { COMPONENT_LOAD_FAILED, LIBRARY_CHANGE_FAILED, LIBRARY_SAVE_FAILED, libraryError } from './messages.ts'
 
@@ -25,10 +25,19 @@ import { COMPONENT_LOAD_FAILED, LIBRARY_CHANGE_FAILED, LIBRARY_SAVE_FAILED, libr
 const DEFAULT_IMAGE_LIMIT = 2 * 1024 * 1024
 
 export const MISSING_PICTURES = 'Не удалось взять изображения выделения с доски — проверьте связь'
+export const OUTSIDE_PICTURES =
+  'В выделении есть изображения по ссылкам, которые библиотека не хранит, например значки draw.io, — уберите их из выделения'
 export const NOTHING_SELECTED = 'Выделите фигуры, которые нужно сохранить'
 
 /** Where a component is saved: a library of the user, or a new one of that name. */
 export type SaveTarget = { libraryId: string } | { newLibrary: string }
+
+/** How saving went: why it failed, or `null` once it is saved, and the library it went to, a new one too. */
+export interface SaveResult {
+  error: string | null
+  /** The library of the component; a new library stays even when the component did not go into it. */
+  libraryId: string | null
+}
 
 /**
  * The libraries of the user on a page of a board: their list, what is being done with them, and the changes. Changes
@@ -48,8 +57,8 @@ export interface LibraryShelf {
   createLibrary(name: string): Promise<ShapeLibrary | null>
   renameLibrary(libraryId: string, name: string): Promise<void>
   deleteLibrary(libraryId: string): Promise<void>
-  /** Saves the selection of the editor as a component; resolves to why it was not saved, or `null` once it is. */
-  saveSelection(editor: DiagramEditor, target: SaveTarget, name?: string): Promise<string | null>
+  /** Saves the selection of the editor as a component; resolves to how it went. */
+  saveSelection(editor: DiagramEditor, target: SaveTarget, name?: string): Promise<SaveResult>
   /** Saves the selection of the editor into the library with the name of the selection; a failure becomes the error. */
   addSelection(editor: DiagramEditor, libraryId: string): Promise<void>
   /** Puts the selection of the editor into the component instead of what it had; its copies on boards stay. */
@@ -66,9 +75,12 @@ export interface LibraryShelf {
   applyStyle(editor: DiagramEditor, libraryId: string, component: LibraryComponentSummary): Promise<void>
 }
 
-/** Why saving failed, in words: the pictures of the board, or what the backend answered. */
-const messageOf = (failure: unknown, fallback: string) =>
-  failure instanceof MissingPicturesError ? MISSING_PICTURES : libraryError(failure, fallback)
+/** Why saving failed, in words: the pictures of the selection, or what the backend answered. */
+function messageOf(failure: unknown, fallback: string): string {
+  if (failure instanceof MissingPicturesError) return MISSING_PICTURES
+  if (failure instanceof OutsidePicturesError) return OUTSIDE_PICTURES
+  return libraryError(failure, fallback)
+}
 
 /** A component as of the time it was changed: its content is the same until it changes again. */
 type ComponentVersion = Pick<LibraryComponentSummary, 'id' | 'updatedAt'>
@@ -115,16 +127,17 @@ export function useLibraries(): LibraryShelf {
         setError(libraryError(failure, COMPONENT_LOAD_FAILED))
       }
     }
-    const saveSelection = async (editor: DiagramEditor, target: SaveTarget, name?: string) => {
+    const saveSelection = async (editor: DiagramEditor, target: SaveTarget, name?: string): Promise<SaveResult> => {
       setPending('Сохранение в библиотеку…')
+      let libraryId = 'libraryId' in target ? target.libraryId : null
       try {
         const draft = await selectionDraft(editor, name)
-        if (!draft) return NOTHING_SELECTED
-        const libraryId = 'libraryId' in target ? target.libraryId : (await createLibrary(target.newLibrary)).id
-        await addComponent(libraryId, draft)
-        return null
+        if (!draft) return { error: NOTHING_SELECTED, libraryId }
+        if ('newLibrary' in target) libraryId = (await createLibrary(target.newLibrary)).id
+        await addComponent(libraryId!, draft)
+        return { error: null, libraryId }
       } catch (failure) {
-        return messageOf(failure, LIBRARY_SAVE_FAILED)
+        return { error: messageOf(failure, LIBRARY_SAVE_FAILED), libraryId }
       } finally {
         setPending(null)
         await refresh()
@@ -145,7 +158,7 @@ export function useLibraries(): LibraryShelf {
       saveSelection,
       async addSelection(editor: DiagramEditor, libraryId: string) {
         setError(null)
-        const failure = await saveSelection(editor, { libraryId })
+        const { error: failure } = await saveSelection(editor, { libraryId })
         if (failure) setError(failure)
       },
       async replaceWithSelection(editor: DiagramEditor, libraryId: string, componentId: string) {

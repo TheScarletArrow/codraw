@@ -191,6 +191,21 @@ describe('components of libraries in the editor', () => {
     expect(stored(doc, target).style.fillColor).toBeUndefined()
   })
 
+  it('takes the look of a text of a component, and of its edge only without shapes', async () => {
+    const text = component((editor) => {
+      const label = editor.addShape('text', { x: 0, y: 0 })!
+      editor.graph.setSelectionCell(label)
+      editor.setColor('font', '#c0392b')
+      return [label]
+    })
+    const { doc, editor } = open()
+    const target = shape(editor, 0, 0, 'Прямоугольник')
+    editor.graph.setSelectionCell(target)
+
+    expect(await editor.applyComponentStyle(text)).toBe(true)
+    expect(stored(doc, target).style.fontColor).toBe('#c0392b')
+  })
+
   it('leaves a locked shape as it is when it applies the look of a component', async () => {
     const content = component((editor) => {
       const sample = shape(editor, 0, 0)

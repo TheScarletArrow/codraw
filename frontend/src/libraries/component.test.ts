@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseDrawio } from '../drawio/parse.ts'
 import { boardImageUrl, imageStyle } from '../diagram/images.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
-import { componentName, fileDraft, MissingPicturesError, selectionDraft } from './component.ts'
+import { componentName, fileDraft, MissingPicturesError, OutsidePicturesError, selectionDraft } from './component.ts'
 
 vi.mock('./preview.ts', () => ({
   previewOf: vi.fn(async () => 'data:image/png;base64,cHJldmlldw=='),
@@ -50,6 +50,17 @@ describe('components of picture files', () => {
 
     const [dot] = await pictures(((await fileDraft(plain, 1024 * 1024)) as { content: string }).content)
     expect(dot).toMatchObject({ width: 64, height: 64 })
+  })
+
+  it('writes a picture of the type of its bytes, whatever the name of the file says', async () => {
+    const jpeg = new File([new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 0, 33, 0, 64, 3, 0, 0, 0, 0, 0, 0, 0, 0])], 'photo.png', {
+      type: 'image/png',
+    })
+
+    const [shape] = await pictures(((await fileDraft(jpeg, 1024)) as { content: string }).content)
+
+    expect(shape!.image).toMatch(/^data:image\/jpeg;base64,/)
+    expect(shape).toMatchObject({ width: 64, height: 33 })
   })
 
   it('tells why a file does not fit: its format, its size, or a broken file', async () => {
@@ -101,6 +112,21 @@ describe('components of the selection', () => {
       `data:image/png;base64,${btoa('png')}`,
       'https://example.com/a.png',
     ])
+  })
+
+  it('cleans the SVG pictures of the selection, e.g. of a file of draw.io, as the backend expects them', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><foreignObject><div xmlns="http://www.w3.org/1999/xhtml">x</div></foreignObject><rect width="10" height="10"/></svg>'
+    const encoded = `data:image/svg+xml,${encodeURIComponent(svg)}`
+
+    const [shape] = await pictures((await selectionDraft(editorWith([encoded])))!.content)
+
+    const written = atob(String(shape!.image).replace('data:image/svg+xml;base64,', ''))
+    expect(written).toContain('<rect')
+    expect(written).not.toContain('foreignObject')
+  })
+
+  it('fails for a picture at an address that a library does not keep, e.g. a stencil of draw.io', async () => {
+    await expect(selectionDraft(editorWith(['img/lib/azure2/compute/VM.svg']))).rejects.toBeInstanceOf(OutsidePicturesError)
   })
 
   it('takes the given name, and fails when a picture of the board cannot be downloaded', async () => {

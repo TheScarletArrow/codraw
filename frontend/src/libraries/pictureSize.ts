@@ -1,5 +1,7 @@
-/** The size in pixels of a raster picture, from the header of its file. */
+/** The format and the size in pixels of a raster picture, from the header of its file. */
 export interface PictureSize {
+  /** The type of the format its bytes have, whatever the name or the type of the file says. */
+  type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
   width: number
   height: number
 }
@@ -10,8 +12,9 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 const START_OF_FRAME = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf])
 
 /**
- * The size of a PNG, JPEG, GIF or WebP from the header of its file, as the backend reads it (`ImageFormats`): no need to
- * decode the picture, which a test without a canvas could not. `null` for any other file or a header without sizes.
+ * The format and the size of a PNG, JPEG, GIF or WebP from the header of its file, as the backend reads them
+ * (`ImageFormats`): no need to decode the picture, which a test without a canvas could not. `null` for any other file or
+ * a header without sizes.
  */
 export function pictureSize(bytes: Uint8Array): PictureSize | null {
   const size = png(bytes) ?? gif(bytes) ?? webp(bytes) ?? jpeg(bytes)
@@ -28,13 +31,13 @@ const u32be = (bytes: Uint8Array, index: number) =>
 
 function png(bytes: Uint8Array): PictureSize | null {
   if (bytes.length < 24 || PNG_SIGNATURE.some((byte, index) => bytes[index] !== byte) || ascii(bytes, 12, 4) !== 'IHDR') return null
-  return { width: u32be(bytes, 16), height: u32be(bytes, 20) }
+  return { type: 'image/png', width: u32be(bytes, 16), height: u32be(bytes, 20) }
 }
 
 function gif(bytes: Uint8Array): PictureSize | null {
   const signature = ascii(bytes, 0, 6)
   if (bytes.length < 10 || (signature !== 'GIF87a' && signature !== 'GIF89a')) return null
-  return { width: u16le(bytes, 6), height: u16le(bytes, 8) }
+  return { type: 'image/gif', width: u16le(bytes, 6), height: u16le(bytes, 8) }
 }
 
 function webp(bytes: Uint8Array): PictureSize | null {
@@ -42,14 +45,14 @@ function webp(bytes: Uint8Array): PictureSize | null {
   switch (ascii(bytes, 12, 4)) {
     case 'VP8 ':
       if (bytes[23] !== 0x9d || bytes[24] !== 0x01 || bytes[25] !== 0x2a) return null
-      return { width: u16le(bytes, 26) & 0x3fff, height: u16le(bytes, 28) & 0x3fff }
+      return { type: 'image/webp', width: u16le(bytes, 26) & 0x3fff, height: u16le(bytes, 28) & 0x3fff }
     case 'VP8L': {
       if (bytes[20] !== 0x2f) return null
       const bits = (bytes[21]! | (bytes[22]! << 8) | (bytes[23]! << 16) | (bytes[24]! << 24)) >>> 0
-      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 }
+      return { type: 'image/webp', width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 }
     }
     case 'VP8X':
-      return { width: u24le(bytes, 24) + 1, height: u24le(bytes, 27) + 1 }
+      return { type: 'image/webp', width: u24le(bytes, 24) + 1, height: u24le(bytes, 27) + 1 }
     default:
       return null
   }
@@ -70,7 +73,7 @@ function jpeg(bytes: Uint8Array): PictureSize | null {
       if (length < 2) return null
       if (START_OF_FRAME.has(marker)) {
         if (index + 8 >= bytes.length) return null
-        return { width: u16be(bytes, index + 7), height: u16be(bytes, index + 5) }
+        return { type: 'image/jpeg', width: u16be(bytes, index + 7), height: u16be(bytes, index + 5) }
       }
       index += 2 + length
     }
