@@ -84,6 +84,16 @@ describe('layers in the editor', () => {
     expect(layersOf(bob.editor).map((layer) => layer.id)).toEqual([LAYER_CELL_ID])
   })
 
+  it('puts a new shape aside of the shapes of other layers it would cover', () => {
+    const { editor } = open()
+    const service = editor.addShape('service', { x: 0, y: 0 })!
+    editor.addLayer()
+
+    const database = editor.addShape('service', { x: 0, y: 0 })!
+
+    expect(database.getGeometry()!.x).toBeGreaterThan(service.getGeometry()!.x)
+  })
+
   it('names new layers by their number, past the names that are taken', () => {
     const { editor } = open()
     editor.addLayer()

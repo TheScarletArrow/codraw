@@ -3365,9 +3365,8 @@ export function createDiagramEditor(
       const size = graph.getGridSize()
       const snap = (value: number) => Math.round(value / size) * size
       const parent = graph.getDefaultParent()
-      const vertices = Array.from({ length: parent.getChildCount() }, (_, index) => parent.getChildAt(index)).filter(
-        (cell) => cell.isVertex(),
-      )
+      // The shapes the participant sees, of every layer.
+      const vertices = pageChildren().filter((cell) => cell.isVertex() && isShown(cell))
       const occupied = (cx: number, cy: number) =>
         vertices.some((cell) => {
           const geometry = cell.getGeometry()
