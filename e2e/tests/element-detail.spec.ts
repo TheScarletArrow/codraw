@@ -50,8 +50,8 @@ test('«Детализировать» makes the page of the containers of a sys
 
   // The page of detail is one undo step of the first page.
   await tab(alice, 'Страница 1').click()
-  await alice.getByTestId('diagram-canvas').focus()
-  await alice.keyboard.press('Control+z')
+  await expect(alice.getByRole('button', { name: 'Отменить' })).toBeEnabled()
+  await alice.getByRole('button', { name: 'Отменить' }).click()
   await expect.poll(() => tabNames(alice)).toEqual(['Страница 1'])
   await expect.poll(() => tabNames(bob)).toEqual(['Страница 1'])
 
