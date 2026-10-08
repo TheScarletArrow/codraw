@@ -275,6 +275,50 @@ describe('sequence diagrams in the editor', () => {
     expect(values(diagram, 'participant')).toEqual(['Клиент', 'Сервис'])
   })
 
+  it('shows no condition of a branch whose frame another participant took away', () => {
+    const { doc, editor } = open()
+    const diagram = newDiagram(editor)
+    const [, answer] = parts(diagram, 'message')
+    editor.graph.setSelectionCell(answer!)
+    editor.addSequenceFrame('alt')
+    editor.graph.stopEditing(false)
+    editor.addSequenceBranch()
+    type(editor, 'ошибка', 'Tab')
+    editor.graph.stopEditing(false)
+    const branch = parts(diagram, 'else')[0]!
+    expect(editor.graph.getLabel(branch)).toBe('[ошибка]')
+
+    // As when the participant who added the frame undoes it: its frame and its end go, the branch of another stays.
+    doc.transact(() => {
+      for (const kind of ['frame', 'end']) getCells(doc).delete(parts(diagram, kind)[0]!.getId()!)
+    }, 'remote')
+    expect(parts(diagram, 'else')).toEqual([branch])
+    expect(editor.graph.getLabel(branch)).toBe('')
+  })
+
+  it('puts a message dropped under the tab of a frame into the frame', () => {
+    const { editor } = open()
+    const diagram = newDiagram(editor)
+    const [request, answer] = parts(diagram, 'message')
+    editor.graph.setSelectionCell(answer!)
+    editor.addSequenceMessage()
+    type(editor, 'Три', 'Tab')
+    editor.graph.stopEditing(false)
+    editor.graph.setSelectionCells([request!, answer!])
+    editor.addSequenceFrame('loop')
+    editor.graph.stopEditing(false)
+    const rows = () => diagram.getChildren().filter((child) => partOf(child) !== 'participant')
+    const third = rows().at(-1)!
+    expect(rows().map((child) => partOf(child))).toEqual(['frame', 'message', 'message', 'end', 'message'])
+
+    // Above the first row of the frame, in the upper half of the frame: inside it, before that row.
+    const requestState = editor.graph.getView().getState(request!)!
+    const handler = editor.graph.getPlugin<SelectionHandler>('SelectionHandler')!
+    handler.cell = third
+    handler.moveCells([third], 1, 1, false, null, new MouseEvent('mouseup', { clientX: requestState.x + 5, clientY: requestState.y - 2 }))
+    expect(rows().map((child) => String(child.getValue() ?? '') || partOf(child))).toEqual(['frame', 'Три', 'Запрос', 'Ответ', 'end'])
+  })
+
   it('keeps parts out of what changes shapes on their own, and copies the whole diagram', () => {
     const { editor } = open()
     const diagram = newDiagram(editor)

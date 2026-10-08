@@ -129,10 +129,36 @@ describe('sequence diagrams of Mermaid', () => {
   it('reads a line of a message with its activation', () => {
     expect(parseMessageLine('Клиент->>+API: POST /login')).toEqual({ from: 'Клиент', to: 'API', arrow: 'sync', activation: '+', text: 'POST /login' })
     expect(parseMessageLine('API-->>-Клиент: 200: OK')).toEqual({ from: 'API', to: 'Клиент', arrow: 'reply', activation: '-', text: '200: OK' })
+    expect(parseMessageLine('web->>auth-service: login')).toMatchObject({ from: 'web', to: 'auth-service', arrow: 'sync' })
+    expect(parseMessageLine('auth-service-->>-web: token')).toMatchObject({ from: 'auth-service', to: 'web', activation: '-' })
     expect(parseMessageLine('Просто текст')).toBeNull()
     expect(parseMessageLine('A->>B без двоеточия')).toBeNull()
     // A text of several lines is no line of Mermaid, even if its last line looks like one.
     expect(parseMessageLine('Шаг 1\nA->>B: x')).toBeNull()
+  })
+
+  it('reads participants with hyphens in their names', () => {
+    const read = named(parse('sequenceDiagram\n  participant auth-service\n  web->>auth-service: login\n  auth-service-->>web: token\n').diagram)
+    expect(read.participants).toEqual([
+      ['auth-service', 'participant'],
+      ['web', 'participant'],
+    ])
+    expect(read.steps.map((step) => step.slice(0, 5))).toEqual([
+      ['message', 'web', 'sync', 'auth-service', 'login'],
+      ['message', 'auth-service', 'reply', 'web', 'token'],
+    ])
+  })
+
+  it('reads `par_over` as a frame `par`, so that its `end` closes it and not the frame around it', () => {
+    const read = named(parse('sequenceDiagram\n  loop каждую минуту\n  par_over опрос\n  A->>B: x\n  end\n  A->>B: y\n  end\n').diagram)
+    expect(read.steps.map((step) => step.slice(0, 2))).toEqual([
+      ['frame', 'loop'],
+      ['frame', 'par'],
+      ['message', 'A'],
+      ['end'],
+      ['message', 'A'],
+      ['end'],
+    ])
   })
 
   it('writes a diagram back as Mermaid, which reads as the same diagram', () => {
@@ -178,7 +204,6 @@ describe('sequence diagrams of Mermaid', () => {
     participant P1 as Сервис заказов
     participant P2 as end
     P1->>P2: раз#59; два<br>три #35;4
-    deactivate P2
     activate P1
     loop каждую минуту
       P2->>P1: опрос
@@ -188,7 +213,31 @@ describe('sequence diagrams of Mermaid', () => {
     end
 `)
     const back = named(parse(text).diagram)
-    expect(back.steps[0]).toEqual(['message', 'Сервис заказов', 'sync', 'end', 'раз; два\nтри #4', ['Сервис заказов'], ['end']])
+    // `end` had no activation to end: the diagram draws none, and Mermaid would draw nothing for it.
+    expect(back.steps[0]).toEqual(['message', 'Сервис заказов', 'sync', 'end', 'раз; два\nтри #4', ['Сервис заказов'], []])
+  })
+
+  it('writes only the activations that the diagram draws, ending before starting as the diagram does', () => {
+    const builder = new SequenceBuilder()
+    const client = builder.participant('Клиент')
+    const service = builder.participant('Сервис')
+    builder.message(service, client, 'Ответ', 'reply', { deactivate: [service] })
+    builder.message(client, service, 'Запрос', 'sync', { activate: [service] })
+    builder.message(client, service, 'Ещё', 'sync', { deactivate: [service] })
+    builder.message(client, client, 'Сам', 'sync', { activate: [client] })
+    builder.message(client, client, 'Снова', 'sync', { activate: [client], deactivate: [client] })
+    expect(sequenceMermaid(builder.diagram)).toBe(`sequenceDiagram
+    participant Клиент
+    participant Сервис
+    Сервис-->>Клиент: Ответ
+    Клиент->>+Сервис: Запрос
+    Клиент->>Сервис: Ещё
+    deactivate Сервис
+    Клиент->>+Клиент: Сам
+    Клиент->>Клиент: Снова
+    deactivate Клиент
+    activate Клиент
+`)
   })
 
   it('lays the cells of a sequence diagram out at a point and sums it up', async () => {

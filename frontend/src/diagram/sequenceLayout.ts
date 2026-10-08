@@ -53,7 +53,8 @@ const NOTE_GAP = 12
 /** How far a note over several participants reaches beyond their lifelines. */
 const NOTE_OVERHANG = 16
 /** Rows of frames: the tab of the kind, a branch with its condition and the end, and the room around what a frame holds. */
-const FRAME_HEADER = TAB_HEIGHT + 8
+/** Room of the tab of a frame above its first row: where the frame begins as a row of the diagram. */
+export const FRAME_HEADER = TAB_HEIGHT + 8
 const BRANCH_GAP = 10
 const FRAME_FOOTER = 8
 const FRAME_PADDING = 12

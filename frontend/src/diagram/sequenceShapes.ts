@@ -37,7 +37,15 @@ import {
   type SequenceDiagram,
   type SequencePart,
 } from './sequence.ts'
-import { BAR_WIDTH, layoutSequence, SELF_LABEL_X, SELF_WIDTH, TAB_HEIGHT, type SequenceLayout } from './sequenceLayout.ts'
+import {
+  BAR_WIDTH,
+  FRAME_HEADER,
+  layoutSequence,
+  SELF_LABEL_X,
+  SELF_WIDTH,
+  TAB_HEIGHT,
+  type SequenceLayout,
+} from './sequenceLayout.ts'
 import { measureLabel } from './textMeasure.ts'
 
 /**
@@ -190,7 +198,9 @@ export class SequenceDiagramLayout extends GraphLayout {
         const kind = partOf(child)
         if (child === cell || !kind || kind === 'participant') continue
         const step = layout.steps.get(child.getId() ?? '')
-        if (step && !step.hidden && step.box.y + step.box.height / 2 > dropped) {
+        // The box of a frame takes in its rows: as a row, a frame is its tab, and a part dropped below the tab goes inside.
+        const middle = step ? step.box.y + (kind === 'frame' ? FRAME_HEADER : step.box.height) / 2 : 0
+        if (step && !step.hidden && middle > dropped) {
           target = child
           break
         }
@@ -286,8 +296,10 @@ export function configureSequences(graph: Graph): () => void {
       case 'message':
         return messageLabel(label, sequenceLayoutOf(cell.getParent()!).messages.get(cell.getId() ?? '')?.number ?? null)
       case 'frame':
-      case 'else':
         return conditionLabel(label)
+      case 'else':
+        // A branch left outside any frame, e.g. after another participant undid the frame, shows no condition either.
+        return sequenceLayoutOf(cell.getParent()!).steps.get(cell.getId() ?? '')?.hidden ? '' : conditionLabel(label)
       case 'end':
         return ''
       default:

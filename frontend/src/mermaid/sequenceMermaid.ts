@@ -30,8 +30,11 @@ const ARROWS: readonly [string, MessageArrow][] = [
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** A name of a participant in a message: one line without arrows, colons, pluses, commas or semicolons. */
-const NAME = String.raw`[^\-<>:+,;\r\n]+?`
+/**
+ * A name of a participant in a message: one line without arrows, colons, pluses, commas or semicolons. A hyphen that
+ * begins no arrow belongs to the name, e.g. `auth-service`.
+ */
+const NAME = String.raw`(?:[^\-<>:+,;\r\n]|-(?![->x)]))+?`
 const MESSAGE = new RegExp(
   String.raw`^\s*(${NAME})\s*(${ARROWS.map(([arrow]) => escapeRegExp(arrow)).join('|')})\s*([+-]?)\s*(${NAME})\s*:(.*)$`,
   'u',
@@ -148,8 +151,10 @@ export function parseSequence(lines: string[]): SequenceMermaid {
       builder.note(names[0]!, names.at(-1)!, mermaidText(note[3]!), placement)
       continue
     }
-    if (FRAME_WORDS.has(lower as FrameKind)) {
-      builder.frame(lower as FrameKind, mermaidText(line.slice(word.length)))
+    // `par_over` is a `par` drawn over the participants of its rows.
+    const frameKind = lower === 'par_over' ? 'par' : lower
+    if (FRAME_WORDS.has(frameKind as FrameKind)) {
+      builder.frame(frameKind as FrameKind, mermaidText(line.slice(word.length)))
       blocks.push('frame')
       continue
     }
@@ -230,7 +235,8 @@ const ARROW_TEXT: Record<MessageArrow, string> = { sync: '->>', async: '-)', rep
  * The diagram as a `sequenceDiagram` of Mermaid. A participant's id is its name when the name is one word, else `P1`,
  * `P2`, … with the name after `as`. Services, databases and queues are plain participants: the `@{ "type" }` of
  * Mermaid is not in all of its versions. An activation that `+` before the receiver or `-` before it says is written so,
- * others as `activate` and `deactivate` after the message.
+ * others as `activate` and `deactivate` after the message. Only the activations that the diagram draws are written: Mermaid
+ * draws nothing for a diagram that ends an activation which is not open.
  */
 export function sequenceMermaid(diagram: SequenceDiagram): string {
   const lines = ['sequenceDiagram']
@@ -251,17 +257,26 @@ export function sequenceMermaid(diagram: SequenceDiagram): string {
   })
   const idOf = (key: string) => ids.get(key) ?? [...ids.values()][0] ?? 'P1'
   const frames: FrameKind[] = []
+  // The activations open on each participant, as the layout counts them: a message ends activations first, then starts.
+  const open = new Map<string, number>()
   for (const step of diagram.steps) {
     const depth = frames.length
     switch (step.type) {
       case 'message': {
+        const deactivate = step.deactivate.filter((key) => {
+          const count = open.get(key) ?? 0
+          if (count > 0) open.set(key, count - 1)
+          return count > 0
+        })
+        for (const key of step.activate) open.set(key, (open.get(key) ?? 0) + 1)
         const activate = [...step.activate]
-        const deactivate = [...step.deactivate]
+        // Mermaid applies `+` and `-` after the message: a participant whose activation the message ends and starts
+        // again gets `deactivate` and `activate` after it, in this order.
         let sign = ''
-        if (activate.includes(step.to)) {
+        if (activate.includes(step.to) && !deactivate.includes(step.to)) {
           sign = '+'
           activate.splice(activate.indexOf(step.to), 1)
-        } else if (deactivate.includes(step.from)) {
+        } else if (deactivate.includes(step.from) && !activate.includes(step.from)) {
           sign = '-'
           deactivate.splice(deactivate.indexOf(step.from), 1)
         }
