@@ -31,13 +31,17 @@ export function migrationSummary({ statements }: Migration): MigrationSummary {
 
 const title = ({ from, to }: MigrationStates) => `Миграция схемы CoDraw: ${from} → ${to}`
 
+/** Comments on tables drawn more than once and on views left out for their names. */
+const repeatedLines = ({ repeated, repeatedViews }: Migration) => [
+  ...repeated.map((name) => `-- Таблица ${name} нарисована несколько раз: миграция берёт первую`),
+  ...repeatedViews.map(
+    (name) => `-- Представление ${name} нарисовано несколько раз или названо как таблица: миграция берёт таблицу или первое`,
+  ),
+]
+
 /** The comment that opens a file: where the migration goes from and to, the database, and tables drawn more than once. */
 function header(migration: Migration, states: MigrationStates): string[] {
-  return [
-    `-- ${title(states)}`,
-    `-- СУБД: ${migration.dialect.label}`,
-    ...migration.repeated.map((name) => `-- Таблица ${name} нарисована несколько раз: миграция берёт первую`),
-  ]
+  return [`-- ${title(states)}`, `-- СУБД: ${migration.dialect.label}`, ...repeatedLines(migration)]
 }
 
 const block = (statement: MigrationStatement) =>
@@ -115,7 +119,7 @@ export function liquibaseChangelog(
     // The author ends at the first colon.
     `--changeset ${changesetPart(author.replaceAll(':', ''), 'codraw')}:${changesetPart(id, '1')}`,
     `--comment: ${title(states)} (${forward.dialect.label})`,
-    ...forward.repeated.map((name) => `-- Таблица ${name} нарисована несколько раз: миграция берёт первую`),
+    ...repeatedLines(forward),
     migrationBody(forward),
     ...rollback,
     '',

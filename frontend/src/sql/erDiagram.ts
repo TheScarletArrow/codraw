@@ -385,11 +385,19 @@ export function diagramTables(cells: CellData[]): DiagramTable[] {
   return tables
 }
 
+/** A view of a page as {@link diagramViewCells} reads it, with the ids of the cells it is read from. */
+export interface DiagramView {
+  id: string
+  view: SqlView
+  /** Along the indexes of `view`. */
+  indexes: DiagramIndex[]
+}
+
 /**
- * The views of a page in the order of `cells`: columns from the text of their fields, the indexes of a materialized
- * view from its rows of indexes, the query and what it reads from the style.
+ * The views of a page in the order of `cells`, with the ids of their cells: columns from the text of their fields, the
+ * indexes of a materialized view from its rows of indexes, the query and what it reads from the style.
  */
-export function diagramViews(cells: CellData[]): SqlView[] {
+export function diagramViewCells(cells: CellData[]): DiagramView[] {
   return cells
     .filter((cell) => cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) && isViewStyle(cell.style))
     .map((viewCell) => {
@@ -403,17 +411,29 @@ export function diagramViews(cells: CellData[]): SqlView[] {
           // A column without a type has none, rather than the `text` of a field of a table.
           return column ? [{ name: column.name, type: splitField(row.value)?.type ?? '', notNull: false, primaryKey: false, unique: false }] : []
         })
-      const indexes = materialized
+      const indexes: DiagramIndex[] = materialized
         ? rows
             .filter((row) => isTableIndexStyle(row.style))
             .flatMap((row) => {
               const parts = splitIndex(row.value)
-              return parts ? [{ name: parts.name, columns: parts.columns, unique: parts.unique, method: parts.method, rest: parts.rest }] : []
+              if (!parts) return []
+              const { name, columns, unique, method, rest } = parts
+              return [{ id: row.id, index: { name, columns, unique, method, rest } }]
             })
         : []
       const dependencies = query ? readViewQuery(tokenize(query), () => null).dependencies : []
-      return { name: plainText(viewCell.value) || 'view', columns, query, materialized, indexes, dependencies }
+      const name = plainText(viewCell.value) || 'view'
+      const view = { name, columns, query, materialized, indexes: indexes.map((entry) => entry.index), dependencies }
+      return { id: viewCell.id, view, indexes }
     })
+}
+
+/**
+ * The views of a page in the order of `cells`: columns from the text of their fields, the indexes of a materialized
+ * view from its rows of indexes, the query and what it reads from the style.
+ */
+export function diagramViews(cells: CellData[]): SqlView[] {
+  return diagramViewCells(cells).map((entry) => entry.view)
 }
 
 /**
@@ -433,11 +453,11 @@ const indexSql = (table: string, index: SqlIndex) =>
  * Views in an order that a database takes: each after the views it reads, otherwise in their order. Views that read
  * each other in a circle, which a database does not take anyway, come once each all the same.
  */
-function viewOrder(views: SqlView[]): SqlView[] {
+export function viewOrder<V extends Pick<SqlView, 'name' | 'dependencies'>>(views: V[]): V[] {
   const byName = new Map(views.map((view) => [view.name, view]))
-  const order: SqlView[] = []
-  const visiting = new Set<SqlView>()
-  const visit = (view: SqlView) => {
+  const order: V[] = []
+  const visiting = new Set<V>()
+  const visit = (view: V) => {
     if (order.includes(view) || visiting.has(view)) return
     visiting.add(view)
     for (const name of view.dependencies) {

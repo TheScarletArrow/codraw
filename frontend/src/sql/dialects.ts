@@ -33,6 +33,14 @@ export interface TableDefinition {
   foreignKeys: ForeignKeyDefinition[]
 }
 
+/** A view as a migration writes it. */
+export interface ViewDefinition {
+  name: string
+  materialized: boolean
+  /** The query after `AS`; empty when the board has none, and then the view is not created. */
+  query: string
+}
+
 /** Named things of a table whose names a migration derives or takes from the board. */
 export type ConstraintKind = 'primaryKey' | 'unique' | 'foreignKey' | 'index'
 
@@ -54,6 +62,10 @@ export type Operation =
   | { type: 'addUnique'; table: string; name: string; column: string }
   | { type: 'createIndex'; table: string; index: SqlIndex }
   | { type: 'addForeignKey'; foreignKey: ForeignKeyDefinition }
+  | { type: 'dropView'; view: string; materialized: boolean }
+  | { type: 'renameView'; from: string; to: string; materialized: boolean }
+  /** `replace`: the view is there, and its query is replaced in place. */
+  | { type: 'createView'; view: ViewDefinition; replace: boolean }
 
 /** A step written for a database. */
 export interface Rendered {
@@ -79,6 +91,11 @@ export interface SqlDialect {
   inline: { uniques: boolean; foreignKeys: boolean }
   /** The database changes the type of a column only after the indexes and keys with the column are dropped. */
   rebuildsKeysOnRetype: boolean
+  /**
+   * What the database does with views: replaces the query of a view in place, renames a view or a materialized view
+   * rather than dropping and creating it again, and has materialized views at all.
+   */
+  views: { replace: boolean; rename: boolean; renameMaterialized: boolean; materialized: boolean }
   render(operation: Operation): Rendered
 }
 
@@ -180,6 +197,28 @@ function standard(q: (name: string) => string): Renderers {
     createIndex: ({ table, index }) => statements(createIndex(table, index, q, '')),
     addForeignKey: ({ foreignKey }) =>
       statements(`ALTER TABLE ${q(foreignKey.table)} ADD CONSTRAINT ${q(foreignKey.name)} ${foreignKeyClause(foreignKey, q)};`),
+    dropView: ({ view, materialized }) => statements(`DROP ${materialized ? 'MATERIALIZED ' : ''}VIEW ${q(view)};`),
+    renameView: ({ from, to, materialized }) =>
+      statements(`ALTER ${materialized ? 'MATERIALIZED ' : ''}VIEW ${q(from)} RENAME TO ${q(to)};`),
+    createView: ({ view, replace }) => statements(`${createView(view, replace ? 'OR REPLACE ' : '', q)};`),
+  }
+}
+
+/** `CREATE [OR REPLACE] [MATERIALIZED] VIEW name AS query` without `;`; `replace` is how the database writes replacing. */
+function createView({ name, materialized, query }: ViewDefinition, replace: string, q: (name: string) => string): string {
+  return `CREATE ${replace}${materialized ? 'MATERIALIZED ' : ''}VIEW ${q(name)} AS ${query}`
+}
+
+/** Steps of views of a database without materialized views: those of materialized ones are comments. */
+function withoutMaterialized(
+  label: string,
+  { dropView, createView }: Pick<Renderers, 'dropView' | 'createView'>,
+): Pick<Renderers, 'dropView' | 'createView'> {
+  const comment = (view: string, step: string) =>
+    unsupported(`В ${label} нет материализованных представлений: ${view} не ${step}`)
+  return {
+    dropView: (operation) => (operation.materialized ? comment(operation.view, 'удаляется') : dropView(operation)),
+    createView: (operation) => (operation.view.materialized ? comment(operation.view.name, 'создаётся') : createView(operation)),
   }
 }
 
@@ -233,10 +272,17 @@ function withoutMethod(q: (name: string) => string, label: string): Renderers['c
   }
 }
 
+/** A view without a query is not created, whatever the database. */
+const NO_QUERY = (view: string) =>
+  `Запрос представления ${view} не задан: представление не создаётся — задайте его кнопкой «Запрос…»`
+
 function dialect(definition: Omit<SqlDialect, 'render'>, renderers: Renderers): SqlDialect {
   return {
     ...definition,
-    render: (operation) => (renderers[operation.type] as (operation: Operation) => Rendered)(operation),
+    render: (operation) =>
+      operation.type === 'createView' && !operation.view.query
+        ? unsupported(NO_QUERY(operation.view.name))
+        : (renderers[operation.type] as (operation: Operation) => Rendered)(operation),
   }
 }
 
@@ -259,6 +305,7 @@ const postgresql = (() => {
       renames: RENAME_ALL,
       inline: { uniques: true, foreignKeys: false },
       rebuildsKeysOnRetype: false,
+      views: { replace: true, rename: true, renameMaterialized: true, materialized: true },
     },
     {
       ...base,
@@ -289,9 +336,12 @@ const mysql = (() => {
       renames: { primaryKey: 'keep', unique: 'rename', foreignKey: 'recreate', index: 'rename' },
       inline: { uniques: true, foreignKeys: false },
       rebuildsKeysOnRetype: false,
+      views: { replace: true, rename: true, renameMaterialized: false, materialized: false },
     },
     {
       ...base,
+      ...withoutMaterialized('MySQL', base),
+      renameView: ({ from, to }) => statements(`RENAME TABLE ${q(from)} TO ${q(to)};`),
       dropForeignKey: ({ foreignKey }) =>
         statements(`ALTER TABLE ${q(foreignKey.table)} DROP FOREIGN KEY ${q(foreignKey.name)};`),
       dropIndex: ({ table, index }) => statements(`DROP INDEX ${q(index.name)} ON ${q(table)};`),
@@ -339,9 +389,12 @@ const oracle = (() => {
       renames: RENAME_ALL,
       inline: { uniques: true, foreignKeys: false },
       rebuildsKeysOnRetype: false,
+      // RENAME takes tables and views, not materialized views.
+      views: { replace: true, rename: true, renameMaterialized: false, materialized: true },
     },
     {
       ...base,
+      renameView: ({ from, to }) => statements(`RENAME ${q(from)} TO ${q(to)};`),
       addColumn: ({ table, column: added }) =>
         noted(
           added.notNull ? [NOT_NULL_WITHOUT_DEFAULT(table, added.name)] : [],
@@ -377,9 +430,16 @@ const sqlserver = (() => {
       renames: RENAME_ALL,
       inline: { uniques: true, foreignKeys: false },
       rebuildsKeysOnRetype: true,
+      // sp_rename leaves the old name in the text of the view, so a view is dropped and created under the new one.
+      views: { replace: true, rename: false, renameMaterialized: false, materialized: false },
     },
     {
       ...base,
+      ...withoutMaterialized('SQL Server', {
+        dropView: base.dropView,
+        // CREATE VIEW must start its batch; EXEC runs it as one of its own, anywhere in the file.
+        createView: ({ view, replace }) => statements(`EXEC(${literal(createView(view, replace ? 'OR ALTER ' : '', q))});`),
+      }),
       dropIndex: ({ table, index }) => statements(`DROP INDEX ${q(index.name)} ON ${q(table)};`),
       renameTable: ({ from, to }) => statements(`EXEC sp_rename ${literal(q(from))}, ${literal(to)};`),
       renameColumn: ({ table, from, to }) =>
@@ -417,9 +477,12 @@ const sqlite = (() => {
       renames: { primaryKey: 'keep', unique: 'recreate', foreignKey: 'keep', index: 'recreate' },
       inline: { uniques: false, foreignKeys: true },
       rebuildsKeysOnRetype: false,
+      // A view is not replaced or renamed, only dropped and created.
+      views: { replace: false, rename: false, renameMaterialized: false, materialized: false },
     },
     {
       ...base,
+      ...withoutMaterialized('SQLite', base),
       dropForeignKey: ({ foreignKey }) =>
         unsupported(`SQLite не снимает внешний ключ ${foreignKey.name} готовой таблицы ${foreignKey.table}: ${SQLITE_REBUILD}`),
       dropUnique: ({ name }) => statements(`DROP INDEX ${q(name)};`),
@@ -457,9 +520,24 @@ const clickhouse = (() => {
       renames: { primaryKey: 'keep', unique: 'keep', foreignKey: 'keep', index: 'keep' },
       inline: { uniques: false, foreignKeys: false },
       rebuildsKeysOnRetype: false,
+      views: { replace: true, rename: true, renameMaterialized: true, materialized: true },
     },
     {
       ...base,
+      dropView: ({ view }) => statements(`DROP VIEW ${q(view)};`),
+      renameView: ({ from, to }) => statements(`RENAME TABLE ${q(from)} TO ${q(to)};`),
+      // A materialized view keeps its rows in a table of its own, which needs an engine.
+      createView: (operation) => {
+        const { name, materialized, query } = operation.view
+        if (!materialized) return base.createView(operation)
+        return noted(
+          [
+            'ENGINE и ORDER BY материализованного представления — заготовка: подберите их под запрос; POPULATE ' +
+              'заполняет его строками, что уже есть, а вставленные во время заполнения в него не попадут',
+          ],
+          `CREATE MATERIALIZED VIEW ${q(name)}\nENGINE = MergeTree\nORDER BY tuple()\nPOPULATE AS ${query};`,
+        )
+      },
       dropForeignKey: ({ foreignKey }) => unsupported(`${noKeys} внешних ключей: ${foreignKey.name} не снимается`),
       dropIndex: ({ index }) => unsupported(`Индексы ClickHouse задаются иначе: ${index.name} не снимается`),
       dropUnique: ({ name }) => unsupported(`${noKeys} ограничений UNIQUE: ${name} не снимается`),

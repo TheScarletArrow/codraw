@@ -2,8 +2,8 @@ import { treeOrder, type BoardSnapshot } from '../diagram/diff.ts'
 import { compareCells } from '../diagram/model.ts'
 import { vendorOf, type DbVendorId } from './dbVendors.ts'
 import type { ColumnDefinition, ConstraintKind, ForeignKeyDefinition, Operation, SqlDialect } from './dialects.ts'
-import { diagramTables } from './erDiagram.ts'
-import type { SqlIndex } from './parseSql.ts'
+import { diagramTables, diagramViewCells, viewOrder } from './erDiagram.ts'
+import type { SqlIndex, SqlView } from './parseSql.ts'
 import { sameType, widensType } from './sqlTypes.ts'
 import { indexColumnNames, mapIndexColumns, writtenName } from './tableIndex.ts'
 
@@ -45,11 +45,20 @@ export interface SchemaTable {
   references: SchemaReference[]
 }
 
-/** The tables of the database that a state of a board draws. */
+/** A view of a state: its columns are the fields of the view, its indexes those of a materialized view. */
+export interface SchemaView extends Omit<SqlView, 'indexes'> {
+  key: string
+  indexes: SchemaIndex[]
+}
+
+/** The tables and views of the database that a state of a board draws. */
 export interface BoardSchema {
   tables: SchemaTable[]
+  views: SchemaView[]
   /** Names of tables drawn more than once, e.g. on two pages: the schema has the first of each. */
   repeated: string[]
+  /** Names of views left out as a table or an earlier view has the name: a database has one of a name. */
+  repeatedViews: string[]
 }
 
 /** Keeps the first of the items of each name: a database has one table, column or index of a name. */
@@ -62,14 +71,19 @@ const firstOfEachName = <T extends { name: string }>(items: T[]) => {
  * The schema of a state of a board: the tables of all its pages, in the order of the pages and of the elements on each,
  * as the export of SQL reads them — base tables are not tables of the database, the tables that inherit them have the
  * copies of their fields as columns, foreign keys are the edges between fields. Of the tables, columns and indexes of
- * one name the first is taken.
+ * one name the first is taken. Views follow, those of a name that a table or an earlier view has left out.
  */
 export function boardSchema(board: BoardSnapshot): BoardSchema {
   const tables: SchemaTable[] = []
   const repeated = new Set<string>()
+  const drawnViews: SchemaView[] = []
   for (const page of [...board.values()].sort(compareCells)) {
     const key = (id: string) => `${page.id}/${id}`
     const cells = treeOrder(page.cells).map((id) => page.cells.get(id)!)
+    for (const { id, view, indexes } of diagramViewCells(cells)) {
+      const keyed = indexes.map((entry) => ({ key: key(entry.id), ...entry.index }))
+      drawnViews.push({ ...view, key: key(id), indexes: firstOfEachName(keyed) })
+    }
     for (const drawn of diagramTables(cells)) {
       if (tables.some((table) => table.name === drawn.table.name)) {
         repeated.add(drawn.table.name)
@@ -109,7 +123,18 @@ export function boardSchema(board: BoardSnapshot): BoardSchema {
   // A reference to a table or a column left out as a repeated name is not a foreign key of the schema.
   const columns = new Set(tables.flatMap((table) => table.columns.map((column) => column.key)))
   for (const table of tables) table.references = table.references.filter((reference) => columns.has(reference.referencedColumn))
-  return { tables, repeated: [...repeated] }
+  const names = new Set(tables.map((table) => table.name))
+  const repeatedViews = new Set<string>()
+  const views: SchemaView[] = []
+  for (const view of drawnViews) {
+    if (names.has(view.name)) {
+      repeatedViews.add(view.name)
+      continue
+    }
+    names.add(view.name)
+    views.push(view)
+  }
+  return { tables, views, repeated: [...repeated], repeatedViews: [...repeatedViews] }
 }
 
 /** The database that the tables of the states have, when they have one; PostgreSQL otherwise. */
@@ -137,10 +162,16 @@ export interface Migration {
   statements: MigrationStatement[]
   /** Tables drawn more than once in either state: the migration takes the first of each. */
   repeated: string[]
+  /** Views of either state left out as a table or an earlier view has the name. */
+  repeatedViews: string[]
 }
 
-/** Parts of the safe order: foreign keys go first and come last, drops and renames free names before creates take them. */
+/**
+ * Parts of the safe order: views go before anything changes what they read and come after it all, foreign keys go
+ * first and come last, drops and renames free names before creates take them.
+ */
 const PHASE = {
+  dropViews: -1,
   dropForeignKeys: 0,
   dropKeys: 1,
   dropColumns: 2,
@@ -153,6 +184,7 @@ const PHASE = {
   alterColumns: 5,
   addKeys: 6,
   addForeignKeys: 7,
+  createViews: 8,
 } as const
 
 /** Items of two states matched: by key, then the rest by name. */
@@ -251,6 +283,30 @@ export function orderRenames<R extends Rename>(renames: R[], taken: Set<string>)
 
 const definition = ({ name, type, notNull }: SchemaColumn): ColumnDefinition => ({ name, type, notNull })
 
+/** The fields of view `after` are those of `before`, maybe with more after them: a database replaces such a view. */
+function grows(before: SchemaView, after: SchemaView): boolean {
+  return before.columns.every((column, index) => {
+    const later = after.columns[index]
+    return later !== undefined && later.name === column.name && sameType(later.type, column.type)
+  })
+}
+
+/** A view as a table of its indexes alone, for the indexes of a materialized view. */
+const indexTable = (view: SchemaView): SchemaTable => ({
+  key: view.key,
+  name: view.name,
+  vendor: null,
+  columns: [],
+  indexes: view.indexes,
+  references: [],
+})
+
+/**
+ * What becomes of a view that stays: kept as it is, its query replaced in place, dropped and created again, or not
+ * created at all for want of a query.
+ */
+type ViewFate = 'keep' | 'replace' | 'rebuild' | 'noQuery'
+
 /** A column with a constraint `UNIQUE` of its own: as the export of SQL writes it, not for a column of the primary key. */
 const isUnique = (column: SchemaColumn) => column.unique && !column.primaryKey
 
@@ -263,11 +319,13 @@ const spaced = (text: string) =>
 /**
  * The migration from schema `from` to schema `to` for a database, in the order it takes:
  *
- * 1. foreign keys are dropped: removed ones, changed ones and those that refer to a key that is dropped;
- * 2. indexes, unique constraints and primary keys are dropped: removed and changed ones;
- * 3. columns and tables are dropped, then tables, columns, indexes and constraints renamed;
- * 4. tables are created; 5. columns added; 6. columns changed: type and `NOT NULL`;
- * 7. primary keys and unique constraints added, indexes created; 8. foreign keys added.
+ * 1. views are dropped: removed ones, those created again and those that read what is dropped or retyped;
+ * 2. foreign keys are dropped: removed ones, changed ones and those that refer to a key that is dropped;
+ * 3. indexes, unique constraints and primary keys are dropped: removed and changed ones;
+ * 4. columns and tables are dropped, then tables, views, columns, indexes and constraints renamed;
+ * 5. tables are created; 6. columns added; 7. columns changed: type and `NOT NULL`;
+ * 8. primary keys and unique constraints added, indexes created; 9. foreign keys added;
+ * 10. views created and replaced, each after the views it reads.
  *
  * Constraints have the names PostgreSQL gives those without one, `<table>_pkey`, `<table>_<column>_key` and
  * `<table>_<column>_fkey`, and follow the renames of their tables and columns.
@@ -277,6 +335,7 @@ export function planMigration(from: BoardSchema, to: BoardSchema, dialect: SqlDi
     dialect,
     statements: new Planner(from, to, dialect).plan(),
     repeated: [...new Set([...from.repeated, ...to.repeated])],
+    repeatedViews: [...new Set([...from.repeatedViews, ...to.repeatedViews])],
   }
 }
 
@@ -314,6 +373,9 @@ class Planner {
   private readonly dialect: SqlDialect
   private readonly tables: Matching<SchemaTable>
   private readonly pairs: TablePair[]
+  private readonly views: Matching<SchemaView>
+  /** Views renamed in place, along with the tables. */
+  private readonly renamedViews: [SchemaView, SchemaView][] = []
   /** Where each column of the earlier state is in the later one. */
   private readonly later = new Map<string, SchemaColumn>()
   /** Columns of the later state whose type changed. */
@@ -333,6 +395,7 @@ class Planner {
       columns: match(before.columns, after.columns),
       indexes: match(before.indexes, after.indexes),
     }))
+    this.views = match(from.views, to.views)
     for (const pair of this.pairs) {
       for (const [before, after] of pair.columns.pairs) {
         this.later.set(before.key, after)
@@ -351,7 +414,8 @@ class Planner {
     this.planRemovedTables()
     this.planAddedTables()
     this.planForeignKeys()
-    this.planTableRenames()
+    this.planViews()
+    this.planRenames()
     const taken = new Set([...this.constraintNames(this.from), ...this.constraintNames(this.to)])
     for (const rename of orderRenames(this.constraintRenames, taken)) {
       this.step(PHASE.renameConstraints, { type: 'renameConstraint', ...rename })
@@ -382,19 +446,22 @@ class Planner {
   }
 
   /**
-   * Names of the tables, constraints and indexes of a state, which PostgreSQL keeps in one namespace: a temporary name of
-   * a rename must differ from all of them.
+   * Names of the tables, views, constraints and indexes of a state, which PostgreSQL keeps in one namespace: a temporary
+   * name of a rename must differ from all of them.
    */
   private constraintNames(schema: BoardSchema): string[] {
-    return schema.tables.flatMap((table) => [
-      table.name,
-      this.name(table.name, null, 'pkey'),
-      ...table.columns.flatMap((column) => [
-        this.name(table.name, column.name, 'key'),
-        this.name(table.name, column.name, 'fkey'),
+    return [
+      ...schema.tables.flatMap((table) => [
+        table.name,
+        this.name(table.name, null, 'pkey'),
+        ...table.columns.flatMap((column) => [
+          this.name(table.name, column.name, 'key'),
+          this.name(table.name, column.name, 'fkey'),
+        ]),
+        ...table.indexes.map((index) => index.name),
       ]),
-      ...table.indexes.map((index) => index.name),
-    ])
+      ...schema.views.flatMap((view) => [view.name, ...view.indexes.map((index) => index.name)]),
+    ]
   }
 
   /**
@@ -635,9 +702,95 @@ class Planner {
     }
   }
 
-  private planTableRenames() {
-    const renames = this.pairs.map(({ before, after }) => ({ from: before.name, to: after.name }))
-    const taken = new Set([...this.from.tables, ...this.to.tables].map((table) => table.name))
-    for (const rename of orderRenames(renames, taken)) this.step(PHASE.renameTables, { type: 'renameTable', ...rename })
+  /**
+   * Views. One whose query or materialization changes is replaced in place, when the database can and its fields only
+   * grow, or dropped and created again; one renamed is renamed, or dropped and created again where the database cannot
+   * rename it; one without a query is not created, and not dropped for changes of its own. A view that reads a table
+   * that is dropped, loses a column or retypes one, or a view that is dropped, is dropped too and created again. Views
+   * go before what they read and come after it, and the indexes of materialized ones go as those of tables.
+   */
+  private planViews() {
+    const { replace, rename, renameMaterialized, materialized } = this.dialect.views
+    const renames = (view: SchemaView) => (view.materialized ? renameMaterialized : rename)
+    const fates = new Map<SchemaView, ViewFate>()
+    for (const [before, after] of this.views.pairs) {
+      const changed = before.materialized !== after.materialized || spaced(before.query) !== spaced(after.query)
+      const renamed = before.name !== after.name
+      const fate: ViewFate =
+        !changed && (!renamed || renames(before))
+          ? 'keep'
+          : !after.query
+            ? 'noQuery'
+            : replace && !before.materialized && !after.materialized && (!renamed || renames(before)) && grows(before, after)
+              ? 'replace'
+              : 'rebuild'
+      fates.set(before, fate)
+    }
+    const rebuilt = [...fates].filter(([, fate]) => fate === 'rebuild').map(([view]) => view)
+    const dropped = new Set([...this.views.removed, ...rebuilt])
+    const changedTables = new Set(
+      [
+        ...this.tables.removed,
+        ...this.pairs
+          .filter(({ columns }) => columns.removed.length > 0 || columns.pairs.some(([, later]) => this.retyped.has(later.key)))
+          .map(({ before }) => before),
+      ].map((table) => table.name),
+    )
+    for (let grown = true; grown; ) {
+      const droppedNames = new Set([...dropped].map((view) => view.name))
+      const reading = this.from.views.filter(
+        (view) => !dropped.has(view) && view.dependencies.some((name) => changedTables.has(name) || droppedNames.has(name)),
+      )
+      reading.forEach((view) => dropped.add(view))
+      grown = reading.length > 0
+    }
+    // A view goes before the views it reads.
+    for (const view of viewOrder(this.from.views).reverse().filter((view) => dropped.has(view))) {
+      const lost = materialized && view.materialized && this.views.removed.includes(view)
+      this.step(
+        PHASE.dropViews,
+        { type: 'dropView', view: view.name, materialized: view.materialized },
+        lost ? `материализованное представление ${view.name} удаляется вместе с данными` : null,
+      )
+    }
+    for (const [before, after] of this.views.pairs.filter(([before]) => !dropped.has(before))) {
+      if (before.name !== after.name && renames(before)) this.renamedViews.push([before, after])
+      if (!materialized || !before.materialized || !after.materialized) continue
+      this.planIndexes({
+        before: indexTable(before),
+        after: indexTable(after),
+        columns: match([], []),
+        indexes: match(before.indexes, after.indexes),
+      })
+    }
+    const earlier = new Map(this.views.pairs.map(([before, after]) => [after, before]))
+    for (const view of viewOrder(this.to.views)) {
+      const before = earlier.get(view)
+      const fate = before && !dropped.has(before) ? fates.get(before)! : 'create'
+      if (fate === 'keep') continue
+      const { name, query } = view
+      this.step(PHASE.createViews, {
+        type: 'createView',
+        view: { name, materialized: view.materialized, query },
+        replace: fate === 'replace',
+      })
+      if (fate !== 'create' || !view.materialized || !query || !materialized) continue
+      view.indexes.forEach((index) => this.step(PHASE.createViews, { type: 'createIndex', table: name, index }))
+    }
+  }
+
+  /** Tables and views renamed in one order, as they share their names. */
+  private planRenames() {
+    const renames = [
+      ...this.pairs.map(({ before, after }) => ({ from: before.name, to: after.name, view: null })),
+      ...this.renamedViews.map(([before, after]) => ({ from: before.name, to: after.name, view: before })),
+    ]
+    const taken = new Set([...this.from.tables, ...this.to.tables, ...this.from.views, ...this.to.views].map(({ name }) => name))
+    for (const { view, ...rename } of orderRenames(renames, taken)) {
+      this.step(
+        PHASE.renameTables,
+        view ? { type: 'renameView', ...rename, materialized: view.materialized } : { type: 'renameTable', ...rename },
+      )
+    }
   }
 }

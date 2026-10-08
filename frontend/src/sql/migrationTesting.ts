@@ -1,6 +1,7 @@
 import type { BoardSnapshot, CellSnapshot } from '../diagram/diff.ts'
 import { LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
 import { TABLE_INDEX_KEY } from '../diagram/shapes.ts'
+import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import type { DbVendorId } from './dbVendors.ts'
 import { DIALECTS } from './dialects.ts'
 import { boardSchema, planMigration } from './migration.ts'
@@ -51,6 +52,22 @@ export function table(
     ...Object.entries(fields).map(([field, value], at) => row(`${id}.${field}`, value, at, {})),
     ...Object.entries(indexes).map(([index, value], at) => row(`${id}#${index}`, value, 10 + at, { [TABLE_INDEX_KEY]: true })),
   ]
+}
+
+/** A view of a page with its query, none when it is empty, drawn as {@link table} draws a table. */
+export function view(
+  id: string,
+  name: string,
+  query: string,
+  fields: Record<string, string>,
+  {
+    materialized = false,
+    indexes = {},
+    order = 'a0',
+  }: { materialized?: boolean; indexes?: Record<string, string>; order?: string } = {},
+): CellData[] {
+  const style = { [VIEW_KEY]: true, ...(materialized && { [MATERIALIZED_KEY]: true }), ...(query && { [VIEW_QUERY_KEY]: query }) }
+  return table(id, name, fields, { indexes, order, style })
 }
 
 /** An edge between two fields, from `source` to `target`. */

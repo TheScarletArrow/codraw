@@ -4,9 +4,10 @@ import { snapshotDocument } from '../diagram/diff.ts'
 import { mergedSnapshot } from '../diagram/merge.ts'
 import { getCells, writeCell, type StyleValue } from '../diagram/model.ts'
 import { boardWith, laterState } from '../diagram/testing.ts'
-import { VIEW_KEY } from '../diagram/views.ts'
+import { VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { boardSchema, constraintName, defaultDialect, orderRenames } from './migration.ts'
-import { boardOf, edge, migrate, plan, state, table } from './migrationTesting.ts'
+import { flywayFiles, liquibaseChangelog, migrationSql, migrationSummary } from './migrationFiles.ts'
+import { boardOf, edge, migrate, plan, state, table, view } from './migrationTesting.ts'
 
 const USERS = { id: 'id uuid PK', mail: 'mail text' }
 
@@ -81,15 +82,63 @@ describe('the schema of a state of a board', () => {
     expect(schema.tables[0]!.columns.map((column) => column.name)).toEqual(['id', 'mail'])
   })
 
-  it('leaves views out: a migration does not touch them', () => {
-    const before = state(table('users', 'users', { id: 'id uuid PK' }))
-    const after = state(
-      table('users', 'users', { id: 'id uuid PK' }),
-      table('active', 'active_users', { id: 'id uuid', mail: 'email text' }, { order: 'a1', style: { [VIEW_KEY]: true } }),
+  it('reads views apart from tables, with keys of their page and elements and the indexes of materialized ones', () => {
+    const board = state(
+      table('users', 'users', { id: 'id uuid PK', mail: 'email text' }),
+      view('active', 'active_users', 'SELECT id, email FROM users WHERE active', { id: 'id uuid', mail: 'email text' }, { order: 'a1' }),
+      view('stats', 'user_stats', 'SELECT count(*) AS total FROM active_users', { total: 'total bigint' }, {
+        order: 'a2',
+        materialized: true,
+        indexes: { total: 'user_stats_total_idx (total)' },
+      }),
     )
 
-    expect(boardSchema(after).tables.map((entry) => entry.name)).toEqual(['users'])
-    expect(migrate(before, after)).toBe('')
+    const schema = boardSchema(board)
+
+    expect(schema.tables.map((entry) => entry.name)).toEqual(['users'])
+    expect(schema.views).toMatchObject([
+      {
+        key: 'page-1/active',
+        name: 'active_users',
+        materialized: false,
+        query: 'SELECT id, email FROM users WHERE active',
+        columns: [{ name: 'id', type: 'uuid' }, { name: 'email', type: 'text' }],
+        indexes: [],
+        dependencies: ['users'],
+      },
+      {
+        key: 'page-1/stats',
+        materialized: true,
+        indexes: [{ key: 'page-1/stats#total', name: 'user_stats_total_idx', columns: 'total' }],
+        dependencies: ['active_users'],
+      },
+    ])
+  })
+
+  it('leaves out a view named as a table or an earlier view, and says so at the top of the file', () => {
+    const board = boardOf(
+      {
+        id: 'p1',
+        name: 'Схема',
+        order: 'a0',
+        cells: [...view('v1', 'users', 'SELECT 1 AS id', { id: 'id integer' }), ...view('v2', 'report', 'SELECT 1 AS n', { n: 'n integer' })],
+      },
+      {
+        id: 'p2',
+        name: 'Отчёты',
+        order: 'a1',
+        cells: [...table('users', 'users', { id: 'id uuid PK' }), ...view('v3', 'report', 'SELECT 2 AS n', { n: 'n integer' }, { order: 'a1' })],
+      },
+    )
+
+    const schema = boardSchema(board)
+
+    expect(schema.tables.map((entry) => entry.name)).toEqual(['users'])
+    expect(schema.views.map((entry) => entry.key)).toEqual(['p1/v2'])
+    expect(schema.repeatedViews).toEqual(['users', 'report'])
+    expect(migrationSql(plan(state(), board), { from: 'версия', to: 'доска' })).toContain(
+      '-- Представление report нарисовано несколько раз или названо как таблица: миграция берёт таблицу или первое\n',
+    )
   })
 
   it('takes the first of tables, fields and indexes of one name, and names the tables drawn more than once', () => {
@@ -610,5 +659,342 @@ describe('a migration of PostgreSQL', () => {
       { from: 'b', to: 'a' },
       { from: 'a_tmp2', to: 'b' },
     ])
+  })
+})
+
+const USERS_TABLE = table('users', 'users', { id: 'id uuid PK', mail: 'email text', active: 'active boolean' })
+const ACTIVE = 'SELECT id, email FROM users WHERE active'
+const active = (name = 'active_users', query = ACTIVE, fields: Record<string, string> = { id: 'id uuid', mail: 'email text' }) =>
+  view('active', name, query, fields, { order: 'a1' })
+const STATS = 'SELECT user_id, count(*) AS total FROM orders GROUP BY user_id'
+const STATS_FIELDS = { user: 'user_id uuid', total: 'total bigint' }
+const ORDERS = table('orders', 'orders', { id: 'id uuid PK', user: 'user_id uuid', total: 'total integer' })
+const stats = (options: Parameters<typeof view>[4] = {}, name = 'user_stats') =>
+  view('stats', name, STATS, STATS_FIELDS, { order: 'a1', ...options })
+
+describe('a migration of views', () => {
+  it('creates a new view, and drops a removed one without a warning', () => {
+    const before = state(USERS_TABLE)
+    const after = state(USERS_TABLE, active())
+
+    expect(migrate(before, after)).toBe('CREATE VIEW active_users AS SELECT id, email FROM users WHERE active;')
+    expect(migrate(after, before)).toBe('DROP VIEW active_users;')
+    expect(plan(after, before).statements[0]).toMatchObject({ dangerous: false, unsupported: false })
+  })
+
+  it('creates a materialized view with its indexes, and drops a removed one with a warning about its data', () => {
+    const before = state(ORDERS)
+    const after = state(ORDERS, stats({ materialized: true, indexes: { total: 'user_stats_total_idx (total) USING btree' } }))
+
+    expect(migrate(before, after)).toBe(
+      [
+        `CREATE MATERIALIZED VIEW user_stats AS ${STATS};`,
+        'CREATE INDEX user_stats_total_idx ON user_stats USING btree (total);',
+      ].join('\n'),
+    )
+    expect(migrate(after, before)).toBe(
+      '-- ВНИМАНИЕ: материализованное представление user_stats удаляется вместе с данными\nDROP MATERIALIZED VIEW user_stats;',
+    )
+    expect(migrationSummary(plan(after, before))).toEqual({ changes: 1, dangerous: 1, unsupported: 0 })
+  })
+
+  it('renames a view of the same element instead of dropping and creating it', () => {
+    expect(migrate(state(USERS_TABLE, active()), state(USERS_TABLE, active('active_accounts')))).toBe(
+      'ALTER VIEW active_users RENAME TO active_accounts;',
+    )
+    expect(migrate(state(ORDERS, stats({ materialized: true })), state(ORDERS, stats({ materialized: true }, 'stats_by_user')))).toBe(
+      'ALTER MATERIALIZED VIEW user_stats RENAME TO stats_by_user;',
+    )
+  })
+
+  it('replaces the query in place when the fields only grow, and drops and creates the view otherwise', () => {
+    const before = state(USERS_TABLE, active())
+    const grown = state(
+      USERS_TABLE,
+      active('active_users', 'SELECT id, email, active FROM users', { id: 'id uuid', mail: 'email text', active: 'active boolean' }),
+    )
+    const shrunk = state(USERS_TABLE, active('active_users', 'SELECT id FROM users WHERE active', { id: 'id uuid' }))
+    const retyped = state(
+      USERS_TABLE,
+      active('active_users', 'SELECT id, email::varchar(100) AS email FROM users', { id: 'id uuid', mail: 'email varchar(100)' }),
+    )
+
+    expect(migrate(before, grown)).toBe('CREATE OR REPLACE VIEW active_users AS SELECT id, email, active FROM users;')
+    expect(migrate(grown, before)).toBe(`DROP VIEW active_users;\n\nCREATE VIEW active_users AS ${ACTIVE};`)
+    expect(migrate(before, shrunk)).toBe('DROP VIEW active_users;\n\nCREATE VIEW active_users AS SELECT id FROM users WHERE active;')
+    expect(migrate(before, retyped)).toBe(
+      'DROP VIEW active_users;\n\nCREATE VIEW active_users AS SELECT id, email::varchar(100) AS email FROM users;',
+    )
+    // Renamed and grown: renamed in place, then replaced under the new name.
+    const renamedGrown = state(
+      USERS_TABLE,
+      active('active_accounts', 'SELECT id, email, active FROM users', { id: 'id uuid', mail: 'email text', active: 'active boolean' }),
+    )
+    expect(migrate(before, renamedGrown)).toBe(
+      'ALTER VIEW active_users RENAME TO active_accounts;\n\nCREATE OR REPLACE VIEW active_accounts AS SELECT id, email, active FROM users;',
+    )
+  })
+
+  it('is empty when only the spaces of a query, the fields of a view or its look change', () => {
+    const before = state(USERS_TABLE, active())
+
+    expect(migrate(before, state(USERS_TABLE, active('active_users', 'SELECT id,  email\nFROM users   WHERE active')))).toBe('')
+    expect(migrate(before, state(USERS_TABLE, active('active_users', ACTIVE, { id: 'id uuid', mail: 'mail text' })))).toBe('')
+  })
+
+  it('drops and creates a view that becomes materialized or plain, with the indexes of a materialized one', () => {
+    const plain = state(ORDERS, stats())
+    const materialized = state(ORDERS, stats({ materialized: true, indexes: { total: 'user_stats_total_idx (total)' } }))
+
+    expect(migrate(plain, materialized)).toBe(
+      [
+        'DROP VIEW user_stats;',
+        '',
+        `CREATE MATERIALIZED VIEW user_stats AS ${STATS};`,
+        'CREATE INDEX user_stats_total_idx ON user_stats (total);',
+      ].join('\n'),
+    )
+    expect(migrate(materialized, plain)).toBe(`DROP MATERIALIZED VIEW user_stats;\n\nCREATE VIEW user_stats AS ${STATS};`)
+    // Its data are counted again by the query: no warning.
+    expect(plan(materialized, plain).statements.some((statement) => statement.dangerous)).toBe(false)
+  })
+
+  it('creates, drops, recreates and renames the indexes of a materialized view as those of a table', () => {
+    const before = state(
+      ORDERS,
+      stats({
+        materialized: true,
+        indexes: { total: 'user_stats_total_idx (total)', user: 'user_stats_user_idx (user_id)', old: 'user_stats_old_idx (user_id, total)' },
+      }),
+    )
+    const after = state(
+      ORDERS,
+      stats({
+        materialized: true,
+        indexes: {
+          total: 'user_stats_sum_idx (total)',
+          user: 'user_stats_user_idx (user_id) UNIQUE',
+          big: 'user_stats_big_idx (total) WHERE total > 100',
+        },
+      }),
+    )
+
+    expect(migrate(before, after)).toBe(
+      [
+        'DROP INDEX user_stats_old_idx;',
+        'DROP INDEX user_stats_user_idx;',
+        '',
+        'ALTER INDEX user_stats_total_idx RENAME TO user_stats_sum_idx;',
+        '',
+        'CREATE UNIQUE INDEX user_stats_user_idx ON user_stats (user_id);',
+        'CREATE INDEX user_stats_big_idx ON user_stats (total) WHERE total > 100;',
+      ].join('\n'),
+    )
+  })
+
+  it('does not create a view without a query, and does not drop one for its own changes', () => {
+    const before = state(USERS_TABLE)
+    const drafts = state(USERS_TABLE, view('drafts', 'drafts', '', { id: 'id uuid' }, { order: 'a1' }))
+    const note = '-- Запрос представления drafts не задан: представление не создаётся — задайте его кнопкой «Запрос…»'
+
+    expect(migrate(before, drafts)).toBe(note)
+    expect(migrationSummary(plan(before, drafts))).toEqual({ changes: 1, dangerous: 0, unsupported: 1 })
+    // Its query taken away and made materialized: the view the database has stays.
+    const withQuery = state(USERS_TABLE, view('drafts', 'drafts', 'SELECT id FROM users', { id: 'id uuid' }, { order: 'a1' }))
+    const emptied = state(USERS_TABLE, view('drafts', 'drafts', '', { id: 'id uuid' }, { order: 'a1', materialized: true }))
+    expect(migrate(withQuery, emptied)).toBe(note)
+    // A view whose table changes is dropped all the same, as the database needs it.
+    const legacy = table('users', 'users', { id: 'id uuid PK', legacy: 'legacy text' })
+    expect(
+      migrate(
+        state(legacy, view('drafts', 'drafts', 'SELECT id, legacy FROM users', { id: 'id uuid', legacy: 'legacy text' }, { order: 'a1' })),
+        state(table('users', 'users', { id: 'id uuid PK' }), view('drafts', 'drafts', '', { id: 'id uuid' }, { order: 'a1' })),
+      ),
+    ).toBe(
+      [
+        'DROP VIEW drafts;',
+        '',
+        '-- ВНИМАНИЕ: столбец users.legacy удаляется вместе с данными',
+        'ALTER TABLE users DROP COLUMN legacy;',
+        '',
+        note,
+      ].join('\n'),
+    )
+  })
+
+  it('drops views before a column they read is retyped, readers first, and creates them after in the order they read', () => {
+    const totals = 'SELECT user_id, sum(total) AS total FROM orders GROUP BY user_id'
+    const top = 'SELECT user_id FROM order_totals WHERE total > 1000'
+    const views = [
+      view('top', 'top_customers', top, { user: 'user_id uuid' }, { order: 'a1' }),
+      view('totals', 'order_totals', totals, { user: 'user_id uuid', total: 'total bigint' }, { order: 'a2' }),
+    ]
+    const before = state(ORDERS, ...views)
+    const after = state(table('orders', 'orders', { id: 'id uuid PK', user: 'user_id uuid', total: 'total bigint' }), ...views)
+
+    expect(migrate(before, after)).toBe(
+      [
+        'DROP VIEW top_customers;',
+        'DROP VIEW order_totals;',
+        '',
+        'ALTER TABLE orders ALTER COLUMN total TYPE bigint USING total::bigint;',
+        '',
+        `CREATE VIEW order_totals AS ${totals};`,
+        `CREATE VIEW top_customers AS ${top};`,
+      ].join('\n'),
+    )
+  })
+
+  it('drops a view that reads a dropped table, but leaves one alone when what it reads is renamed or grows', () => {
+    const legacy = table('legacy', 'legacy', { id: 'id uuid PK' }, { order: 'a2' })
+    const both = 'SELECT u.id FROM users u JOIN legacy l ON l.id = u.id'
+    const before = state(USERS_TABLE, legacy, active('active_users', both, { id: 'id uuid' }))
+    const after = state(USERS_TABLE, active('active_users', 'SELECT id FROM users', { id: 'id uuid' }))
+
+    expect(migrate(before, after)).toBe(
+      [
+        'DROP VIEW active_users;',
+        '',
+        '-- ВНИМАНИЕ: таблица legacy удаляется вместе с данными',
+        'DROP TABLE legacy;',
+        '',
+        'CREATE VIEW active_users AS SELECT id FROM users;',
+      ].join('\n'),
+    )
+    const renamed = state(
+      table('users', 'accounts', { id: 'id uuid PK', mail: 'mail text', active: 'active boolean', bio: 'bio text' }),
+      active(),
+    )
+    expect(migrate(state(USERS_TABLE, active()), renamed)).toBe(
+      [
+        'ALTER TABLE users RENAME TO accounts;',
+        'ALTER TABLE accounts RENAME COLUMN email TO mail;',
+        'ALTER TABLE accounts RENAME CONSTRAINT users_pkey TO accounts_pkey;',
+        '',
+        'ALTER TABLE accounts ADD COLUMN bio text;',
+      ].join('\n'),
+    )
+  })
+
+  it('creates a view after the new table it reads, and drops one that a table of its element replaces', () => {
+    const payments = table('payments', 'payments', { id: 'id uuid PK' }, { order: 'a1' })
+    const paid = view('paid', 'paid_orders', 'SELECT id FROM payments', { id: 'id uuid' })
+
+    expect(migrate(state(), state(paid, payments))).toBe(
+      'CREATE TABLE payments (\n    id uuid NOT NULL,\n    CONSTRAINT payments_pkey PRIMARY KEY (id)\n);\n\nCREATE VIEW paid_orders AS SELECT id FROM payments;',
+    )
+    const stats = table('stats', 'stats', { total: 'total bigint' })
+    const statsView = table('stats', 'stats', { total: 'total bigint' }, { style: { [VIEW_KEY]: true, [VIEW_QUERY_KEY]: 'SELECT 1 AS total' } })
+    expect(migrate(state(stats), state(statsView))).toBe(
+      '-- ВНИМАНИЕ: таблица stats удаляется вместе с данными\nDROP TABLE stats;\n\nCREATE VIEW stats AS SELECT 1 AS total;',
+    )
+    expect(migrate(state(statsView), state(stats))).toBe('DROP VIEW stats;\n\nCREATE TABLE stats (\n    total bigint\n);')
+  })
+
+  it('renames tables and views in one order, as they share their names', () => {
+    const before = state(table('report', 'report_new', { id: 'id uuid' }), view('old', 'report', 'SELECT 1 AS id', { id: 'id integer' }))
+    const after = state(table('report', 'report', { id: 'id uuid' }), view('old', 'report_old', 'SELECT 1 AS id', { id: 'id integer' }))
+
+    expect(migrate(before, after)).toBe('ALTER VIEW report RENAME TO report_old;\nALTER TABLE report_new RENAME TO report;')
+  })
+
+  it('goes back by the same generator in Flyway and Liquibase', () => {
+    const forward = plan(state(USERS_TABLE), state(USERS_TABLE, active()))
+    const backward = plan(state(USERS_TABLE, active()), state(USERS_TABLE))
+    const states = { from: 'версия', to: 'доска' }
+
+    const [up, down] = flywayFiles(forward, backward, { version: '3', description: 'active users' }, states)
+
+    expect(up!.text).toContain(`CREATE VIEW active_users AS ${ACTIVE};`)
+    expect(down!.text).toContain('DROP VIEW active_users;')
+    expect(liquibaseChangelog(forward, backward, { author: 'alice', id: '7' }, states)).toContain(
+      `CREATE VIEW active_users AS ${ACTIVE};\n--rollback DROP VIEW active_users;\n`,
+    )
+  })
+})
+
+describe('views in the databases of migrations', () => {
+  const renamed = [state(USERS_TABLE, active()), state(USERS_TABLE, active('active_accounts'))] as const
+
+  it('renames a view as the database does, or drops it and creates it under the new name', () => {
+    expect(migrate(...renamed, 'mysql')).toBe('RENAME TABLE active_users TO active_accounts;')
+    expect(migrate(...renamed, 'oracle')).toBe('RENAME active_users TO active_accounts;')
+    expect(migrate(...renamed, 'clickhouse')).toBe('RENAME TABLE active_users TO active_accounts;')
+    expect(migrate(...renamed, 'sqlite')).toBe(`DROP VIEW active_users;\n\nCREATE VIEW active_accounts AS ${ACTIVE};`)
+    expect(migrate(...renamed, 'sqlserver')).toBe(`DROP VIEW active_users;\n\nEXEC(N'CREATE VIEW active_accounts AS ${ACTIVE}');`)
+    // RENAME of Oracle does not take a materialized view.
+    const materialized = [
+      state(ORDERS, stats({ materialized: true, indexes: { total: 'user_stats_total_idx (total)' } })),
+      state(ORDERS, stats({ materialized: true, indexes: { total: 'user_stats_total_idx (total)' } }, 'stats_by_user')),
+    ] as const
+    expect(migrate(...materialized, 'oracle')).toBe(
+      [
+        'DROP MATERIALIZED VIEW user_stats;',
+        '',
+        `CREATE MATERIALIZED VIEW stats_by_user AS ${STATS};`,
+        'CREATE INDEX user_stats_total_idx ON stats_by_user (total);',
+      ].join('\n'),
+    )
+    expect(migrate(...materialized, 'clickhouse')).toBe('RENAME TABLE user_stats TO stats_by_user;')
+  })
+
+  it('replaces a query as the database does: OR REPLACE, OR ALTER of SQL Server, or a drop and a create in SQLite', () => {
+    const query = "SELECT id, email, active FROM users WHERE email <> ''"
+    const grown = [
+      state(USERS_TABLE, active()),
+      state(USERS_TABLE, active('active_users', query, { id: 'id uuid', mail: 'email text', active: 'active boolean' })),
+    ] as const
+
+    expect(migrate(...grown, 'mysql')).toBe(`CREATE OR REPLACE VIEW active_users AS ${query};`)
+    expect(migrate(...grown, 'oracle')).toBe(`CREATE OR REPLACE VIEW active_users AS ${query};`)
+    expect(migrate(...grown, 'clickhouse')).toBe(`CREATE OR REPLACE VIEW active_users AS ${query};`)
+    expect(migrate(...grown, 'sqlserver')).toBe(
+      "EXEC(N'CREATE OR ALTER VIEW active_users AS SELECT id, email, active FROM users WHERE email <> ''''');",
+    )
+    expect(migrate(...grown, 'sqlite')).toBe(`DROP VIEW active_users;\n\nCREATE VIEW active_users AS ${query};`)
+  })
+
+  it('writes a comment for a materialized view where the database has none, without its indexes', () => {
+    const before = state(ORDERS)
+    const after = state(ORDERS, stats({ materialized: true, indexes: { total: 'user_stats_total_idx (total)' } }))
+
+    for (const [vendor, label] of [
+      ['mysql', 'MySQL'],
+      ['sqlserver', 'SQL Server'],
+      ['sqlite', 'SQLite'],
+    ] as const) {
+      expect(migrate(before, after, vendor)).toBe(`-- В ${label} нет материализованных представлений: user_stats не создаётся`)
+      expect(migrationSummary(plan(before, after, vendor))).toEqual({ changes: 1, dangerous: 0, unsupported: 1 })
+      expect(migrate(after, before, vendor)).toBe(`-- В ${label} нет материализованных представлений: user_stats не удаляется`)
+      expect(plan(after, before, vendor).statements[0]!.dangerous).toBe(false)
+    }
+  })
+
+  it('creates a materialized view of ClickHouse with an engine and POPULATE, and drops it as a view', () => {
+    const before = state(ORDERS)
+    const after = state(ORDERS, stats({ materialized: true }))
+
+    expect(migrate(before, after, 'clickhouse')).toBe(
+      [
+        '-- ENGINE и ORDER BY материализованного представления — заготовка: подберите их под запрос; POPULATE заполняет ' +
+          'его строками, что уже есть, а вставленные во время заполнения в него не попадут',
+        'CREATE MATERIALIZED VIEW user_stats',
+        'ENGINE = MergeTree',
+        'ORDER BY tuple()',
+        `POPULATE AS ${STATS};`,
+      ].join('\n'),
+    )
+    expect(migrate(after, before, 'clickhouse')).toBe(
+      '-- ВНИМАНИЕ: материализованное представление user_stats удаляется вместе с данными\nDROP VIEW user_stats;',
+    )
+  })
+
+  it('quotes the names of views as the database does', () => {
+    const before = state(USERS_TABLE)
+    const after = state(USERS_TABLE, view('order', 'order', 'SELECT 1 AS id', { id: 'id integer' }, { order: 'a1' }))
+
+    expect(migrate(before, after, 'mysql')).toBe('CREATE VIEW `order` AS SELECT 1 AS id;')
+    expect(migrate(before, after, 'sqlserver')).toBe("EXEC(N'CREATE VIEW [order] AS SELECT 1 AS id');")
+    expect(migrate(after, before)).toBe('DROP VIEW "order";')
   })
 })
