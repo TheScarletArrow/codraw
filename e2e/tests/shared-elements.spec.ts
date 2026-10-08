@@ -50,11 +50,12 @@ test('one element on two pages: pasted as the same element, renamed for everybod
   await expect(payment).toContainText('2 стр.')
   await elements(alice).getByRole('list', { name: 'Где используется Payments' }).getByRole('button', { name: 'Страница 1' }).click()
   await expect(alice.getByRole('tab', { name: 'Страница 1' })).toHaveAttribute('aria-selected', 'true')
-  await expect.poll(() => labels(alice)).toEqual(['Payments\n[Container]'])
+  await expect.poll(async () => (await vertices(alice)).map((cell) => cell.id)).toEqual([payments])
 
-  // Deleting the cell of one page leaves the element on the other.
+  // Deleting the cell of one page leaves the element on the other. Both pages show the same label: the canvas is on the
+  // second page once it shows the pasted cell.
   await alice.getByRole('tab', { name: 'Страница 2' }).click()
-  await expect.poll(() => labels(alice)).toEqual(['Payments\n[Container]'])
+  await expect.poll(async () => (await vertices(alice)).map((cell) => cell.id)).toEqual([pasted])
   await fromMenu(alice, pasted, 'Удалить')
   await expect.poll(() => labels(alice)).toEqual([])
   await expect.poll(() => labels(bob)).toEqual(['Payments\n[Container]'])

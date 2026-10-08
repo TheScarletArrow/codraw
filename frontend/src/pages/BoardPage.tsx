@@ -531,25 +531,28 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           followingClientId={leader?.clientId ?? null}
           className="ml-auto shrink-0"
         />
-        <PresentButton
-          presenting={following.presenting}
-          disabled={!awareness}
-          onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
-        />
-        <StatusSummary document={document} onSelect={showElement} />
-        <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
-        <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
-        <CommentsButton
-          threads={threads.data}
-          open={commentsOpen}
-          onToggle={() => (commentsOpen ? closeComments() : openComments())}
-        />
-        <ProposalsButton
-          proposals={proposals.data}
-          open={proposalsOpen}
-          onToggle={() => (proposalsOpen ? closeProposals() : openProposals())}
-        />
-        <ShortcutsHelp readOnly={readOnly} />
+        {/* The buttons of icons stand close together, as on a toolbar: the line keeps its room for the tools. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <PresentButton
+            presenting={following.presenting}
+            disabled={!awareness}
+            onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
+          />
+          <StatusSummary document={document} onSelect={showElement} />
+          <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
+          <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
+          <CommentsButton
+            threads={threads.data}
+            open={commentsOpen}
+            onToggle={() => (commentsOpen ? closeComments() : openComments())}
+          />
+          <ProposalsButton
+            proposals={proposals.data}
+            open={proposalsOpen}
+            onToggle={() => (proposalsOpen ? closeProposals() : openProposals())}
+          />
+          <ShortcutsHelp readOnly={readOnly} />
+        </div>
         <ShareButton
           board={board}
           pageId={currentPage?.id ?? null}

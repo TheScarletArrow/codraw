@@ -189,9 +189,11 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         {/* Nobody else is on a draft, and comments are about the board: no laser pointer and no comment tool. */}
         <EditorToolbar editor={editor} readOnly={readOnly} collaboration={false} />
-        <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
-        <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
-        <ShortcutsHelp readOnly={readOnly} collaboration={false} />
+        <div className="flex shrink-0 items-center gap-1">
+          <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
+          <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
+          <ShortcutsHelp readOnly={readOnly} collaboration={false} />
+        </div>
       </div>
       <div
         role="note"
