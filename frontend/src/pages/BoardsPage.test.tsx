@@ -272,7 +272,7 @@ describe('BoardsPage', () => {
 
     await userEvent.click(within(await openMenu('Черновик')).getByRole('menuitem', { name: 'Удалить' }))
     const confirmation = screen.getByRole('alertdialog', { name: 'Удаление доски' })
-    expect(confirmation).toHaveTextContent('Удалить доску «Черновик»? Её нельзя будет восстановить.')
+    expect(confirmation).toHaveTextContent('Переместить доску «Черновик» в корзину? Её можно восстановить в течение 30 дней.')
     await userEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }))
 
     await waitFor(() => expect(screen.queryByRole('link', { name: 'Черновик' })).not.toBeInTheDocument())

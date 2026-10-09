@@ -191,6 +191,21 @@ class NotificationDeliveryTest(
     }
 
     @Test
+    fun `a board moved to the trash before the message is due sends nothing`() {
+        confirmedEmail(bob)
+        start(board, alice, body = "@Bob", mentions = listOf(bob))
+        mockMvc.delete("/api/boards/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
+
+        deliverAfter(Duration.ofMinutes(2))
+
+        assertTrue(lettersToBob().isEmpty())
+        assertEquals(listOf("SKIPPED NO_ACCESS"), statusesWithReasons())
+    }
+
+    @Test
     fun `a request for access goes to the chat of the owner with the link to «Поделиться», mentions of the chat broken`() {
         saveWebhook(alice, webhook.url)
         setLinkAccess(board, "view")

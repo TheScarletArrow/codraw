@@ -301,9 +301,13 @@ function useSketch(editor: DiagramEditor): PageSketch {
   })
 }
 
+/** How much of their color the shapes and edges keep that the filter of the page leaves out. */
+const DIMMED = 0.3
+
 /**
  * The shapes and the edges of a sketch in coordinates of the page; lines keep their width at any scale. Edges take the
- * muted color of the theme, which is seen on the background of the minimap in either theme.
+ * muted color of the theme, which is seen on the background of the minimap in either theme. What the filter of the
+ * page leaves out is pale.
  */
 const SketchPicture = memo(function SketchPicture({ sketch }: { sketch: PageSketch }) {
   return (
@@ -320,6 +324,7 @@ const SketchPicture = memo(function SketchPicture({ sketch }: { sketch: PageSket
             stroke="currentColor"
             strokeWidth={0.75}
             vectorEffect="non-scaling-stroke"
+            opacity={edge.dimmed ? DIMMED : undefined}
           />
         ))}
       </g>
@@ -332,7 +337,10 @@ function SketchShapeView({ shape }: { shape: SketchShape }) {
   const fill = shape.fill ?? (shape.stroke || shape.header ? 'none' : TEXT_FILL)
   const line = { stroke: shape.stroke ?? 'none', strokeWidth: 1, vectorEffect: 'non-scaling-stroke' } as const
   return (
-    <g transform={shape.rotation ? `rotate(${shape.rotation} ${x + width / 2} ${y + height / 2})` : undefined}>
+    <g
+      transform={shape.rotation ? `rotate(${shape.rotation} ${x + width / 2} ${y + height / 2})` : undefined}
+      opacity={shape.dimmed ? DIMMED : undefined}
+    >
       {shape.ellipse ? (
         <ellipse cx={x + width / 2} cy={y + height / 2} rx={width / 2} ry={height / 2} fill={fill} {...line} />
       ) : (

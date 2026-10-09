@@ -264,7 +264,7 @@ class Notifications(private val jdbc: JdbcClient) {
     fun page(userId: UUID, before: UUID?, limit: Int): List<StoredNotification> = jdbc.sql(
         """
         $SELECT_STORED
-        WHERE n.user_id = :userId AND (:before::uuid IS NULL OR n.id < :before::uuid)
+        WHERE b.deleted_at IS NULL AND n.user_id = :userId AND (:before::uuid IS NULL OR n.id < :before::uuid)
         ORDER BY n.id DESC
         LIMIT :limit
         """,
@@ -285,7 +285,7 @@ class Notifications(private val jdbc: JdbcClient) {
         .orElse(null)
 
     fun unreadCount(userId: UUID): Int = jdbc.sql(
-        "SELECT count(*) FROM notifications WHERE user_id = :userId AND read_at IS NULL",
+        "SELECT count(*) FROM notifications n JOIN boards b ON b.id = n.board_id WHERE n.user_id = :userId AND n.read_at IS NULL AND b.deleted_at IS NULL",
     )
         .param("userId", userId)
         .query(Int::class.java)

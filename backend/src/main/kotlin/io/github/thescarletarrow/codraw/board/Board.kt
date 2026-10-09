@@ -14,6 +14,7 @@ data class Board(
     val createdAt: Instant,
     val updatedAt: Instant,
     val linkAccess: LinkAccess = LinkAccess.EDIT,
+    val deletedAt: Instant? = null,
 ) {
     /**
      * The role of the user [userId] on the board, or `null` when it gives them none. Anybody but the owner gets the

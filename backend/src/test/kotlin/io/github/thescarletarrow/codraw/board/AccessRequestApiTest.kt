@@ -302,6 +302,10 @@ class AccessRequestApiTest(
             with(alice.session())
             with(csrf())
         }.andExpect { status { isNoContent() } }
+        mockMvc.delete("/api/boards/trash/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
 
         assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_access_requests").query(Int::class.java).single())
     }

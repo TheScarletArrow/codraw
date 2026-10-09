@@ -385,7 +385,7 @@ class BoardApiTest(
     }
 
     @Test
-    fun `the owner deletes a board with its document`() {
+    fun `the owner trashes a board and preserves its inaccessible document`() {
         val id = createBoard("Черновик", alice)
         mockMvc.put("/internal/boards/$id/document") {
             header(InternalTokenInterceptor.HEADER, IntegrationTest.INTERNAL_TOKEN)
@@ -399,7 +399,7 @@ class BoardApiTest(
         mockMvc.get("/api/boards") { with(alice.session()) }.andExpect { content { json("[]") } }
         mockMvc.get("/internal/boards/$id/document") { header(InternalTokenInterceptor.HEADER, IntegrationTest.INTERNAL_TOKEN) }
             .andExpect { status { isNotFound() } }
-        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_documents").query(Int::class.java).single())
+        assertEquals(1, jdbcClient.sql("SELECT count(*) FROM board_documents").query(Int::class.java).single())
     }
 
     @Test

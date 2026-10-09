@@ -1,0 +1,30 @@
+import { expect, test } from '@playwright/test'
+import { addShape, createBoard, hasStoredDocument, openBoard, userPage, vertices } from './helpers.ts'
+
+test('the owner recovers the diagram and can confirm permanent deletion', async ({ browser }) => {
+  const alice = await userPage(browser, 'Корзина')
+  const url = await createBoard(alice)
+  const id = new URL(url).pathname.split('/').pop()!
+  await addShape(alice, 'Прямоугольник')
+  await expect.poll(() => hasStoredDocument(id)).toBe(true)
+  await alice.getByRole('button', { name: 'Меню доски «Новая доска»' }).click()
+  await alice.getByRole('menuitem', { name: 'Удалить доску' }).click()
+  await alice.getByRole('alertdialog').getByRole('button', { name: 'Удалить', exact: true }).click()
+  await expect(alice).toHaveURL(/\/$/)
+  await alice.getByRole('button', { name: 'Корзина', exact: true }).click()
+  await alice.getByRole('button', { name: 'Восстановить', exact: true }).click()
+  await expect(alice.getByText('Корзина пуста')).toBeVisible()
+  await openBoard(alice, url)
+  await expect.poll(async () => (await vertices(alice)).length).toBe(1)
+  await alice.getByRole('button', { name: 'Меню доски «Новая доска»' }).click()
+  await alice.getByRole('menuitem', { name: 'Удалить доску' }).click()
+  await alice.getByRole('alertdialog').getByRole('button', { name: 'Удалить', exact: true }).click()
+  await alice.getByRole('button', { name: 'Корзина', exact: true }).click()
+  await alice.getByRole('button', { name: 'Удалить окончательно' }).click()
+  await expect(alice.getByRole('alertdialog')).toContainText('Восстановить её будет невозможно')
+  await alice.getByRole('button', { name: 'Удалить навсегда' }).click()
+  await expect(alice.getByText('Корзина пуста')).toBeVisible()
+  await alice.goto(url)
+  await expect(alice.getByRole('alert')).toHaveText('Доска не найдена')
+  await alice.context().close()
+})

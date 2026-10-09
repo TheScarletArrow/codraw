@@ -6,7 +6,7 @@ import { env } from './env.ts'
 /** A dump of pg_dump 18 that the unit tests of the frontend read too. */
 const PG_DUMP = fileURLToPath(new URL('../../frontend/src/sql/fixtures/pg_dump-18-schema-only.sql', import.meta.url))
 
-test('a dump of pg_dump opened in «Импорт SQL» becomes tables with their references for everybody', async ({ browser }) => {
+test('a dump of pg_dump opened in «Импорт SQL» becomes tables with their references and the view for everybody', async ({ browser }) => {
   const { alice, bob, close } = await twoParticipants(browser)
 
   await alice.getByRole('button', { name: 'SQL и Mermaid' }).click()
@@ -14,15 +14,17 @@ test('a dump of pg_dump opened in «Импорт SQL» becomes tables with their
   await menu.getByRole('button', { name: 'Импорт SQL…' }).click()
   await expect(menu).toContainText('Схему готовой базы снимает pg_dump --schema-only или mysqldump --no-data')
   await menu.getByLabel('Файлы SQL').setInputFiles(PG_DUMP)
-  // The partition is no table; the type, the function, the view and the trigger are skipped, the rest of the dump is not.
-  await expect(menu.getByRole('status')).toHaveText('Таблиц: 6, связей: 4, индексов: 3, пропущено операторов: 4')
+  // The partition is no table; the type, the function and the trigger are skipped, the rest of the dump is not.
+  await expect(menu.getByRole('status')).toHaveText('Таблиц: 6, представлений: 1, связей: 4, индексов: 3, пропущено операторов: 3')
   await menu.getByRole('button', { name: 'Добавить на страницу' }).click()
   await expect(menu).toBeHidden()
 
   await expect
     .poll(async () => (await vertices(bob)).map((cell) => cell.value).sort())
-    .toEqual(['audit_log', 'measurements', 'order_items', 'orders', 'products', 'users'])
-  await expect.poll(async () => (await edges(bob)).length).toBe(4)
+    .toEqual(['active_orders', 'audit_log', 'measurements', 'order_items', 'orders', 'products', 'users'])
+  // The references, and the dashed edge from the view to the orders it reads.
+  await expect.poll(async () => (await edges(bob)).length).toBe(5)
+  expect((await edges(bob)).filter((edge) => edge.style.dashed)).toHaveLength(1)
   const users = await bob.evaluate(() => {
     const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
     const { graph } = container.__codrawEditor

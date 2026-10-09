@@ -382,6 +382,10 @@ class BoardVersionApiTest(
             with(alice.session())
             with(csrf())
         }.andExpect { status { isNoContent() } }
+        mockMvc.delete("/api/boards/trash/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
 
         assertEquals(0, jdbcClient.sql("SELECT count(*) FROM board_versions").query(Int::class.java).single())
     }

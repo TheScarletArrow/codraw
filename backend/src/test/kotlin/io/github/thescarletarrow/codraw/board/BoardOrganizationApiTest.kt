@@ -298,7 +298,7 @@ class BoardOrganizationApiTest(
     }
 
     @Test
-    fun `tags and folders of a deleted board go, and the folders stay`() {
+    fun `trash preserves organization and permanent deletion removes board tags and placements`() {
         val board = createBoard(alice)
         open(board, bob)
         setTags(board, alice, """["Своё"]""")
@@ -311,6 +311,12 @@ class BoardOrganizationApiTest(
             with(csrf())
         }.andExpect { status { isNoContent() } }
 
+        assertEquals(2, count("board_tags"))
+        assertEquals(2, count("board_placements"))
+        mockMvc.delete("/api/boards/trash/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
         assertEquals(0, count("board_tags"))
         assertEquals(0, count("board_placements"))
         assertEquals(2, count("board_folders"))

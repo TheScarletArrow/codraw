@@ -21,10 +21,11 @@ import {
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { findShape, markedStyle } from '../diagram/shapes.ts'
 import { readStatus, writeStatus } from '../diagram/status.ts'
+import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
 import { parseDrawio } from './parse.ts'
-import { exportDrawio, labelTemplate } from './serialize.ts'
+import { exportDrawio, exportDrawioPage, labelTemplate } from './serialize.ts'
 
 function board() {
   const doc = new Y.Doc()
@@ -185,6 +186,62 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).api!.style).toEqual({ locked: true, fontSize: 13 })
   })
 
+  it('writes the layers of a page in their order with their names, hidden and locked, and reads them back', async () => {
+    const doc = board()
+    doc.transact(() => {
+      const cells = getCells(doc)
+      writeCell(cells, { ...cell(LAYER_CELL_ID), kind: 'layer', parent: ROOT_CELL_ID, order: 'a0', value: 'Бизнес', geometry: null })
+      writeCell(cells, {
+        ...cell('notes'),
+        kind: 'layer',
+        parent: ROOT_CELL_ID,
+        order: 'a1',
+        value: 'Заметки',
+        geometry: null,
+        style: { codrawHidden: true, locked: true, codrawLockedBy: 'Алиса' },
+      })
+      writeCell(cells, cell('api'))
+      writeCell(cells, cell('idea', { parent: 'notes' }))
+    })
+
+    const xml = exportDrawio(doc)
+    expect(xml).toContain(
+      '<root><mxCell id="0"/><mxCell id="1" value="Бизнес" parent="0"/><mxCell id="api" value="api" style="fontSize=13;" vertex="1" parent="1">',
+    )
+    expect(xml).toContain('<mxCell id="notes" value="Заметки" style="locked=1;" parent="0" visible="0"/>')
+    expect(xml).toContain('<mxCell id="idea" value="idea" style="fontSize=13;" vertex="1" parent="notes">')
+    expect(xml).not.toContain('Алиса')
+    expect(xml).not.toContain('codrawHidden')
+
+    const copy = new Y.Doc()
+    const [page] = importPages(copy, await parseDrawio(xml))
+    const layers = Array.from(getCells(copy, page!).entries())
+      .map(([id, map]) => readCell(id, map))
+      .filter((data) => data.kind === 'layer')
+      .sort((a, b) => (a.order < b.order ? -1 : 1))
+    expect(layers.map((layer) => [layer.id, layer.value, layer.style])).toEqual([
+      [LAYER_CELL_ID, 'Бизнес', {}],
+      ['notes', 'Заметки', { locked: true, codrawHidden: true }],
+    ])
+    expect(pageCells(copy, page!).idea!.parent).toBe('notes')
+  })
+
+  it('writes only the layers with the cells asked for', () => {
+    const doc = board()
+    doc.transact(() => {
+      const cells = getCells(doc)
+      writeCell(cells, { ...cell('notes'), kind: 'layer', parent: ROOT_CELL_ID, order: 'a1', value: 'Секрет', geometry: null })
+      writeCell(cells, cell('api'))
+      writeCell(cells, cell('idea', { parent: 'notes' }))
+    })
+
+    const xml = exportDrawioPage(doc, DEFAULT_PAGE_ID, ['api'])!
+
+    expect(xml).toContain('id="api"')
+    expect(xml).not.toContain('Секрет')
+    expect(xml).not.toContain('idea')
+  })
+
   it('keeps the rotation of a shape through a file of draw.io', async () => {
     const doc = board()
     doc.transact(() => writeCell(getCells(doc), cell('turned', { style: { rotation: 45 } })))
@@ -287,6 +344,23 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).pay!.style[EDGE_API_KEY]).toBe(api)
     expect(pageCells(copy, DEFAULT_PAGE_ID).pay!.attrs).toEqual({})
     expect(pageCells(copy, DEFAULT_PAGE_ID).bad!.style).not.toHaveProperty(EDGE_API_KEY)
+  })
+
+  it('writes a view with its badge keys in the style and its query on an <object>, and reads them back', async () => {
+    const query = "SELECT user_id, count(*) AS orders FROM orders WHERE status = 'paid'; -- a=b"
+    const table = { ...fromStyle(markedStyle(findShape('table')!) as never), [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query }
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('stats', { value: 'user_stats', style: table })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain('codrawView=1;codrawViewMaterialized=1;')
+    expect(xml).toContain(`<object label="user_stats" ${VIEW_QUERY_KEY}="SELECT user_id, count(*) AS orders FROM orders WHERE status = 'paid'; -- a=b"`)
+    const stats = pageCells(copy, DEFAULT_PAGE_ID).stats!
+    expect(stats.style).toMatchObject({ [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query })
+    expect(stats.attrs).toEqual({})
   })
 
   it('writes no link that CoDraw would not open, nor one that a board kept among the custom properties', () => {
@@ -425,11 +499,10 @@ describe('importPages', () => {
     const ids = importPages(doc, await parseDrawio(SAMPLE_DRAWIO), { id: 'bob', name: 'Боб' })
 
     for (const id of ids) {
-      const imported = Array.from(getCells(doc, id).entries()).filter(
-        ([cellId]) => cellId !== ROOT_CELL_ID && cellId !== LAYER_CELL_ID,
-      )
+      // Layers are not elements: they name nobody.
+      const imported = Array.from(getCells(doc, id).values()).filter((map) => !['root', 'layer'].includes(map.get('kind') as string))
       expect(imported.length).toBeGreaterThan(0)
-      for (const [, map] of imported) {
+      for (const map of imported) {
         expect(readAttribution(map)).toEqual({ by: 'bob', name: 'Боб', at: Date.UTC(2026, 9, 6, 9, 0, 0) })
       }
     }

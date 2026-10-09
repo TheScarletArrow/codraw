@@ -5,8 +5,9 @@ import type { Board } from '../api/boards.ts'
 import type { NotificationSettings } from '../api/notificationSettings.ts'
 import { participantColor } from '../board/identity.ts'
 import type { CommentThread } from '../api/comments.ts'
+import type { Decision } from '../api/decisions.ts'
 import { ACCESS_POLL_INTERVAL } from '../board/accessRequests.ts'
-import { BOARD_CHANGED, COMMENTS_CHANGED, PROPOSALS_CHANGED } from '../board/messages.ts'
+import { BOARD_CHANGED, COMMENTS_CHANGED, DECISIONS_CHANGED, PROPOSALS_CHANGED } from '../board/messages.ts'
 import type { Proposal } from '../api/proposals.ts'
 import * as Y from 'yjs'
 import { readAttribution } from '../diagram/attribution.ts'
@@ -129,6 +130,7 @@ const noChannels: NotificationSettings = {
 /** What the API answers the page of the board by default. */
 const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> = {}) => ({
   'GET /api/me': { body: ALICE },
+  'GET /api/libraries': { body: [] },
   [`GET /api/boards/${boardId}`]: { body: board },
   [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
   [`GET ${boardUrl}/threads`]: { body: [] },
@@ -144,6 +146,7 @@ const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> =
   [`DELETE ${boardUrl}/visit`]: { status: 204 },
   [`GET ${boardUrl}/proposals`]: { body: [] },
   'GET /api/notification-settings': { body: noChannels },
+  [`GET ${boardUrl}/decisions`]: { body: [] },
   ...responses,
 })
 
@@ -1276,7 +1279,7 @@ describe('BoardPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
       await userEvent.click(screen.getByRole('menuitem', { name: 'Удалить доску' }))
       const confirmation = screen.getByRole('alertdialog', { name: 'Удаление доски' })
-      expect(confirmation).toHaveTextContent('Удалить доску «Архитектура»? Её нельзя будет восстановить.')
+      expect(confirmation).toHaveTextContent('Переместить доску «Архитектура» в корзину? Её можно восстановить в течение 30 дней.')
       await userEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }))
 
       await waitFor(() => expect(provider.router.state.location.pathname).toBe('/'))
@@ -2143,6 +2146,87 @@ describe('BoardPage', () => {
     })
   })
 
+  describe('decisions', () => {
+    const decisionsUrl = `${boardUrl}/decisions`
+    const kafka: Decision = {
+      id: 'kafka',
+      number: 8,
+      title: 'Kafka для событий',
+      status: 'accepted',
+      supersededBy: null,
+      decidedOn: '2026-10-09',
+      author: null,
+      context: '',
+      options: '',
+      outcome: '',
+      consequences: '',
+      elements: [{ pageId: DEFAULT_PAGE_ID, cellId: 'api' }],
+      createdAt: '2026-10-09T10:00:00Z',
+      updatedAt: '2026-10-09T10:00:00Z',
+    }
+    const discussion: CommentThread = {
+      id: 'discussion',
+      pageId: DEFAULT_PAGE_ID,
+      cellId: null,
+      point: null,
+      decisionId: 'kafka',
+      createdAt: '2026-10-09T10:00:00Z',
+      resolvedAt: null,
+      resolvedBy: null,
+      assignee: null,
+      comments: [],
+    }
+    const panel = () => screen.getByRole('complementary', { name: 'Решения' })
+
+    it('opens the decisions of an element from its badge, fetched again when another participant changed them', async () => {
+      const provider = await openBoard({ [`GET ${decisionsUrl}`]: [{ body: [] }, { body: [kafka] }] })
+      act(() => provider.emitSynced())
+      act(() => canvas.editor!.placeCell('api', { x: 100, y: 100, width: 120, height: 60 }))
+      await screen.findByRole('button', { name: 'Решения' })
+      expect(screen.queryByTestId('decision-badge')).toBeNull()
+
+      act(() => provider.emitStateless(DECISIONS_CHANGED))
+      await userEvent.click(await screen.findByRole('button', { name: 'Решения элемента: 1' }))
+
+      expect(within(panel()).getByRole('article', { name: 'ADR-0008 Kafka для событий' })).toBeInTheDocument()
+      expect(within(panel()).getByRole('button', { name: 'Все решения' })).toBeInTheDocument()
+      expect(requests(provider.fetchMock, 'GET', decisionsUrl)).toHaveLength(2)
+    })
+
+    it('shows the decisions in place of the comments', async () => {
+      const provider = await openBoard()
+      act(() => provider.emitSynced())
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Комментарии' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Решения' }))
+
+      expect(panel()).toBeInTheDocument()
+      expect(screen.queryByRole('complementary', { name: 'Комментарии' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Комментарии' }))
+      expect(screen.queryByRole('complementary', { name: 'Решения' })).toBeNull()
+    })
+
+    it('keeps the discussions of decisions out of the comments and opens the decision of a linked one', async () => {
+      const provider = await openBoard(
+        {
+          [`GET ${boardUrl}/threads`]: { body: [discussion] },
+          [`GET ${decisionsUrl}`]: { body: [kafka] },
+        },
+        '?thread=discussion',
+      )
+      act(() => provider.emitSynced())
+
+      const card = await within(await screen.findByRole('complementary', { name: 'Решения' })).findByRole('article', {
+        name: 'ADR-0008 Kafka для событий',
+      })
+      expect(card).toHaveAttribute('aria-current', 'true')
+      expect(within(card).getByRole('article', { name: 'Ветка: Обсуждение решения' })).toHaveAttribute('aria-current', 'true')
+      expect(screen.getByRole('button', { name: 'Комментарии' })).toBeInTheDocument()
+      await waitFor(() => expect(provider.router.state.location.search).toBe(`?page=${DEFAULT_PAGE_ID}`))
+      expect(canvas.editor!.revealCell).not.toHaveBeenCalled()
+    })
+  })
+
   describe('comments', () => {
     const threadsUrl = `${boardUrl}/threads`
     const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread => ({
@@ -2150,6 +2234,7 @@ describe('BoardPage', () => {
       pageId: DEFAULT_PAGE_ID,
       cellId: 'api',
       point: null,
+      decisionId: null,
       createdAt: '2026-10-05T10:00:00Z',
       resolvedAt: null,
       resolvedBy: null,

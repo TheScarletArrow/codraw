@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ArrangePicker } from './ArrangePicker.tsx'
 import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
+import type { PlanView } from './plan.ts'
+import { PlanViewPicker } from './PlanViewPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionLock, SelectionText, TextAlign } from './editor.ts'
 import { EDGE_MARKERS } from './extensions.ts'
@@ -37,6 +39,8 @@ import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
 import { lockLabel } from './locks.ts'
 import { NumberField } from './NumberField.tsx'
+import { FilterPicker } from './FilterPicker.tsx'
+import type { PageFilter } from './pageFilter.ts'
 import { SequenceTools } from './SequenceTools.tsx'
 import { TableTools } from './TableTools.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
@@ -48,9 +52,23 @@ interface EditorToolbarProps {
   readOnly?: boolean
   /** The page works on a board with others: the laser pointer and the comment tool are shown. */
   collaboration?: boolean
+  /** How the participant shows the page (see `plan.ts`), and how it changes it; without it, the choice is not offered. */
+  planView?: PlanView
+  onPlanViewChange?: (view: PlanView) => void
+  /** The filter of the page and how it changes; without them the toolbar has no «Фильтр». */
+  filter?: PageFilter
+  onFilterChange?: (filter: PageFilter) => void
 }
 
-export function EditorToolbar({ editor, readOnly = false, collaboration = true }: EditorToolbarProps) {
+export function EditorToolbar({
+  editor,
+  readOnly = false,
+  collaboration = true,
+  planView,
+  onPlanViewChange,
+  filter,
+  onFilterChange,
+}: EditorToolbarProps) {
   const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
 
   return (
@@ -127,6 +145,7 @@ export function EditorToolbar({ editor, readOnly = false, collaboration = true }
       >
         <Maximize />
       </Button>
+      {filter && onFilterChange && <FilterPicker editor={editor} filter={filter} onChange={onFilterChange} />}
       {collaboration && (
         <>
           <Button
@@ -173,6 +192,7 @@ export function EditorToolbar({ editor, readOnly = false, collaboration = true }
         </Button>
       )}
       {!readOnly && <AutoLayoutPicker editor={editor} />}
+      {planView && onPlanViewChange && <PlanViewPicker editor={editor} readOnly={readOnly} view={planView} onChange={onPlanViewChange} />}
       {!readOnly && (pencil ? <PencilTools editor={editor} /> : <EditingTools editor={editor} />)}
     </div>
   )
@@ -213,6 +233,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     field,
     index,
     tableBase,
+    tableView,
     edgeMarkers,
     colors,
     line,
@@ -233,7 +254,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
       {sequence && <SequenceTools editor={editor} sequence={sequence} />}
       <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
         {tableSelected && (
-          <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} />
+          <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} view={tableView} />
         )}
         {colors && (
           <>

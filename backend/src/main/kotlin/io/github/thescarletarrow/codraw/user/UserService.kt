@@ -4,6 +4,8 @@ import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.comment.CommentService
+import io.github.thescarletarrow.codraw.decision.DecisionService
+import io.github.thescarletarrow.codraw.library.LibraryService
 import io.github.thescarletarrow.codraw.notification.NotificationService
 import io.github.thescarletarrow.codraw.proposal.ProposalService
 import org.springframework.stereotype.Service
@@ -19,8 +21,10 @@ class UserService(
     private val boards: BoardService,
     private val versions: BoardVersionService,
     private val comments: CommentService,
+    private val decisions: DecisionService,
     private val notifications: NotificationService,
     private val proposals: ProposalService,
+    private val libraries: LibraryService,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
 ) {
@@ -41,8 +45,8 @@ class UserService(
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
      * the boards of the guest, the boards the guest opened through links or is a member of, the changes of the guest
-     * that versions of boards name, the comments, the notifications and the proposals of changes of the guest pass to
-     * the user signing in.
+     * that versions of boards name, the comments, the decisions, the notifications, the proposals of changes and the
+     * libraries of shapes of the guest pass to the user signing in.
      */
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {
@@ -52,8 +56,10 @@ class UserService(
             boards.transfer(guest.id, user.id)
             versions.transfer(guest.id, user.id)
             comments.transfer(guest.id, user.id)
+            decisions.transfer(guest.id, user.id)
             notifications.transfer(guest.id, user.id)
             proposals.transfer(guest.id, user.id)
+            libraries.transfer(guest.id, user.id)
         }
         return user
     }

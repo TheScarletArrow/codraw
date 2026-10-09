@@ -219,6 +219,33 @@ describe('one element on several pages in the editor', () => {
     expect(editor.mergeCandidates()).toEqual([])
   })
 
+  it('merges shapes of other pages, as the checks offer it for probable duplicates, in one undo step of the page', () => {
+    const { doc, second, histories } = board()
+    const first = open(doc, DEFAULT_PAGE_ID, histories)
+    const ledger = shape(first, 'c4-container', 'Ledger\n[Container: Kotlin]')
+    const locked = shape(first, 'c4-container', 'Ledger\n[Container: Go]', { x: 600, y: 200 })
+    first.setLocked(true)
+    const other = open(doc, second, histories)
+    const copy = shape(other, 'c4-container', 'ledger\n[Container]')
+    const refs = [
+      { pageId: DEFAULT_PAGE_ID, cellId: ledger.getId()! },
+      { pageId: DEFAULT_PAGE_ID, cellId: locked.getId()! },
+      { pageId: second, cellId: copy.getId()! },
+    ]
+
+    expect(open(doc, second, null, true).mergeElementCells(refs, refs[0]!)).toBe(false)
+    expect(other.mergeElementCells(refs, refs[1]!)).toBe(false)
+    expect(other.mergeElementCells(refs, refs[0]!)).toBe(true)
+
+    expect(elementIdOf(doc, second, copy.getId()!)).toBe(elementIdOf(doc, DEFAULT_PAGE_ID, ledger.getId()!))
+    expect(copy.getValue()).toBe('Ledger\n[Container: Kotlin]')
+    // The locked shape stays out.
+    expect(elementIdOf(doc, DEFAULT_PAGE_ID, locked.getId()!)).not.toBe(elementIdOf(doc, DEFAULT_PAGE_ID, ledger.getId()!))
+    other.undo()
+    expect(copy.getValue()).toBe('ledger\n[Container]')
+    expect(elementIdOf(doc, second, copy.getId()!)).toBeUndefined()
+  })
+
   it('removes the element from all pages with its edges, in one undo step of the page', () => {
     const { doc, second, histories } = board()
     const first = open(doc, DEFAULT_PAGE_ID, histories)

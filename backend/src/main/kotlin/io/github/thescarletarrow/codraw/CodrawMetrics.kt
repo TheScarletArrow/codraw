@@ -14,6 +14,7 @@ enum class Limit(val tag: String) {
     VERSION("version"),
     CLIENT_ERRORS("client-errors"),
     COMMENTS("comments"),
+    DECISIONS("decisions"),
     EMBED("embed"),
     MEMBERS("members"),
     INVITES("invites"),
@@ -26,6 +27,10 @@ enum class Limit(val tag: String) {
     SCHEMA_IMPORTS("schema-imports"),
     IMAGE("image"),
     IMAGES("images"),
+    LIBRARIES("libraries"),
+    LIBRARY_COMPONENTS("library-components"),
+    LIBRARY_COMPONENT("library-component"),
+    LIBRARIES_SIZE("libraries-size"),
     CONFIRMATION_EMAILS("confirmation-emails"),
 }
 

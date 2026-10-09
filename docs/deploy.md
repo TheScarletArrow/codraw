@@ -62,6 +62,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_CLIENT_ERRORS_PER_ADDRESS_PER_MINUTE` | `30` | отчётов об ошибках браузеров с одного адреса в минуту; сверх них — 429; счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_COMMENTS_PER_BOARD` | `5000` | больше комментариев на доске, во всех ветках вместе, не сохранится; сверх — 409 |
+| `CODRAW_LIMITS_DECISIONS_PER_BOARD` | `500` | больше архитектурных решений на доске не будет: новое и импорт сверх — 409 |
 | `CODRAW_LIMITS_MEMBERS_PER_BOARD` | `100` | больше участников у доски, кроме владельца, не будет: приглашение и «Добавить» сверх — 409 |
 | `CODRAW_LIMITS_INVITES_PER_BOARD` | `20` | больше действующих ссылок-приглашений у доски не будет; отозванные не считаются; сверх — 409 |
 | `CODRAW_LIMITS_ACCESS_REQUESTS_PER_BOARD` | `50` | больше запросов доступа, которые ждут ответа владельца, у доски не будет; замена своего запроса не считается; сверх — 409 |
@@ -86,6 +87,11 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_IMAGES_S3_BUCKET` | `codraw-images` | бакет картинок; `backend` создаёт его, если его нет |
 | `CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS` | пусто | базы PostgreSQL, схему которых пользователи могут загрузить через `backend` («Подключиться к базе…» в «Импорт SQL»): имена хостов, адреса и сети CIDR через запятую; пусто — функция выключена, см. «Схема из живой базы» ниже |
 | `CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR` | `30` | попыток загрузить схему из базы у одного пользователя в час, неудачные тоже; сверх — 429; счётчик — в памяти `backend` |
+| `CODRAW_LIMITS_LIBRARIES_PER_USER` | `20` | больше личных библиотек фигур у пользователя не будет; библиотеки гостя, перешедшие при входе, не ограничиваются; сверх — 409 |
+| `CODRAW_LIMITS_COMPONENTS_PER_LIBRARY` | `200` | больше компонентов в одной библиотеке не будет; сверх — 409 |
+| `CODRAW_LIMITS_LIBRARY_COMPONENT_SIZE` | `4MB` | больше компонент библиотеки — схема с картинками внутри и образцом — не сохранится; сверх — 413; держите ниже 32 МБ, которые пропускает nginx |
+| `CODRAW_LIMITS_LIBRARY_IMAGE_SIZE` | `2MB` | больше картинка или SVG внутри компонента и файл, добавленный в библиотеку, не будут; сверх — 413 |
+| `CODRAW_LIMITS_LIBRARIES_SIZE_PER_USER` | `50MB` | сколько занимают компоненты всех библиотек пользователя вместе; сверх — 409. Компоненты хранятся в PostgreSQL, пока пользователь их не удалит |
 | `CODRAW_WEBHOOK_ALLOWED_HOSTS` | `hooks.slack.com` | хосты входящих вебхуков чатов, которые пользователи могут ввести, через запятую, например `hooks.slack.com,chat.example.com`; пусто — чаты выключены |
 | `CODRAW_NOTIFICATIONS_DELIVERY_DELAY` | `1m` | сколько письмо или сообщение ждёт первой попытки: прочитанное в колокольчике или отменённое за это время не уходит |
 | `CODRAW_NOTIFICATIONS_DELIVERY_MAX_ATTEMPTS` | `5` | попыток отправить письмо или сообщение, если сервер не отвечает; паузы — 1, 5, 25 минут, затем по 2 часа |
@@ -250,7 +256,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 | Где | Что |
 |---|---|
-| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image` и `images`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component` и `libraries-size`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
 | `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`

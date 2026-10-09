@@ -301,6 +301,11 @@ class ProposalApiTest(
             with(csrf())
         }.andExpect { status { isNoContent() } }
         draftAccess(proposal).andExpect { status { isNotFound() } }
+        assertEquals(1, count())
+        mockMvc.delete("/api/boards/trash/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
         assertEquals(0, count())
     }
 

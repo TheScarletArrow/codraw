@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.notification
 
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.DeliveryResult
+import io.github.thescarletarrow.codraw.board.BoardRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -15,12 +16,13 @@ import java.util.concurrent.Executors
  * Sends the queued messages of notifications to the channels of their recipients. Each instance of the backend takes
  * the messages that are due with a lease, so that no two send one message, and sends them outside of transactions.
  * Before sending, it looks again at what may have changed since the notification: whether it was read, the settings of
- * the channel and of the board, and whether the recipient may still open the board.
+ * the channel and of the board, and whether the recipient may still open the board, which is not in the trash.
  */
 @Component
 class NotificationDelivery(
     private val deliveries: NotificationDeliveries,
     private val notifications: Notifications,
+    private val boards: BoardRepository,
     private val channels: NotificationChannels,
     private val service: NotificationService,
     private val messages: NotificationMessages,
@@ -80,8 +82,10 @@ class NotificationDelivery(
         }
         val notification = service.view(stored)
         // A refusal of access is what the user waits for, and tells nothing of the board; anything else needs access.
+        // A board in the trash is open to nobody, and the bell does not show its notifications either.
         val reason = skipped ?: DeliveryReason.NO_ACCESS.takeIf {
-            !notification.access && stored.kind != NotificationKind.ACCESS_DECLINED
+            !boards.existsActive(stored.board.id!!) ||
+                (!notification.access && stored.kind != NotificationKind.ACCESS_DECLINED)
         }
         if (reason != null) {
             deliveries.finish(delivery.id, DeliveryStatus.SKIPPED, reason, now())

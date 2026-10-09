@@ -56,7 +56,7 @@ class BoardVisits(private val jdbc: JdbcClient) {
         JOIN users u ON u.id = b.owner_id
         LEFT JOIN board_visits v ON v.board_id = b.id AND v.user_id = :userId
         LEFT JOIN board_members m ON m.board_id = b.id AND m.user_id = :userId
-        WHERE b.owner_id <> :userId AND (m.user_id IS NOT NULL OR b.link_access <> 'NONE')
+        WHERE b.deleted_at IS NULL AND b.owner_id <> :userId AND (m.user_id IS NOT NULL OR b.link_access <> 'NONE')
         ORDER BY GREATEST(v.visited_at, m.created_at) DESC, b.id
         LIMIT :limit
         """,

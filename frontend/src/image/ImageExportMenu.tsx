@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { DiagramEditor } from '../diagram/editor.ts'
+import type { LayerViews } from '../diagram/layerViews.ts'
 import { embedDiagram, type ExportedImage } from '../diagram/svgExport.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
 import { exportDrawioPage } from '../drawio/serialize.ts'
@@ -28,6 +29,8 @@ interface ImageExportMenuProps {
   boardTitle: string
   pageName: string
   pageCount: number
+  /** What the participant chose about the layers of the pages: the other pages of a PDF show the layers they show. */
+  layerViews?: LayerViews | null
 }
 
 type Message = 'copied' | 'save-failed' | 'copy-failed' | 'pdf-busy' | 'pdf-failed'
@@ -57,11 +60,20 @@ function useBoardHasCells(doc: Y.Doc | null): boolean {
 
 /**
  * Saves the current page, or what is selected on it, as a PNG or SVG image or a PDF, or copies the PNG to the
- * clipboard; the PDF can also have all pages of the board.
+ * clipboard; the PDF can also have all pages of the board. While the page is filtered, «Только видимое» keeps to what
+ * matches the filter.
  */
-export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, pageCount }: ImageExportMenuProps) {
-  const { hasCells, canCopy } = useEditorState(editor)
+export function ImageExportMenu({
+  editor,
+  document: doc,
+  boardTitle,
+  pageName,
+  pageCount,
+  layerViews = null,
+}: ImageExportMenuProps) {
+  const { hasCells, canCopy, filter } = useEditorState(editor)
   const [selectionOnly, setSelectionOnly] = useState(false)
+  const [visibleOnly, setVisibleOnly] = useState(false)
   const [transparent, setTransparent] = useState(false)
   const [scale, setScale] = useState<PngScale>(DEFAULT_PNG_SCALE)
   const [pages, setPages] = useState<PdfPages>('current')
@@ -69,6 +81,8 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   const [message, setMessage] = useState<Message | null>(null)
   // Without selected shapes the whole page is saved, whatever the box says.
   const onlySelected = selectionOnly && canCopy
+  // Without a filter everything is visible.
+  const onlyVisible = visibleOnly && filter !== null
   // The selection is on the current page; a board of one page has nothing else.
   const allPages = pages === 'all' && pageCount > 1 && !onlySelected
   const boardHasCells = useBoardHasCells(allPages ? doc : null)
@@ -76,7 +90,7 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   const clipboardSupported = canCopyImages()
 
   // SVG and PDF open the links of elements to addresses and boards; a PNG has nothing to click.
-  const exportImage = (links: boolean) => editor?.exportSvg({ selectionOnly: onlySelected, transparent, links }) ?? null
+  const exportImage = (links: boolean) => editor?.exportSvg({ selectionOnly: onlySelected, onlyVisible, transparent, links }) ?? null
   /**
    * The SVG with the diagram of what it shows, so that CoDraw and draw.io open it for editing; the pictures of the board
    * are in the diagram too.
@@ -107,7 +121,10 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
 
   /** The images of the pages of the PDF: of the pages of the board with objects, or of the current page. */
   const pdfImages = async (): Promise<ExportedImage[]> => {
-    const exported = allPages && doc && editor ? await boardImages(doc, editor, { transparent, links: true }) : [exportImage(true)]
+    const exported =
+      allPages && doc && editor
+        ? await boardImages(doc, editor, { transparent, links: true, onlyVisible }, layerViews)
+        : [exportImage(true)]
     const images = exported.filter((image) => image !== null)
     return Promise.all(images.map((image) => withInlinedImages(image, { types: PDF_IMAGE_TYPES })))
   }
@@ -169,6 +186,12 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
             />
             Только выделенное
           </label>
+          {filter && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={visibleOnly} onChange={(event) => setVisibleOnly(event.target.checked)} />
+              Только видимое
+            </label>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={transparent} onChange={(event) => setTransparent(event.target.checked)} />
             Прозрачный фон
