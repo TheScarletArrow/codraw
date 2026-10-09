@@ -64,8 +64,9 @@ function measure(node: InfraNode): Measured {
 
 /**
  * Cells of the graph laid out along its edges in its direction, from left to right by default, with the top-left corner
- * at `origin`: a shape of the palette per node, a frame around the nodes of each frame, drawn under them, and an edge
- * per link.
+ * at `origin`: a shape of the palette per node, a frame around the nodes and the frames of each frame, drawn under them
+ * — the frames of the graph come before the frames in them — and an edge per link. With `sourcePrefix`, each cell is
+ * marked with what it is in the source, for the next import: the key of a node or a frame, else its first line.
  */
 export async function infraCells(
   graph: InfraGraph,
@@ -76,17 +77,20 @@ export async function infraCells(
   const builder = new DiagramBuilder()
   const frames = graph.frames.map((frame) => builder.shape(frame.shape, 0, 0, { value: frame.label }))
   const sizes = graph.nodes.map(measure)
-  const nodes = graph.nodes.map((node, index) => builder.shape(node.shape, 0, 0, { value: node.lines.join('\n'), ...sizes[index]!.shape }))
+  const nodes = graph.nodes.map((node, index) =>
+    builder.shape(node.shape, 0, 0, { value: node.lines.join('\n'), ...sizes[index]!.shape, element: node.element }),
+  )
+  const keyOf = (node: InfraNode) => node.key ?? node.lines[0]
   const sourceMarks = new Map<string, string>()
   for (const edge of graph.edges) {
     const id = builder.edge(nodes[edge.source]!, nodes[edge.target]!, { value: edge.label })
-    if (sourcePrefix) sourceMarks.set(id, `${sourcePrefix}:edge:${graph.nodes[edge.source]!.lines[0]}->${graph.nodes[edge.target]!.lines[0]}:${edge.label}`)
+    if (sourcePrefix) sourceMarks.set(id, `${sourcePrefix}:edge:${keyOf(graph.nodes[edge.source]!)}->${keyOf(graph.nodes[edge.target]!)}:${edge.label}`)
   }
   const cells = builder.build()
   if (sourcePrefix) {
     const byId = new Map(cells.map((cell) => [cell.id, cell]))
-    graph.frames.forEach((frame, index) => sourceMarks.set(frames[index]!, `${sourcePrefix}:frame:${frame.label}`))
-    graph.nodes.forEach((node, index) => sourceMarks.set(nodes[index]!, `${sourcePrefix}:node:${node.lines[0]}`))
+    graph.frames.forEach((frame, index) => sourceMarks.set(frames[index]!, `${sourcePrefix}:frame:${frame.key ?? frame.label}`))
+    graph.nodes.forEach((node, index) => sourceMarks.set(nodes[index]!, `${sourcePrefix}:node:${keyOf(node)}`))
     for (const [id, source] of sourceMarks) {
       const cell = byId.get(id)
       if (cell) cell.style = { ...cell.style, [SOURCE_KEY]: source }
@@ -94,7 +98,15 @@ export async function infraCells(
   }
 
   const shapes: LayoutShape[] = [
-    ...frames.map((id) => ({ id, x: 0, y: 0, width: 0, height: 0, frame: true, parent: null })),
+    ...graph.frames.map((frame, index) => ({
+      id: frames[index]!,
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      frame: true,
+      parent: frame.parent == null ? null : frames[frame.parent]!,
+    })),
     ...graph.nodes.map((node, index) => ({
       id: nodes[index]!,
       x: 0,

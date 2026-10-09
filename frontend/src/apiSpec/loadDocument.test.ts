@@ -28,6 +28,10 @@ describe('loadDocument', () => {
 
   it('refuses a document too large and one that expands its anchors too often', async () => {
     await expect(loadDocument({ name: 'big.yaml', text: '', size: MAX_DOCUMENT_SIZE + 1 })).rejects.toThrow('big.yaml: файл больше 5 МБ')
+    await expect(loadDocument({ name: 'plan.json', text: '{}', size: MAX_DOCUMENT_SIZE + 1 }, 4 * MAX_DOCUMENT_SIZE)).resolves.toEqual({})
+    await expect(loadDocument({ name: 'plan.json', text: '', size: 4 * MAX_DOCUMENT_SIZE + 1 }, 4 * MAX_DOCUMENT_SIZE)).rejects.toThrow(
+      'plan.json: файл больше 20 МБ',
+    )
     // Each anchor holds the previous one twice: the last one expands into 2^12 copies of the first.
     const lines = ['a0: &a0 [x, x]']
     for (let index = 1; index <= 12; index++) lines.push(`a${index}: &a${index} [*a${index - 1}, *a${index - 1}]`)

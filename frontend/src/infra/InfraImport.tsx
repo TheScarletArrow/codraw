@@ -35,9 +35,9 @@ interface Result<Parsed> {
 }
 
 /**
- * The import of files of infrastructure — docker-compose or Kubernetes — in the menu «SQL и Mermaid»: files and the text
- * read together, parsed while the participant types, a summary of what the page gets, the errors of the files it does
- * not get.
+ * The import of files of infrastructure — docker-compose, Kubernetes or Terraform — in the menu «SQL и Mermaid»: files
+ * and the text read together, parsed while the participant types, a summary of what the page gets, warnings about it, the
+ * errors of the files it does not get.
  */
 export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'infra', onBack, busy, error }: InfraImportProps<Parsed>) {
   const [text, setText] = useState('')
@@ -78,11 +78,13 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
   const tooLarge = graph ? format.error(graph) : null
   const errors = [...(result?.errors ?? []), ...(tooLarge ? [tooLarge] : []), ...(error ? [error] : [])]
   const status = graph && result?.parsed ? format.summary(result.parsed, graph) : sources.length === 0 ? format.hint : pending ? 'Разбор…' : null
+  const warnings = graph && result?.parsed && format.warnings ? format.warnings(result.parsed, graph) : []
+  const limit = format.maxSize ?? MAX_DOCUMENT_SIZE
 
   const openFiles = async (list: FileList | null) => {
     if (!list) return
     // A file larger than the limit is not read: its size alone refuses it.
-    const read = async (file: File) => ({ name: file.name, size: file.size, text: file.size > MAX_DOCUMENT_SIZE ? '' : await file.text() })
+    const read = async (file: File) => ({ name: file.name, size: file.size, text: file.size > limit ? '' : await file.text() })
     setFiles(await Promise.all(Array.from(list, read)))
   }
 
@@ -122,18 +124,41 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
           </span>
         )}
       </div>
-      <label className="flex items-center gap-2 text-sm" title="Адреса других сервисов в переменных окружения — связями с протоколом">
-        <input type="checkbox" checked={environment} onChange={(event) => setEnvironment(event.target.checked)} />
-        Связи по переменным окружения
-      </label>
-      <label className="flex items-center gap-2 text-sm" title="Сервисы — фигурами Container и Database нотации C4">
-        <input type="checkbox" checked={c4} onChange={(event) => setC4(event.target.checked)} />
-        Фигуры C4
-      </label>
+      {format.options.includes('environment') && (
+        <label className="flex items-center gap-2 text-sm" title="Адреса других сервисов в переменных окружения — связями с протоколом">
+          <input type="checkbox" checked={environment} onChange={(event) => setEnvironment(event.target.checked)} />
+          Связи по переменным окружения
+        </label>
+      )}
+      {format.options.includes('c4') && (
+        <label className="flex items-center gap-2 text-sm" title="Фигуры Container и Database нотации C4">
+          <input type="checkbox" checked={c4} onChange={(event) => setC4(event.target.checked)} />
+          Фигуры C4
+        </label>
+      )}
+      {format.limits && (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">Ограничения формата</summary>
+          <ul className="mt-1 flex list-disc flex-col gap-1 pl-4">
+            {format.limits.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       {status && (
         <p role="status" className="text-xs text-muted-foreground">
           {status}
         </p>
+      )}
+      {warnings.length > 0 && (
+        <ul aria-label="Предупреждения" className="flex flex-col gap-1 text-xs text-amber-700 dark:text-amber-400">
+          {warnings.map((warning, index) => (
+            <li key={index} className="break-words">
+              {warning}
+            </li>
+          ))}
+        </ul>
       )}
       {errors.length > 0 && (
         <div role="alert" className="flex flex-col gap-1 text-xs text-destructive">

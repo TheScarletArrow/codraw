@@ -1,10 +1,15 @@
+import type { ElementProperties } from '../diagram/elementKinds.ts'
 import type { LayoutDirection } from '../diagram/layout.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
 
-/** A frame around nodes: a network of compose. */
+/** A frame around nodes: a network of compose, a namespace of Kubernetes, a module of Terraform. */
 export interface InfraFrame {
   shape: ShapeId
   label: string
+  /** The index of the frame it is in: a module in a module. */
+  parent?: number | null
+  /** What identifies it in its source for the next import, when its label does not: the address of a module. */
+  key?: string
 }
 
 /** A shape of the palette with a label of several lines, in a frame or on the page. */
@@ -13,6 +18,10 @@ export interface InfraNode {
   lines: string[]
   /** The index of its frame. */
   frame: number | null
+  /** What identifies it in its source for the next import, when its first line does not: the address of a resource. */
+  key?: string
+  /** Properties of its element: the shape gets an element of its own with them. */
+  element?: Partial<ElementProperties>
 }
 
 /** A link between two nodes, by their indexes. */

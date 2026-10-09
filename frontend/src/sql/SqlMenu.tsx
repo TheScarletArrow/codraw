@@ -10,7 +10,7 @@ import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
 import { ArchitectureExport } from '../architecture/ArchitectureExport.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { getCells, readCell, type CellData } from '../diagram/model.ts'
-import { COMPOSE, KUBERNETES } from '../infra/formats.ts'
+import { COMPOSE, KUBERNETES, TERRAFORM } from '../infra/formats.ts'
 import { GradleImport } from '../infra/GradleImport.tsx'
 import { InfraImport } from '../infra/InfraImport.tsx'
 import { downloadBlob, fileName } from '../lib/download.ts'
@@ -112,7 +112,7 @@ function proposalDescription(pageName: string, summary: string, existing: CellDa
 /**
  * Tables of a database in and out of the current page: DDL becomes an ER diagram, the diagram becomes DDL or Mermaid;
  * a flowchart, an ER diagram or a sequence diagram of Mermaid, documents of OpenAPI and AsyncAPI, files of docker-compose, manifests of
- * Kubernetes and builds of Gradle become a diagram of the page.
+ * Kubernetes, builds of Gradle and states and plans of Terraform become a diagram of the page.
  */
 export function SqlMenu({
   editor,
@@ -126,7 +126,7 @@ export function SqlMenu({
   onProposalCreated,
 }: SqlMenuProps) {
   const [open, setOpen] = useState(false)
-  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | 'gradle' | null>(null)
+  const [importing, setImporting] = useState<'sql' | 'mermaid' | 'api' | 'compose' | 'kubernetes' | 'gradle' | 'terraform' | null>(null)
   // «Подключение к базе» over «Импорт SQL».
   const [connecting, setConnecting] = useState(false)
   // «Архитектура как код» over the menu.
@@ -248,7 +248,7 @@ export function SqlMenu({
           variant="ghost"
           size="icon-sm"
           aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes и Gradle, архитектура как код"
+          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes, Gradle и Terraform, архитектура как код"
           disabled={!doc || !pageId}
         >
           <Database />
@@ -275,6 +275,8 @@ export function SqlMenu({
           <InfraImport format={KUBERNETES} {...infraProps('kubernetes', 'Kubernetes')} />
         ) : importing === 'gradle' ? (
           <GradleImport {...infraProps('gradle', 'Gradle')} />
+        ) : importing === 'terraform' ? (
+          <InfraImport format={TERRAFORM} {...infraProps('terraform', 'Terraform')} />
         ) : importing === 'mermaid' && mermaid ? (
           <>
             <div className="flex items-center gap-1">
@@ -431,6 +433,15 @@ export function SqlMenu({
                 </Button>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('gradle')}>
                   Импорт Gradle…
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start font-normal"
+                  onClick={() => setImporting('terraform')}
+                >
+                  Импорт Terraform…
                 </Button>
               </>
             )}
