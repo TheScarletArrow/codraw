@@ -17,6 +17,8 @@ export interface ArchElement {
   type: 'element'
   /** The identifier in the code, unique on the page. */
   id: string
+  /** The cell of the page. */
+  cellId: string
   kind: ElementKind
   variant: ElementVariant
   external: boolean
@@ -28,6 +30,8 @@ export interface ArchElement {
 export interface ArchBoundary {
   type: 'boundary'
   id: string
+  /** The cell of the page. */
+  cellId: string
   kind: BoundaryKind
   name: string
   children: ArchNode[]
@@ -36,6 +40,8 @@ export interface ArchBoundary {
 export type ArchNode = ArchElement | ArchBoundary
 
 export interface ArchRelation {
+  /** The edge of the page. */
+  edgeId: string
   source: ArchElement
   target: ArchElement
   description: string
@@ -142,7 +148,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
     if (frame) {
       const c4 = properties.kind ? ELEMENT_KINDS[properties.kind]?.c4 : undefined
       const boundary: BoundaryKind = frame !== 'c4' ? 'group' : c4 === 'container' ? 'container' : 'system'
-      boundaries.set(cell.id, { type: 'boundary', id: unique(name, boundary), kind: boundary, name, children: [] })
+      boundaries.set(cell.id, { type: 'boundary', id: unique(name, boundary), cellId: cell.id, kind: boundary, name, children: [] })
       continue
     }
     const c4 = labelFormat(cell.style, properties.kind) === 'c4'
@@ -151,6 +157,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
     elements.set(cell.id, {
       type: 'element',
       id: unique(name, kind!.c4),
+      cellId: cell.id,
       kind: kind!.c4,
       variant: kind!.variant,
       external: kind!.external,
@@ -189,6 +196,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
     const label = labelLines(edge).join('\n')
     const parts = RELATION.exec(label)
     relations.push({
+      edgeId: edge.id,
       source: source[1],
       target: target[1],
       description: (parts ? parts[1]! : label).replace(/\s+/g, ' ').trim(),

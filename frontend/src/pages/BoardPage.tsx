@@ -11,17 +11,21 @@ import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposals, type Proposal } from '../api/proposals.ts'
 import { requestReview } from '../api/reviews.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { usePlanView } from '../board/usePlanView.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { useImageUploads } from '../board/imageUploads.ts'
+import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
+import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
 import { useFollowing } from '../board/following.ts'
 import { Minimap, MINIMAP_SELECTOR } from '../board/Minimap.tsx'
@@ -81,6 +85,7 @@ import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
+import { ChecksButton, ChecksPanel } from '../checks/ChecksPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
 import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
@@ -274,6 +279,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     [setSearchParams],
   )
   const selectPage = useCallback((id: string) => changeParams((params) => params.set('page', id)), [changeParams])
+  const { view: planView, changeView: changePlanView } = usePlanView(editor)
+  const { filter, changeFilter } = usePageFilter(editor)
   // An unknown page, e.g. one deleted by another participant, is replaced with the first page.
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
@@ -419,6 +426,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setElementsOpen(true)
     setElementsRequest({ key })
   }
+  // The panel of the checks of the board.
+  const [checksOpen, setChecksOpen] = useState(false)
   // The window that merges the selected shapes into one element, or that removes an element from all pages.
   const [elementWindow, setElementWindow] = useState<{
     kind: 'merge' | 'delete'
@@ -584,7 +593,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onProposalCreated={proposalCreated}
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-        <EditorToolbar editor={editor} readOnly={readOnly} />
+        <EditorToolbar
+          editor={editor}
+          readOnly={readOnly}
+          planView={planView}
+          onPlanViewChange={changePlanView}
+          filter={filter}
+          onFilterChange={changeFilter}
+        />
         <Participants
           participants={participants}
           pages={pages}
@@ -605,6 +621,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <LayersButton open={layersOpen} onToggle={() => setLayersOpen((open) => !open)} />
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
+          <ChecksButton document={document} open={checksOpen} onToggle={() => setChecksOpen((open) => !open)} />
           <CommentsButton
             threads={boardThreads}
             open={commentsOpen}
@@ -768,6 +785,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onDropComponent={libraries.drop}
                   />
                   <StickySignatures editor={editor} />
+                  <DetailCrumbs
+                    document={document}
+                    pageId={currentPage.id}
+                    onSelectPage={(id) => {
+                      following.stop()
+                      selectPage(id)
+                    }}
+                  />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={boardThreads} onOpen={showThreadsOf} />
@@ -792,6 +817,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <FieldPopover editor={editor} />}
                   {!readOnly && <StickyPanel editor={editor} />}
                   <SidePanels>
+                    <ImpactPanel editor={editor} document={document} onShow={showCell} />
                     <EdgeApiPanel editor={editor} request={apiRequest} />
                     {layersOpen && (
                       <LayersPanel
@@ -825,6 +851,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         }}
                       />
                     )}
+                    {checksOpen && (
+                      <ChecksPanel
+                        document={document}
+                        canChange={!readOnly}
+                        onShow={showCell}
+                        onMerge={(refs, keep) => editor?.mergeElementCells(refs, keep)}
+                        onClose={() => {
+                          setChecksOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                   </SidePanels>
                   <CanvasMenu
                     editor={editor}
@@ -841,6 +879,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                       readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'delete', editor, request })
                     }
                     onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
+                    onDetail={(pageId) => {
+                      following.stop()
+                      selectPage(pageId)
+                    }}
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
