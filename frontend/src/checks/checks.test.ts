@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { ELEMENT_KEY, getCells, initializeDocument, writeCell, type CellData } from '../diagram/model.ts'
+import { ELEMENT_KEY, getCells, initializeDocument, ROOT_CELL_ID, writeCell, type CellData } from '../diagram/model.ts'
 import { addPage } from '../diagram/pages.ts'
 import { connect } from '../diagram/testing.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -37,7 +37,28 @@ function sharing(builder: DiagramBuilder, elementId: string, ...ids: string[]): 
 const of = (issues: CheckIssue[], ...rules: CheckRule[]) =>
   issues.filter((issue) => rules.includes(issue.rule)).map((issue) => [issue.rule, issue.subject, issue.detail].filter(Boolean).join(' '))
 
+/** A builder whose shapes and edges `ids` lie in a second layer of the page, over the main one. */
+function inLayer(builder: DiagramBuilder, ...ids: string[]): DiagramBuilder {
+  const build = builder.build.bind(builder)
+  builder.build = (): CellData[] => [
+    { id: 'layer-2', kind: 'layer', parent: ROOT_CELL_ID, order: 'b0', value: 'Слой 2', geometry: null, source: null, target: null, style: {} },
+    ...build().map((cell) => (ids.includes(cell.id) ? { ...cell, parent: 'layer-2' } : cell)),
+  ]
+  return builder
+}
+
 describe('checks of the architecture', () => {
+  it('checks the elements of every layer of a page, connected across the layers', () => {
+    const page = new DiagramBuilder()
+    const api = page.shape('service', 0, 0, { value: 'API' })
+    const db = page.shape('database', 300, 0, { value: 'БД' })
+    const edge = page.edge(api, db)
+    const alone = page.shape('service', 0, 300, { value: 'Одинокий' })
+    const { doc } = board(inLayer(page, db, edge, alone))
+
+    expect(of(boardChecks(doc), 'isolated')).toEqual(['isolated «Одинокий»'])
+  })
+
   it('finds what elements and edges of C4 lack and the elements outside their frames', () => {
     const page = new DiagramBuilder()
     page.shape('c4-boundary', 0, 0, { value: 'Магазин\n[Software System]', width: 800, height: 400 })

@@ -121,6 +121,7 @@ const collabToken = (token: string): MockResponse => ({ body: { token, expiresAt
 /** What the API answers the page of the board by default. */
 const apiResponses = (responses: Record<string, MockResponse | MockResponse[]> = {}) => ({
   'GET /api/me': { body: ALICE },
+  'GET /api/libraries': { body: [] },
   [`GET /api/boards/${boardId}`]: { body: board },
   [tokenUrl]: [collabToken('token-1'), collabToken('token-2')],
   [`GET ${boardUrl}/threads`]: { body: [] },

@@ -196,7 +196,12 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
 
   for (const page of listPages(doc)) {
     const entries = getCells(doc, page.id)
+    // The layers of the page, so that the elements of each count as the elements of the page; then the elements in the
+    // order of reading.
     const cells: CellData[] = []
+    entries.forEach((entry, id) => {
+      if (entry instanceof Y.Map && entry.get('kind') === 'layer') cells.push(readCell(id, entry))
+    })
     for (const node of readingOrder(entries)) {
       const entry = entries.get(node.id)
       if (entry instanceof Y.Map) cells.push(readCell(node.id, entry))

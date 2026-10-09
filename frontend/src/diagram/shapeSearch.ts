@@ -84,7 +84,7 @@ export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
 }
 
 /** Lower case, «ё» as «е», words split by anything that is not a letter or a digit. */
-function words(text: string): string[] {
+export function words(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/ё/g, 'е')
@@ -113,7 +113,7 @@ const ENTRIES: Entry[] = SHAPE_SECTIONS.flatMap((section) =>
 }, [])
 
 /** Every word of the query starts one of the words. */
-const matches = (query: string[], candidates: string[]) =>
+export const matches = (query: string[], candidates: string[]) =>
   query.every((part) => candidates.some((word) => word.startsWith(part)))
 
 /**

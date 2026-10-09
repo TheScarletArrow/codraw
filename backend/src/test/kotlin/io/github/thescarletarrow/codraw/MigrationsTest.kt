@@ -44,6 +44,7 @@ class MigrationsTest {
         private val reviewRequestNotificationColumns =
             notificationColumns + setOf("thread_id", "proposal_id", "page_id", "cell_id")
         private val imagesTables = organizationTables + "board_images"
+        private val librariesTables = imagesTables + setOf("shape_libraries", "library_components")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -55,15 +56,23 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V19 create tables on an empty database and U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(18, flyway().migrate().migrationsExecuted)
-        assertEquals(imagesTables, appTables())
+    fun `V1 to V20 create tables on an empty database and U20, U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(19, flyway().migrate().migrationsExecuted)
+        assertEquals(librariesTables, appTables())
+        assertEquals(setOf("id", "user_id", "name", "created_at"), columns("shape_libraries"))
+        assertEquals(
+            setOf("id", "library_id", "name", "content", "preview", "size", "created_at", "updated_at"),
+            columns("library_components"),
+        )
         assertEquals(
             setOf("id", "board_id", "sha256", "content_type", "size", "width", "height", "created_at"),
             columns("board_images"),
         )
         assertEquals(documentColumns + "search_text", columns("board_documents"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
+
+        revert("U20__claude_eloquent_davinci_zrxuv4_shape_libraries.sql")
+        assertEquals(imagesTables, appTables())
 
         revert("U19__claude_eager_tesla_oz6ry8_canvas_images.sql")
         assertEquals(organizationTables, appTables())
@@ -132,8 +141,8 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(18, flyway().migrate().migrationsExecuted)
-        assertEquals(imagesTables, appTables())
+        assertEquals(19, flyway().migrate().migrationsExecuted)
+        assertEquals(librariesTables, appTables())
         assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
@@ -248,8 +257,60 @@ class MigrationsTest {
     }
 
     @Test
+    fun `V20 keeps libraries of a user with short trimmed names, whose components go with their library and user`() {
+        assertEquals(19, flyway().migrate().migrationsExecuted)
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO shape_libraries (id, user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-0000000000a1', 'Платежи', now()),
+                   ('0199a000-0000-7000-8000-000000000102', '0199a000-0000-7000-8000-0000000000a1', 'платежи', now()),
+                   ('0199a000-0000-7000-8000-000000000103', '0199a000-0000-7000-8000-0000000000b1', 'Эскизы', now())
+            """,
+        ).update()
+        val library = { name: String ->
+            jdbcClient.sql(
+                "INSERT INTO shape_libraries (user_id, name, created_at) VALUES ('0199a000-0000-7000-8000-0000000000a1', :name, now())",
+            ).param("name", name).update()
+        }
+        val component = { library: String, name: String, size: Int ->
+            jdbcClient.sql(
+                """
+                INSERT INTO library_components (library_id, name, content, size, created_at, updated_at)
+                VALUES (:library::uuid, :name, '<mxGraphModel/>', :size, now(), now())
+                """,
+            ).param("library", library).param("name", name).param("size", size).update()
+        }
+        component("0199a000-0000-7000-8000-000000000101", "Сервис", 15)
+        component("0199a000-0000-7000-8000-000000000103", "Набросок", 15)
+
+        for (wrong in listOf(
+            { library("") },
+            { library(" Идеи") },
+            { library("я".repeat(61)) },
+            { component("0199a000-0000-7000-8000-000000000101", "", 15) },
+            { component("0199a000-0000-7000-8000-000000000101", "Сервис ", 15) },
+            { component("0199a000-0000-7000-8000-000000000101", "я".repeat(81), 15) },
+            { component("0199a000-0000-7000-8000-000000000101", "Пустой", 0) },
+            { component("0199a000-0000-7000-8000-000000000199", "Без библиотеки", 15) },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        library("я".repeat(60))
+        component("0199a000-0000-7000-8000-000000000101", "я".repeat(80), 15)
+
+        jdbcClient.sql("DELETE FROM shape_libraries WHERE id = '0199a000-0000-7000-8000-000000000101'").update()
+        assertEquals(1, count("library_components"))
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(2, count("shape_libraries"))
+        assertEquals(0, count("library_components"))
+    }
+
+    @Test
     fun `V19 keeps a file of a board once, only raster types, and the rows of images of a deleted board`() {
-        assertEquals(18, flyway().migrate().migrationsExecuted)
+        assertEquals(19, flyway().migrate().migrationsExecuted)
         val insert = { board: String, sha: String, type: String ->
             jdbcClient.sql(
                 """

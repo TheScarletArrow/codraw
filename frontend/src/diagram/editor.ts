@@ -35,6 +35,7 @@ import {
   type EventObject,
   type InternalMouseEvent,
   type StyleArrowValue,
+  VisibleChange,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
 import { latinKeyCode, latinLetter } from '../lib/keyboard.ts'
@@ -79,11 +80,11 @@ import {
   type Attribution,
   type TextAuthor,
 } from './attribution.ts'
-import { createCell, createUndoManager, DiagramBinding, localOrigin, toGeometry } from './binding.ts'
+import { createCell, createUndoManager, DiagramBinding, isLayerCell, layerOf, localOrigin, toGeometry } from './binding.ts'
 import type { MenuTarget } from './canvasMenu.ts'
 import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard, type ClipboardSource } from './clipboard.ts'
-import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
+import { clipboardContent, dataToCells, diagramCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { apiLabel, EDGE_API_KEY, edgeApiOf, writeEdgeApi, type EdgeApi } from './edgeApi.ts'
 import {
@@ -105,6 +106,7 @@ import {
   elementProperties,
   hasElement,
   labelFormat,
+  labelLines,
   ownLines,
   propertiesOfLabel,
   relabel,
@@ -145,8 +147,10 @@ import {
   registerLegendShapes,
 } from './legendShapes.ts'
 import { LINK_KEY, linkOf } from './links.ts'
+import { LayerViews, type PageLayerView } from './layerViews.ts'
 import {
   hasLockedDescendant,
+  isLockedStyle,
   LOCKED_BY_KEY,
   LOCKED_KEY,
   lockedByOf,
@@ -202,6 +206,10 @@ import {
   elementIdOf,
   getCells,
   getPages,
+  HIDDEN_LAYER_KEY,
+  isHiddenLayerStyle,
+  LAYER_CELL_ID,
+  layerName,
   OWN_LINES_KEY,
   readCell,
   type CellData,
@@ -602,6 +610,37 @@ export interface SequenceNoteChange {
   to?: string
 }
 
+/** A layer of the page as the panel «Слои» shows it; see {@link DiagramEditor.addLayer}. */
+export interface LayerState {
+  id: string
+  /** The name it goes by: its own, «Основной слой» or «Слой без имени». */
+  name: string
+  /** Its own name, or `''` without one. */
+  ownName: string
+  /** The main layer of the page, which every page has and which cannot be removed. */
+  main: boolean
+  /** It shows on this canvas. */
+  visible: boolean
+  /** It is hidden for everybody who did not show it for themselves. */
+  hiddenForAll: boolean
+  /** The participant shows (`true`) or hides (`false`) it for themselves whatever everybody sees, or `null`. */
+  ownVisibility: boolean | null
+  /** Nobody can select or change its elements. */
+  locked: boolean
+  /** The name of the participant who locked it, or `null`, e.g. for a layer locked in draw.io. */
+  lockedBy: string | null
+  /** New elements go into it (see {@link DiagramEditor.setActiveLayer}). */
+  active: boolean
+  /** The number of the elements of the page in it: shapes, tables, groups and edges, not their parts. */
+  elements: number
+  /** The number of them that are selected. */
+  selected: number
+  /** «Перенести выделенное сюда» moves something into it: it is not locked, and selected elements of other layers are not. */
+  canMoveSelection: boolean
+  /** It holds a locked element: removing it may only move its elements (see {@link DiagramEditor.deleteLayer}). */
+  holdsLocked: boolean
+}
+
 /** The selected shape that the arrows continue, and the shapes of its group they offer. */
 export interface QuickConnectSource {
   cellId: string
@@ -653,6 +692,11 @@ export interface EditorState {
    * participant who may only view.
    */
   canPasteStyle: boolean
+  /**
+   * The selection has an element that is not locked to give a look to, e.g. of a component of a library (see
+   * {@link DiagramEditor.applyComponentStyle}); never for a participant who only views.
+   */
+  canTakeStyle: boolean
   /** {@link DiagramEditor.autoLayout} lays out the selection: it has two shapes, tables or groups at least. */
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
@@ -688,6 +732,18 @@ export interface EditorState {
   canPasteAsSameElement: boolean
   /** The selection has shapes of at least two elements, or of shapes that are no elements yet, that may be merged. */
   canMergeElements: boolean
+  /** The layers of the page, the top one first: the one drawn over the others. */
+  layers: LayerState[]
+}
+
+/** The selection as a component of a library; see {@link DiagramEditor.selectionComponent}. */
+export interface SelectionComponent {
+  /** Clones of what copying takes, with their descendants, that no graph holds. */
+  cells: Cell[]
+  /** The selection drawn as {@link DiagramEditor.exportSvg} draws it, without a background. */
+  image: ExportedImage | null
+  /** The label of the single selected shape, or «Компонент». */
+  name: string
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -839,6 +895,24 @@ export interface DiagramEditor {
    * they are.
    */
   pasteStyle(): void
+  /**
+   * The selection as a component of a library: clones of what {@link copy} would copy, the image of the selection and a
+   * name for it. Changes nothing; `null` when nothing is selected that copying takes.
+   */
+  selectionComponent(): SelectionComponent | null
+  /**
+   * Adds a copy of a component of a library, `content` being its `<mxGraphModel>` of draw.io, as one undo step, with
+   * its middle at `center`, or in the middle of the visible area, and selects it. The copy has cells and elements of its
+   * own and nothing locked, and the pictures that the board must store are stored first, as {@link paste} does.
+   * Resolves to whether there was anything to add.
+   */
+  insertComponent(content: string, center?: Point): Promise<boolean>
+  /**
+   * Gives the selected elements the look of the first shape of a component of a library (without shapes, of its first
+   * edge) as {@link pasteStyle} gives a copied look, as one undo step; the look copied in the tab stays. Resolves to
+   * whether anything changed.
+   */
+  applyComponentStyle(content: string): Promise<boolean>
   /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
   insertCells(cells: CellData[]): void
   /**
@@ -974,6 +1048,44 @@ export interface DiagramEditor {
    * step; a locked legend and an editor only for reading change nothing.
    */
   setLegendItem(cellId: string, key: string, changes: { name?: string; hidden?: boolean }): void
+  /**
+   * Adds a layer «Слой N» on top of the others as one undo step, N the number of the layers with it or the next free
+   * one, and makes it the active layer; returns its id.
+   */
+  addLayer(): string | null
+  /** Names a layer as one undo step: one line of up to 100 characters; an empty name leaves it its name by default. */
+  renameLayer(layerId: string, name: string): void
+  /** Moves a layer one place up, over the next one, or down, as one undo step. */
+  moveLayer(layerId: string, direction: 'up' | 'down'): void
+  /** Locks or unlocks a layer for everybody, with the name of the participant, as one undo step. */
+  setLayerLocked(layerId: string, locked: boolean): void
+  /**
+   * Hides a layer for everybody, or shows it again, as one undo step; on this canvas it then follows that whatever the
+   * participant chose for themselves.
+   */
+  setLayerHidden(layerId: string, hidden: boolean): void
+  /**
+   * Shows or hides a layer on this canvas only: nobody else sees it, the document does not keep it, undo does not undo
+   * it; the participant who may only view does it too.
+   */
+  setLayerVisible(layerId: string, visible: boolean): void
+  /**
+   * Makes a layer the one new elements go into, for this participant only; while it is hidden on this canvas or
+   * locked, they go into the main layer, or the top layer that is neither (see {@link LayerState.active}).
+   */
+  setActiveLayer(layerId: string): void
+  /**
+   * Moves the selected elements of the page that are not locked — a table in place of its field, a group in place of
+   * its shape, a sequence diagram in place of its part — with the edges between them into a layer that is not locked,
+   * on top of its elements and at their places, as one undo step.
+   */
+  moveSelectionToLayer(layerId: string): void
+  /**
+   * Removes a layer that is neither the main one nor locked, as one undo step: with `moveTo`, its elements go on top of
+   * that layer first; without, they go with it, with the edges of other layers that end at them, unless one of them is
+   * locked.
+   */
+  deleteLayer(layerId: string, moveTo: string | null): void
   /**
    * Pastes the cells copied in this tab as {@link paste} does, but a shape that may be an element becomes another cell
    * of the element of the shape it was copied from, with the properties of the element now; that shape becomes an
@@ -1140,6 +1252,9 @@ const ROTATION_STEP = 15
 
 /** The pointer over the handle that turns a shape: CSS has no pointer for turning. */
 const ROTATION_CURSOR = 'grab'
+
+/** The longest name of a layer. */
+const LAYER_NAME_LIMIT = 100
 
 /** The smallest width and height of a shape that can be typed in. */
 export const MIN_SHAPE_SIZE = 10
@@ -1361,6 +1476,12 @@ export interface DiagramEditorOptions {
   images?: ImageHost | null
   /** The theme of the canvas at first; see {@link DiagramEditor.setTheme}. Light by default, as images of pages are. */
   theme?: CanvasTheme
+  /**
+   * What the participant chose about the layers of the page for themselves: the layers they show or hide and the layer
+   * new elements go into. Without it, a layer shows unless it is hidden for everybody, and the choices last as long as
+   * the editor, e.g. for the live image of the board.
+   */
+  layerView?: PageLayerView | null
 }
 
 /** Commands of the editor that change the page; a read-only editor ignores them. */
@@ -1390,6 +1511,8 @@ const CHANGING_COMMANDS = [
   'addImages',
   'duplicate',
   'pasteStyle',
+  'insertComponent',
+  'applyComponentStyle',
   'insertCells',
   'restoreCells',
   'moveSelection',
@@ -1426,6 +1549,13 @@ const CHANGING_COMMANDS = [
   'setElementProperties',
   'setEdgeProperties',
   'setLegendItem',
+  'addLayer',
+  'renameLayer',
+  'moveLayer',
+  'setLayerLocked',
+  'setLayerHidden',
+  'moveSelectionToLayer',
+  'deleteLayer',
   'undo',
   'redo',
 ] as const satisfies readonly (keyof DiagramEditor)[]
@@ -1442,6 +1572,7 @@ export function createDiagramEditor(
     collaboration = true,
     images = null,
     theme: initialTheme = 'light',
+    layerView = null,
   }: DiagramEditorOptions = {},
 ): DiagramEditor {
   const model = new GraphDataModel()
@@ -1481,7 +1612,77 @@ export function createDiagramEditor(
   configureFreehand(graph)
   const unwatchLocks = configureLocks(graph)
   configureSelection(graph)
-  configureRegionSelection(graph)
+
+  // Layers. What the participant chose about them for themselves, or without a view of the board, for the editor only.
+  const view = layerView ?? new LayerViews().page(pageId)
+  const isLayer = (cell: Cell | null | undefined) => isLayerCell(model, cell)
+  /** The layers of the page, the bottom one first. */
+  const layers = (): Cell[] => [...(model.getRoot()?.getChildren() ?? [])]
+  /** The elements of the page itself, those of every layer, in drawing order. */
+  const pageChildren = (): Cell[] => layers().flatMap((layer) => layer.getChildren())
+  const isLockedLayer = (layer: Cell) => isLockedStyle(layer.getStyle())
+  /** A layer shown on this canvas and not locked: its elements are selected and changed. */
+  const isOpenLayer = (layer: Cell) => layer.isVisible() && !isLockedLayer(layer)
+  /** The elements of the layers that are shown on this canvas and not locked. */
+  const openChildren = (): Cell[] => layers().filter(isOpenLayer).flatMap((layer) => layer.getChildren())
+  /** The layer `id` of the page, or `null`. */
+  const layerCell = (id: string): Cell | null => {
+    const cell = model.getCell(id)
+    return cell && isLayer(cell) ? cell : null
+  }
+  /** The layer new elements go into; see {@link DiagramEditor.setActiveLayer}. */
+  const insertLayer = (): Cell => {
+    const active = view.active()
+    const chosen = active === null ? null : layerCell(active)
+    const main = layerCell(LAYER_CELL_ID) ?? layers()[0]!
+    return [chosen, main, ...layers().reverse()].find((layer) => layer && isOpenLayer(layer)) ?? chosen ?? main
+  }
+  // maxGraph adds what has no parent of its own, e.g. a new edge, to the default parent.
+  graph.getDefaultParent = insertLayer
+  /** The cell shows on this canvas as far as layers go: its layer shows, and for an edge the layers of its ends. */
+  const isShown = (cell: Cell): boolean => {
+    const shows = (end: Cell | null) => !end || (layerOf(model, end)?.isVisible() ?? true)
+    return shows(cell) && (!cell.isEdge() || (shows(cell.getTerminal(true)) && shows(cell.getTerminal(false))))
+  }
+  /** The cell lies in a locked layer. */
+  const inLockedLayer = (cell: Cell) => {
+    const layer = layerOf(model, cell)
+    return layer !== null && isLockedLayer(layer)
+  }
+  // Layers are never selected, nor the elements of layers hidden on this canvas or locked.
+  const isCellSelectable = graph.isCellSelectable.bind(graph)
+  graph.isCellSelectable = (cell) => isCellSelectable(cell) && !isLayer(cell) && isShown(cell) && !inLockedLayer(cell)
+  // A press, a frame and panning take an element of a locked layer for the empty canvas.
+  const getEventState = graph.getEventState.bind(graph)
+  graph.getEventState = (state) => (inLockedLayer(state.cell) ? (null as unknown as CellState) : getEventState(state))
+  configureRegionSelection(graph, openChildren)
+  const selectionHandler = graph.getPlugin<SelectionHandler>('SelectionHandler')
+  if (selectionHandler) {
+    // Dragged shapes line up with the shapes of every layer shown.
+    selectionHandler.getGuideStates = () =>
+      graph.getView().getCellStates(
+        layers()
+          .filter((layer) => layer.isVisible())
+          .flatMap((layer) =>
+            layer.filterDescendants((cell) => {
+              const geometry = cell.getGeometry()
+              return cell.isVertex() && !!graph.getView().getState(cell) && !!geometry && !geometry.relative
+            }),
+          ),
+      )
+    // A shape dragged out of its group stays in the layer of the group, not in the layer of new elements.
+    const moveCells = selectionHandler.moveCells.bind(selectionHandler)
+    selectionHandler.moveCells = (cells, dx, dy, clone, target, event) => {
+      const parent = selectionHandler.cell?.getParent()
+      const leaves =
+        !target &&
+        parent &&
+        !isLayer(parent) &&
+        selectionHandler.isRemoveCellsFromParent() &&
+        selectionHandler.shouldRemoveCellsFromParent(parent, cells, event)
+      moveCells(cells, dx, dy, clone, leaves ? layerOf(model, parent) : target, event)
+    }
+  }
   // Resizing a group scales what it holds, as in draw.io; tables lay their fields out themselves.
   graph.isRecursiveResize = (state?: CellState | null) => !!state && isGroup(state.cell)
   const fitter = graph.getPlugin<FitPlugin>('fit')
@@ -1510,20 +1711,42 @@ export function createDiagramEditor(
           : isLegend(cell)
             ? legendLayout
             : null
-  // The text of a part of a sequence diagram sets its room, and so the layout of the diagram.
+  // The text of a part of a sequence diagram sets its room, and so the layout of the diagram. A layer that comes, goes,
+  // moves or changes its name, lock or visibility lays nothing out.
   const getCellsForChange = layoutManager.getCellsForChange.bind(layoutManager)
-  layoutManager.getCellsForChange = (change) =>
-    change instanceof ValueChange && sequenceOf(change.cell)
+  layoutManager.getCellsForChange = (change) => {
+    const { cell, child } = change as { cell?: Cell; child?: Cell }
+    if (isLayer(cell ?? child)) return []
+    return change instanceof ValueChange && sequenceOf(change.cell)
       ? layoutManager.addCellsWithLayout(change.cell)
       : getCellsForChange(change)
+  }
   // A legend lists what the page has: any cell that comes, goes or changes its look may change its items. Last, so that
   // it lists the page as the other layouts left it.
   const getCellsForChanges = layoutManager.getCellsForChanges.bind(layoutManager)
   layoutManager.getCellsForChanges = (changes) => [...getCellsForChanges(changes), ...legendsForChanges(graph, changes)]
   // Bound only now, so that the stored cells are laid out like any later change of other participants.
   const author = participantId && participantName ? { id: participantId, name: participantName } : null
-  // A draft of a proposal, without others, would take putting labels right for a change of its author.
-  const binding = new DiagramBinding(model, cells, origin, readOnly, author, collaboration)
+  // A draft of a proposal, without others, would take putting labels right for a change of its author. A layer shows as
+  // the participant chose for themselves, or as for everybody.
+  const binding = new DiagramBinding(model, cells, origin, readOnly, author, collaboration, (id, hidden) => view.visibility(id) ?? !hidden)
+  // A layer shown or hidden here, by the participant or by another one for everybody, redraws the edges of other layers
+  // that end at its elements too, which maxGraph leaves as they were; a layer hidden or locked takes its elements out of
+  // the selection.
+  const handleLayerChanges = (_sender: unknown, event: EventObject) => {
+    const changes = event.getProperty('changes') as unknown[]
+    const layerChange = (change: unknown) =>
+      (change instanceof VisibleChange || change instanceof StyleChange) && isLayer(change.cell)
+    if (!changes.some(layerChange)) return
+    if (changes.some((change) => change instanceof VisibleChange && isLayer(change.cell))) {
+      const graphView = graph.getView()
+      graphView.invalidate(model.getRoot()!, true, true)
+      graphView.validate()
+    }
+    const unselectable = graph.getSelectionCells().filter((cell) => !graph.isCellSelectable(cell))
+    if (unselectable.length > 0) graph.removeSelectionCells(unselectable)
+  }
+  model.addListener(InternalEvent.CHANGE, handleLayerChanges)
   // New routes redraw edges without a change of the model: the picture on the screen moved all the same.
   const stopEdgeRouting = startEdgeRouting(graph, undefined, () => {
     if (destroyed) return
@@ -1795,16 +2018,16 @@ export function createDiagramEditor(
   /** The cell of the page that a cell belongs to: a field to its table, a shape of a group to the group. */
   const pageCell = (cell: Cell): Cell | null => {
     let current: Cell | null = cell
-    while (current && current.getParent() !== graph.getDefaultParent()) current = current.getParent()
+    while (current && !isLayer(current.getParent())) current = current.getParent()
     return current
   }
   /** Shapes, tables and groups of the page that the selection has. */
   const selectedLayoutCells = (): Cell[] => [
     ...new Set(graph.getSelectionCells().flatMap((cell) => (cell.isVertex() ? (pageCell(cell) ?? []) : []))),
   ]
-  /** All edges of the page, those inside groups too. */
-  const pageEdges = (parent: Cell = graph.getDefaultParent()): Cell[] =>
-    parent.getChildren().flatMap((child) => (child.isEdge() ? [child] : pageEdges(child)))
+  /** All edges of the page, those inside groups too, of every layer. */
+  const pageEdges = (parent?: Cell): Cell[] =>
+    (parent ? parent.getChildren() : pageChildren()).flatMap((child) => (child.isEdge() ? [child] : pageEdges(child)))
   let layingOut = false
   /** Selected cells that can become a group: those of the parent of the first one, fields of tables and parts aside. */
   const groupableCells = (): Cell[] => {
@@ -2174,9 +2397,34 @@ export function createDiagramEditor(
     }
     return changes
   }
+  /** Gives the selection the look `copied` as one undo step (see {@link DiagramEditor.pasteStyle}); whether anything changed. */
+  const applyLook = (copied: CopiedStyle): boolean => {
+    const changes = pastedStyles(copied)
+    if (changes.size === 0) return false
+    graph.stopEditing(false)
+    // One change: one undo step, and one transaction that the other participants get.
+    model.batchUpdate(() => {
+      for (const [cell, keys] of changes) {
+        const { fontSize, ...rest } = keys
+        if (Object.keys(rest).length > 0) {
+          const style = cell.getClonedStyle() as Record<string, unknown>
+          for (const [key, value] of Object.entries(rest)) {
+            if (value === undefined) delete style[key]
+            else style[key] = value
+          }
+          model.setStyle(cell, style as CellStyle)
+        }
+        // The size of the text sets the height of the header and the fields of a table.
+        if (typeof fontSize === 'number') writeFontSize(cell, fontSize)
+      }
+      fitAutoWidth([...changes.keys()])
+    })
+    return true
+  }
+  /** The selection has a cell that is not locked to give a look to. */
+  const canTakeStyle = () => [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
   /** A look is copied, and the selection has a cell that is not locked to paste it into. */
-  const canPasteStyle = () =>
-    styleClipboard.read() !== null && [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
+  const canPasteStyle = () => styleClipboard.read() !== null && canTakeStyle()
 
   // The label of a shape with auto width changes inside this event, so the new width is a part of the same change; a
   // field or a table also changes the references that the fields of other tables show.
@@ -2260,6 +2508,53 @@ export function createDiagramEditor(
   }
   model.addListener(InternalEvent.END_EDIT, fitTexts)
 
+  /**
+   * What {@link DiagramEditor.moveSelectionToLayer} moves into `target`: the selected elements of the page that are not
+   * locked, and the edges whose both ends are among them, those that are not in `target` already, in drawing order.
+   */
+  const selectionToMove = (target: Cell): Cell[] => {
+    const owners = new Set(graph.getSelectionCells().flatMap((cell) => pageCell(cell) ?? []))
+    const owned = (end: Cell | null) => {
+      const owner = end && pageCell(end)
+      return owner !== null && owners.has(owner)
+    }
+    return pageChildren().filter(
+      (cell) =>
+        cell.getParent() !== target &&
+        isUnlocked(cell) &&
+        (owners.has(cell) || (cell.isEdge() && owned(cell.getTerminal(true)) && owned(cell.getTerminal(false)))),
+    )
+  }
+  /** The layers of the page as the panel shows them, the top one first; see {@link LayerState}. */
+  const layerStates = (): LayerState[] => {
+    const selected = new Set(graph.getSelectionCells().flatMap((cell) => pageCell(cell) ?? []))
+    const movable = [...selected].filter(isUnlocked)
+    const active = insertLayer()
+    return layers()
+      .reverse()
+      .map((layer) => {
+        const id = layer.getId()!
+        const style = layer.getStyle() as Record<string, unknown>
+        const locked = isLockedLayer(layer)
+        const children = layer.getChildren()
+        return {
+          id,
+          name: layerName(id, layer.getValue()),
+          ownName: String(layer.getValue() ?? '').trim(),
+          main: id === LAYER_CELL_ID,
+          visible: layer.isVisible(),
+          hiddenForAll: isHiddenLayerStyle(style),
+          ownVisibility: view.visibility(id) ?? null,
+          locked,
+          lockedBy: locked ? lockedByOf(layer) : null,
+          active: layer === active,
+          elements: children.length,
+          selected: children.filter((child) => selected.has(child)).length,
+          canMoveSelection: !readOnly && !locked && movable.some((cell) => cell.getParent() !== layer),
+          holdsLocked: hasLockedDescendant(layer),
+        }
+      })
+  }
   /** The tool that takes the main button, or `null` for selecting and editing; see the listeners of the tools below. */
   let tool: CanvasTool | null = null
   const readState = (): EditorState => {
@@ -2284,10 +2579,11 @@ export function createDiagramEditor(
       arrange: geometryCells().length,
       canGroup: !readOnly && canGroup(),
       canUngroup: !readOnly && ungroupableCells().length > 0,
-      hasCells: graph.getDefaultParent().getChildCount() > 0,
+      hasCells: layers().some((layer) => layer.getChildCount() > 0),
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex() || isFreehand(cell)),
       canCopyStyle: styleSource() !== null,
       canPasteStyle: !readOnly && canPasteStyle(),
+      canTakeStyle: !readOnly && canTakeStyle(),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser: tool === 'laser',
       commentTool: tool === 'comment',
@@ -2304,6 +2600,7 @@ export function createDiagramEditor(
       sequence: selectionSequence(),
       canPasteAsSameElement: !readOnly && clipboard.read() !== null,
       canMergeElements: !readOnly && selectedElements().length >= 2,
+      layers: layerStates(),
     }
   }
   // The links of the page, found again after a change of the page, before the listeners below hear of it.
@@ -2321,7 +2618,7 @@ export function createDiagramEditor(
         visit(child)
       }
     }
-    visit(graph.getDefaultParent())
+    layers().forEach(visit)
     return links
   }
   // Cached so that the same state object is returned until something changes (useSyncExternalStore).
@@ -2690,7 +2987,7 @@ export function createDiagramEditor(
     const rect = container.getBoundingClientRect()
     const x = event.clientX - rect.left + container.scrollLeft
     const y = event.clientY - rect.top + container.scrollTop
-    for (let cell = graph.getCellAt(x, y); cell && cell !== graph.getDefaultParent(); cell = cell.getParent()) {
+    for (let cell = graph.getCellAt(x, y); cell && !isLayer(cell); cell = cell.getParent()) {
       const link = isLinkable(cell) ? linkOf(cell.getStyle()) : null
       if (link) return { cellId: cell.getId()!, link }
     }
@@ -2851,11 +3148,10 @@ export function createDiagramEditor(
    * drawn by hand have no ends: they are copied when they are selected.
    */
   const cellsToCopy = (): Cell[] => {
-    const layer = graph.getDefaultParent()
     // The ancestor on the page: a field belongs to its table, a shape of a group to the group.
     const owner = (cell: Cell) => {
       let current = cell
-      while (current.getParent() && current.getParent() !== layer) current = current.getParent()!
+      while (current.getParent() && !isLayer(current.getParent())) current = current.getParent()!
       return current
     }
     const shapes = new Set(
@@ -2865,10 +3161,9 @@ export function createDiagramEditor(
         .map(owner),
     )
     const copied = (terminal: Cell | null) => terminal !== null && shapes.has(owner(terminal))
-    const edges = graph
-      .getDefaultParent()
-      .getChildren()
-      .filter((cell) => cell.isEdge() && copied(cell.getTerminal(true)) && copied(cell.getTerminal(false)))
+    const edges = pageChildren().filter(
+      (cell) => cell.isEdge() && isShown(cell) && copied(cell.getTerminal(true)) && copied(cell.getTerminal(false)),
+    )
     return [...shapes, ...edges]
   }
   /**
@@ -3157,9 +3452,8 @@ export function createDiagramEditor(
       const size = graph.getGridSize()
       const snap = (value: number) => Math.round(value / size) * size
       const parent = graph.getDefaultParent()
-      const vertices = Array.from({ length: parent.getChildCount() }, (_, index) => parent.getChildAt(index)).filter(
-        (cell) => cell.isVertex(),
-      )
+      // The shapes the participant sees, of every layer.
+      const vertices = pageChildren().filter((cell) => cell.isVertex() && isShown(cell))
       const occupied = (cx: number, cy: number) =>
         vertices.some((cell) => {
           const geometry = cell.getGeometry()
@@ -3236,7 +3530,7 @@ export function createDiagramEditor(
           visit(cell)
         }
       }
-      visit(graph.getDefaultParent())
+      layers().forEach(visit)
       return signatures
     },
     addTableField() {
@@ -3551,26 +3845,48 @@ export function createDiagramEditor(
     },
     pasteStyle() {
       const copied = styleClipboard.read()
-      const changes = copied ? pastedStyles(copied) : null
-      if (!changes || changes.size === 0) return
-      graph.stopEditing(false)
-      // One change: one undo step, and one transaction that the other participants get.
-      model.batchUpdate(() => {
-        for (const [cell, keys] of changes) {
-          const { fontSize, ...rest } = keys
-          if (Object.keys(rest).length > 0) {
-            const style = cell.getClonedStyle() as Record<string, unknown>
-            for (const [key, value] of Object.entries(rest)) {
-              if (value === undefined) delete style[key]
-              else style[key] = value
-            }
-            model.setStyle(cell, style as CellStyle)
-          }
-          // The size of the text sets the height of the header and the fields of a table.
-          if (typeof fontSize === 'number') writeFontSize(cell, fontSize)
-        }
-        fitAutoWidth([...changes.keys()])
-      })
+      if (copied) applyLook(copied)
+    },
+    selectionComponent() {
+      const cells = cellsToCopy()
+      if (cells.length === 0) return null
+      const clones = graph.cloneCells(cells, false)
+      // As in the clipboard: without a parent, maxGraph would take an edge for the label of an edge and drop it.
+      const holder = new Cell()
+      clones.forEach((clone) => clone && holder.insert(clone))
+      const shapes = cells.filter((cell) => cell.isVertex())
+      const single = shapes.length === 1 ? shapes[0]! : null
+      const label = single ? labelLines(String(single.getValue() ?? ''), single.getStyle() as Record<string, unknown>)[0] : undefined
+      return {
+        cells: clones.filter((clone): clone is Cell => clone !== null),
+        image: editor.exportSvg({ selectionOnly: true, transparent: true }),
+        name: label || 'Компонент',
+      }
+    },
+    async insertComponent(content, center) {
+      const cells = await diagramCells(content)
+      if (destroyed || cells.length === 0) return false
+      const holder = new Cell()
+      cells.forEach((cell) => holder.insert(cell))
+      const bounds = graph.getBoundingBoxFromGeometry(cells, false)
+      const middle = center ?? visibleCenter()
+      const size = graph.getGridSize()
+      const snap = (value: number) => Math.round(value / size) * size
+      pasteCells(cells, { x: snap(middle.x - (bounds?.width ?? 0) / 2), y: snap(middle.y - (bounds?.height ?? 0) / 2) })
+      notify()
+      return true
+    },
+    async applyComponentStyle(content) {
+      const cells = await diagramCells(content)
+      if (destroyed) return false
+      const holder = new Cell()
+      cells.forEach((cell) => holder.insert(cell))
+      // The first shape, a text too, inside groups too; without shapes, the first edge.
+      const shapes = (list: Cell[]): Cell[] =>
+        list.flatMap((cell) => (cell.isEdge() ? [] : isGroup(cell) ? shapes(cell.getChildren()) : [cell]))
+      const source = shapes(cells)[0] ?? cells.find((cell) => cell.isEdge())
+      const kind = source ? styleKindOf(source) : null
+      return source !== undefined && kind !== null && applyLook(copyLook(lookOf(source), kind))
     },
     insertCells(data) {
       const cells = dataToCells(data)
@@ -3672,7 +3988,8 @@ export function createDiagramEditor(
     },
     selectAll() {
       graph.stopEditing(false)
-      graph.selectAll()
+      // The elements of the layers shown and not locked; maxGraph would take those of the default parent only.
+      graph.setSelectionCells(openChildren())
     },
     moveSelection(dx, dy) {
       // A field moves with its table: the table layout places fields; so does a part of a sequence diagram.
@@ -3707,9 +4024,9 @@ export function createDiagramEditor(
     },
     async autoLayout(direction) {
       if (readOnly || layingOut) return
-      const parent = graph.getDefaultParent()
       const selected = selectedLayoutCells()
-      const cells = selected.length >= 2 ? selected : parent.getChildren().filter((cell) => cell.isVertex())
+      // Without a selection, the shapes of the layers shown and not locked; the others stay where they are.
+      const cells = selected.length >= 2 ? selected : openChildren().filter((cell) => cell.isVertex())
       const candidates: LayoutShape[] = cells.map((cell) => {
         const { x, y, width, height } = cell.getGeometry()!
         const frame = !isGroup(cell) && (cell.getStyle() as ShapeStyle).pointerEvents === false
@@ -3742,7 +4059,7 @@ export function createDiagramEditor(
           for (const [id, box] of boxes) {
             // Another participant may have deleted the shape meanwhile.
             const cell = model.getCell(id)
-            if (!cell || cell.getParent() !== parent) continue
+            if (!cell || !isLayer(cell.getParent())) continue
             const geometry = cell.getGeometry()!.clone()
             geometry.x = box.x
             geometry.y = box.y
@@ -3773,7 +4090,7 @@ export function createDiagramEditor(
       // On the page: a shape in a group has its geometry relative to the group, and may be selected with others.
       const offset = (cell: Cell) => {
         let sum = 0
-        for (let parent = cell.getParent(); parent && parent !== graph.getDefaultParent(); parent = parent.getParent()) {
+        for (let parent = cell.getParent(); parent && !isLayer(parent); parent = parent.getParent()) {
           const geometry = parent.getGeometry()
           if (geometry) sum += horizontal ? geometry.x : geometry.y
         }
@@ -3895,12 +4212,14 @@ export function createDiagramEditor(
     },
     exportSvg({ selectionOnly = false, ...options } = {}) {
       const copied = selectionOnly ? new Set(cellsToCopy()) : null
-      // In the order of the page, so that what lies on top on the canvas lies on top in the image.
-      const cells = graph
-        .getDefaultParent()
-        .getChildren()
-        .filter((cell) => !copied || copied.has(cell))
+      // In the order of the page, so that what lies on top on the canvas lies on top in the image: what this canvas shows,
+      // without the layers hidden on it and the edges that end in them.
+      const graphView = graph.getView()
+      const children = pageChildren()
+      const cells = children.filter((cell) => graphView.getState(cell) && (!copied || copied.has(cell)))
       if (copied && cells.length === 0) return null
+      // The diagram of an image has what the image draws: the whole page, unless something of it is not drawn.
+      const drawn = copied !== null || cells.length < children.length ? cells.flatMap((cell) => cell.getId() ?? []) : null
       // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
       // participant never sees.
       const shown = theme
@@ -3910,7 +4229,7 @@ export function createDiagramEditor(
       }
       try {
         const image = renderSvg(graph, cells, options)
-        return image && { ...image, cellIds: copied ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+        return image && { ...image, cellIds: drawn }
       } finally {
         if (shown !== 'light') {
           theme = shown
@@ -4180,6 +4499,94 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       model.batchUpdate(() => setStyleKeys(cell, { [LEGEND_KEY]: value }))
     },
+    addLayer() {
+      if (destroyed) return null
+      graph.stopEditing(false)
+      const names = new Set(layers().map((layer) => layerName(layer.getId()!, layer.getValue())))
+      let number = layers().length + 1
+      while (names.has(`Слой ${number}`)) number++
+      const layer = new Cell(`Слой ${number}`)
+      model.batchUpdate(() => model.add(model.getRoot()!, layer))
+      const id = layer.getId()!
+      view.setActive(id)
+      notify()
+      return id
+    },
+    renameLayer(layerId, name) {
+      // The panel applies a name when it goes away, which may be after the editor did.
+      const layer = destroyed ? null : layerCell(layerId)
+      const value = propertyLine(name, LAYER_NAME_LIMIT)
+      if (!layer || value === String(layer.getValue() ?? '')) return
+      model.batchUpdate(() => model.setValue(layer, value))
+    },
+    moveLayer(layerId, direction) {
+      const layer = destroyed ? null : layerCell(layerId)
+      const root = model.getRoot()!
+      const index = layer ? root.getIndex(layer) + (direction === 'up' ? 1 : -1) : -1
+      if (!layer || index < 0 || index >= root.getChildCount()) return
+      model.batchUpdate(() => model.add(root, layer, index))
+    },
+    setLayerLocked(layerId, locked) {
+      const layer = destroyed ? null : layerCell(layerId)
+      if (!layer || isLockedLayer(layer) === locked) return
+      graph.stopEditing(false)
+      const lockedBy = participantName?.trim()
+      model.batchUpdate(() =>
+        setStyleKeys(layer, { [LOCKED_KEY]: locked || undefined, [LOCKED_BY_KEY]: (locked && lockedBy) || undefined }),
+      )
+    },
+    setLayerHidden(layerId, hidden) {
+      const layer = destroyed ? null : layerCell(layerId)
+      if (!layer) return
+      // The participant sees the layer as everybody does from now on.
+      view.setVisibility(layerId, undefined)
+      if (isHiddenLayerStyle(layer.getStyle()) === hidden) {
+        binding.refresh([layerId])
+        return
+      }
+      graph.stopEditing(false)
+      model.batchUpdate(() => setStyleKeys(layer, { [HIDDEN_LAYER_KEY]: hidden || undefined }))
+    },
+    setLayerVisible(layerId, visible) {
+      const layer = destroyed ? null : layerCell(layerId)
+      if (!layer) return
+      // A choice that is what everybody sees is none: the layer follows the visibility for everybody again.
+      view.setVisibility(layerId, visible === !isHiddenLayerStyle(layer.getStyle()) ? undefined : visible)
+      if (!visible) graph.stopEditing(false)
+      binding.refresh([layerId])
+      notify()
+    },
+    setActiveLayer(layerId) {
+      if (destroyed || !layerCell(layerId)) return
+      view.setActive(layerId)
+      notify()
+    },
+    moveSelectionToLayer(layerId) {
+      const target = destroyed ? null : layerCell(layerId)
+      if (!target || isLockedLayer(target)) return
+      const moving = selectionToMove(target)
+      if (moving.length === 0) return
+      graph.stopEditing(false)
+      // On top of the elements of the layer, in the order they were drawn in.
+      model.batchUpdate(() => moving.forEach((cell) => model.add(target, cell)))
+    },
+    deleteLayer(layerId, moveTo) {
+      const layer = destroyed ? null : layerCell(layerId)
+      if (!layer || layerId === LAYER_CELL_ID || isLockedLayer(layer)) return
+      const content = layer.getChildren()
+      const target = moveTo === null ? null : layerCell(moveTo)
+      if (content.length > 0) {
+        if (moveTo !== null && (!target || target === layer || isLockedLayer(target))) return
+        if (moveTo === null && hasLockedDescendant(layer)) return
+      }
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        if (target) [...content].forEach((cell) => model.add(target, cell))
+        // With its elements, and the edges of other layers that end at them.
+        if (layer.getChildCount() > 0) graph.removeCells([layer], true)
+        else model.remove(layer)
+      })
+    },
     pasteAsSameElement(at) {
       const copied = clipboard.read()
       if (readOnly || destroyed || !copied) return
@@ -4359,10 +4766,18 @@ export function createDiagramEditor(
     },
     revealCell(id) {
       const cell = model.getCell(id)
-      const state = cell && (cell.isVertex() || cell.isEdge()) ? graph.getView().getState(cell) : null
-      if (!cell || !state) return false
+      if (!cell || !(cell.isVertex() || cell.isEdge())) return false
+      // An element of a layer hidden on this canvas shows its layer, and an edge the layers of its ends, for the participant.
+      const ends = cell.isEdge() ? [cell.getTerminal(true), cell.getTerminal(false)] : []
+      for (const layer of new Set([cell, ...ends].map((end) => layerOf(model, end)))) {
+        if (layer && !layer.isVisible()) editor.setLayerVisible(layer.getId()!, true)
+      }
+      const state = graph.getView().getState(cell)
+      if (!state) return false
       graph.stopEditing(false)
-      graph.setSelectionCell(cell)
+      // An element of a locked layer is shown without being selected.
+      if (graph.isCellSelectable(cell)) graph.setSelectionCell(cell)
+      else graph.clearSelection()
       const { scale, translate } = graph.getView()
       editor.centerOn({ x: state.getCenterX() / scale - translate.x, y: state.getCenterY() / scale - translate.y })
       return true
@@ -4452,6 +4867,7 @@ export function createDiagramEditor(
       model.removeListener(fitTexts)
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
+      model.removeListener(handleLayerChanges)
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
@@ -4815,16 +5231,17 @@ function configureSelection(graph: Graph) {
     !isTable(cell.getParent()) && !isSequencePart(cell) && propagate(cell, immediate, me)
 }
 
-/** The selection frame selects what it touches, as on the desktop of Windows; see {@link touchedByRegion}. */
-function configureRegionSelection(graph: Graph) {
+/**
+ * The selection frame selects what it touches of `selectable` elements of the page, as on the desktop of Windows; see
+ * {@link touchedByRegion}.
+ */
+function configureRegionSelection(graph: Graph, selectable: () => Cell[]) {
   const rubberBand = graph.getPlugin<RubberBandHandler>('RubberBandHandler')
   // The frame is translucent through its stylesheet; the opacity of maxGraph would fade its border as well.
   if (rubberBand) rubberBand.defaultOpacity = 100
   graph.selectRegion = (region, event) => {
     const view = graph.getView()
-    const cells = graph
-      .getDefaultParent()
-      .getChildren()
+    const cells = selectable()
       .filter((cell) => {
         const state = view.getState(cell)
         if (!state) return false
