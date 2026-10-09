@@ -267,7 +267,13 @@ export function DecisionCard({
             </Button>
             {canEdit && (
               <>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Изменить решение ${code}`}
+                  onClick={() => setEditing(true)}
+                >
                   <Pencil />
                   Изменить
                 </Button>

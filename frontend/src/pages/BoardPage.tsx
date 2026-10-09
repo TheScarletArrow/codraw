@@ -529,7 +529,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
-      <div className="flex items-center gap-x-4 border-b px-3 py-2">
+      <div className="flex items-center gap-x-3 border-b px-3 py-2">
         <BoardHeading
           board={board}
           onChanged={notifyBoardChanged}
@@ -541,9 +541,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             setShowingVisit(false)
           }}
         />
-        <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
+        {/* The text of the status shows on wide screens; the tools of the line need the room on the others. */}
+        <span
+          role="status"
+          title={STATUS_LABELS[status]}
+          className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground"
+        >
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
-          {STATUS_LABELS[status]}
+          <span className="sr-only 2xl:not-sr-only">{STATUS_LABELS[status]}</span>
         </span>
         {readOnly && (
           <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-sm whitespace-nowrap text-muted-foreground">

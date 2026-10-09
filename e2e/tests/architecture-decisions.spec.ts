@@ -50,7 +50,7 @@ test('a decision about a shape reaches the other participant, who discusses and 
   // The discussion is not among the comments of the board.
   await expect(alice.getByRole('button', { name: 'Комментарии', exact: true })).toBeVisible()
 
-  await decision(bob, 'ADR-0001 Kafka для событий').getByRole('button', { name: 'Изменить' }).click()
+  await decision(bob, 'ADR-0001 Kafka для событий').getByRole('button', { name: 'Изменить решение ADR-0001' }).click()
   const edit = panel(bob).getByRole('form', { name: 'Изменить решение ADR-0001' })
   await edit.getByLabel('Статус').selectOption('Принято')
   await edit.getByLabel('Решение', { exact: true }).fill('Kafka: она уже есть в компании')

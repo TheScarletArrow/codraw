@@ -244,7 +244,7 @@ describe('DecisionsPanel', () => {
     })
 
     await userEvent.click(await screen.findByRole('button', { name: /Redis для кэша/ }))
-    await userEvent.click(within(card('ADR-0009 Redis для кэша')).getByRole('button', { name: 'Изменить' }))
+    await userEvent.click(within(card('ADR-0009 Redis для кэша')).getByRole('button', { name: 'Изменить решение ADR-0009' }))
     const form = screen.getByRole('form', { name: 'Изменить решение ADR-0009' })
     await userEvent.selectOptions(within(form).getByLabelText('Статус'), 'Заменено')
     await userEvent.selectOptions(within(form).getByLabelText('Заменено решением'), 'ADR-0008 Kafka для событий')
@@ -343,7 +343,7 @@ describe('DecisionsPanel', () => {
     const opened = card('ADR-0008 Kafka для событий')
     expect(screen.queryByRole('button', { name: 'Новое решение' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт' })).toBeNull()
-    expect(within(opened).queryByRole('button', { name: 'Изменить' })).toBeNull()
+    expect(within(opened).queryByRole('button', { name: 'Изменить решение ADR-0008' })).toBeNull()
     expect(within(opened).queryByRole('button', { name: 'Отвязать «Очередь»' })).toBeNull()
 
     await userEvent.click(within(opened).getByRole('button', { name: 'Скачать .md' }))
