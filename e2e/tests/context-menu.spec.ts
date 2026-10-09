@@ -93,6 +93,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'Ссылка…',
     'Зависимости',
     'Комментировать',
+    'Задачи…',
     'Удалить',
   ])
   await page.keyboard.press('Escape')
@@ -303,6 +304,7 @@ test('reversing an edge swaps its ends', async ({ browser }) => {
     'Описание API…',
     'Свойства…',
     'Комментировать',
+    'Задачи…',
     'Удалить',
   ])
   await item(page, 'Развернуть направление').click()
