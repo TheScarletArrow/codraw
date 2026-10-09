@@ -58,7 +58,7 @@ class MigrationsTest {
 
     @Test
     fun `V1 to V21 create tables on an empty database and U21, U20, U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(20, flyway().migrate().migrationsExecuted)
+        assertEquals(20, flyway("21").migrate().migrationsExecuted)
         assertEquals(decisionsTables, appTables())
         assertEquals(pointThreadColumns + setOf("assignee_id", "decision_id"), columns("comment_threads"))
 
@@ -147,7 +147,7 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(20, flyway().migrate().migrationsExecuted)
+        assertEquals(20, flyway("21").migrate().migrationsExecuted)
         assertEquals(decisionsTables, appTables())
         assertEquals(pointThreadColumns + setOf("assignee_id", "decision_id"), columns("comment_threads"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
@@ -264,7 +264,7 @@ class MigrationsTest {
 
     @Test
     fun `V21 keeps decisions with a number of their own on the board and a known status, which go with their board, and their elements and threads with them`() {
-        assertEquals(20, flyway().migrate().migrationsExecuted)
+        assertEquals(20, flyway("21").migrate().migrationsExecuted)
         jdbcClient.sql(
             "INSERT INTO users (id, provider, provider_user_id, name, created_at) VALUES ('0199a000-0000-7000-8000-0000000000a1'::uuid, 'github', '1', 'Alice', now())",
         ).update()

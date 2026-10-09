@@ -67,6 +67,7 @@ class GuestCleanup(
         DELETE FROM boards WHERE id IN (
             SELECT b.id FROM boards b JOIN users u ON u.id = b.owner_id
             WHERE $GONE_GUEST
+              AND b.deleted_at IS NULL
               AND b.updated_at < :activeBefore
               AND NOT EXISTS (SELECT 1 FROM board_visits v WHERE v.board_id = b.id AND v.visited_at >= :activeBefore)
             LIMIT :batchSize

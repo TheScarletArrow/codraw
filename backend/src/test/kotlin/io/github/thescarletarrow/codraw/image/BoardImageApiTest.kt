@@ -177,7 +177,7 @@ class BoardImageApiTest(
     }
 
     @Test
-    fun `the owner deleting a board deletes its images from the storage`() {
+    fun `trashing preserves images and permanent deletion removes them from storage`() {
         val url = url(add(alice, encoded("png", 3, 3)))
         val key = storageKey(UUID.fromString(board), UUID.fromString(url.substringAfterLast('/')))
         assertNotNull(storage.get(key)).close()
@@ -187,6 +187,12 @@ class BoardImageApiTest(
             with(csrf())
         }.andExpect { status { isNoContent() } }
 
+        assertNotNull(storage.get(key)).close()
+        assertEquals(1, imageCount())
+        mockMvc.delete("/api/boards/trash/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
         assertNull(storage.get(key))
         assertEquals(0, imageCount())
     }

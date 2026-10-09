@@ -29,7 +29,7 @@ type View = 'items' | 'confirm' | 'tags' | 'folder'
 
 /**
  * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions, and in the list of boards the
- * user gives it their tags and folder. Deleting asks for confirmation, as a deleted board cannot be restored.
+ * user gives it their tags and folder. Deleting moves it to the owner's trash.
  */
 export function BoardActions({
   title,
@@ -74,7 +74,7 @@ export function BoardActions({
         {view === 'folder' && folder?.(() => setOpen(false))}
         {view === 'confirm' && (
           <div role="alertdialog" aria-label="Удаление доски" className="flex flex-col gap-2 p-2">
-            <p className="text-sm">Удалить доску «{title}»? Её нельзя будет восстановить.</p>
+            <p className="text-sm">Переместить доску «{title}» в корзину? Её можно восстановить в течение 30 дней.</p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setView('items')}>
                 Отмена
