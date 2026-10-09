@@ -54,6 +54,22 @@ describe('Layout', () => {
     expect(router.state.location.state).toEqual({ from: '/invite/AAAAAAAAAAAAAAAAAAAAAA?x=1' })
   })
 
+  it('opens a board for reading without a session, which sends to the login page a board not shown to anybody', async () => {
+    mockFetch({ 'GET /api/me': { status: 401 } })
+
+    const { router } = renderRoutes(
+      [
+        { path: '/view/:boardId', element: <p>Просмотр без входа</p> },
+        { path: '/', element: <Layout />, children: [{ path: 'boards/:boardId', element: <p>Доска</p> }] },
+      ],
+      `/boards/${boardId}?page=page-2`,
+    )
+
+    expect(await screen.findByText('Просмотр без входа')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/view/${boardId}`)
+    expect(router.state.location.search).toBe('?page=page-2')
+  })
+
   it('shows the name and the avatar of the signed-in user in the header', async () => {
     mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] }, ...unreadCount })
 

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
+import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { logout, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
@@ -12,7 +12,8 @@ import { ThemeMenu } from './theme/ThemeMenu.tsx'
 
 /**
  * Pages of a signed-in user, with their notifications and the novelties of CoDraw in the header; without a session it opens the login page, which
- * comes back to the page, e.g. an invitation, once the visitor continues as a guest.
+ * comes back to the page, e.g. an invitation, once the visitor continues as a guest. A board opens for reading without a
+ * session instead, when its link shows it to anybody.
  */
 export function Layout() {
   const user = useCurrentUser()
@@ -25,6 +26,9 @@ export function Layout() {
   }, [userId])
 
   if (isUnauthorized(user.error)) {
+    // A board may be shown to anybody: its page for reading without a session sends to the login page any other.
+    const board = matchPath('/boards/:boardId', location.pathname)
+    if (board) return <Navigate to={`/view/${encodeURIComponent(board.params.boardId!)}${location.search}`} replace />
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   }
 

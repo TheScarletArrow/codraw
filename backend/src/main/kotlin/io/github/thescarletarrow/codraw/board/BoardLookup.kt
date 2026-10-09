@@ -17,6 +17,10 @@ fun BoardService.ownedBy(id: String, userId: UUID): Board {
     return board
 }
 
+/** The board whose link shows it to anybody without a sign-in, see [LinkAccess.PUBLIC]; `null` for any other. */
+fun BoardService.shownWithoutSignIn(id: String): Board? =
+    BoardIds.parse(id)?.let(::find)?.takeIf { LinkAccess.PUBLIC == it.linkAccess }
+
 /** A board and the role on it of the user who asks. */
 data class Participation(val board: Board, val role: BoardRole)
 

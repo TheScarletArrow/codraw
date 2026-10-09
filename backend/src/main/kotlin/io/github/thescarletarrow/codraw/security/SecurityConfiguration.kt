@@ -1,8 +1,10 @@
 package io.github.thescarletarrow.codraw.security
 
+import io.github.thescarletarrow.codraw.board.PublicBoardController
 import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
 import io.github.thescarletarrow.codraw.embed.EmbedController
+import io.github.thescarletarrow.codraw.image.BoardImageController
 import io.github.thescarletarrow.codraw.legal.LegalController
 import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -62,6 +64,10 @@ class SecurityConfiguration {
                 authorize(HttpMethod.GET, LegalController.PATH, permitAll)
                 // Live images of boards are embedded into documents that their readers open without a sign-in.
                 authorize(HttpMethod.GET, "${EmbedController.PATH}/**", permitAll)
+                // Boards that their links show without a sign-in are read in README files, wikis and frames of other
+                // sites, with their images; the controllers check the link of the board, and the images the session too.
+                authorize(HttpMethod.GET, "${PublicBoardController.PATH}/**", permitAll)
+                authorize(HttpMethod.GET, BoardImageController.IMAGE_PATH, permitAll)
                 authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)
             }

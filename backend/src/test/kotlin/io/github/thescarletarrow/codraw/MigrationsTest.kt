@@ -1173,6 +1173,32 @@ class MigrationsTest {
         }
     }
 
+    @Test
+    fun `V26 accepts boards shown without a sign-in, and U26 makes them viewable through their links only`() {
+        flyway("24").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("26").migrate().migrationsExecuted)
+        jdbcClient.sql("UPDATE boards SET link_access = 'PUBLIC'").update()
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE boards SET link_access = 'COMMENT'").update()
+        }
+
+        revert("U26__claude_issue_60_2c5562_public_view.sql")
+        assertEquals("VIEW", jdbcClient.sql("SELECT link_access FROM boards").query(String::class.java).single())
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbcClient.sql("UPDATE boards SET link_access = 'PUBLIC'").update()
+        }
+        assertEquals(1, flyway("26").migrate().migrationsExecuted)
+    }
+
     private fun flyway(target: String = "latest") =
         Flyway.configure().dataSource(dataSource).target(target).load()
 

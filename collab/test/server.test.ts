@@ -442,6 +442,19 @@ describe("collab server", () => {
       expect(title(owner)).toBeUndefined();
     });
 
+    it("gives a signed-in user a read-only connection to a board that its link shows without a sign-in", async () => {
+      await startServer();
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "public", members: {} });
+      const owner = await connect(board);
+
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      bob.document.getMap("meta").set("title", "Reader");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(bob.provider.authorizedScope).toBe("readonly");
+      expect(title(owner)).toBeUndefined();
+    });
+
     it("rejects a user whom the board no longer gives access, whatever their token, and sends them nothing", async () => {
       await startServer();
       const stored = new Y.Doc();
