@@ -1,7 +1,9 @@
 # public-view Specification
 
 ## Purpose
-TBD - created by archiving change add-public-view. Update Purpose after archive.
+Даёт любому, у кого есть ссылка, смотреть доску без входа, только для чтения и со всеми страницами — по ссылке на
+доску и во фрейме чужого сайта, например вики, — для README, Confluence и `<iframe>`.
+
 ## Requirements
 ### Requirement: Доска без входа через API
 
