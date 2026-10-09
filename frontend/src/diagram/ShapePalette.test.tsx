@@ -66,10 +66,10 @@ describe('ShapePalette', () => {
 
     expect(screen.queryByRole('group', { name: 'C4' })).toBeNull()
     const found = screen.getByRole('group', { name: 'Найденные фигуры' })
-    const shapes = within(found)
-      .getAllByRole('button')
-      .filter((button) => !button.closest('section'))
-    expect(shapes.map((button) => button.textContent)).toEqual(['Kafka', 'Топик событий'])
+    expect(within(found).getAllByRole('button').map((button) => button.textContent)).toEqual(['Kafka', 'Топик событий'])
+    // The logos found are a section of their own, under the shapes.
+    const logos = await screen.findByRole('region', { name: 'Логотипы' })
+    expect(within(logos).getByRole('button', { name: 'Apache Kafka' })).toBeTruthy()
 
     await userEvent.keyboard('{Enter}')
     expect(editor.addShape).toHaveBeenCalledWith('provider-kafka')

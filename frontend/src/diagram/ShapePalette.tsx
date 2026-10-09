@@ -66,31 +66,35 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
       </label>
       {searching ? (
         found.length > 0 || foundComponents.length > 0 || imageFound || foundLogos.length > 0 ? (
-          <div role="group" aria-label="Найденные фигуры" className="flex flex-col gap-1">
-            {libraries && foundComponents.length > 0 && (
-              <>
-                <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Из библиотек</h2>
-                {foundComponents.map(({ library, component }) => (
-                  <ComponentButton key={component.id} shelf={libraries} editor={editor} library={library} component={component} />
-                ))}
-                {(found.length > 0 || imageFound) && (
-                  <h2 className="mt-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Фигуры</h2>
+          <>
+            {(found.length > 0 || foundComponents.length > 0 || imageFound) && (
+              <div role="group" aria-label="Найденные фигуры" className="flex flex-col gap-1">
+                {libraries && foundComponents.length > 0 && (
+                  <>
+                    <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Из библиотек</h2>
+                    {foundComponents.map(({ library, component }) => (
+                      <ComponentButton key={component.id} shelf={libraries} editor={editor} library={library} component={component} />
+                    ))}
+                    {(found.length > 0 || imageFound) && (
+                      <h2 className="mt-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Фигуры</h2>
+                    )}
+                  </>
                 )}
-              </>
+                {imageFound && <ImageButton editor={editor} />}
+                {found.map((shape) => (
+                  <ShapeButton key={shape.id} shape={shape} editor={editor} />
+                ))}
+              </div>
             )}
-            {imageFound && <ImageButton editor={editor} />}
-            {found.map((shape) => (
-              <ShapeButton key={shape.id} shape={shape} editor={editor} />
-            ))}
             {foundLogos.length > 0 && (
-              <section aria-label="Логотипы" className="mt-1 flex flex-col gap-1">
+              <section aria-label="Логотипы" className="flex flex-col gap-1">
                 <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Логотипы</h2>
                 {foundLogos.map((icon) => (
                   <LogoButton key={icon.slug} icon={icon} editor={editor} />
                 ))}
               </section>
             )}
-          </div>
+          </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">Ничего не найдено</p>
         )
