@@ -170,6 +170,62 @@ describe('infraCells', () => {
     expect(typeof cluster.style.codrawElement).toBe('string')
   })
 
+  it('gives a frame the properties of its element, an edge its technology and a frame as an end, and a shape its link', async () => {
+    const graph: InfraGraph = {
+      nodes: [
+        {
+          shape: 'c4-container',
+          lines: ['API', '[Container: Kotlin]'],
+          frame: 0,
+          key: 'api',
+          element: { name: 'API', technology: 'Kotlin' },
+          link: 'https://wiki.example.com/api',
+        },
+        { shape: 'c4-person', lines: ['Покупатель', '[Person]'], frame: null, key: 'customer', element: { name: 'Покупатель' } },
+        { shape: 'queue', lines: ['События', '[Kafka]'], frame: null, key: 'events', element: { name: 'События', technology: 'Kafka' }, showTechnology: true },
+      ],
+      frames: [{ shape: 'c4-boundary', label: 'Магазин\n[Software System]', parent: null, key: 'shop', element: { name: 'Магазин', kind: 'c4-system' } }],
+      edges: [
+        { source: 1, target: 0, label: 'Покупает\n[HTTPS]', technology: 'HTTPS' },
+        { source: 0, sourceFrame: true, target: 2, label: 'Публикует' },
+      ],
+    }
+    const cells = await infraCells(graph, { x: 0, y: 0 }, undefined, 'architecture')
+
+    const shop = byValue(cells, 'Магазин\n[Software System]')
+    const api = byValue(cells, 'API\n[Container: Kotlin]')
+    const events = byValue(cells, 'События\n[Kafka]')
+    expect(shop.style).toMatchObject({ codrawShape: 'c4-boundary', codrawKind: 'c4-system', codrawName: 'Магазин', codrawSource: 'architecture:frame:shop' })
+    expect(typeof shop.style.codrawElement).toBe('string')
+    expect(inside(shop.geometry!, api.geometry!)).toBe(true)
+    expect(api.style).toMatchObject({ link: 'https://wiki.example.com/api', codrawTechnology: 'Kotlin' })
+    expect(events.style).toMatchObject({ codrawShowTechnology: true, codrawTechnology: 'Kafka' })
+    const [buys, publishes] = cells.filter((cell) => cell.kind === 'edge')
+    expect(buys!.style).toMatchObject({ codrawTechnology: 'HTTPS', codrawSource: 'architecture:edge:customer->api:Покупает\n[HTTPS]' })
+    expect([publishes!.source, publishes!.target]).toEqual([shop.id, events.id])
+    expect(publishes!.style.codrawSource).toBe('architecture:edge:shop->events:Публикует')
+  })
+
+  it('wraps the lines of a label wider than the largest width of its shape and makes it taller', async () => {
+    const description = 'Принимает заказы покупателей, проверяет остатки на складе и резервирует товары до оплаты. '.repeat(2).trim()
+    const graph: InfraGraph = {
+      nodes: [
+        { shape: 'c4-container', lines: ['API', '[Container: Kotlin]', description], frame: null, maxWidth: 320 },
+        { shape: 'c4-person', lines: ['Покупатель', '[Person]', description], frame: null, maxWidth: 320 },
+      ],
+      frames: [],
+      edges: [],
+    }
+    const [container, person] = (await infraCells(graph, { x: 0, y: 0 })).map((cell) => cell.geometry!)
+
+    expect(container!.width).toBe(320)
+    // The description takes five lines of 288 px: seven lines in all.
+    expect(Math.ceil((description.length * 7.5) / 288)).toBe(5)
+    expect(container!.height).toBe(7 * 16 + 20)
+    // The head of a person keeps its room above the label.
+    expect(person!.height).toBe(7 * 16 + 20 + 70)
+  })
+
   it('adds no tables: the exports of SQL skip the services', async () => {
     const cells = await infraCells(await graphOf(SHOP_COMPOSE), { x: 0, y: 0 })
 
