@@ -15,6 +15,12 @@ export const routes: RouteObject[] = [
   { path: '/privacy', element: <PrivacyPage />, errorElement: <AppError /> },
   { path: '/terms', element: <TermsPage />, errorElement: <AppError /> },
   {
+    // A board that its link shows to anybody, read without a session and in frames of other sites.
+    path: '/view/:boardId',
+    errorElement: <AppError />,
+    lazy: async () => ({ Component: (await import('./pages/PublicBoardPage.tsx')).PublicBoardPage }),
+  },
+  {
     path: '/',
     element: <Layout />,
     errorElement: <AppError />,

@@ -55,7 +55,7 @@ export class NoAccessError extends Error {
 export function accessOf({ ownerId, linkAccess, members }: BoardAccess, userId: string): DocumentAccess | null {
   const member = members[userId];
   if (userId === ownerId || member === "editor" || linkAccess === "edit") return "edit";
-  if (member === "viewer" || linkAccess === "view") return "view";
+  if (member === "viewer" || linkAccess === "view" || linkAccess === "public") return "view";
   return null;
 }
 

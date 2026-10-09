@@ -6,8 +6,11 @@ import { HttpError, request } from './http.ts'
  */
 export type BoardRole = 'owner' | 'editor' | 'viewer'
 
-/** What a link to a board gives to users other than its owner and its members: nothing, viewing or editing. */
-export type LinkAccess = 'none' | 'view' | 'edit'
+/**
+ * What a link to a board gives to users other than its owner and its members: nothing, viewing, viewing by anybody
+ * without a sign-in too, or editing.
+ */
+export type LinkAccess = 'none' | 'view' | 'public' | 'edit'
 
 export interface BoardOwner {
   id: string

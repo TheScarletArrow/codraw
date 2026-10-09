@@ -14,6 +14,7 @@ import { AccessRequestsSection } from './AccessRequestsSection.tsx'
 import { InvitesSection } from './InvitesSection.tsx'
 import { counted } from './members.ts'
 import { MembersSection } from './MembersSection.tsx'
+import { PublicViewSection } from './PublicViewSection.tsx'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
 const COPIED_DURATION = 2_000
@@ -21,6 +22,11 @@ const COPIED_DURATION = 2_000
 const LINK_ACCESS_OPTIONS: { value: LinkAccess; label: string; description: string }[] = [
   { value: 'none', label: 'Только я', description: 'По ссылке доску не откроет никто, кроме вас и участников' },
   { value: 'view', label: 'Просмотр', description: 'По ссылке доску смотрят без правки' },
+  {
+    value: 'public',
+    label: 'Все, у кого есть ссылка, без входа',
+    description: 'Доску смотрят без входа и без правки, в том числе в README, Confluence и <iframe>; правят только участники',
+  },
   { value: 'edit', label: 'Редактирование', description: 'По ссылке доску редактируют вместе с вами' },
 ]
 
@@ -28,6 +34,7 @@ const LINK_ACCESS_OPTIONS: { value: LinkAccess; label: string; description: stri
 const ACCESS_OF_OTHERS: Record<LinkAccess, string> = {
   none: 'Владелец закрыл доступ по ссылке',
   view: 'По ссылке доску можно только смотреть',
+  public: 'По ссылке доску можно смотреть, даже без входа',
   edit: 'По ссылке доску можно редактировать',
 }
 
@@ -55,8 +62,8 @@ interface ShareButtonProps {
 
 /**
  * «Поделиться»: the link to the board with a copy button, for the owner what the link gives to others and the requests
- * for access, which the button counts, the participants of the board, invitation links for the owner, and the live
- * image of a page.
+ * for access, which the button counts, the code that embeds a board shown to anybody, the participants of the board,
+ * invitation links for the owner, and the live image of a page.
  */
 export function ShareButton({
   board,
@@ -202,6 +209,7 @@ export function ShareButton({
         ) : (
           <p className="text-sm text-muted-foreground">{ACCESS_OF_OTHERS[board.linkAccess]}</p>
         )}
+        {board.linkAccess === 'public' && <PublicViewSection boardId={board.id} pageId={pageId} />}
         {isOwner && <AccessRequestsSection board={board} requests={requests.data} onChanged={onChanged} />}
         <MembersSection board={board} onChanged={onChanged} />
         {isOwner && <InvitesSection board={board} />}

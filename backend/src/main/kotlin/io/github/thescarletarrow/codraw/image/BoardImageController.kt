@@ -6,7 +6,9 @@ import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.BoardIds
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.LinkAccess
 import io.github.thescarletarrow.codraw.board.participated
+import io.github.thescarletarrow.codraw.board.shownWithoutSignIn
 import io.github.thescarletarrow.codraw.proposal.ProposalService
 import io.github.thescarletarrow.codraw.readAtMost
 import io.github.thescarletarrow.codraw.user.userId
@@ -94,7 +96,8 @@ class BoardImageController(
 
     /**
      * The image, of the type its signature tells. An image never changes at its address, so the browser keeps it a year,
-     * and shows it without a connection too; shared caches do not keep it.
+     * and shows it without a connection too; shared caches do not keep it. Without a session only a board that its link
+     * shows to anybody gives its images, see [LinkAccess.PUBLIC]; any other answers 401, as without the sign-in it needs.
      */
     @GetMapping("/{imageId}")
     fun get(
@@ -102,9 +105,13 @@ class BoardImageController(
         @PathVariable imageId: String,
         request: ServletWebRequest,
         response: HttpServletResponse,
-        @AuthenticationPrincipal principal: OAuth2User,
+        @AuthenticationPrincipal principal: OAuth2User?,
     ) {
-        val board = boards.participated(id, principal.userId).board
+        val board = if (principal != null) {
+            boards.participated(id, principal.userId).board
+        } else {
+            boards.shownWithoutSignIn(id) ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sign in to get the image")
+        }
         val image = BoardIds.parse(imageId)?.let { images.find(checkNotNull(board.id), it) } ?: throw notFound()
         response.setHeader("X-Content-Type-Options", "nosniff")
         response.setHeader("Content-Security-Policy", "default-src 'none'; sandbox")
@@ -161,6 +168,8 @@ class BoardImageController(
     private fun BoardImage.toResponse() = ImageResponse(id, "/api/boards/$boardId/images/$id", type.mediaType, size, width, height)
 
     companion object {
+        /** The address of an image, which [get] answers without a session too; not that of [usage]. */
+        const val IMAGE_PATH = "/api/boards/{id}/images/{imageId:[0-9a-fA-F-]{36}}"
         private val CACHE = CacheControl.maxAge(Duration.ofDays(365)).cachePrivate().immutable()
     }
 }
