@@ -39,7 +39,7 @@
 
 - [x] 4.1 docs: README (возможность, раздел «Модель и представления», план), «Что нового» 0.24.0 и `version`
 - [x] 4.2 e2e: `model-views.spec.ts` — представление контейнеров системы, новый контейнер на другой странице появляется у
-  другого участника, скрытие и «Показать всё», правило «Ландшафт» и его отмена; проверка: `pnpm --filter @codraw/e2e
+  другого участника, скрытие и «Вернуть всё», правило «Ландшафт» и его отмена; проверка: `pnpm --filter @codraw/e2e
   typecheck`, прогон в CI
 - [x] 4.3 Проверка: `pnpm typecheck`, `pnpm lint`, `pnpm --filter @codraw/frontend test`, `pnpm --filter
   @codraw/frontend build`, `openspec validate --all --strict`

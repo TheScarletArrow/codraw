@@ -38,14 +38,14 @@ test('a view of the containers of a system follows the model for everybody, hide
   await expect.poll(async () => (await vertices(alice)).some((cell) => cell.id === added)).toBe(true)
   await expect.poll(() => computed(bob)).toEqual(['Граница системы', 'Контейнер', 'Контейнер'])
 
-  // Боб removes one computed container: it is hidden on the view, and «Скрыто» shows it again.
+  // Боб removes one computed container: it is hidden on the view, and «Скрыто» brings it back.
   const container = (await vertices(bob)).find((cell) => cell.style.codrawComputed && cell.value.startsWith('Контейнер'))!
   const at = center(await cellBox(bob, container.id))
   await bob.mouse.click(at.x, at.y, { button: 'right' })
   await menu(bob).getByRole('menuitem', { name: 'Удалить', exact: true }).click()
   await expect.poll(() => computed(bob)).toEqual(['Граница системы', 'Контейнер'])
   await bar(bob).getByRole('button', { name: /Скрыто: 1/ }).click()
-  await bob.getByRole('button', { name: 'Показать всё' }).click()
+  await bob.getByRole('dialog', { name: 'Скрытое на представлении' }).getByRole('button', { name: 'Вернуть всё' }).click()
   await expect.poll(() => computed(bob)).toEqual(['Граница системы', 'Контейнер', 'Контейнер'])
 
   // The rule changes as an undo step of the view: the landscape shows the system without its containers.

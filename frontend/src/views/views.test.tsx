@@ -97,7 +97,7 @@ describe('the window of the rule of a view', () => {
 })
 
 describe('the bar of a view', () => {
-  it('tells the rule and the slice, shows what is hidden again, opens the rule and lays out the page', async () => {
+  it('tells the rule and the slice, brings back what is hidden, opens the rule and lays out the page', async () => {
     document.body.innerHTML = ''
     const { doc, ids } = shop()
     const view = createViewPage(doc, DEFAULT_PAGE_ID, rule({ kind: 'containers', scope: ids.shop, owners: ['Платежи'] }), 'Вид')
@@ -108,7 +108,9 @@ describe('the bar of a view', () => {
     const bar = screen.getByRole('region', { name: 'Представление' })
     expect(bar).toHaveTextContent('Представление: Контейнеры системы Магазин · Команды: Платежи')
     await userEvent.click(within(bar).getByRole('button', { name: /Скрыто: 1/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'Показать API' }))
+    const hidden = screen.getByRole('dialog', { name: 'Скрытое на представлении' })
+    expect(within(hidden).getByRole('button', { name: 'Вернуть всё' })).toBeVisible()
+    await userEvent.click(within(hidden).getByRole('button', { name: 'Вернуть API' }))
     expect(editor.showOnView).toHaveBeenCalledWith([`${ids.shop}~${ids.api}`])
     await userEvent.click(within(bar).getByRole('button', { name: /Правило/ }))
     expect(onEditRule).toHaveBeenCalled()

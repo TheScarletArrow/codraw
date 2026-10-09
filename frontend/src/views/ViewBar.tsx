@@ -10,7 +10,7 @@ import { elementName, hiddenLabel, modelStore } from './modelStore.ts'
 
 /**
  * The bar over the canvas of a page that is a view of the model: what it shows and its slice, and for who edits the
- * board what is hidden on it with a way to show it again, the window of its rule and the layout of the page. Nothing for a
+ * board what is hidden on it with a way to bring it back, the window of its rule and the layout of the page. Nothing for a
  * page that is no view; a page shows it for its views only, so that other pages do not read the model after every change.
  */
 export function ViewBar({
@@ -89,13 +89,13 @@ function Bar({
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
-                    aria-label={`Показать ${label}`}
+                    aria-label={`Вернуть ${label}`}
                     onClick={() => {
                       editor.showOnView([key])
                       if (hidden.length === 1) setHiddenOpen(false)
                     }}
                   >
-                    Показать
+                    Вернуть
                   </Button>
                 </li>
               ))}
@@ -109,7 +109,7 @@ function Bar({
                 setHiddenOpen(false)
               }}
             >
-              Показать всё
+              Вернуть всё
             </Button>
           </PopoverContent>
         </Popover>
