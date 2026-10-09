@@ -17,7 +17,14 @@ import {
 import { documentOf, type CollabDocument } from "./documents.js";
 import { createDocumentEditors } from "./editors.js";
 import { log } from "./log.js";
-import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED, DECISIONS_CHANGED, PROPOSALS_CHANGED } from "./messages.js";
+import {
+  BOARD_CHANGED,
+  changeOf,
+  COMMENTS_CHANGED,
+  DECISIONS_CHANGED,
+  ISSUES_CHANGED,
+  PROPOSALS_CHANGED,
+} from "./messages.js";
 import { createMetrics, rejectionReasonOf, type Metrics } from "./metrics.js";
 import { createSearchTextBackfill } from "./search-text-backfill.js";
 import { searchTextOf } from "./search-text.js";
@@ -224,10 +231,11 @@ export function createCollabServer({
       editors.forget(documentName);
       searchTexts.delete(documentName);
     },
-    // A participant changed the board, its comments, its decisions or its proposals; the others fetch them again. Only these messages
-    // pass, written by collab itself. A change of the board may be of the access to it, and a change of a proposal in
-    // its draft closes it or not, so the connections are checked too. Viewers comment and propose as well, and those who
-    // review a draft view it, so comments-changed and proposals-changed pass from read-only connections.
+    // A participant changed the board, its comments, its decisions, its linked issues or its proposals; the others fetch
+    // them again. Only these messages pass, written by collab itself. A change of the board may be of the access to it,
+    // and a change of a proposal in its draft closes it or not, so the connections are checked too. Viewers comment,
+    // link issues to threads and propose as well, and those who review a draft view it, so comments-changed,
+    // issues-changed and proposals-changed pass from read-only connections.
     async onStateless({ payload, document, connection }) {
       const change = changeOf(payload);
       if (change === "board-changed") {
@@ -237,6 +245,8 @@ export function createCollabServer({
         document.broadcastStateless(COMMENTS_CHANGED, (other) => other !== connection);
       } else if (change === "decisions-changed") {
         document.broadcastStateless(DECISIONS_CHANGED, (other) => other !== connection);
+      } else if (change === "issues-changed") {
+        document.broadcastStateless(ISSUES_CHANGED, (other) => other !== connection);
       } else if (change === "proposals-changed") {
         document.broadcastStateless(PROPOSALS_CHANGED, (other) => other !== connection);
         if (documentOf(document.name)?.kind === "proposal") void checkAccess(document);

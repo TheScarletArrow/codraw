@@ -21,6 +21,7 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   notificationsPerUser: 200,
   closedProposalsPerBoard: 10,
   schemaImport: false,
+  issues: false,
   ...changes,
 })
 
@@ -151,6 +152,29 @@ describe('legal pages', () => {
     )
     expect(copies).toHaveTextContent('Тему оформления, выбранную в меню «Тема», — «Светлая» или «Тёмная» — браузер тоже помнит')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+  })
+
+  it('names the token of GitHub and linked issues only when the installation links issues', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ issues: true }) } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent('Задачи GitHub. Если вы подключили GitHub: ваш токен доступа и имя учётной записи GitHub')
+    expect(data).toHaveTextContent('токен хранится на сервере и никому не показывается, в том числе вам')
+    expect(screen.getByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'Токен GitHub — пока вы не отключите GitHub или не замените токен, и не дольше учётной записи',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Номер, название и статус привязанной задачи, в том числе из закрытого репозитория, и имя того, кто её привязал, видят все, кому доступна доска. Больше никому',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })).not.toHaveTextContent('Задачи GitHub')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'после сохранения. Больше никому данные не передаются и не продаются.',
+    )
   })
 
   it('names the connection to a database only when the installation has it on', async () => {

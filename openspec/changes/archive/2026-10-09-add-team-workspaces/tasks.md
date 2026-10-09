@@ -2,7 +2,7 @@
 
 ## 1. Модель и пространства
 
-- [x] 1.1 backend: миграция V25 и откат U25 — `workspaces`, `workspace_members`, `workspace_invites`, `workspace_projects`, столбцы `boards.workspace_id`, `project_id`, `workspace_access` с проверками и индексами; проверка: `WorkspaceMigrationTest`
+- [x] 1.1 backend: миграция V26 и откат U26 — `workspaces`, `workspace_members`, `workspace_invites`, `workspace_projects`, столбцы `boards.workspace_id`, `project_id`, `workspace_access` с проверками и индексами; проверка: `WorkspaceMigrationTest`
 - [x] 1.2 backend: пределы `workspaces-per-user`, `members-per-workspace`, `invites-per-workspace`, `projects-per-workspace`, `boards-per-workspace` и метки метрики; проверка: `WorkspaceApiTest`
 - [x] 1.3 backend: пакет `workspace` — создание, список, переименование, участники с полномочиями и последним владельцем, приглашения и их принятие, проекты; 403 гостю, 404 не участнику; проверка: `WorkspaceApiTest`
 
@@ -27,4 +27,4 @@
 ## 5. Проверка и документация
 
 - [x] 5.1 e2e: владелец создаёт пространство и приглашает редактора, переносит туда доску, редактор правит её, ограничение доступа делает его соединение только для чтения, удаление из пространства закрывает доступ; проверка: `team-workspaces.spec.ts` зелёный
-- [x] 5.2 README, политика конфиденциальности, «Что нового» 0.26.0 и версия приложения; проверка: тесты «Что нового» и политики, `openspec validate --all --strict`
+- [x] 5.2 README, политика конфиденциальности, «Что нового» 0.27.0 и версия приложения; проверка: тесты «Что нового» и политики, `openspec validate --all --strict`

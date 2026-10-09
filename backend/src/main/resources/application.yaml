@@ -100,6 +100,15 @@ codraw:
     cleanup-cron: "0 53 * * * *"
     # The S3-compatible storage of images (codraw.images.s3.endpoint, region, bucket, access-key, secret-key): the
     # environment of the deployment sets it, see docs/deploy.md.
+  issues:
+    github:
+      # The REST API of GitHub through which users link issues to elements and threads (CODRAW_ISSUES_GITHUB_API_URL),
+      # e.g. https://github.example.com/api/v3 of GitHub Enterprise Server; empty turns issues off. See docs/deploy.md
+      # and docs/adr/0009-issue-tracker.md.
+      api-url: https://api.github.com
+      # The secret of the webhook of issues that brings their changes at once (CODRAW_ISSUES_GITHUB_WEBHOOK_SECRET);
+      # empty turns the webhook off.
+      webhook-secret: ""
   schema-import:
     # Host names, addresses and networks (CIDR) of PostgreSQL databases whose schemas users may read through the
     # backend, comma-separated, e.g. "db.internal,10.20.0.0/16" (CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS). Empty turns

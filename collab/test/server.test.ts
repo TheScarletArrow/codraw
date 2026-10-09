@@ -232,6 +232,22 @@ describe("collab server", () => {
       expect(toSender).toEqual([]);
     });
 
+    it("relays issues-changed of a viewer to the others", async () => {
+      const BOB = "0199a000-0000-7000-8000-0000000000b1";
+      await startServer();
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
+      const owner = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const [toOwner, toViewer] = [owner, viewer].map(statelessOf);
+
+      viewer.provider.sendStateless(JSON.stringify({ type: "issues-changed", link: "<script>" }));
+
+      await waitFor(() => toOwner!.length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(toOwner).toEqual(['{"type":"issues-changed"}']);
+      expect(toViewer).toEqual([]);
+    });
+
     it("does not relay other stateless messages", async () => {
       await startServer();
       const sender = await connect(board);

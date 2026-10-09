@@ -27,16 +27,16 @@ class WorkspaceMigrationTest {
     private val jdbc = JdbcClient.create(source)
 
     @Test
-    fun `boards stay personal through V25, deleting a project keeps its boards, and U25 keeps all boards`() {
-        Flyway.configure().dataSource(source).target("24").load().migrate()
+    fun `boards stay personal through V26, deleting a project keeps its boards, and U26 keeps all boards`() {
+        Flyway.configure().dataSource(source).target("25").load().migrate()
         jdbc.sql(
             """
             INSERT INTO users(id, provider, provider_user_id, name, created_at) VALUES ('$ALICE', 'github', '1', 'Alice', now());
             INSERT INTO boards(title, owner_id, created_at, updated_at) VALUES ('Личная', '$ALICE', now(), now());
             """,
         ).update()
-        // Migrations before V25 come from other changes, so do not assume how many of them there are.
-        Flyway.configure().dataSource(source).target("25").load().migrate()
+        // Migrations before V26 come from other changes, so do not assume how many of them there are.
+        Flyway.configure().dataSource(source).target("26").load().migrate()
         assertEquals(true, jdbc.sql("SELECT workspace_id IS NULL FROM boards").query(Boolean::class.java).single())
         assertEquals("EDIT", jdbc.sql("SELECT workspace_access FROM boards").query(String::class.java).single())
 
@@ -64,10 +64,10 @@ class WorkspaceMigrationTest {
         )
 
         source.connection.use {
-            ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U25__claude_admiring_euler_lmzooy_team_workspaces.sql"))
+            ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U26__claude_admiring_euler_lmzooy_team_workspaces.sql"))
         }
         assertEquals(2, jdbc.sql("SELECT count(*) FROM boards").query(Int::class.java).single())
-        assertEquals(1, Flyway.configure().dataSource(source).target("25").load().migrate().migrationsExecuted)
+        assertEquals(1, Flyway.configure().dataSource(source).target("26").load().migrate().migrationsExecuted)
         assertEquals(0, jdbc.sql("SELECT count(*) FROM workspaces").query(Int::class.java).single())
     }
 }

@@ -52,6 +52,7 @@ export type MenuCommand =
   | 'link'
   | 'edgeApi'
   | 'properties'
+  | 'issues'
   | 'addParticipant'
   | 'addMessage'
   | 'addNote'
@@ -188,6 +189,8 @@ export interface MenuAvailability {
   canShowPath?: boolean
   /** The page saves the selection into a library of the user: «Сохранить в библиотеку…» is offered, to viewers too. */
   canSaveToLibrary?: boolean
+  /** The page shows the issues of the tracker linked to an element: «Задачи…» is offered, to viewers too. */
+  canShowIssues?: boolean
 }
 
 /** Items of a participant who may only view the board. */
@@ -204,6 +207,7 @@ const VIEWING_COMMANDS = new Set<MenuCommand>([
   'dependencies',
   'pathBetween',
   'saveToLibrary',
+  'issues',
 ])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
@@ -251,6 +255,8 @@ const ORDER: Entry[] = [
 const DELETE: Entry = ['delete', 'Удалить', 'Delete']
 const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
 const COMMENT: Entry[] = [['comment', 'Комментировать']]
+/** Commenting on an element, and its issues of the tracker. */
+const DISCUSSION: Entry[] = [...COMMENT, ['issues', 'Задачи…']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
 const EDGE_API: Entry = ['edgeApi', 'Описание API…']
 const PROPERTIES: Entry = ['properties', 'Свойства…']
@@ -307,7 +313,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     STATUS,
     PLAN,
     [...LINK, DETAIL, PROPERTIES, DEPENDENCIES, ...SHARED],
-    COMMENT,
+    DISCUSSION,
     [DELETE, DELETE_EVERYWHERE],
   ],
   table: [
@@ -319,7 +325,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     STATUS,
     PLAN,
     [...LINK, DEPENDENCIES],
-    COMMENT,
+    DISCUSSION,
     [DELETE],
   ],
   field: [
@@ -340,9 +346,9 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], DISCUSSION, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, DISCUSSION, [DELETE]],
   selection: [
     [
       ['group', 'Сгруппировать', 'Mod+G'],
@@ -408,7 +414,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
  * change locked elements. The status of the selection is offered when it has elements that may have one, with its
  * current status chosen, also for locked elements. «Добавить ветку» is offered for a frame of a sequence diagram that has
  * branches and for its branches. A participant who may only view gets only copying, copying a look, selecting,
- * commenting, the properties and copying Mermaid, so their menu may be empty: following a link needs no menu.
+ * commenting, the properties, the issues and copying Mermaid, so their menu may be empty: following a link needs no menu.
  */
 export function menuItems(
   target: MenuTarget,
@@ -440,6 +446,7 @@ export function menuItems(
     canShowDependencies = false,
     canShowPath = false,
     canSaveToLibrary = false,
+    canShowIssues = false,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
@@ -469,6 +476,7 @@ export function menuItems(
     dependencies: canShowDependencies,
     pathBetween: canShowPath,
     saveToLibrary: canSaveToLibrary,
+    issues: canShowIssues,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
     ...Object.fromEntries(Object.keys(PLAN_COMMANDS).map((command) => [command, plan !== null])),
   }

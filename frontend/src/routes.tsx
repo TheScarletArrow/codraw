@@ -4,6 +4,7 @@ import { Layout } from './Layout.tsx'
 import { PrivacyPage } from './legal/PrivacyPage.tsx'
 import { TermsPage } from './legal/TermsPage.tsx'
 import { BoardsPage } from './pages/BoardsPage.tsx'
+import { ConnectionsPage } from './pages/ConnectionsPage.tsx'
 import { InvitePage } from './pages/InvitePage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage.tsx'
@@ -28,6 +29,7 @@ export const routes: RouteObject[] = [
       { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
       // The link of a letter that confirms an address comes here too, with `?confirm=`.
       { path: 'settings/notifications', element: <NotificationSettingsPage /> },
+      { path: 'settings/connections', element: <ConnectionsPage /> },
       {
         path: 'boards/:boardId',
         // The editor pulls in maxGraph, so it is loaded only when a board is opened.
