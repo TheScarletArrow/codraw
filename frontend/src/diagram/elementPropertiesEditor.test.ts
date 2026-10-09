@@ -194,6 +194,7 @@ describe('properties of elements in the editor', () => {
       target: 'edge',
       cellId: edge.getId(),
       properties: { technology: '', interaction: null },
+      relations: null,
       canChange: true,
     })
 

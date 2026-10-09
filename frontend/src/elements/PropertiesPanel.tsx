@@ -1,9 +1,10 @@
 import { Eye, EyeOff, ListTree, X } from 'lucide-react'
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { DiagramEditor, ElementPropertiesChange, SelectionProperties } from '../diagram/editor.ts'
+import { environments, parentCandidates } from '../diagram/boardModel.ts'
+import type { DiagramEditor, ElementPropertiesChange, SelectionProperties, ViewRelation } from '../diagram/editor.ts'
 import {
   INTERACTION_LABELS,
   parseTags,
@@ -12,8 +13,11 @@ import {
   type Interaction,
 } from '../diagram/elementKinds.ts'
 import { EDGE_TECHNOLOGIES, KIND_SECTIONS, kindLabel, technologySuggestions, usedProperties } from '../diagram/elementProps.ts'
+import { cellElementId, getCells } from '../diagram/model.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
+import { environmentLabel } from '../diagram/viewRule.ts'
+import { elementName, modelStore } from '../views/modelStore.ts'
 import { IconField, IconView } from './IconField.tsx'
 
 /** The button of the header of the board that shows and hides the panel of properties. */
@@ -58,11 +62,14 @@ export function PropertiesPanel({
   editor,
   document,
   request = null,
+  onShow,
   onClose,
 }: {
   editor: DiagramEditor | null
   document: Y.Doc | null
   request?: PropertiesRequest | null
+  /** Goes to a cell of another page, e.g. a relation of the model that an edge of a view shows. */
+  onShow?: (pageId: string, cellId: string) => void
   onClose: () => void
 }) {
   const { properties } = useEditorState(editor)
@@ -85,7 +92,13 @@ export function PropertiesPanel({
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
         <h2 className="mr-auto text-sm font-semibold">
-          {properties?.target === 'edge' ? 'Свойства связи' : properties?.target === 'legend' ? 'Легенда' : 'Свойства'}
+          {properties?.target === 'edge'
+            ? properties.relations !== null
+              ? 'Связь представления'
+              : 'Свойства связи'
+            : properties?.target === 'legend'
+              ? 'Легенда'
+              : 'Свойства'}
         </h2>
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
           <X />
@@ -97,15 +110,17 @@ export function PropertiesPanel({
         ) : properties.target === 'legend' ? (
           <LegendForm key={properties.cellId} editor={editor} selection={properties} />
         ) : properties.target === 'edge' ? (
-          properties.canChange ? (
+          properties.relations !== null ? (
+            <ViewEdgeView relations={properties.relations} onShow={onShow} />
+          ) : properties.canChange ? (
             <EdgeForm key={properties.cellId} editor={editor} cellId={properties.cellId} properties={properties.properties} used={used} onUsed={readUsed} />
           ) : (
             <EdgeView properties={properties.properties} />
           )
         ) : properties.canChange ? (
-          <ShapeForm key={properties.cellId} editor={editor} selection={properties} used={used} onUsed={readUsed} />
+          <ShapeForm key={properties.cellId} editor={editor} document={document} selection={properties} used={used} onUsed={readUsed} />
         ) : (
-          <ShapeView selection={properties} />
+          <ShapeView editor={editor} document={document} selection={properties} />
         )}
       </div>
     </aside>
@@ -204,11 +219,13 @@ function Suggestions({ id, values }: { id: string; values: readonly string[] }) 
 
 function ShapeForm({
   editor,
+  document,
   selection,
   used,
   onUsed,
 }: {
   editor: DiagramEditor
+  document: Y.Doc | null
   selection: ShapeSelection
   used: { technologies: string[]; owners: string[] }
   onUsed: () => void
@@ -270,7 +287,89 @@ function ShapeForm({
           onCommit={(tags) => change({ tags: parseTags(tags) })}
         />
       </Field>
+      {document && <ModelFields editor={editor} document={document} cellId={cellId} canChange />}
     </form>
+  )
+}
+
+/**
+ * The place of the element of a shape in the model of the board (see `boardModel.ts`): what a container or a component is
+ * a part of — by the field, or by the frame it is drawn in when the field is empty —, and the environment of a node of
+ * deployment, of its own or of the node it lies in. Nothing for other elements.
+ */
+function ModelFields({ editor, document, cellId, canChange }: { editor: DiagramEditor; document: Y.Doc; cellId: string; canChange: boolean }) {
+  const id = useId()
+  const store = modelStore(document)
+  const model = useSyncExternalStore(store.subscribe, store.get)
+  const key = cellElementId(getCells(document, editor.pageId).get(cellId)) ?? cellId
+  const element = model.elements.get(key)
+  if (!element) return null
+  if (element.level === 'container' || element.level === 'component') {
+    const drawn = element.drawnParent !== null ? model.elements.get(element.drawnParent) : undefined
+    const byDrawing = `По схеме: ${drawn ? elementName(drawn) : 'никуда'}`
+    const explicit = element.explicitParent !== null ? model.elements.get(element.explicitParent) : undefined
+    if (!canChange) return <Entry term="Входит в">{explicit ? elementName(explicit) : byDrawing}</Entry>
+    return (
+      <Field label="Входит в" htmlFor={`${id}-parent`}>
+        <select
+          id={`${id}-parent`}
+          value={element.explicitParent ?? ''}
+          className={cn(fieldClass, 'h-8')}
+          onChange={(event) => editor.setModelField(cellId, 'parent', event.target.value)}
+        >
+          <option value="">{byDrawing}</option>
+          {parentCandidates(model, element.level, element.id).map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {elementName(candidate)}
+            </option>
+          ))}
+        </select>
+      </Field>
+    )
+  }
+  if (element.level !== 'node') return null
+  const above = element.parent !== null ? model.elements.get(element.parent)?.environment : ''
+  if (!canChange) return <Entry term="Окружение">{element.environment ? environmentLabel(element.environment) : '—'}</Entry>
+  return (
+    <Field label="Окружение" htmlFor={`${id}-environment`}>
+      <TextField
+        id={`${id}-environment`}
+        value={element.ownEnvironment}
+        list={`${id}-environments`}
+        placeholder={above || 'prod, stage, dev'}
+        onCommit={(environment) => editor.setModelField(cellId, 'environment', environment)}
+      />
+      <Suggestions id={`${id}-environments`} values={environments(model).filter(Boolean)} />
+    </Field>
+  )
+}
+
+/** The relations of the model an edge of a view shows: where they are drawn, which a click opens. */
+function ViewEdgeView({ relations, onShow }: { relations: ViewRelation[]; onShow?: (pageId: string, cellId: string) => void }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-muted-foreground">
+        Связь собрана из связей модели. Подпись и технологию меняют там, где они нарисованы, — представления подхватят.
+      </p>
+      <ul aria-label="Связи модели" className="flex flex-col gap-1">
+        {relations.map((relation) => (
+          <li key={`${relation.pageId}/${relation.cellId}`}>
+            <button
+              type="button"
+              className="flex w-full flex-col rounded px-2 py-1 text-left text-sm hover:bg-accent"
+              onClick={() => onShow?.(relation.pageId, relation.cellId)}
+            >
+              <span className="truncate">
+                {relation.source || 'Без имени'} → {relation.target || 'Без имени'}
+              </span>
+              <span className="truncate text-xs text-muted-foreground">
+                {[relation.label, relation.technology, relation.pageName].filter(Boolean).join(' · ')}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -421,7 +520,7 @@ function Entry({ term, children }: { term: string; children: ReactNode }) {
 
 const shown = (value: string) => value || '—'
 
-function ShapeView({ selection }: { selection: ShapeSelection }) {
+function ShapeView({ editor, document, selection }: { editor: DiagramEditor; document: Y.Doc | null; selection: ShapeSelection }) {
   const { properties } = selection
   return (
     <dl className="flex flex-col gap-3">
@@ -436,6 +535,7 @@ function ShapeView({ selection }: { selection: ShapeSelection }) {
       <Entry term="Теги">
         <Tags tags={properties.tags} />
       </Entry>
+      {document && <ModelFields editor={editor} document={document} cellId={selection.cellId} canChange={false} />}
     </dl>
   )
 }

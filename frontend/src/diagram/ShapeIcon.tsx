@@ -25,6 +25,7 @@ import {
   Rows3,
   Search,
   Server,
+  ServerCog,
   Ship,
   Signpost,
   Smartphone,
@@ -89,6 +90,7 @@ const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
   'c4-database': Database,
   'c4-external-system': Globe,
   'c4-boundary': SquareDashed,
+  'c4-deployment-node': ServerCog,
 }
 
 /** Icon of a palette shape: a lucide icon, or the outline of a basic shape. */

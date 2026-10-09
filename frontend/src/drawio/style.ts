@@ -3,6 +3,7 @@ import { INTERACTION_KEY } from '../diagram/elementKinds.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
 import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, HIDDEN_LAYER_KEY, OWN_LINES_KEY, type StyleValue } from '../diagram/model.ts'
+import { COMPUTED_KEY } from '../diagram/viewRule.ts'
 import { VIEW_QUERY_KEY } from '../diagram/views.ts'
 
 export type Style = Record<string, StyleValue>
@@ -169,9 +170,10 @@ const DROPPED_KEYS = new Set(['html'])
 
 /**
  * Keys of CoDraw that stay on the board: who locked a cell is the name of a participant, which neither a file nor the
- * clipboard carries, and which a file cannot claim either; the lines a cell keeps aside belong to its board.
+ * clipboard carries, and which a file cannot claim either; the lines a cell keeps aside belong to its board, and so does
+ * the mark of a cell that a view of its model computed.
  */
-const BOARD_KEYS = new Set([LOCKED_BY_KEY, OWN_LINES_KEY])
+const BOARD_KEYS = new Set([LOCKED_BY_KEY, OWN_LINES_KEY, COMPUTED_KEY])
 
 /**
  * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its
