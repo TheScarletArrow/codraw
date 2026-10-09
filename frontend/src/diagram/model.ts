@@ -1,11 +1,13 @@
 import { generateKeyBetween } from 'fractional-indexing'
 import * as Y from 'yjs'
+import { readViewRule, viewRuleData, type ViewRule } from './viewRule.ts'
 
 /**
  * Board document model in Yjs. It mirrors the mxGraph cell model (and so the `.drawio` format):
  *
  * - `meta`: `{ schemaVersion }`
- * - `pages`: pageId → Y.Map with the fields of {@link PageData}
+ * - `pages`: pageId → Y.Map with the fields of {@link PageData}; a page that is a view of the model of the board keeps
+ *   its rule, what its participants hid and where its cells stood under `view` (see {@link ViewData})
  * - `cells:<pageId>`: cellId → Y.Map with the fields of {@link CellData}; `style` is a nested Y.Map. The root `0` holds
  *   the layers of the page (`kind: 'layer'`: the main layer `1`, which every page has, and those added since), and they
  *   hold the elements; a layer keeps its name as its value and its lock and visibility as keys of its style
@@ -74,6 +76,71 @@ export interface PageData {
   order: string
   /** The element this page details (see `detail.ts`): its cell on the page it was detailed from, and the element. */
   detailOf?: DetailOf
+  /** The page is a view of the model of the board (see `modelViews.ts`). */
+  view?: ViewData
+}
+
+/** The box a cell of a view had when it left the view, where it stands again when it comes back. */
+export interface PlaceData {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * A page that is a view of the model: its rule, the keys of what its participants hid on it, and the boxes of what left
+ * it by their keys. The entry keeps them as a `Y.Map` of its own whose `hidden` and `places` are maps too, so that one
+ * participant hiding something and another one moving something merge.
+ */
+export interface ViewData {
+  rule: ViewRule
+  hidden: string[]
+  places: Record<string, PlaceData>
+}
+
+/** The box of a value of the document; `undefined` for anything else. */
+export function readPlace(value: unknown): PlaceData | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const { x, y, width, height } = value as Record<string, unknown>
+  const numbers = [x, y, width, height]
+  return numbers.every((number) => typeof number === 'number' && Number.isFinite(number))
+    ? { x: x as number, y: y as number, width: width as number, height: height as number }
+    : undefined
+}
+
+/** The view a page entry keeps, from its `view`; `undefined` for a page that is none, or a rule of no known kind. */
+function readView(value: unknown): ViewData | undefined {
+  if (!(value instanceof Y.Map)) return undefined
+  const rule = readViewRule(value.get('rule'))
+  if (!rule) return undefined
+  const hidden = value.get('hidden')
+  const places = value.get('places')
+  const boxes: Record<string, PlaceData> = {}
+  if (places instanceof Y.Map) {
+    places.forEach((place, key) => {
+      const box = readPlace(place)
+      if (box) boxes[key] = box
+    })
+  }
+  return {
+    rule,
+    hidden: hidden instanceof Y.Map ? Array.from(hidden.keys()).sort() : [],
+    places: boxes,
+  }
+}
+
+/** The `view` of a page entry for the view `view`. */
+export function viewMap(view: ViewData): Y.Map<unknown> {
+  const map = new Y.Map<unknown>()
+  map.set('rule', viewRuleData(view.rule))
+  const hidden = new Y.Map<boolean>()
+  for (const key of view.hidden) hidden.set(key, true)
+  map.set('hidden', hidden)
+  const places = new Y.Map<PlaceData>()
+  for (const [key, place] of Object.entries(view.places)) places.set(key, { ...place })
+  map.set('places', places)
+  return map
 }
 
 /** The element a page of detail is about. */
@@ -151,6 +218,16 @@ const ELEMENT_STYLE_KEY_SET: ReadonlySet<string> = new Set(Object.values(ELEMENT
 export const isElementStyleKey = (key: string) => ELEMENT_STYLE_KEY_SET.has(key)
 
 export type ElementMap = Y.Map<unknown>
+
+/**
+ * Fields of an element that place it in the model of the board (see `boardModel.ts`), kept in the element beside its
+ * properties but not as keys of the style of its cells: copies, files and versions of cells do not carry them, and
+ * {@link writeCell} leaves them as they are. `parent` is the element it is a part of, `environment` the environment of a
+ * node of deployment.
+ */
+export type ModelField = 'parent' | 'environment'
+
+export const MODEL_FIELDS: readonly ModelField[] = ['parent', 'environment']
 
 export function getElements(doc: Y.Doc): Y.Map<ElementMap> {
   return doc.getMap('elements')
@@ -280,10 +357,12 @@ export function layerIds(cells: Iterable<Pick<CellData, 'id' | 'kind'>>): Set<st
 export function readPage(entry: PageEntry): PageData {
   if (entry instanceof Y.Map) {
     const detailOf = readDetailOf(entry.get('detailOf'))
+    const view = readView(entry.get('view'))
     return {
       name: String(entry.get('name') ?? ''),
       order: (entry.get('order') as string | undefined) ?? generateKeyBetween(null, null),
       ...(detailOf && { detailOf }),
+      ...(view && { view }),
     }
   }
   return { name: String(entry.name ?? ''), order: entry.order ?? generateKeyBetween(null, null) }
@@ -295,6 +374,7 @@ export function writePage(doc: Y.Doc, id: string, page: PageData) {
   entry.set('name', page.name)
   entry.set('order', page.order)
   if (page.detailOf) entry.set('detailOf', { ...page.detailOf })
+  if (page.view) entry.set('view', viewMap(page.view))
   getPages(doc).set(id, entry)
   writeStructuralCells(getCells(doc, id))
 }

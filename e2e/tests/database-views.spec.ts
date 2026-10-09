@@ -47,7 +47,7 @@ test('DDL with a view becomes a view that reads its table, its query reaches the
   expect((await edges(bob)).map((edge) => [edge.source, edge.target, edge.style.dashed])).toEqual([[view.id, table.id, true]])
 
   await select(alice, view.id)
-  await expect(alice.getByRole('button', { name: 'Представление' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(alice.getByRole('button', { name: 'Представление', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await alice.getByRole('button', { name: 'Материализованное' }).click()
   await alice.getByRole('button', { name: 'Запрос…' }).click()
   const query = alice.getByRole('textbox', { name: 'Запрос' })

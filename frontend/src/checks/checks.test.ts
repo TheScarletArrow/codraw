@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { ELEMENT_KEY, getCells, initializeDocument, ROOT_CELL_ID, writeCell, type CellData } from '../diagram/model.ts'
+import { ELEMENT_KEY, getCells, initializeDocument, readCell, ROOT_CELL_ID, writeCell, type CellData } from '../diagram/model.ts'
 import { addPage } from '../diagram/pages.ts'
+import { createViewPage } from '../diagram/modelViews.ts'
 import { connect } from '../diagram/testing.ts'
+import { COMPUTED_KEY } from '../diagram/viewRule.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import {
   boardChecks,
@@ -15,6 +17,9 @@ import {
   type CheckIssue,
   type CheckRule,
 } from './checks.ts'
+
+/** The style of the cell `id` of the first page, with the properties of its element. */
+const readCellStyle = (doc: Y.Doc, id: string) => readCell(id, getCells(doc).get(id)!).style
 
 /** A board of pages, each of the cells a builder made; the first page is the default one. */
 function board(...pages: DiagramBuilder[]): { doc: Y.Doc; pageIds: string[] } {
@@ -203,5 +208,36 @@ describe('checks of the architecture', () => {
 
     setIssueHidden(other, shown[0]!.key, false)
     expect(readCheckSettings(doc).hidden.size).toBe(0)
+  })
+
+  it('leaves the edges and frames a view of the model computed to the relations they show', () => {
+    const page = new DiagramBuilder()
+    const a = page.shape('c4-container', 0, 0, { element: { name: 'API', technology: 'Kotlin', description: 'Заказы', owner: 'Платежи' } })
+    const b = page.shape('c4-container', 600, 0, { element: { name: 'База', technology: 'PostgreSQL', description: 'Данные', owner: 'Платежи' } })
+    page.edge(a, b, { value: 'Пишет', technology: 'JDBC' })
+    const { doc } = board(page)
+    const view = createViewPage(doc, 'page-1', { kind: 'landscape', scope: null, environment: null, owners: [], tags: [], technologies: [] }, 'Вид')
+    // The landscape shows no containers: a computed edge without a label and a container outside a system there.
+    doc.transact(() => {
+      const cells = getCells(doc, view)
+      const shape = (id: string, x: number, element: string): CellData => ({
+        id,
+        kind: 'vertex',
+        parent: '1',
+        order: id,
+        value: '',
+        geometry: { x, y: 0, width: 240, height: 120 },
+        source: null,
+        target: null,
+        style: { ...readCellStyle(doc, element), [COMPUTED_KEY]: id },
+      })
+      writeCell(cells, shape('va', 0, a))
+      writeCell(cells, shape('vb', 600, b))
+      writeCell(cells, { id: 've', kind: 'edge', parent: '1', order: 'z', value: '', geometry: null, source: 'va', target: 'vb', style: { [COMPUTED_KEY]: 'va>vb' } })
+    })
+    expect(of(boardChecks(doc), 'edge-label', 'edge-technology', 'nesting')).toEqual([
+      'nesting «API» Контейнер вне границы системы',
+      'nesting «База» Контейнер вне границы системы',
+    ])
   })
 })

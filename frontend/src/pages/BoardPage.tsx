@@ -56,7 +56,7 @@ import { useDecisions } from '../decisions/useDecisions.ts'
 import { fetchEmbed } from '../api/embed.ts'
 import { embedKey } from '../embed/links.ts'
 import { useEmbedPublisher } from '../embed/useEmbedPublisher.ts'
-import { PageHistories } from '../diagram/binding.ts'
+import { localOrigin, PageHistories } from '../diagram/binding.ts'
 import type { Author } from '../diagram/attribution.ts'
 import { CanvasMenu, type CommentTarget } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
@@ -73,6 +73,10 @@ import { StickyPanel } from '../diagram/StickyPanel.tsx'
 import { StickySignatures } from '../diagram/StickySignatures.tsx'
 import { initializeDocument } from '../diagram/model.ts'
 import { addPage, deletePage, duplicatePage, movePage, renamePage } from '../diagram/pages.ts'
+import { createViewPage, detachView, viewOf, writeViewRule } from '../diagram/modelViews.ts'
+import { attachViewKeeper } from '../diagram/viewKeeper.ts'
+import { ViewBar } from '../views/ViewBar.tsx'
+import { ViewRuleDialog } from '../views/ViewRuleDialog.tsx'
 import type { ElementStatus } from '../diagram/status.ts'
 import { DrawioActions } from '../drawio/DrawioActions.tsx'
 import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
@@ -280,6 +284,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     [setSearchParams],
   )
   const selectPage = useCallback((id: string) => changeParams((params) => params.set('page', id)), [changeParams])
+  // Who edits the board keeps its views in line with its model, whatever page they are on.
+  useEffect(() => (document && !readOnly ? attachViewKeeper(document) : undefined), [document, readOnly])
+  // The window of the rule of a new view, or of the view of a page; a new view is laid out once its canvas is there.
+  const [viewWindow, setViewWindow] = useState<{ pageId: string | null } | null>(null)
+  const layoutView = useRef<string | null>(null)
+  useEffect(() => {
+    if (!editor || editor.pageId !== layoutView.current) return
+    layoutView.current = null
+    void editor.autoLayout('right')
+  }, [editor])
   const { view: planView, changeView: changePlanView } = usePlanView(editor)
   const { filter, changeFilter } = usePageFilter(editor)
   // An unknown page, e.g. one deleted by another participant, is replaced with the first page.
@@ -798,6 +812,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                       selectPage(id)
                     }}
                   />
+                  {currentPage.view && (
+                    <ViewBar
+                      document={document}
+                      pageId={currentPage.id}
+                      editor={editor}
+                      readOnly={readOnly}
+                      onEditRule={() => setViewWindow({ pageId: currentPage.id })}
+                    />
+                  )}
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={boardThreads} onOpen={showThreadsOf} />
@@ -838,6 +861,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         editor={editor}
                         document={document}
                         request={propertiesRequest}
+                        onShow={showCell}
                         onClose={() => {
                           setPropertiesOpen(false)
                           editor?.focus()
@@ -893,6 +917,33 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
                     onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                   />
+                  {viewWindow && (
+                    <ViewRuleDialog
+                      key={viewWindow.pageId ?? 'new'}
+                      document={document}
+                      rule={viewWindow.pageId !== null ? (viewOf(document, viewWindow.pageId)?.rule ?? null) : null}
+                      onCreate={(rule, name) => {
+                        const id = createViewPage(document, currentPage.id, rule, name)
+                        following.stop()
+                        layoutView.current = id
+                        selectPage(id)
+                      }}
+                      onApply={(rule) => {
+                        const pageId = viewWindow.pageId!
+                        if (editor?.pageId === pageId) editor.setViewRule(rule)
+                        else document.transact(() => writeViewRule(document, pageId, rule), localOrigin(pageId))
+                      }}
+                      onDetach={() => {
+                        const pageId = viewWindow.pageId!
+                        if (editor?.pageId === pageId) editor.detachView()
+                        else document.transact(() => detachView(document, pageId), localOrigin(pageId))
+                      }}
+                      onClose={() => {
+                        setViewWindow(null)
+                        editor?.focus()
+                      }}
+                    />
+                  )}
                   {elementWindow &&
                     elementWindow.editor === editor &&
                     (elementWindow.kind === 'merge' ? (
@@ -955,6 +1006,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   selectPage(id)
                 }}
                 onAdd={() => selectPage(addPage(document, currentPage?.id))}
+                onAddView={() => setViewWindow({ pageId: null })}
+                onViewRule={(id) => {
+                  selectPage(id)
+                  setViewWindow({ pageId: id })
+                }}
                 onRename={(id, name) => renamePage(document, id, name)}
                 onDuplicate={(id) => {
                   const copy = duplicatePage(document, id, author)

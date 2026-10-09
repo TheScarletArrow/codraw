@@ -453,7 +453,7 @@ describe('CanvasMenu', () => {
       editor = createFakeEditor({ readOnly: true })
       render(<CanvasMenu editor={editor} onProperties={onProperties} />)
       act(() =>
-        editor.setState({ properties: { target: 'edge', cellId: 'cell-1', properties: { technology: 'Kafka', interaction: 'async' }, canChange: false } }),
+        editor.setState({ properties: { target: 'edge', cellId: 'cell-1', properties: { technology: 'Kafka', interaction: 'async' }, relations: null, canChange: false } }),
       )
       rightClick('edge')
 
