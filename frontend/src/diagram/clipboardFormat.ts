@@ -136,9 +136,11 @@ function decode(text: string): string | null {
 
 /**
  * Cells of the page from their data: children inside their parents, edges connected to their ends. An edge without
- * one of its ends or the point of that end is left out, since CoDraw keeps no edges hanging in the air.
+ * one of its ends or the point of that end is left out, since CoDraw keeps no edges hanging in the air. Layers, e.g. of
+ * a diagram of draw.io, are left out too: what they hold is at the top.
  */
-export function dataToCells(data: CellData[]): Cell[] {
+export function dataToCells(all: CellData[]): Cell[] {
+  const data = all.filter((item) => item.kind !== 'layer')
   const cells = new Map(data.map((item) => [item.id, createCell(item)]))
   const kept = data.filter((item) => {
     if (item.kind !== 'edge') return true

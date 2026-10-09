@@ -1,5 +1,5 @@
 import { isBaseStyle } from '../diagram/baseTables.ts'
-import { compareCells, LAYER_CELL_ID, type CellData, type StyleValue } from '../diagram/model.ts'
+import { compareCells, LAYER_CELL_ID, layerIds, type CellData, type StyleValue } from '../diagram/model.ts'
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, isTableIndexStyle, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
 import { SOURCE_KEY } from '../diagram/sources.ts'
@@ -234,7 +234,8 @@ export async function schemaCells(
 
 /** Where new cells go: to the right of what the page has, with a gap, or near its corner on an empty page. */
 export function placeBeside(existing: CellData[]): { x: number; y: number } {
-  const shapes = existing.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex' && cell.geometry)
+  const layers = layerIds(existing)
+  const shapes = existing.filter((cell) => cell.parent !== null && layers.has(cell.parent) && cell.kind === 'vertex' && cell.geometry)
   if (shapes.length === 0) return { x: 40, y: 40 }
   return {
     x: Math.max(...shapes.map((cell) => cell.geometry!.x + cell.geometry!.width)) + 80,
