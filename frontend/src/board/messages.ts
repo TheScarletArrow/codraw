@@ -7,6 +7,9 @@ export const COMMENTS_CHANGED = JSON.stringify({ type: 'comments-changed' })
 /** Stateless message that collab relays to the other participants: the decisions changed, fetch them again. */
 export const DECISIONS_CHANGED = JSON.stringify({ type: 'decisions-changed' })
 
+/** Stateless message that collab relays to the other participants: the linked issues changed, fetch them again. */
+export const ISSUES_CHANGED = JSON.stringify({ type: 'issues-changed' })
+
 /**
  * Stateless message that collab relays to the other participants of the board or of a draft: a proposal of changes was
  * made, accepted, declined or withdrawn, fetch the proposals again.
@@ -14,12 +17,13 @@ export const DECISIONS_CHANGED = JSON.stringify({ type: 'decisions-changed' })
 export const PROPOSALS_CHANGED = JSON.stringify({ type: 'proposals-changed' })
 
 /** A change that a stateless message reports. */
-export type Change = 'board-changed' | 'comments-changed' | 'decisions-changed' | 'proposals-changed'
+export type Change = 'board-changed' | 'comments-changed' | 'decisions-changed' | 'issues-changed' | 'proposals-changed'
 
 const CHANGES: ReadonlySet<unknown> = new Set<Change>([
   'board-changed',
   'comments-changed',
   'decisions-changed',
+  'issues-changed',
   'proposals-changed',
 ])
 

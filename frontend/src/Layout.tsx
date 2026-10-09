@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plug } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -77,6 +78,13 @@ function UserMenu({ user }: { user: CurrentUser }) {
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
       <span>{user.name}</span>
       <ThemeMenu />
+      {!user.guest && (
+        <Button asChild variant="ghost" size="icon-sm">
+          <Link to="/settings/connections" aria-label="Подключения" title="Подключения: GitHub">
+            <Plug />
+          </Link>
+        </Button>
+      )}
       {/* Signing out would cut a guest off from their boards; signing in through a provider keeps them. */}
       {user.guest ? (
         <Button asChild variant="ghost" size="sm">

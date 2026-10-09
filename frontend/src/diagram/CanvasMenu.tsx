@@ -47,6 +47,7 @@ type PageCommand =
   | 'mergeElements'
   | 'detail'
   | 'saveToLibrary'
+  | 'issues'
 
 const COMMANDS: Record<
   Exclude<MenuCommand, PageCommand | StatusCommand | PlanCommand>,
@@ -103,9 +104,10 @@ const COMMANDS: Record<
  * for viewers too, which asks the page to show them. With `onDetail`, a software system or a container that has a page
  * of detail, or may get one, gets «Детализировать», which opens that page, made first when there is none. With
  * `onSaveToLibrary`, shapes, tables, groups, sequence diagrams and several elements get «Сохранить в библиотеку…», for
- * viewers too, which asks the page to open the window of saving at the point of the click. The menu of locked elements
- * says who locked them. The items of the status set it, and `onStatusChange` hears of the elements whose status they
- * changed.
+ * viewers too, which asks the page to open the window of saving at the point of the click. With `onIssues`, a single
+ * shape, table, edge or group gets «Задачи…», for viewers too, which asks the page to show the issues of the tracker
+ * linked to it. The menu of locked elements says who locked them. The items of the status set it, and `onStatusChange`
+ * hears of the elements whose status they changed.
  */
 export function CanvasMenu({
   editor,
@@ -119,6 +121,7 @@ export function CanvasMenu({
   onDetail,
   onStatusChange,
   onSaveToLibrary,
+  onIssues,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
@@ -136,6 +139,8 @@ export function CanvasMenu({
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
   /** Opens the window that saves the selection into a library of the user, at the point of the click. */
   onSaveToLibrary?: (request: ContextMenuRequest) => void
+  /** Shows the issues of the tracker linked to the element `cellId`. */
+  onIssues?: (cellId: string) => void
 }) {
   const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
@@ -187,6 +192,7 @@ export function CanvasMenu({
             canShowDependencies: next.cellId !== null && editor.canAnalyze(next.cellId),
             canShowPath: next.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,
+            canShowIssues: onIssues !== undefined && next.cellId !== null,
           }).length === 0
         ) {
           return
@@ -194,7 +200,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties, onWhereUsed, onDetail, onSaveToLibrary],
+    [editor, canComment, onProperties, onWhereUsed, onDetail, onSaveToLibrary, onIssues],
   )
 
   if (!editor || !request) return null
@@ -220,6 +226,12 @@ export function CanvasMenu({
       // The panel of properties takes the keyboard.
       focusTaken.current = true
       if (request.cellId) onProperties?.(request.cellId)
+      return
+    }
+    if (command === 'issues') {
+      // The panel of issues takes the keyboard.
+      focusTaken.current = true
+      if (request.cellId) onIssues?.(request.cellId)
       return
     }
     if (command === 'whereUsed') {
@@ -332,6 +344,7 @@ export function CanvasMenu({
             canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),
             canShowPath: request.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,
+            canShowIssues: onIssues !== undefined && request.cellId !== null,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
             const planned = isPlanCommand(item.command) ? PLAN_COMMANDS[item.command] : undefined

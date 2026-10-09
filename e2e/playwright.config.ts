@@ -66,8 +66,9 @@ export default defineConfig({
         // Tests see a change of access or a deleted board through what participants do, not at a random moment of
         // the periodic check, which collab tests cover.
         ACCESS_CHECK_INTERVAL_MS: String(60 * 60 * 1000),
-        // Small enough for a test to reach with a few changes, larger than any other board of the tests.
-        DOCUMENT_SIZE_LIMIT_BYTES: String(256 * 1024),
+        // Small enough for a test to reach with a few changes, larger than any other board of the tests: the schema of
+        // CoDraw itself, which «Подключиться к базе…» draws, takes about 270 KiB.
+        DOCUMENT_SIZE_LIMIT_BYTES: String(512 * 1024),
       },
     },
     {

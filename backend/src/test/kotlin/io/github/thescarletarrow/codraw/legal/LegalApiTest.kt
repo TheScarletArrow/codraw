@@ -23,6 +23,7 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.notificationsPerUser") { value(200) }
             jsonPath("$.closedProposalsPerBoard") { value(20) }
             jsonPath("$.schemaImport") { value(false) }
+            jsonPath("$.issues") { value(true) }
         }
     }
 }

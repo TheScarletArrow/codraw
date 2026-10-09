@@ -21,15 +21,15 @@ async function addLargeShape(page: Page, size: number) {
   }, size)
 }
 
-// collab of the e2e stack takes boards of up to 256 KiB.
+// collab of the e2e stack takes boards of up to 512 KiB.
 test('a change that would make the board larger than its limit reaches nobody, and its author is told so', async ({
   browser,
 }) => {
   const { alice, bob, close } = await twoParticipants(browser)
-  await addLargeShape(alice, 150_000)
+  await addLargeShape(alice, 300_000)
   await expect.poll(async () => (await vertices(bob)).length).toBe(1)
 
-  await addLargeShape(alice, 150_000)
+  await addLargeShape(alice, 300_000)
 
   await expect(alice.getByRole('alert')).toContainText('Доска достигла предельного размера')
   await expect(alice.getByRole('status')).toHaveText('Синхронизировано')

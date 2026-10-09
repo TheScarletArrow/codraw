@@ -5,6 +5,8 @@ node_modules/
 dist/
 build/
 .gradle/
+# Sessions of the Kotlin compiler of Gradle builds
+.kotlin/
 *.tsbuildinfo
 
 # Logs
