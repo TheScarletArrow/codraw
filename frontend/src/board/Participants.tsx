@@ -8,6 +8,12 @@ export function Avatar({ url, className }: { url?: string | null; className?: st
   return url ? <img src={url} alt="" className={cn('participant-avatar rounded-full', className)} /> : null
 }
 
+/**
+ * The color and the avatar, then the name. The column of the name has no minimum: it is what shortens, and the
+ * participant keeps at least the color and the avatar.
+ */
+const NAME_LAYOUT = 'grid grid-cols-[auto_minmax(0,max-content)] items-center gap-1.5'
+
 interface ParticipantsProps {
   participants: Participant[]
   /** Pages of the board, to name the page of a participant who is on another page. */
@@ -29,29 +35,45 @@ export function Participants({
   className,
 }: ParticipantsProps) {
   return (
-    <ul aria-label="Участники" className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-sm', className)}>
+    // One line however many participants come: when the room is short, the names shorten, down to the color and the
+    // avatar, and show in full on hover.
+    <ul aria-label="Участники" className={cn('flex items-center gap-x-3 text-sm', className)}>
       {participants.map((participant) => {
         const elsewhere =
           !participant.isSelf && currentPageId !== null && participant.page !== currentPageId
             ? pages.find((page) => page.id === participant.page)
             : undefined
+        const fullName = `${participant.name}${participant.isSelf ? ' (вы)' : ''}${elsewhere ? ` · ${elsewhere.name}` : ''}`
         const content = (
           <>
-            <span
-              aria-hidden
-              className="participant-color size-2.5 rounded-full"
-              style={{ backgroundColor: participant.color }}
-            />
-            <Avatar url={participant.avatarUrl} className="size-5" />
-            {participant.name}
-            {participant.isSelf && <span className="text-muted-foreground"> (вы)</span>}
-            {elsewhere && <span className="max-w-32 truncate text-muted-foreground"> · {elsewhere.name}</span>}
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="participant-color size-2.5 rounded-full"
+                style={{ backgroundColor: participant.color }}
+              />
+              <Avatar url={participant.avatarUrl} className="size-5" />
+            </span>
+            <span className="truncate">
+              {participant.name}
+              {participant.isSelf && <span className="text-muted-foreground"> (вы)</span>}
+              {elsewhere && (
+                <>
+                  {' '}
+                  <span className="inline-block max-w-32 truncate align-bottom text-muted-foreground">
+                    · {elsewhere.name}
+                  </span>
+                </>
+              )}
+            </span>
           </>
         )
         return (
           <li key={participant.clientId} className="flex items-center">
             {participant.isSelf || !onFollow ? (
-              <span className="flex items-center gap-1.5">{content}</span>
+              <span title={fullName} className={NAME_LAYOUT}>
+                {content}
+              </span>
             ) : (
               <button
                 type="button"
@@ -61,7 +83,7 @@ export function Participants({
                     : `Следовать за участником ${participant.name}`
                 }
                 aria-pressed={participant.clientId === followingClientId}
-                className="-mx-1 flex items-center gap-1.5 rounded px-1 hover:bg-accent aria-pressed:bg-accent"
+                className={cn('-mx-1 rounded px-1 hover:bg-accent aria-pressed:bg-accent', NAME_LAYOUT)}
                 onClick={() => onFollow(participant.clientId)}
               >
                 {content}

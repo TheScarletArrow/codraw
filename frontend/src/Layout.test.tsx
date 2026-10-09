@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
+import { InHeader } from './headerSlot.tsx'
 import { Layout } from './Layout.tsx'
 import { findLocalCopy, openLocalCopy } from './offline/localCopies.ts'
 import { BoardsPage } from './pages/BoardsPage.tsx'
@@ -26,6 +27,17 @@ const routes = [
     children: [
       { index: true, element: <BoardsPage /> },
       { path: 'invite/:token', element: <p>Приглашение</p> },
+      {
+        path: 'boards/:boardId',
+        element: (
+          <>
+            <p>Холст</p>
+            <InHeader>
+              <p>Кто на доске</p>
+            </InHeader>
+          </>
+        ),
+      },
     ],
   },
 ]
@@ -79,6 +91,17 @@ describe('Layout', () => {
     expect(await within(header).findByText('Алиса')).toBeInTheDocument()
     expect(within(header).getByRole('presentation')).toHaveAttribute('src', ALICE.avatarUrl)
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
+  })
+
+  it('shows in the header what the page puts there, out of the page', async () => {
+    mockFetch({ 'GET /api/me': { body: ALICE }, ...unreadCount })
+
+    renderRoutes(routes, `/boards/${boardId}`)
+
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByText('Кто на доске')).toBeInTheDocument()
+    expect(within(screen.getByRole('main')).getByText('Холст')).toBeInTheDocument()
+    expect(within(screen.getByRole('main')).queryByText('Кто на доске')).toBeNull()
   })
 
   it('offers the theme in the menu of the user, of a guest too', async () => {

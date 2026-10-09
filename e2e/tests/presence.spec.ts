@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, cellBox, center, twoParticipants } from './helpers.ts'
+import { addShape, cellBox, center, openBoard, twoParticipants, userPage } from './helpers.ts'
 
 /** Name under which the participant appears to others. */
 async function ownName(page: Page) {
@@ -151,5 +151,22 @@ test('a cursor outside the visible area is shown at the edge and brought into vi
   expect(Math.abs(position.x - view.width / 2)).toBeLessThanOrEqual(30)
   expect(Math.abs(position.y - view.height / 2)).toBeLessThanOrEqual(30)
 
+  await close()
+})
+
+test('the participants are in the header of the app and leave the line of the board to its tools', async ({ browser }) => {
+  const { alice, close } = await twoParticipants(browser)
+  const carol = await userPage(browser, 'Каролина Длинноимённая-Многосоставная')
+  await openBoard(carol, alice.url())
+  await alice.setViewportSize({ width: 1280, height: 800 })
+
+  await expect(alice.getByRole('banner').getByRole('list', { name: 'Участники' }).getByRole('listitem')).toHaveCount(3)
+  // However many come, the scale and «Показать всё» stay in view, and «Поделиться» stays on the screen.
+  const fit = alice.getByRole('button', { name: 'Показать всё' })
+  await expect(fit).toBeInViewport({ ratio: 1 })
+  await fit.click()
+  await expect(alice.getByRole('button', { name: 'Поделиться' })).toBeInViewport({ ratio: 1 })
+
+  await carol.context().close()
   await close()
 })
