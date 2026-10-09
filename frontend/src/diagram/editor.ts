@@ -1140,6 +1140,12 @@ export interface DiagramEditor {
    * element with the properties of the element of the cell `keepCellId`, as one undo step; their labels follow.
    */
   mergeElements(keepCellId: string): void
+  /**
+   * Makes the shapes `refs` of any pages that may be elements, and all the cells of their elements on all pages, cells of
+   * one element with the properties of the element of `keep`, as one undo step of this page: e.g. probable duplicates
+   * that the checks found. Locked shapes stay out. Returns whether they were merged.
+   */
+  mergeElementCells(refs: readonly CellRef[], keep: CellRef): boolean
   /** Makes the shape `cellId` an element of its own with the same properties, as one undo step. */
   detachElement(cellId: string): void
   /**
@@ -3428,6 +3434,25 @@ export function createDiagramEditor(
     Array.from(cells.entries())
       .filter(([, cell]) => cellElementId(cell) === id)
       .map(([cellId]) => cellId)
+  /** Merges the elements of the shapes `refs` into the element of `keep` as one undo step; whether they were merged. */
+  const mergeCells = (refs: readonly CellRef[], keep: CellRef): boolean => {
+    graph.stopEditing(false)
+    let target: string | null = null
+    document.transact(() => {
+      const merged = mergeDocumentElements(document, refs, keep)
+      if (!merged) return
+      target = merged.id
+      if (!author) return
+      const at = Date.now()
+      for (const ref of [keep, ...merged.cells]) {
+        const entry = getCells(document, ref.pageId).get(ref.cellId)
+        if (entry) writeAttribution(entry, author, at)
+      }
+    }, origin)
+    if (target === null) return false
+    binding.refresh(cellsOfElement(target))
+    return true
+  }
   /** Adds image shapes of stored images in a row whose middle is at `center`, as one change, and selects them. */
   const insertImages = (stored: StoredImage[], center: Point) => {
     const sizes = stored.map((image) => fittedImageSize(image.width, image.height))
@@ -4758,20 +4783,16 @@ export function createDiagramEditor(
       if (readOnly || destroyed || selectedElements().length < 2) return
       const refs = mergeableCells().map((cell) => ({ pageId, cellId: cell.getId()! }))
       if (!refs.some((ref) => ref.cellId === keepCellId)) return
-      graph.stopEditing(false)
-      let target: string | null = null
-      document.transact(() => {
-        const merged = mergeDocumentElements(document, refs, { pageId, cellId: keepCellId })
-        if (!merged) return
-        target = merged.id
-        if (!author) return
-        const at = Date.now()
-        for (const ref of [{ pageId, cellId: keepCellId }, ...merged.cells]) {
-          const entry = getCells(document, ref.pageId).get(ref.cellId)
-          if (entry) writeAttribution(entry, author, at)
-        }
-      }, origin)
-      if (target !== null) binding.refresh(cellsOfElement(target))
+      mergeCells(refs, { pageId, cellId: keepCellId })
+    },
+    mergeElementCells(refs, keep) {
+      if (readOnly || destroyed) return false
+      const usable = refs.filter((ref) => {
+        const pageCells = getCells(document, ref.pageId)
+        return mayBeElement(pageCells, ref.cellId) && !isLockedCell(pageCells, ref.cellId)
+      })
+      if (usable.length < 2 || !usable.some((ref) => ref.pageId === keep.pageId && ref.cellId === keep.cellId)) return false
+      return mergeCells(usable, keep)
     },
     detachElement(cellId) {
       if (readOnly || destroyed) return
