@@ -78,6 +78,8 @@ data class CommentThread(
     val pageId: String,
     /** The id of the cell in the document of the board; the cell may be deleted since. */
     val cellId: String?,
+    /** The decision of the board the thread discusses (see `Decisions`); `null` for a thread about the diagram. */
+    val decisionId: UUID?,
     /** Where the thread stands on the page. */
     val point: ThreadPoint?,
     val createdAt: Instant,
@@ -187,16 +189,17 @@ class Comments(private val jdbc: JdbcClient) {
         .query(Int::class.java)
         .single()
 
-    fun addThread(boardId: UUID, pageId: String, cellId: String?, point: ThreadPoint?, at: Instant): UUID = jdbc.sql(
+    fun addThread(boardId: UUID, pageId: String, cellId: String?, point: ThreadPoint?, decisionId: UUID?, at: Instant): UUID = jdbc.sql(
         """
-        INSERT INTO comment_threads (board_id, page_id, cell_id, x, y, created_at)
-        VALUES (:boardId, :pageId, :cellId, :x, :y, :at)
+        INSERT INTO comment_threads (board_id, page_id, cell_id, x, y, decision_id, created_at)
+        VALUES (:boardId, :pageId, :cellId, :x, :y, :decisionId, :at)
         RETURNING id
         """,
     )
         .param("boardId", boardId)
         .param("pageId", pageId)
         .param("cellId", cellId)
+        .param("decisionId", decisionId)
         .param("x", point?.x)
         .param("y", point?.y)
         .param("at", at.atOffset(ZoneOffset.UTC))
@@ -427,7 +430,7 @@ class Comments(private val jdbc: JdbcClient) {
         val threadFilter = if (threadId == null) "" else "AND t.id = :threadId"
         val threads = jdbc.sql(
             """
-            SELECT t.id, t.page_id, t.cell_id, t.x, t.y, t.created_at, t.resolved_at,
+            SELECT t.id, t.page_id, t.cell_id, t.decision_id, t.x, t.y, t.created_at, t.resolved_at,
                    r.id AS resolver_id, r.name AS resolver_name, r.avatar_url AS resolver_avatar_url,
                    s.id AS assignee_id, s.name AS assignee_name, s.avatar_url AS assignee_avatar_url
             FROM comment_threads t
@@ -520,6 +523,7 @@ class Comments(private val jdbc: JdbcClient) {
         id = getObject("id", UUID::class.java),
         pageId = getString("page_id"),
         cellId = getString("cell_id"),
+        decisionId = getObject("decision_id", UUID::class.java),
         point = toPoint(),
         createdAt = instant("created_at")!!,
         resolvedAt = instant("resolved_at"),

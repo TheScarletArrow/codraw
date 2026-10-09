@@ -17,6 +17,7 @@ const API: SelectionProperties = {
   format: 'c4',
   showTechnology: false,
   element: true,
+  icon: null,
   canChange: true,
 }
 
@@ -155,6 +156,36 @@ describe('PropertiesPanel', () => {
     expect(editor.setElementProperties).toHaveBeenLastCalledWith('cache', { tags: ['pci', 'core'] })
     await userEvent.click(within(panel()).getByLabelText('Технология на схеме'))
     expect(editor.setElementProperties).toHaveBeenLastCalledWith('cache', { showTechnology: true })
+  })
+
+  it('shows the logo of the technology, and chooses another logo, none, or that of the technology again', async () => {
+    act(() => editor.setState({ properties: CACHE }))
+
+    expect(await within(panel()).findByText('Redis — по технологии')).toBeInTheDocument()
+    expect(within(panel()).queryByRole('button', { name: 'По технологии' })).toBeNull()
+    await userEvent.type(field('Значок'), 'kotl')
+    await userEvent.click(within(panel()).getByRole('button', { name: 'Значок «Kotlin»' }))
+    expect(editor.setElementProperties).toHaveBeenLastCalledWith('cache', { icon: 'kotlin' })
+    expect(field('Значок')).toHaveValue('')
+    await userEvent.click(within(panel()).getByRole('button', { name: 'Без значка' }))
+    expect(editor.setElementProperties).toHaveBeenLastCalledWith('cache', { icon: 'none' })
+
+    act(() => editor.setState({ properties: { ...CACHE, icon: 'none' } }))
+    expect(panel()).toHaveTextContent('Без значка')
+    await userEvent.click(within(panel()).getByRole('button', { name: 'По технологии' }))
+    expect(editor.setElementProperties).toHaveBeenLastCalledWith('cache', { icon: null })
+
+    act(() => editor.setState({ properties: { ...CACHE, icon: 'kotlin' } }))
+    expect(panel()).toHaveTextContent('Kotlin')
+  })
+
+  it('tells when the technology has no logo, and shows the logo to a viewer', async () => {
+    act(() => editor.setState({ properties: { ...CACHE, properties: { ...CACHE.properties, technology: 'Самописный кэш' } } }))
+    expect(await within(panel()).findByText('Для «Самописный кэш» логотипа нет')).toBeInTheDocument()
+
+    act(() => editor.setState({ properties: { ...CACHE, canChange: false } }))
+    expect(await within(panel()).findByText('Redis — по технологии')).toBeInTheDocument()
+    expect(within(panel()).queryByRole('searchbox')).toBeNull()
   })
 
   it('suggests the technologies of the kind and of the board, and the owners of the board', async () => {

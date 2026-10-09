@@ -3,18 +3,23 @@ import { Check, Lock } from 'lucide-react'
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 import {
   FRAME_COMMANDS,
+  isPlanCommand,
   isStatusCommand,
   menuItems,
+  PLAN_COMMANDS,
   shortcutLabel,
   STATUS_COMMANDS,
   type MenuCommand,
+  type PlanCommand,
   type StatusCommand,
 } from './canvasMenu.ts'
 import { readSystemClipboard, writeSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor, Point, SequencePartState } from './editor.ts'
 import { lockLabel } from './locks.ts'
+import { PLAN_COLORS } from './plan.ts'
 import { BRANCH_WORDS } from './sequence.ts'
 import type { ElementStatus } from './status.ts'
 import { StatusIcon } from './StatusIcon.tsx'
@@ -40,9 +45,11 @@ type PageCommand =
   | 'whereUsed'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'detail'
+  | 'saveToLibrary'
 
 const COMMANDS: Record<
-  Exclude<MenuCommand, PageCommand | StatusCommand>,
+  Exclude<MenuCommand, PageCommand | StatusCommand | PlanCommand>,
   (editor: DiagramEditor, request: ContextMenuRequest) => void
 > = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
@@ -83,6 +90,8 @@ const COMMANDS: Record<
   unlock: (editor) => editor.setLocked(false),
   delete: (editor) => editor.deleteSelection(),
   detachElement: (editor, { cellId }) => cellId && editor.detachElement(cellId),
+  dependencies: (editor, { cellId }) => cellId && editor.showDependencies(cellId),
+  pathBetween: (editor) => editor.showPathBetween(),
 }
 
 /**
@@ -91,8 +100,12 @@ const COMMANDS: Record<
  * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
  * link at the point of the click. With `onEdgeApi`, a single edge gets «Описание API…», which asks the page to open the
  * description of its call for editing. With `onProperties`, a single shape or edge that has properties gets «Свойства…»,
- * for viewers too, which asks the page to show them. The menu of locked elements says who locked them. The items of the
- * status set it, and `onStatusChange` hears of the elements whose status they changed.
+ * for viewers too, which asks the page to show them. With `onDetail`, a software system or a container that has a page
+ * of detail, or may get one, gets «Детализировать», which opens that page, made first when there is none. With
+ * `onSaveToLibrary`, shapes, tables, groups, sequence diagrams and several elements get «Сохранить в библиотеку…», for
+ * viewers too, which asks the page to open the window of saving at the point of the click. The menu of locked elements
+ * says who locked them. The items of the status set it, and `onStatusChange` hears of the elements whose status they
+ * changed.
  */
 export function CanvasMenu({
   editor,
@@ -103,7 +116,9 @@ export function CanvasMenu({
   onWhereUsed,
   onDeleteElementEverywhere,
   onMergeElements,
+  onDetail,
   onStatusChange,
+  onSaveToLibrary,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
@@ -116,7 +131,11 @@ export function CanvasMenu({
   onDeleteElementEverywhere?: (request: ContextMenuRequest) => void
   /** Asks which properties to keep when merging the selected shapes into one element, at the point of the click. */
   onMergeElements?: (request: ContextMenuRequest) => void
+  /** Opens the page of detail of the shape of the menu, which «Детализировать» found or made. */
+  onDetail?: (pageId: string) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
+  /** Opens the window that saves the selection into a library of the user, at the point of the click. */
+  onSaveToLibrary?: (request: ContextMenuRequest) => void
 }) {
   const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
@@ -140,6 +159,7 @@ export function CanvasMenu({
     canPasteAsSameElement,
     canMergeElements,
     tableView,
+    selectionPlan,
   } = useEditorState(editor)
   const lockId = useId()
 
@@ -153,6 +173,7 @@ export function CanvasMenu({
           onWhereUsed !== undefined &&
           element?.cellId === next.cellId &&
           (element.elementId !== null || element.properties.kind !== null)
+        const canDetail = onDetail !== undefined && next.cellId !== null && editor.detailOffer(next.cellId) !== null
         if (
           menuItems(next.target, {
             canPaste: false,
@@ -162,6 +183,10 @@ export function CanvasMenu({
             canComment,
             canShowProperties,
             canShowWhereUsed,
+            canDetail,
+            canShowDependencies: next.cellId !== null && editor.canAnalyze(next.cellId),
+            canShowPath: next.target === 'selection' && editor.canShowPath(),
+            canSaveToLibrary: onSaveToLibrary !== undefined,
           }).length === 0
         ) {
           return
@@ -169,7 +194,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties, onWhereUsed],
+    [editor, canComment, onProperties, onWhereUsed, onDetail, onSaveToLibrary],
   )
 
   if (!editor || !request) return null
@@ -203,10 +228,26 @@ export function CanvasMenu({
       if (request.cellId) onWhereUsed?.(request.cellId)
       return
     }
+    if (command === 'detail') {
+      // The page of detail takes the canvas.
+      const page = request.cellId ? editor.detailElement(request.cellId) : null
+      if (page) onDetail?.(page)
+      return
+    }
+    if (command === 'saveToLibrary') {
+      // The window of saving takes the keyboard.
+      focusTaken.current = true
+      onSaveToLibrary?.(request)
+      return
+    }
     if (command === 'deleteElementEverywhere' || command === 'mergeElements') {
       // The window of the confirmation or of the choice takes the keyboard.
       focusTaken.current = true
       ;(command === 'mergeElements' ? onMergeElements : onDeleteElementEverywhere)?.(request)
+      return
+    }
+    if (isPlanCommand(command)) {
+      editor.setPlan(PLAN_COMMANDS[command])
       return
     }
     if (isStatusCommand(command)) {
@@ -283,11 +324,17 @@ export function CanvasMenu({
             sharedElement: elementCells > 1,
             canDeleteElementEverywhere: onDeleteElementEverywhere !== undefined && elementCells > 1,
             canMergeElements: onMergeElements !== undefined && canMergeElements,
+            canDetail: onDetail !== undefined && request.cellId !== null && editor.detailOffer(request.cellId) !== null,
             status,
+            plan: selectionPlan,
             canBranch: canBranch(sequence?.part ?? null),
             canAddIndex: tableView?.view !== true || tableView.materialized,
+            canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),
+            canShowPath: request.target === 'selection' && editor.canShowPath(),
+            canSaveToLibrary: onSaveToLibrary !== undefined,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
+            const planned = isPlanCommand(item.command) ? PLAN_COMMANDS[item.command] : undefined
             return (
               <Fragment key={item.command}>
                 {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
@@ -308,7 +355,16 @@ export function CanvasMenu({
                   disabled={item.disabled}
                   onClick={() => run(item.command)}
                 >
-                  {choice === undefined ? (
+                  {planned !== undefined ? (
+                    <span className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={cn('size-4 shrink-0 rounded-sm border-2', planned === 'removed' && 'border-dashed')}
+                        style={{ borderColor: planned ? PLAN_COLORS[planned] : undefined }}
+                      />
+                      {item.label}
+                    </span>
+                  ) : choice === undefined ? (
                     item.label
                   ) : (
                     <span className="flex items-center gap-2">

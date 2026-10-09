@@ -17,6 +17,8 @@ export interface SketchShape extends Box {
   stroke: string | null
   /** The header of a swimlane, e.g. the name of a table: its height and color. */
   header: { height: number; fill: string | null } | null
+  /** The filter of the page leaves it out: it is drawn pale. */
+  dimmed?: boolean
 }
 
 /**
@@ -27,6 +29,8 @@ export interface SketchEdge {
   /** The id of its cell. */
   id: string
   points: Point[]
+  /** The filter of the page leaves it out: it is drawn pale. */
+  dimmed?: boolean
 }
 
 /**
@@ -67,10 +71,11 @@ export function unionBox(box: Box | null, other: Box): Box {
 
 /**
  * The sketch of the page that `graph` draws now, read from the states of its view: where the layout of tables, the
- * routes of edges and turned shapes put them, in coordinates of the page. Hidden cells and cells not drawn are left
- * out.
+ * routes of edges and turned shapes put them, in coordinates of the page. Cells not drawn are left out, but for the
+ * shapes of the page that the filter hides (`dimmed`), which are sketched where their geometry puts them; what `dimmed`
+ * tells is marked.
  */
-export function sketchPage(graph: AbstractGraph): PageSketch {
+export function sketchPage(graph: AbstractGraph, dimmed: (cell: Cell) => boolean = () => false): PageSketch {
   const view = graph.getView()
   const { scale, translate } = view
   const shapes: SketchShape[] = []
@@ -81,10 +86,10 @@ export function sketchPage(graph: AbstractGraph): PageSketch {
   const addEdge = (state: CellState) => {
     const points = state.absolutePoints.flatMap((point) => (point ? [toPage(point.x, point.y)] : []))
     if (points.length < 2) return
-    edges.push({ id: state.cell.getId()!, points })
+    edges.push({ id: state.cell.getId()!, points, ...(dimmed(state.cell) && { dimmed: true }) })
     for (const point of points) bounds = unionBox(bounds, { ...point, width: 0, height: 0 })
   }
-  const addShape = (cell: Cell, state: CellState) => {
+  const addShape = (cell: Cell, state: Pick<CellState, 'style' | 'x' | 'y' | 'width' | 'height'>) => {
     const style = state.style as ShapeStyle & typeof state.style
     const fill = paintColor(style.fillColor)
     const stroke = paintColor(style.strokeColor)
@@ -104,12 +109,21 @@ export function sketchPage(graph: AbstractGraph): PageSketch {
       fill: swimlane ? paintColor(style.swimlaneFillColor) : fill,
       stroke,
       header: headerHeight > 0 ? { height: headerHeight, fill } : null,
+      ...(dimmed(cell) && { dimmed: true }),
     })
     bounds = unionBox(bounds, rotatedBounds(box, rotation))
   }
+  const layer = graph.getDefaultParent()
   const visit = (parent: Cell) => {
     for (const cell of parent.getChildren()) {
       const state = view.getState(cell)
+      const geometry = cell.getGeometry()
+      // A shape of the page that the filter hides has no state: its geometry tells where it is.
+      if (!state && parent === layer && cell.isVertex() && !cell.isVisible() && geometry && dimmed(cell)) {
+        const { x, y } = { x: (geometry.x + translate.x) * scale, y: (geometry.y + translate.y) * scale }
+        addShape(cell, { style: graph.getCellStyle(cell), x, y, width: geometry.width * scale, height: geometry.height * scale })
+        continue
+      }
       if (!state) continue
       if (cell.isEdge()) {
         addEdge(state)
@@ -120,7 +134,8 @@ export function sketchPage(graph: AbstractGraph): PageSketch {
       }
     }
   }
-  visit(graph.getDefaultParent())
+  // Every layer shown on the canvas; a hidden one has no states.
+  graph.getDataModel().getRoot()?.getChildren().forEach(visit)
   return { shapes, edges, bounds }
 }
 

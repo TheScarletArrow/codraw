@@ -37,8 +37,8 @@ export interface ThreadPoint {
 }
 
 /**
- * Comments about one element of a page, about a point of it, or about the whole page when neither `cellId` nor `point`
- * is set; never about both.
+ * Comments about one element of a page, about a point of it, about an architecture decision of the board, or about the
+ * whole page when none of `cellId`, `point` and `decisionId` is set; never about two of them.
  */
 export interface CommentThread {
   id: string
@@ -47,6 +47,8 @@ export interface CommentThread {
   cellId: string | null
   /** Where the thread stands on the page. */
   point: ThreadPoint | null
+  /** The decision the thread discusses: the panel «Решения» shows it, not the comments. */
+  decisionId: string | null
   createdAt: string
   /** When the thread was marked resolved, `null` while it is open. */
   resolvedAt: string | null
@@ -82,10 +84,13 @@ export function fetchPeople(boardId: string): Promise<Person[]> {
   return request(`${boardPath(boardId)}/people`)
 }
 
-/** Starts a thread about an element of the page, at a point of it, or about the page when neither is set. */
+/**
+ * Starts a thread about an element of the page, at a point of it, about a decision of the board, or about the page when
+ * none is set.
+ */
 export function startThread(
   boardId: string,
-  thread: { pageId: string; cellId: string | null; point: ThreadPoint | null } & CommentText,
+  thread: { pageId: string; cellId: string | null; point: ThreadPoint | null; decisionId?: string } & CommentText,
 ): Promise<CommentThread> {
   return request(`${boardPath(boardId)}/threads`, json('POST', thread))
 }

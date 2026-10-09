@@ -56,4 +56,22 @@ describe('schema import update', () => {
     expect(updated.geometry).toEqual(view.geometry)
     expect(updated.style.codrawViewQuery).toBe('SELECT id FROM users WHERE deleted_at IS NULL AND id IS NOT NULL')
   })
+
+  it('updates a table of another layer in its layer', async () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const builder = new DiagramBuilder()
+    const users = builder.table('users', 100, 80, ['id uuid PK'])
+    doc.transact(() => {
+      const cells = getCells(doc, DEFAULT_PAGE_ID)
+      writeCell(cells, { id: 'db', kind: 'layer', parent: '0', order: 'a1', value: 'БД', geometry: null, source: null, target: null, style: {} })
+      builder.build().forEach((cell) => writeCell(cells, cell.id === users.id ? { ...cell, parent: 'db' } : cell))
+    })
+
+    const imported = await schemaCells(parseSql('CREATE TABLE users (id uuid PRIMARY KEY, email text);'), { x: 0, y: 0 }, undefined, [], 'sql')
+    const summary = applySchemaUpdate(doc, DEFAULT_PAGE_ID, imported, null)
+
+    expect(summary).toMatchObject({ added: 0, removed: 0, changed: 1 })
+    expect(cellsOf(doc).find((cell) => cell.id === users.id)).toMatchObject({ parent: 'db', geometry: { x: 100, y: 80 } })
+  })
 })

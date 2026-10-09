@@ -14,6 +14,7 @@ import { LINK_KEY, linkOf } from '../diagram/links.ts'
 import { isViewStyle, viewQueryOf, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import {
   ELEMENT_KEY,
+  HIDDEN_LAYER_KEY,
   LAYER_CELL_ID,
   ROOT_CELL_ID,
   type CellData,
@@ -39,12 +40,18 @@ export interface DrawioCell extends CellData {
   attrs?: Record<string, string>
 }
 
-/** A page (`<diagram>`) of a draw.io file; the root and the layer cells are implied. */
+/** A page (`<diagram>`) of a draw.io file; the root is implied. */
 export interface DrawioPage {
   /** Id of the diagram in the file, if it has one. */
   id: string | null
   name: string
+  /** The shapes and edges of the page, those of its layers in them. */
   cells: DrawioCell[]
+  /**
+   * The layers of the page in drawing order, the first one the main layer `1` of the page; without them, the page has
+   * only its main layer, as the default one.
+   */
+  layers?: DrawioCell[]
 }
 
 /** Reads the pages of a `.drawio` file, of a single `<mxGraphModel>` or of a `.drawio.svg` file. */
@@ -132,7 +139,10 @@ interface RawCell {
   query: string | null
 }
 
-/** Converts the cells of a model: the root becomes `0`, all layers become `1`, and the order follows the file. */
+/**
+ * Converts the cells of a model: the root becomes `0`, the first layer the main layer `1`, the other layers keep their
+ * ids when they can, and the order follows the file.
+ */
 function readModel(model: Element, id: string | null, name: string): DrawioPage {
   const rootElement = childElements(model, 'root')[0]
   if (!rootElement) throw new DrawioFormatError()
@@ -174,11 +184,16 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
   }
 
   const root = raw.find((cell) => !cell.parent)
-  const layers = new Set(root ? raw.filter((cell) => cell.parent === root.id).map((cell) => cell.id) : [])
+  const layerCells = root ? raw.filter((cell) => cell.parent === root.id) : []
+  const layers = new Set(layerCells.map((cell) => cell.id))
   const ids = new Map<string, string>()
   if (root) ids.set(root.id, ROOT_CELL_ID)
-  layers.forEach((layer) => ids.set(layer, LAYER_CELL_ID))
   const used = new Set([ROOT_CELL_ID, LAYER_CELL_ID])
+  layerCells.forEach((layer, index) => {
+    const kept = index === 0 ? LAYER_CELL_ID : layer.id && !used.has(layer.id) ? layer.id : newId()
+    used.add(kept)
+    ids.set(layer.id, kept)
+  })
   const content = raw.filter((cell) => cell !== root && !layers.has(cell.id))
   for (const cell of content) {
     const kept = cell.id && !used.has(cell.id) ? cell.id : newId()
@@ -186,6 +201,22 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     ids.set(cell.id, kept)
   }
   const reference = (value: string | null) => (value !== null && ids.has(value) ? ids.get(value)! : null)
+  // A layer hidden in the file is hidden for everybody, and a locked one is locked.
+  const layerData: DrawioCell[] = layerCells.map((layer) => {
+    const style = parseStyle(layer.element.getAttribute('style') ?? '', 'layer')
+    if (layer.element.getAttribute('visible') === '0') style[HIDDEN_LAYER_KEY] = true
+    return {
+      id: ids.get(layer.id)!,
+      kind: 'layer',
+      parent: ROOT_CELL_ID,
+      order: '',
+      value: layer.value.replace(/\s+/g, ' ').trim().slice(0, 100),
+      geometry: null,
+      source: null,
+      target: null,
+      style,
+    }
+  })
 
   const read: DrawioCell[] = content.map((cell) => {
     const element = cell.element
@@ -207,7 +238,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     return {
       id: ids.get(cell.id)!,
       kind,
-      // Cells of other layers, and cells whose parent is missing, go to the layer of the page.
+      // Cells whose parent is missing go to the main layer of the page.
       parent: parent === null || parent === ROOT_CELL_ID ? LAYER_CELL_ID : parent,
       order: '',
       value: html ? htmlToText(cell.value) : cell.value,
@@ -221,14 +252,14 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
 
   const cells = withLegends(read)
 
-  // Siblings are drawn in the order of the file.
+  // Siblings, layers too, are drawn in the order of the file.
   const siblings = new Map<string, DrawioCell[]>()
-  for (const cell of cells) siblings.set(cell.parent!, [...(siblings.get(cell.parent!) ?? []), cell])
+  for (const cell of [...layerData, ...cells]) siblings.set(cell.parent!, [...(siblings.get(cell.parent!) ?? []), cell])
   siblings.forEach((group) => {
     const keys = generateNKeysBetween(null, null, group.length)
     group.forEach((cell, index) => (cell.order = keys[index]!))
   })
-  return { id, name, cells }
+  return { id, name, cells, ...(layerData.length > 0 && { layers: layerData }) }
 }
 
 /**

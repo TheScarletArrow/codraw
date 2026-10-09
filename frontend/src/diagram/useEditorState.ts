@@ -26,6 +26,7 @@ const NO_EDITOR: EditorState = {
   canCopy: false,
   canCopyStyle: false,
   canPasteStyle: false,
+  canTakeStyle: false,
   layoutSelection: false,
   laser: false,
   commentTool: false,
@@ -38,10 +39,15 @@ const NO_EDITOR: EditorState = {
   edgeApi: null,
   stickies: null,
   status: null,
+  selectionPlan: null,
+  plan: { view: 'diff', added: 0, removed: 0 },
   properties: null,
   sequence: null,
+  impact: null,
+  filter: null,
   canPasteAsSameElement: false,
   canMergeElements: false,
+  layers: [],
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

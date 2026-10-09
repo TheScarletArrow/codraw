@@ -196,6 +196,26 @@ describe('CanvasSearch', () => {
     expect(screen.getByText('1 из 2')).toBeInTheDocument()
   })
 
+  it('tells when the current match is pale or hidden by the filter of the canvas', () => {
+    open()
+    find()
+    type('Склад')
+    expect(screen.getByText('1 из 1')).toBeInTheDocument()
+
+    act(() => {
+      vi.mocked(editor().filterStatus).mockReturnValue('hidden')
+      editor().setState({ filter: { matched: 1, total: 2, hide: true } })
+    })
+    expect(screen.getByText('1 из 1 · скрыто фильтром')).toBeInTheDocument()
+    expect(editor().filterStatus).toHaveBeenCalledWith('stock')
+
+    act(() => {
+      vi.mocked(editor().filterStatus).mockReturnValue('dimmed')
+      editor().setState({ filter: { matched: 1, total: 2, hide: false } })
+    })
+    expect(screen.getByText('1 из 1 · приглушено фильтром')).toBeInTheDocument()
+  })
+
   it('goes with the buttons too', () => {
     open()
     find()

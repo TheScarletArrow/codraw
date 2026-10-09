@@ -20,7 +20,15 @@ export type ClipboardContent = { kind: 'cells' | 'diagram'; cells: Cell[] } | { 
  * draw.io copies, so that draw.io pastes it too. `cells` are clones that no graph holds, with their descendants.
  */
 export function clipboardText(cells: Cell[]): string {
-  return encodeURIComponent(cellsModelXml(clipboardData(cells)))
+  return encodeURIComponent(cellsXml(cells))
+}
+
+/**
+ * Copied cells as a `<mxGraphModel>` of draw.io, as the clipboard holds them and components of libraries keep them.
+ * `cells` are clones that no graph holds, with their descendants.
+ */
+export function cellsXml(cells: Cell[]): string {
+  return cellsModelXml(clipboardData(cells))
 }
 
 /** Attribute of the HTML of the clipboard that holds the copied cells as {@link clipboardText} writes them. */
@@ -104,6 +112,15 @@ export async function readClipboardText(text: string, html = ''): Promise<Clipbo
   return { kind: 'text', text: trimmed }
 }
 
+/**
+ * The cells of a `<mxGraphModel>` or `<mxfile>` of draw.io or CoDraw (e.g. a component of a library), as
+ * {@link readClipboardText} reads them; `[]` for text that is no diagram.
+ */
+export async function diagramCells(xml: string): Promise<Cell[]> {
+  const content = await diagramContent(xml.trim())
+  return content?.kind === 'cells' ? content.cells : []
+}
+
 /** The cells that {@link clipboardContent} put into the HTML of the clipboard; `null` without them. */
 function embeddedDiagram(html: string): string | null {
   if (!html.includes(DIAGRAM_ATTRIBUTE)) return null
@@ -136,9 +153,11 @@ function decode(text: string): string | null {
 
 /**
  * Cells of the page from their data: children inside their parents, edges connected to their ends. An edge without
- * one of its ends or the point of that end is left out, since CoDraw keeps no edges hanging in the air.
+ * one of its ends or the point of that end is left out, since CoDraw keeps no edges hanging in the air. Layers, e.g. of
+ * a diagram of draw.io, are left out too: what they hold is at the top.
  */
-export function dataToCells(data: CellData[]): Cell[] {
+export function dataToCells(all: CellData[]): Cell[] {
+  const data = all.filter((item) => item.kind !== 'layer')
   const cells = new Map(data.map((item) => [item.id, createCell(item)]))
   const kept = data.filter((item) => {
     if (item.kind !== 'edge') return true

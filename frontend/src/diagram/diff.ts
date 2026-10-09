@@ -23,8 +23,8 @@ import { isTableStyle } from './shapes.ts'
  * milliseconds and nothing observes the cells.
  *
  * Only content counts: keys that record who changed a cell and when, order keys rewritten without reordering, the noise
- * of floating-point coordinates and the geometry that the layouts of a table and of a sequence diagram set are not
- * changes.
+ * of floating-point coordinates, the geometry that the layouts of a table and of a sequence diagram set and the layers
+ * of a page themselves are not changes.
  */
 
 /** Keys that say who changed a cell last and when: they change with every edit, but they are not its content. */
@@ -57,7 +57,7 @@ export interface PageSnapshot {
   id: string
   name: string
   order: string
-  /** The cells of the page by id, without its root and layer. */
+  /** The cells of the page by id, without its root and layers. */
   cells: Map<string, CellSnapshot>
 }
 
@@ -121,7 +121,9 @@ export function snapshotPage(doc: Y.Doc, pageId: string): PageSnapshot | null {
 function snapshotCells(doc: Y.Doc, pageId: string): Map<string, CellSnapshot> {
   const cells = new Map<string, CellSnapshot>()
   getCells(doc, pageId).forEach((cell, cellId) => {
-    if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID || !(cell instanceof Y.Map)) return
+    // The root and the layers are no elements: a change of a layer is no change of the page, moving an element into
+    // another layer changes its parent.
+    if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID || !(cell instanceof Y.Map) || cell.get('kind') === 'layer') return
     const snapshot = snapshotCell(cellId, cell.toJSON() as Record<string, unknown>)
     // The properties of the element of a cell are compared, merged and restored as keys of its style.
     snapshot.style = withElementProperties(doc, snapshot.style)

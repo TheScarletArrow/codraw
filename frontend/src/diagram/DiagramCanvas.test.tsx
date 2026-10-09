@@ -5,20 +5,32 @@ import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { DiagramCanvas } from './DiagramCanvas.tsx'
 import { createDiagramEditor } from './editor.ts'
 import type { ImageHost } from './images.ts'
+import { COMPONENT_DRAG_TYPE } from '../libraries/drag.ts'
 import { SHAPE_DRAG_TYPE } from './shapes.ts'
 
 vi.mock('./editor.ts', () => ({ createDiagramEditor: vi.fn() }))
 
 const host: ImageHost = { store: vi.fn(), holds: () => false }
 
-function renderCanvas(readOnly = false, images: ImageHost | null = host): FakeEditor {
+function renderCanvas(readOnly = false, images: ImageHost | null = host, onDropComponent?: DropComponent): FakeEditor {
   const editor = createFakeEditor({ readOnly })
   vi.mocked(createDiagramEditor).mockReturnValue(editor)
   // jsdom has no events of dragging, which would carry the point.
   vi.mocked(editor.toDiagramPoint).mockReturnValue({ x: 60, y: 80 })
-  render(<DiagramCanvas document={new Y.Doc()} pageId="page-1" readOnly={readOnly} images={images} onEditor={() => {}} />)
+  render(
+    <DiagramCanvas
+      document={new Y.Doc()}
+      pageId="page-1"
+      readOnly={readOnly}
+      images={images}
+      onEditor={() => {}}
+      onDropComponent={onDropComponent}
+    />,
+  )
   return editor
 }
+
+type DropComponent = NonNullable<Parameters<typeof DiagramCanvas>[0]['onDropComponent']>
 
 /** A drag of files, or of a shape of the palette, over the canvas. */
 function transfer(files: File[], shape?: string) {
@@ -73,5 +85,20 @@ describe('DiagramCanvas', () => {
     expect(fireEvent.drop(canvas, { dataTransfer })).toBe(false)
 
     expect(editor.addImages).not.toHaveBeenCalled()
+  })
+
+  it('gives the page a dragged component of a library with the point of the drop, once the page takes them', () => {
+    const onDropComponent = vi.fn<DropComponent>()
+    const editor = renderCanvas(false, host, onDropComponent)
+    const canvas = screen.getByTestId('diagram-canvas')
+    const data = JSON.stringify({ libraryId: 'l1', componentId: 'c1' })
+    const dataTransfer = { types: [COMPONENT_DRAG_TYPE], files: [], getData: (type: string) => (type === COMPONENT_DRAG_TYPE ? data : ''), dropEffect: 'none' }
+
+    fireEvent.dragOver(canvas, { dataTransfer })
+    expect(dataTransfer.dropEffect).toBe('copy')
+    fireEvent.drop(canvas, { dataTransfer })
+
+    expect(onDropComponent).toHaveBeenCalledWith(editor, data, { x: 60, y: 80 })
+    expect(editor.addShape).not.toHaveBeenCalled()
   })
 })
