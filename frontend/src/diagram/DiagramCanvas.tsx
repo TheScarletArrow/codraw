@@ -7,6 +7,7 @@ import { createDiagramEditor, type DiagramEditor, type Point } from './editor.ts
 import { filesOf, type ImageHost } from './images.ts'
 import type { LayerViews } from './layerViews.ts'
 import { SHAPE_DRAG_TYPE, type ShapeId } from './shapes.ts'
+import { LOGO_DRAG_TYPE } from './techIcons.ts'
 import { ELEMENT_DRAG_TYPE, readElementDrag } from './sharedElements.ts'
 
 interface DiagramCanvasProps {
@@ -102,7 +103,8 @@ export function DiagramCanvas({
     const types = event.dataTransfer.types
     const files = types.includes('Files')
     const component = onDropComponent !== undefined && types.includes(COMPONENT_DRAG_TYPE)
-    if (!files && !component && !types.includes(SHAPE_DRAG_TYPE) && !types.includes(ELEMENT_DRAG_TYPE)) return
+    const shapes = [SHAPE_DRAG_TYPE, ELEMENT_DRAG_TYPE, LOGO_DRAG_TYPE].some((type) => types.includes(type))
+    if (!files && !component && !shapes) return
     // Files are never dropped on the browser, which would open them instead of the board; only images go on the canvas.
     event.preventDefault()
     event.dataTransfer.dropEffect = readOnly || (files && !images) ? 'none' : 'copy'
@@ -111,16 +113,19 @@ export function DiagramCanvas({
   const handleDrop = (event: DragEvent) => {
     const editor = editorRef.current
     const shape = event.dataTransfer.getData(SHAPE_DRAG_TYPE) as ShapeId
+    // A logo of the search of the palette, loaded there.
+    const logo = event.dataTransfer.getData(LOGO_DRAG_TYPE)
     // An element of the panel «Элементы доски»: another cell of it.
     const element = readElementDrag(event.dataTransfer.getData(ELEMENT_DRAG_TYPE))
     // A component of a library: the page loads it.
     const component = onDropComponent ? event.dataTransfer.getData(COMPONENT_DRAG_TYPE) : ''
     const files = filesOf(event.dataTransfer)
-    if (!shape && !element && !component && files.length === 0) return
+    if (!shape && !logo && !element && !component && files.length === 0) return
     event.preventDefault()
     if (!editor || readOnly) return
     const point = editor.toDiagramPoint(event.clientX, event.clientY)
     if (shape) editor.addShape(shape, point)
+    else if (logo) editor.addLogo(logo, point)
     else if (element) editor.placeElement(element, point)
     else if (component) onDropComponent?.(editor, component, point)
     else void editor.addImages(files, point)

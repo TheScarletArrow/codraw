@@ -10,6 +10,9 @@ import { ShapeIcon } from './ShapeIcon.tsx'
 import { searchShapes } from './shapeSearch.ts'
 import { SHAPE_DRAG_TYPE, SHAPE_SECTIONS, type ShapePreset } from './shapes.ts'
 import { useEditorState } from './useEditorState.ts'
+import { LogoPicture } from '../elements/IconField.tsx'
+import { useTechIcons } from '../elements/useTechIcons.ts'
+import { loadIconPath, LOGO_DRAG_TYPE, searchIcons, type TechIcon } from './techIcons.ts'
 
 /** Words of a search that mean pictures rather than shapes: the search offers «Изображение» for them. */
 const IMAGE_WORDS = ['изображение', 'картинка', 'рисунок', 'фото', 'скриншот', 'логотип', 'image', 'picture', 'png', 'jpeg']
@@ -29,6 +32,9 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
   const found = searching ? searchShapes(query) : []
   const foundComponents = searching && libraries ? searchComponents(query, libraries.libraries ?? []) : []
   const imageFound = searching && searchesImage(query)
+  // Logos of simple-icons, once the search loads their catalog.
+  const icons = useTechIcons(searching)
+  const foundLogos = searching && icons ? searchIcons(icons, query, LOGOS_FOUND) : []
 
   return (
     <aside aria-label="Фигуры" className="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r p-2">
@@ -51,29 +57,44 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
             } else if (event.key === 'Enter' && found[0]) {
               event.preventDefault()
               editor?.addShape(found[0].id)
+            } else if (event.key === 'Enter' && foundLogos[0]) {
+              event.preventDefault()
+              void addLogo(editor, foundLogos[0])
             }
           }}
         />
       </label>
       {searching ? (
-        found.length > 0 || foundComponents.length > 0 || imageFound ? (
-          <div role="group" aria-label="Найденные фигуры" className="flex flex-col gap-1">
-            {libraries && foundComponents.length > 0 && (
-              <>
-                <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Из библиотек</h2>
-                {foundComponents.map(({ library, component }) => (
-                  <ComponentButton key={component.id} shelf={libraries} editor={editor} library={library} component={component} />
-                ))}
-                {(found.length > 0 || imageFound) && (
-                  <h2 className="mt-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Фигуры</h2>
+        found.length > 0 || foundComponents.length > 0 || imageFound || foundLogos.length > 0 ? (
+          <>
+            {(found.length > 0 || foundComponents.length > 0 || imageFound) && (
+              <div role="group" aria-label="Найденные фигуры" className="flex flex-col gap-1">
+                {libraries && foundComponents.length > 0 && (
+                  <>
+                    <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Из библиотек</h2>
+                    {foundComponents.map(({ library, component }) => (
+                      <ComponentButton key={component.id} shelf={libraries} editor={editor} library={library} component={component} />
+                    ))}
+                    {(found.length > 0 || imageFound) && (
+                      <h2 className="mt-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Фигуры</h2>
+                    )}
+                  </>
                 )}
-              </>
+                {imageFound && <ImageButton editor={editor} />}
+                {found.map((shape) => (
+                  <ShapeButton key={shape.id} shape={shape} editor={editor} />
+                ))}
+              </div>
             )}
-            {imageFound && <ImageButton editor={editor} />}
-            {found.map((shape) => (
-              <ShapeButton key={shape.id} shape={shape} editor={editor} />
-            ))}
-          </div>
+            {foundLogos.length > 0 && (
+              <section aria-label="Логотипы" className="flex flex-col gap-1">
+                <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Логотипы</h2>
+                {foundLogos.map((icon) => (
+                  <LogoButton key={icon.slug} icon={icon} editor={editor} />
+                ))}
+              </section>
+            )}
+          </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">Ничего не найдено</p>
         )
@@ -118,6 +139,37 @@ function ShapeButton({ shape, editor }: { shape: ShapePreset; editor: DiagramEdi
     >
       <ShapeIcon shape={shape.id} />
       {shape.label}
+    </Button>
+  )
+}
+
+/** How many logos the search shows at most. */
+const LOGOS_FOUND = 6
+
+/** Adds the logo in the middle of the view once it is loaded. */
+async function addLogo(editor: DiagramEditor | null, icon: TechIcon) {
+  await loadIconPath(icon.slug)
+  editor?.addLogo(icon.slug)
+}
+
+/** A logo of simple-icons: a picture of it named by it, added with a click or dragged onto the canvas. */
+function LogoButton({ icon, editor }: { icon: TechIcon; editor: DiagramEditor | null }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="h-auto justify-start py-1.5 text-left whitespace-normal"
+      title={`Логотип ${icon.title}`}
+      disabled={!editor}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData(LOGO_DRAG_TYPE, icon.slug)
+        event.dataTransfer.effectAllowed = 'copy'
+      }}
+      onClick={() => void addLogo(editor, icon)}
+    >
+      <LogoPicture icon={icon} />
+      {icon.title}
     </Button>
   )
 }
