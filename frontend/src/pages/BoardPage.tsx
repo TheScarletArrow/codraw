@@ -566,34 +566,37 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           </span>
         )}
         {viewer && <EditRequestButton boardId={board.id} />}
-        <DrawioActions
-          document={document}
-          title={board.title}
-          onImported={selectPage}
-          readOnly={readOnly}
-          author={author}
-          images={imageHost}
-        />
-        <PersonalTemplates document={document} editor={editor} title={board.title} images={imageHost} compact />
-        <ImageExportMenu
-          editor={editor}
-          document={document}
-          boardTitle={board.title}
-          pageName={currentPage?.name ?? ''}
-          pageCount={pages.length}
-          layerViews={layerViews}
-        />
-        <SqlMenu
-          editor={editor}
-          document={document}
-          pageId={currentPage?.id ?? null}
-          boardTitle={board.title}
-          pageName={currentPage?.name ?? ''}
-          pageCount={pages.length}
-          readOnly={readOnly}
-          boardId={board.id}
-          onProposalCreated={proposalCreated}
-        />
+        {/* The files, the templates, the images and SQL stand close together, as on a toolbar: the tools need the room. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <DrawioActions
+            document={document}
+            title={board.title}
+            onImported={selectPage}
+            readOnly={readOnly}
+            author={author}
+            images={imageHost}
+          />
+          <PersonalTemplates document={document} editor={editor} title={board.title} images={imageHost} compact />
+          <ImageExportMenu
+            editor={editor}
+            document={document}
+            boardTitle={board.title}
+            pageName={currentPage?.name ?? ''}
+            pageCount={pages.length}
+            layerViews={layerViews}
+          />
+          <SqlMenu
+            editor={editor}
+            document={document}
+            pageId={currentPage?.id ?? null}
+            boardTitle={board.title}
+            pageName={currentPage?.name ?? ''}
+            pageCount={pages.length}
+            readOnly={readOnly}
+            boardId={board.id}
+            onProposalCreated={proposalCreated}
+          />
+        </div>
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <EditorToolbar
           editor={editor}
