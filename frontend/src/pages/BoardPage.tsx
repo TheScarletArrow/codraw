@@ -57,6 +57,8 @@ import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { storePageImages } from '../diagram/images.ts'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
+import { LayersButton, LayersPanel } from '../diagram/LayersPanel.tsx'
+import { LayerViews, layerViewsKey } from '../diagram/layerViews.ts'
 import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { StickyPanel } from '../diagram/StickyPanel.tsx'
@@ -77,6 +79,8 @@ import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDia
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
+import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
+import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
@@ -215,6 +219,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
+  // What the participant chose about the layers of the pages for themselves outlives the canvas of a page too; the
+  // browser keeps the layers they show and hide.
+  const layerViews = useMemo(() => new LayerViews(layerViewsKey(user.id, board.id)), [user.id, board.id])
+  const [layersOpen, setLayersOpen] = useState(false)
 
   // The current page is the participant's own and lives in the address, so a link opens the board on it.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -365,6 +373,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   useEffect(() => editor?.onCommentPoint((point) => commentOn({ point })), [editor, commentOn])
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
+  const libraries = useLibraries()
+  const [savingToLibrary, setSavingToLibrary] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
   // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
@@ -511,6 +521,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           boardTitle={board.title}
           pageName={currentPage?.name ?? ''}
           pageCount={pages.length}
+          layerViews={layerViews}
         />
         <SqlMenu
           editor={editor}
@@ -542,6 +553,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
           />
           <StatusSummary document={document} onSelect={showElement} />
+          <LayersButton open={layersOpen} onToggle={() => setLayersOpen((open) => !open)} />
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
           <CommentsButton
@@ -631,7 +643,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         />
       )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} />}
+        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} libraries={libraries} />}
         {preview && document ? (
           <VersionPreview
             key={preview.id}
@@ -696,7 +708,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     participantName={author.name}
                     participantId={author.id}
                     images={imageHost}
+                    layerViews={layerViews}
                     onEditor={setEditor}
+                    onDropComponent={libraries.drop}
                   />
                   <StickySignatures editor={editor} />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
@@ -724,6 +738,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <SidePanels>
                     <ImpactPanel editor={editor} document={document} onShow={showCell} />
                     <EdgeApiPanel editor={editor} request={apiRequest} />
+                    {layersOpen && (
+                      <LayersPanel
+                        editor={editor}
+                        onClose={() => {
+                          setLayersOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                     {propertiesOpen && (
                       <PropertiesPanel
                         editor={editor}
@@ -766,6 +789,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                    onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                   />
                   {elementWindow &&
                     elementWindow.editor === editor &&
@@ -783,6 +807,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         onClose={() => setElementWindow(null)}
                       />
                     ))}
+                  {savingToLibrary && savingToLibrary.editor === editor && (
+                    <SaveToLibraryDialog
+                      editor={savingToLibrary.editor}
+                      shelf={libraries}
+                      request={savingToLibrary.request}
+                      onClose={() => setSavingToLibrary(null)}
+                    />
+                  )}
                   {linking && linking.editor === editor && (
                     <LinkDialog
                       editor={linking.editor}

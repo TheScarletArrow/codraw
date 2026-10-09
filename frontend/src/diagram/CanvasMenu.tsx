@@ -40,6 +40,7 @@ type PageCommand =
   | 'whereUsed'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'saveToLibrary'
 
 const COMMANDS: Record<
   Exclude<MenuCommand, PageCommand | StatusCommand>,
@@ -93,8 +94,10 @@ const COMMANDS: Record<
  * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
  * link at the point of the click. With `onEdgeApi`, a single edge gets «Описание API…», which asks the page to open the
  * description of its call for editing. With `onProperties`, a single shape or edge that has properties gets «Свойства…»,
- * for viewers too, which asks the page to show them. The menu of locked elements says who locked them. The items of the
- * status set it, and `onStatusChange` hears of the elements whose status they changed.
+ * for viewers too, which asks the page to show them. With `onSaveToLibrary`, shapes, tables, groups, sequence diagrams
+ * and several elements get «Сохранить в библиотеку…», for viewers too, which asks the page to open the window of saving
+ * at the point of the click. The menu of locked elements says who locked them. The items of the status set it, and
+ * `onStatusChange` hears of the elements whose status they changed.
  */
 export function CanvasMenu({
   editor,
@@ -106,6 +109,7 @@ export function CanvasMenu({
   onDeleteElementEverywhere,
   onMergeElements,
   onStatusChange,
+  onSaveToLibrary,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
@@ -119,6 +123,8 @@ export function CanvasMenu({
   /** Asks which properties to keep when merging the selected shapes into one element, at the point of the click. */
   onMergeElements?: (request: ContextMenuRequest) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
+  /** Opens the window that saves the selection into a library of the user, at the point of the click. */
+  onSaveToLibrary?: (request: ContextMenuRequest) => void
 }) {
   const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
@@ -165,6 +171,7 @@ export function CanvasMenu({
             canShowWhereUsed,
             canShowDependencies: next.cellId !== null && editor.canAnalyze(next.cellId),
             canShowPath: next.target === 'selection' && editor.canShowPath(),
+            canSaveToLibrary: onSaveToLibrary !== undefined,
           }).length === 0
         ) {
           return
@@ -172,7 +179,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties, onWhereUsed],
+    [editor, canComment, onProperties, onWhereUsed, onSaveToLibrary],
   )
 
   if (!editor || !request) return null
@@ -204,6 +211,12 @@ export function CanvasMenu({
       // The panel of elements takes the keyboard.
       focusTaken.current = true
       if (request.cellId) onWhereUsed?.(request.cellId)
+      return
+    }
+    if (command === 'saveToLibrary') {
+      // The window of saving takes the keyboard.
+      focusTaken.current = true
+      onSaveToLibrary?.(request)
       return
     }
     if (command === 'deleteElementEverywhere' || command === 'mergeElements') {
@@ -290,6 +303,7 @@ export function CanvasMenu({
             canBranch: canBranch(sequence?.part ?? null),
             canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),
             canShowPath: request.target === 'selection' && editor.canShowPath(),
+            canSaveToLibrary: onSaveToLibrary !== undefined,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
             return (

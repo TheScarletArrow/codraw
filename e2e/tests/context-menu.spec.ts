@@ -84,6 +84,7 @@ test('a right click opens the menu of CoDraw with the items of a table instead o
     'Вырезать',
     'Копировать',
     'Дублировать',
+    'Сохранить в библиотеку…',
     'Копировать стиль',
     'Вставить стиль',
     'На передний план',

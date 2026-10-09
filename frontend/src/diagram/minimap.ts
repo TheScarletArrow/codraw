@@ -120,7 +120,8 @@ export function sketchPage(graph: AbstractGraph): PageSketch {
       }
     }
   }
-  visit(graph.getDefaultParent())
+  // Every layer shown on the canvas; a hidden one has no states.
+  graph.getDataModel().getRoot()?.getChildren().forEach(visit)
   return { shapes, edges, bounds }
 }
 

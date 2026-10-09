@@ -147,6 +147,38 @@ describe('pages', () => {
     expect(readCell('a', cells.get('a')!).style.fillColor).toBe('#dae8fc')
   })
 
+  it('duplicates the layers of a page with their names, locks and visibility, and the cells in their copies', () => {
+    const doc = board()
+    const cells = getCells(doc)
+    doc.transact(() => {
+      writeCell(cells, { ...cell(LAYER_CELL_ID), kind: 'layer', parent: ROOT_CELL_ID, order: 'a0', value: 'Бизнес', geometry: null, style: {} })
+      writeCell(cells, { ...cell('notes'), kind: 'layer', parent: ROOT_CELL_ID, order: 'a1', value: 'Заметки', geometry: null, style: { codrawHidden: true, locked: true } })
+      writeCell(cells, cell('idea', { parent: 'notes' }))
+    })
+
+    const copy = duplicatePage(doc, DEFAULT_PAGE_ID, { id: 'bob', name: 'Боб' })!
+
+    const copied = Array.from(getCells(doc, copy).entries(), ([id, map]) => readCell(id, map))
+    const layers = copied.filter((data) => data.kind === 'layer').sort((a, b) => (a.order < b.order ? -1 : 1))
+    expect(layers.map((layer) => [layer.value, layer.style])).toEqual([
+      ['Бизнес', {}],
+      ['Заметки', { codrawHidden: true, locked: true }],
+    ])
+    expect(layers[0]!.id).toBe(LAYER_CELL_ID)
+    expect(layers[1]!.id).not.toBe('notes')
+    expect(copied.find((data) => data.value === 'idea')!.parent).toBe(layers[1]!.id)
+    expect(readAttribution(getCells(doc, copy).get(layers[1]!.id))).toBeNull()
+  })
+
+  it('takes a page with empty layers for an empty page', () => {
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), { ...cell('notes'), kind: 'layer', parent: ROOT_CELL_ID, geometry: null }))
+
+    expect(isPageEmpty(doc, DEFAULT_PAGE_ID)).toBe(true)
+    doc.transact(() => writeCell(getCells(doc), cell('idea', { parent: 'notes' })))
+    expect(isPageEmpty(doc, DEFAULT_PAGE_ID)).toBe(false)
+  })
+
   it('names the participant who duplicates a page in the copies, and the original keeps who changed it', () => {
     const doc = board()
     const cells = getCells(doc)
@@ -159,7 +191,7 @@ describe('pages', () => {
     const copy = duplicatePage(doc, DEFAULT_PAGE_ID, { id: 'bob', name: 'Боб' })!
 
     const copied = Array.from(getCells(doc, copy).entries()).filter(
-      ([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID,
+      ([, map]) => !['root', 'layer'].includes(map.get('kind') as string),
     )
     expect(copied).toHaveLength(2)
     for (const [, map] of copied) expect(readAttribution(map)).toMatchObject({ by: 'bob', name: 'Боб' })
