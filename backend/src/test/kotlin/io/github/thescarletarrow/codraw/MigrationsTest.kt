@@ -46,6 +46,8 @@ class MigrationsTest {
         private val imagesTables = organizationTables + "board_images"
         private val librariesTables = imagesTables + setOf("shape_libraries", "library_components")
         private val decisionsTables = librariesTables + setOf("decisions", "decision_elements")
+        private val externalNotificationsTables =
+            decisionsTables + setOf("notification_channels", "notification_board_mutes", "notification_deliveries")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -377,6 +379,92 @@ class MigrationsTest {
         assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-000000000001", "aa", "image/jpeg") }
         assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-000000000001", "bb", "image/svg+xml") }
         assertEquals(2, count("board_images"))
+    }
+
+    @Test
+    fun `V23 keeps one channel of each kind per user with known events, one message per notification and channel, and both go with the user`() {
+        flyway("22").migrate()
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO boards (id, title, owner_id, created_at, updated_at)
+            VALUES ('0199a000-0000-7000-8000-000000000001', 'Доска', '0199a000-0000-7000-8000-0000000000a1', now(), now());
+            INSERT INTO notifications (id, user_id, kind, board_id, actor_id, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000c1', '0199a000-0000-7000-8000-0000000000b1', 'OWNERSHIP',
+                    '0199a000-0000-7000-8000-000000000001', '0199a000-0000-7000-8000-0000000000a1', now())
+            """,
+        ).update()
+
+        assertEquals(1, flyway("23").migrate().migrationsExecuted)
+        assertEquals(externalNotificationsTables, appTables())
+        assertEquals(
+            setOf(
+                "id", "user_id", "kind", "address", "enabled", "events", "verified_at", "verification_token_hash",
+                "verification_sent_at", "last_delivered_at", "last_error", "last_error_at", "created_at",
+            ),
+            columns("notification_channels"),
+        )
+        assertEquals(
+            setOf(
+                "id", "notification_id", "channel_id", "status", "attempts", "next_attempt_at", "reason", "created_at",
+                "finished_at",
+            ),
+            columns("notification_deliveries"),
+        )
+        val channel = { kind: String, events: String, verified: Boolean ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notification_channels (user_id, kind, address, enabled, events, verified_at, created_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000b1', :kind, 'bob@example.com', true, :events::text[],
+                        CASE WHEN :verified THEN now() END, now())
+                RETURNING id
+                """,
+            ).param("kind", kind).param("events", events).param("verified", verified).query(String::class.java).single()
+        }
+        val email = channel("EMAIL", "{MENTIONS,ACCESS}", false)
+        channel("WEBHOOK", "{}", true)
+        for (wrong in listOf(
+            { channel("EMAIL", "{MENTIONS}", true) },
+            { channel("SMS", "{MENTIONS}", true) },
+            { channel("WEBHOOK", "{MENTIONS,LIKES}", true) },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        // A webhook is confirmed as it is saved.
+        jdbcClient.sql("DELETE FROM notification_channels WHERE kind = 'WEBHOOK'").update()
+        assertFailsWith<DataIntegrityViolationException> { channel("WEBHOOK", "{MENTIONS}", false) }
+
+        val delivery = { status: String, finished: Boolean ->
+            jdbcClient.sql(
+                """
+                INSERT INTO notification_deliveries
+                    (notification_id, channel_id, status, attempts, next_attempt_at, created_at, finished_at)
+                VALUES ('0199a000-0000-7000-8000-0000000000c1', :channel::uuid, :status, 0, now(), now(),
+                        CASE WHEN :finished THEN now() END)
+                """,
+            ).param("channel", email).param("status", status).param("finished", finished).update()
+        }
+        assertFailsWith<DataIntegrityViolationException> { delivery("PENDING", true) }
+        assertFailsWith<DataIntegrityViolationException> { delivery("SENT", false) }
+        delivery("PENDING", false)
+        assertFailsWith<DataIntegrityViolationException> { delivery("SENT", true) }
+        jdbcClient.sql(
+            "INSERT INTO notification_board_mutes (user_id, board_id, created_at) " +
+                "VALUES ('0199a000-0000-7000-8000-0000000000b1', '0199a000-0000-7000-8000-000000000001', now())",
+        ).update()
+
+        // The notification goes, and its message with it; the user goes, and their channels and boards with them.
+        jdbcClient.sql("DELETE FROM notifications").update()
+        assertEquals(0, count("notification_deliveries"))
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(0, count("notification_channels"))
+        assertEquals(0, count("notification_board_mutes"))
+
+        revert("U23__claude_lucid_bell_9243e1_external_notifications.sql")
+        assertEquals(decisionsTables, appTables())
+        assertEquals(1, flyway("23").migrate().migrationsExecuted)
     }
 
     @Test

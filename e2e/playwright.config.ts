@@ -44,6 +44,13 @@ export default defineConfig({
         CODRAW_IMAGES_S3_SECRET_KEY: env.s3SecretKey,
         // Small enough for a test to go beyond it without megabytes of pictures.
         CODRAW_LIMITS_IMAGE_SIZE: '1MB',
+        // Letters and messages of notifications link to the app of the tests and go at once, every second; the e2e
+        // profile keeps letters in memory instead of an SMTP server, and webhooks of the tests listen on this machine.
+        CODRAW_NOTIFICATIONS_APP_URL: env.frontendUrl,
+        CODRAW_NOTIFICATIONS_DELIVERY_DELAY: '0s',
+        CODRAW_NOTIFICATIONS_DELIVERY_CRON: '* * * * * *',
+        CODRAW_NOTIFICATIONS_WEBHOOK_ALLOWED_HOSTS: 'hooks.slack.com,localhost',
+        CODRAW_NOTIFICATIONS_WEBHOOK_ALLOW_HTTP: 'true',
       },
       timeout: 120_000,
     },

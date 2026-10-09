@@ -23,6 +23,17 @@ spring:
             # Without `openid` Google is used as a plain OAuth2 provider, like GitHub.
             scope: profile
             redirect-uri: "{baseUrl}/api/login/oauth2/code/{registrationId}"
+  # The SMTP server of letters about notifications (spring.mail.host, port, username, password): the environment of the
+  # deployment sets it, see docs/deploy.md. Without a host letters are off.
+  mail:
+    default-encoding: UTF-8
+    properties:
+      # A mail server that does not answer holds up only its own letter, never long.
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+      # Encrypts the connection where the server offers it, e.g. on port 587.
+      mail.smtp.starttls.enable: true
 
 server:
   port: ${PORT:8080}
@@ -48,6 +59,10 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    mail:
+      # A mail server that is down holds letters in the queue; the backend itself stays healthy.
+      enabled: false
 
 codraw:
   guests:
@@ -62,6 +77,24 @@ codraw:
     review-request-interval: 10m
     # Every hour; "-" turns the cleanup off.
     cleanup-cron: "0 41 * * * *"
+    # The address of the app that letters and messages in chats link to, e.g. https://codraw.example.com
+    # (CODRAW_NOTIFICATIONS_APP_URL); empty turns both off. See docs/deploy.md.
+    app-url: ""
+    email:
+      # The sender of letters, e.g. "CoDraw <codraw@example.com>"; empty turns letters off.
+      from: ""
+      # How long the link of a letter that confirms an address works.
+      confirmation-ttl: 1d
+    webhook:
+      # Host names of incoming webhooks of chats that users may enter, comma-separated, e.g.
+      # "hooks.slack.com,chat.example.com"; empty turns chats off.
+      allowed-hosts: hooks.slack.com
+    delivery:
+      # A message waits this long before its first attempt: a notification read or undone meanwhile is not sent.
+      delay: 1m
+      max-attempts: 5
+      # Every 15 seconds; "-" turns sending off.
+      cron: "*/15 * * * * *"
   images:
     # Deletes the images of deleted boards from the storage every hour; "-" turns the cleanup off.
     cleanup-cron: "0 53 * * * *"

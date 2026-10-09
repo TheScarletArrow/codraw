@@ -66,6 +66,9 @@ data class LimitProperties(
     /** The most components a library of shapes holds. */
     @field:Positive
     val componentsPerLibrary: Int = 200,
+    /** The most letters that confirm an email address for notifications a user has CoDraw send in an hour. */
+    @field:Positive
+    val confirmationEmailsPerUserPerHour: Int = 5,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The largest live image of a board, as the browsers of participants publish it. */
