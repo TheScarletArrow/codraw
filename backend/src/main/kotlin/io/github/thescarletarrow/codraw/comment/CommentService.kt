@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.LinkAccess
+import io.github.thescarletarrow.codraw.decision.DecisionService
 import io.github.thescarletarrow.codraw.notification.NotificationService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -22,6 +23,7 @@ import java.util.UUID
 @Service
 class CommentService(
     private val comments: Comments,
+    private val decisions: DecisionService,
     private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
@@ -37,8 +39,8 @@ class CommentService(
         comments.people(board.boardId, board.ownerId, board.linkOpen, PEOPLE_LIMIT)
 
     /**
-     * Starts a thread about the cell [cellId] of the page [pageId], at the [point] of it, or about the page, with the
-     * first comment. The caller checks that the thread is not about a cell and a point at once.
+     * Starts a thread about the cell [cellId] of the page [pageId], at the [point] of it, about the page, or about the
+     * decision [decisionId] of the board, with the first comment. The caller checks that the thread is about one of them.
      */
     @Transactional
     fun start(
@@ -49,9 +51,11 @@ class CommentService(
         point: ThreadPoint?,
         body: String,
         mentions: Collection<UUID>,
+        decisionId: UUID? = null,
     ): CommentThread {
         checkLimit(board)
-        val threadId = comments.addThread(board.boardId, pageId, cellId, point, now())
+        if (decisionId != null && !decisions.exists(board, decisionId)) throw CommentNotFoundException()
+        val threadId = comments.addThread(board.boardId, pageId, cellId, point, decisionId, now())
         add(board, threadId, authorId, body, mentions, answered = emptySet())
         return thread(board, threadId)
     }

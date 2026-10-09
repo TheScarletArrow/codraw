@@ -31,7 +31,6 @@ describe('kinds of statements', () => {
       'CREATE SEQUENCE public.users_id_seq START WITH 1',
       'ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id',
       'CREATE ROLE reporting',
-      'DROP VIEW IF EXISTS `paid_orders`',
       'DROP PROCEDURE IF EXISTS `add_order`',
       'INSERT INTO users (id) VALUES (1)',
       'COPY public.users (id) FROM stdin',
@@ -39,12 +38,13 @@ describe('kinds of statements', () => {
       'DELETE FROM users',
       'REPLACE INTO users VALUES (1)',
       'TRUNCATE users',
+      'REFRESH MATERIALIZED VIEW CONCURRENTLY public.user_stats',
     ]) {
       expect(service(sql), sql).toBe(true)
     }
   })
 
-  it('leaves tables, indexes, objects that are not drawn and other queries to the import', () => {
+  it('leaves tables, indexes, views, objects that are not drawn and other queries to the import', () => {
     for (const sql of [
       'CREATE TABLE users (id int)',
       'ALTER TABLE ONLY public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id)',
@@ -53,6 +53,10 @@ describe('kinds of statements', () => {
       'DROP INDEX users_email_idx',
       'CREATE INDEX users_email_idx ON users (email)',
       'CREATE OR REPLACE VIEW active AS SELECT 1',
+      'CREATE MATERIALIZED VIEW stats AS SELECT 1',
+      'ALTER VIEW active RENAME TO recent',
+      'DROP VIEW IF EXISTS `paid_orders`',
+      'DROP MATERIALIZED VIEW stats',
       'CREATE TYPE public.order_status AS ENUM (\'new\')',
       'CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql',
       'CREATE TRIGGER t BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()',

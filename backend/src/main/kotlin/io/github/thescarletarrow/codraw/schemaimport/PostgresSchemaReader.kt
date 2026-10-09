@@ -12,9 +12,9 @@ import java.sql.Connection
 import java.sql.SQLException
 
 /**
- * Reads the tables of one schema of a PostgreSQL database into DDL as pg_dump writes it: `CREATE TABLE`, then the
- * primary, unique and check constraints, the indexes and the foreign keys. One connection, without a pool, read-only and
- * closed when the schema is read.
+ * Reads the tables and views of one schema of a PostgreSQL database into DDL as pg_dump writes it: `CREATE TABLE`, the
+ * views, each after those it reads, then the primary, unique and check constraints, the indexes and the foreign keys. One
+ * connection, without a pool, read-only and closed when the schema is read.
  */
 @Component
 class PostgresSchemaReader(private val settings: SchemaImportProperties) {
@@ -88,6 +88,13 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
             (row.getString("kind") == "f") to statement
         }.list().partition { it.first }
         val indexes = jdbc.sql(INDEXES_QUERY).param("schema", schema).query { row, _ -> "${row.getString("definition")};" }.list()
+        val views = jdbc.sql(VIEWS_QUERY).param("schema", schema).query { row, _ ->
+            View(row.getString("name"), row.getBoolean("materialized"), row.getString("definition"))
+        }.list()
+        val reads = jdbc.sql(VIEW_DEPENDENCIES_QUERY).param("schema", schema).query { row, _ ->
+            row.getString("name") to row.getString("reads")
+        }.list().groupBy({ it.first }, { it.second })
+        val viewsByName = views.associateBy { it.name }
 
         val ddl = buildString {
             // A name may hold line breaks; the comment stays one line.
@@ -97,6 +104,13 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
                 append(columns[table.name].orEmpty().joinToString(",\n") { "    $it" })
                 append("\n)")
                 if (table.partitionKey != null) append("\nPARTITION BY ").append(table.partitionKey)
+                append(";\n")
+            }
+            // Views after the tables, as pg_dump writes them; the rows of a materialized view are data.
+            for (view in viewOrder(views.map { it.name }, reads).map(viewsByName::getValue)) {
+                append(if (view.materialized) "\nCREATE MATERIALIZED VIEW " else "\nCREATE VIEW ").append(view.name).append(" AS\n")
+                append(view.definition.trimEnd().removeSuffix(";"))
+                if (view.materialized) append("\n  WITH NO DATA")
                 append(";\n")
             }
             // Foreign keys last, as pg_dump writes them: they may refer to any table and to its keys.
@@ -110,6 +124,8 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
 
     private class Table(val name: String, val partitionKey: String?)
 
+    private class View(val name: String, val materialized: Boolean, val definition: String)
+
     companion object {
         /** `attgenerated` and the rest of the catalog that the queries read are there since PostgreSQL 12. */
         const val MIN_SERVER_VERSION = 120000
@@ -119,6 +135,12 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
          * without partitions.
          */
         private const val TABLES = "n.nspname = :schema AND c.relkind IN ('r', 'p') AND NOT c.relispartition"
+
+        /** Views and materialized views of the schema `:schema` as rows of `pg_class c` joined to `pg_namespace n`. */
+        private const val VIEWS = "n.nspname = :schema AND c.relkind IN ('v', 'm')"
+
+        /** Tables and materialized views, which have indexes. */
+        private const val INDEXED = "n.nspname = :schema AND c.relkind IN ('r', 'p', 'm') AND NOT c.relispartition"
 
         private const val TABLES_QUERY = """
             SELECT quote_ident(c.relname) AS name, CASE WHEN c.relkind = 'p' THEN pg_get_partkeydef(c.oid) END AS partition_key
@@ -155,19 +177,58 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
             ORDER BY con.contype = 'f', c.relname, con.conname
         """
 
-        /** Indexes, but those of primary keys, unique and exclusion constraints, which the constraints make. */
+        /**
+         * Indexes of tables and materialized views, but those of primary keys, unique and exclusion constraints, which
+         * the constraints make.
+         */
         private const val INDEXES_QUERY = """
             SELECT pg_get_indexdef(i.indexrelid) AS definition
             FROM pg_index i
             JOIN pg_class c ON c.oid = i.indrelid
             JOIN pg_class ic ON ic.oid = i.indexrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE $TABLES AND NOT EXISTS (
+            WHERE $INDEXED AND NOT EXISTS (
                 SELECT FROM pg_constraint con
                 WHERE con.conindid = i.indexrelid AND con.conrelid = i.indrelid AND con.contype IN ('p', 'u', 'x')
             )
             ORDER BY c.relname, ic.relname
         """
+
+        private const val VIEWS_QUERY = """
+            SELECT quote_ident(c.relname) AS name, c.relkind = 'm' AS materialized, pg_get_viewdef(c.oid) AS definition
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE $VIEWS
+            ORDER BY c.relname
+        """
+
+        /** The views of the schema that each view reads: what the rule of the view depends on. */
+        private const val VIEW_DEPENDENCIES_QUERY = """
+            SELECT DISTINCT quote_ident(c.relname) AS name, quote_ident(d.relname) AS reads
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_rewrite r ON r.ev_class = c.oid
+            JOIN pg_depend dep ON dep.classid = 'pg_rewrite'::regclass AND dep.objid = r.oid AND dep.refclassid = 'pg_class'::regclass
+            JOIN pg_class d ON d.oid = dep.refobjid
+            WHERE $VIEWS AND d.oid <> c.oid AND d.relkind IN ('v', 'm') AND d.relnamespace = c.relnamespace
+        """
+
+        /**
+         * Views in an order that a database takes: each after the views it [reads], otherwise in the order of [names].
+         * Views that read each other in a circle, which PostgreSQL does not let happen, come once each all the same.
+         */
+        fun viewOrder(names: List<String>, reads: Map<String, List<String>>): List<String> {
+            val known = names.toSet()
+            val order = LinkedHashSet<String>()
+            val visiting = mutableSetOf<String>()
+            fun visit(name: String) {
+                if (name in order || !visiting.add(name)) return
+                reads[name].orEmpty().filter { it in known }.sorted().forEach(::visit)
+                visiting.remove(name)
+                order.add(name)
+            }
+            names.forEach(::visit)
+            return order.toList()
+        }
 
         /** Integer types and the serial types of a column that owns its sequence. */
         private val SERIAL_TYPES = mapOf("integer" to "serial", "bigint" to "bigserial", "smallint" to "smallserial")

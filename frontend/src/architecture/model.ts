@@ -1,7 +1,7 @@
 import { edgeProperties, ELEMENT_KINDS, FRAME_SHAPES, type C4Kind, type C4Variant } from '../diagram/elementKinds.ts'
 import { elementProperties, hasElement, labelFormat, labelLines as textLines, parseLabel } from '../diagram/elementProps.ts'
 import { isLegendStyle } from '../diagram/legendKeys.ts'
-import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
+import { layerIds, type CellData } from '../diagram/model.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
 
 /** What an element of C4 is. */
@@ -17,6 +17,8 @@ export interface ArchElement {
   type: 'element'
   /** The identifier in the code, unique on the page. */
   id: string
+  /** The cell of the page. */
+  cellId: string
   kind: ElementKind
   variant: ElementVariant
   external: boolean
@@ -28,6 +30,8 @@ export interface ArchElement {
 export interface ArchBoundary {
   type: 'boundary'
   id: string
+  /** The cell of the page. */
+  cellId: string
   kind: BoundaryKind
   name: string
   children: ArchNode[]
@@ -36,6 +40,8 @@ export interface ArchBoundary {
 export type ArchNode = ArchElement | ArchBoundary
 
 export interface ArchRelation {
+  /** The edge of the page. */
+  edgeId: string
   source: ArchElement
   target: ArchElement
   description: string
@@ -91,10 +97,12 @@ const holds = (frame: Box, box: Box) => {
 /** The architecture of the cells of a page, named `title`. */
 export function architectureModel(cells: CellData[], title: string): ArchModel {
   const byId = new Map(cells.map((cell) => [cell.id, cell]))
+  // The elements of the page itself are those of any of its layers.
+  const layers = layerIds(cells)
   /** Where a cell is on the page: its geometry with the offsets of the groups it is in. */
   const boxOf = (cell: CellData): Box => {
     let { x, y } = cell.geometry!
-    for (let parent = cell.parent ? byId.get(cell.parent) : undefined; parent && parent.id !== LAYER_CELL_ID; parent = parent.parent ? byId.get(parent.parent) : undefined) {
+    for (let parent = cell.parent ? byId.get(cell.parent) : undefined; parent && !layers.has(parent.id); parent = parent.parent ? byId.get(parent.parent) : undefined) {
       if (parent.kind === 'vertex' && parent.geometry && !parent.geometry.relative) {
         x += parent.geometry.x
         y += parent.geometry.y
@@ -106,7 +114,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
   const isShape = (cell: CellData) => {
     if (cell.kind !== 'vertex' || !cell.geometry || cell.geometry.relative) return false
     const parent = cell.parent ? byId.get(cell.parent) : undefined
-    return cell.parent === LAYER_CELL_ID || (parent?.kind === 'vertex' && !parent.style.codrawShape)
+    return (cell.parent !== null && layers.has(cell.parent)) || (parent?.kind === 'vertex' && !parent.style.codrawShape)
   }
 
   const used = new Set<string>()
@@ -140,7 +148,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
     if (frame) {
       const c4 = properties.kind ? ELEMENT_KINDS[properties.kind]?.c4 : undefined
       const boundary: BoundaryKind = frame !== 'c4' ? 'group' : c4 === 'container' ? 'container' : 'system'
-      boundaries.set(cell.id, { type: 'boundary', id: unique(name, boundary), kind: boundary, name, children: [] })
+      boundaries.set(cell.id, { type: 'boundary', id: unique(name, boundary), cellId: cell.id, kind: boundary, name, children: [] })
       continue
     }
     const c4 = labelFormat(cell.style, properties.kind) === 'c4'
@@ -149,6 +157,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
     elements.set(cell.id, {
       type: 'element',
       id: unique(name, kind!.c4),
+      cellId: cell.id,
       kind: kind!.c4,
       variant: kind!.variant,
       external: kind!.external,
@@ -187,6 +196,7 @@ export function architectureModel(cells: CellData[], title: string): ArchModel {
     const label = labelLines(edge).join('\n')
     const parts = RELATION.exec(label)
     relations.push({
+      edgeId: edge.id,
       source: source[1],
       target: target[1],
       description: (parts ? parts[1]! : label).replace(/\s+/g, ' ').trim(),

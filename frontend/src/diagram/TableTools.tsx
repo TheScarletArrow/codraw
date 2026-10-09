@@ -1,9 +1,11 @@
 import { Plus } from 'lucide-react'
 import { useId, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { DB_VENDORS, vendorTypes, type DbVendorId } from '../sql/dbVendors.ts'
-import type { DiagramEditor, SelectedField, SelectedIndex, TableBase } from './editor.ts'
+import type { DiagramEditor, SelectedField, SelectedIndex, TableBase, TableView } from './editor.ts'
+import { MAX_VIEW_QUERY } from './views.ts'
 
 interface TableToolsProps {
   editor: DiagramEditor | null
@@ -15,13 +17,16 @@ interface TableToolsProps {
   index: SelectedIndex | null
   /** The selected table as to base tables. */
   base: TableBase | null
+  /** The selected table as to views. */
+  view: TableView | null
 }
 
 /**
- * The database and the base of the selected table, a new field or index, the type and keys of the selected field, and
- * the columns of the selected index.
+ * The database, the view and the base of the selected table, a new field or index, the type and keys of the selected
+ * field, and the columns of the selected index. A view has no base, and a view that is not materialized no indexes.
  */
-export function TableTools({ editor, vendor, field, index, base }: TableToolsProps) {
+export function TableTools({ editor, vendor, field, index, base, view }: TableToolsProps) {
+  const isView = view?.view === true
   return (
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
@@ -41,15 +46,18 @@ export function TableTools({ editor, vendor, field, index, base }: TableToolsPro
           ))}
         </select>
       </label>
-      {base && <BaseTools editor={editor} base={base} />}
+      {view && <ViewTools editor={editor} view={view} />}
+      {base && !isView && <BaseTools editor={editor} base={base} />}
       <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableField()}>
         <Plus />
         Добавить поле
       </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableIndex()}>
-        <Plus />
-        Добавить индекс
-      </Button>
+      {(!isView || view.materialized) && (
+        <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableIndex()}>
+          <Plus />
+          Добавить индекс
+        </Button>
+      )}
       {field && <FieldTools editor={editor} vendor={vendor} field={field} />}
       {index && (
         <>
@@ -58,6 +66,97 @@ export function TableTools({ editor, vendor, field, index, base }: TableToolsPro
         </>
       )}
     </>
+  )
+}
+
+/** Whether the selected table is a view, a materialized one, and the query of a view. */
+function ViewTools({ editor, view }: { editor: DiagramEditor | null; view: TableView }) {
+  const toggle = (pressed: boolean) => cn(pressed && 'bg-accent text-accent-foreground')
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={view.view}
+        title="Представление (VIEW): столбцы запроса к таблицам; в SQL — CREATE VIEW"
+        className={toggle(view.view)}
+        onClick={() => editor?.setViewTable(!view.view)}
+      >
+        Представление
+      </Button>
+      {view.view && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-pressed={view.materialized}
+            title="Материализованное представление: база хранит его строки, у него бывают индексы"
+            className={toggle(view.materialized)}
+            onClick={() => editor?.setViewMaterialized(!view.materialized)}
+          >
+            Материализованное
+          </Button>
+          <ViewQuery editor={editor} query={view.query} />
+        </>
+      )}
+    </>
+  )
+}
+
+/** The query of the selected view in a window: applied with «Применить» or Ctrl+Enter, Escape closes it unchanged. */
+function ViewQuery({ editor, query }: { editor: DiagramEditor | null; query: string }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(query)
+  const apply = () => {
+    editor?.setViewQuery(draft)
+    setOpen(false)
+  }
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) setDraft(query)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" title={query || 'Запрос представления не задан'}>
+          Запрос…
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" aria-label="Запрос представления" className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col gap-2">
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Запрос представления
+          <textarea
+            aria-label="Запрос"
+            placeholder="SELECT id, email FROM users WHERE deleted_at IS NULL"
+            rows={8}
+            spellCheck={false}
+            maxLength={MAX_VIEW_QUERY}
+            className="w-full resize-y rounded-md border bg-background px-2 py-1.5 font-mono text-xs font-normal"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault()
+                apply()
+              }
+            }}
+          />
+        </label>
+        <p className="text-xs text-muted-foreground">Текст после AS; в SQL — CREATE VIEW … AS запрос. Ctrl+Enter — применить.</p>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" onClick={apply}>
+            Применить
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
+            Отмена
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -124,16 +223,20 @@ function FieldTools({ editor, vendor, field }: { editor: DiagramEditor | null; v
   )
 }
 
-/** The type, nullability and keys of the selected field: on the toolbar and next to the field. */
+/** The type, nullability and keys of the selected field, the type alone of a column of a view: on the toolbar and next to the field. */
 export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | null; vendor: DbVendorId | null; field: SelectedField }) {
   const toggle = (pressed: boolean) => cn(pressed && 'bg-accent text-accent-foreground')
+  const type = (
+    <TypeField
+      value={field.type}
+      types={vendorTypes(DB_VENDORS.find((option) => option.id === vendor) ?? null)}
+      onCommit={(type) => editor?.setFieldProps({ type })}
+    />
+  )
+  if (field.inView) return type
   return (
     <>
-      <TypeField
-        value={field.type}
-        types={vendorTypes(DB_VENDORS.find((option) => option.id === vendor) ?? null)}
-        onCommit={(type) => editor?.setFieldProps({ type })}
-      />
+      {type}
       <div role="group" aria-label="Пустые значения" className="flex items-center">
         {[false, true].map((notNull) => (
           <Button

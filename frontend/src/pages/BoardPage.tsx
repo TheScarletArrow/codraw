@@ -11,17 +11,21 @@ import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposals, type Proposal } from '../api/proposals.ts'
 import { requestReview } from '../api/reviews.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { usePlanView } from '../board/usePlanView.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { useImageUploads } from '../board/imageUploads.ts'
+import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
+import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
 import { useFollowing } from '../board/following.ts'
 import { Minimap, MINIMAP_SELECTOR } from '../board/Minimap.tsx'
@@ -44,6 +48,11 @@ import { CommentsButton } from '../comments/CommentsButton.tsx'
 import { CommentsPanel, type ThreadDraft } from '../comments/CommentsPanel.tsx'
 import type { ThreadFilter, ThreadFocus } from '../comments/threads.ts'
 import { useThreads } from '../comments/useComments.ts'
+import { DecisionBadges } from '../decisions/DecisionBadges.tsx'
+import { DecisionsButton } from '../decisions/DecisionsButton.tsx'
+import { DecisionsPanel } from '../decisions/DecisionsPanel.tsx'
+import type { DecisionFocus } from '../decisions/decisions.ts'
+import { useDecisions } from '../decisions/useDecisions.ts'
 import { fetchEmbed } from '../api/embed.ts'
 import { embedKey } from '../embed/links.ts'
 import { useEmbedPublisher } from '../embed/useEmbedPublisher.ts'
@@ -56,6 +65,8 @@ import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
 import { storePageImages } from '../diagram/images.ts'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
+import { LayersButton, LayersPanel } from '../diagram/LayersPanel.tsx'
+import { LayerViews, layerViewsKey } from '../diagram/layerViews.ts'
 import { LockBadges } from '../diagram/LockBadges.tsx'
 import { QuickConnect } from '../diagram/QuickConnect.tsx'
 import { StickyPanel } from '../diagram/StickyPanel.tsx'
@@ -74,8 +85,11 @@ import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
+import { ChecksButton, ChecksPanel } from '../checks/ChecksPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
+import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
+import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { UnsentCopy } from '../offline/UnsentCopy.tsx'
@@ -126,8 +140,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const author = useMemo<Author>(() => ({ id: user.id, name: user.name }), [user.id, user.name])
   const viewer = !canEdit(board)
   const connection = useBoardConnection({ id: board.id, title: board.title, viewer }, user.id, identity)
-  const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged, notifyProposalsChanged } =
-    connection
+  const {
+    status,
+    participants,
+    document,
+    awareness,
+    notifyBoardChanged,
+    notifyCommentsChanged,
+    notifyDecisionsChanged,
+    notifyProposalsChanged,
+  } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
   // The trail of the laser pointer and the message at the cursor go with the connection.
@@ -159,12 +181,23 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const visitChanges = showingVisit && changedSince && document && !preview ? changedSince : null
   // Comments of the board, which every participant reads and writes, in a panel in place of the history of versions.
   const threads = useThreads(board.id)
+  // The threads that discuss decisions are in the panel of the decisions.
+  const boardThreads = useMemo(() => threads.data?.filter((thread) => !thread.decisionId), [threads.data])
   const isOwner = board.role === 'owner'
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState<ThreadDraft | null>(null)
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
   // The threads the panel shows: with the resolved ones, the canvas marks the resolved threads at points too.
   const [commentFilter, setCommentFilter] = useState<ThreadFilter>('open')
+  // Architecture decisions of the board, which every participant reads and discusses and whoever edits writes down, in
+  // a panel in place of the comments.
+  const decisions = useDecisions(board.id)
+  const [decisionsOpen, setDecisionsOpen] = useState(false)
+  const [decisionFocus, setDecisionFocus] = useState<DecisionFocus | null>(null)
+  const closeDecisions = useCallback(() => {
+    setDecisionsOpen(false)
+    setDecisionFocus(null)
+  }, [])
   // Proposals of changes, which every participant makes and the owner and the editors review; a reviewed proposal shows
   // in place of the board.
   const navigate = useNavigate()
@@ -190,8 +223,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setCommentsOpen(true)
     closeHistory()
     closeProposals()
+    closeDecisions()
     setShowingVisit(false)
-  }, [closeHistory, closeProposals])
+  }, [closeHistory, closeProposals, closeDecisions])
   const closeComments = () => {
     setCommentsOpen(false)
     setCommentDraft(null)
@@ -202,6 +236,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setProposalsOpen(true)
     closeHistory()
     closeComments()
+    closeDecisions()
+    setShowingVisit(false)
+  }
+  const openDecisions = () => {
+    setDecisionsOpen(true)
+    closeHistory()
+    closeComments()
+    closeProposals()
     setShowingVisit(false)
   }
   const proposalCreated = (proposal: Proposal) => {
@@ -214,6 +256,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Undo histories of the pages outlive the canvas of a page; destroying them only forgets them.
   const histories = useMemo(() => document && new PageHistories(document), [document])
   useEffect(() => () => histories?.destroy(), [histories])
+  // What the participant chose about the layers of the pages for themselves outlives the canvas of a page too; the
+  // browser keeps the layers they show and hide.
+  const layerViews = useMemo(() => new LayerViews(layerViewsKey(user.id, board.id)), [user.id, board.id])
+  const [layersOpen, setLayersOpen] = useState(false)
 
   // The current page is the participant's own and lives in the address, so a link opens the board on it.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -233,6 +279,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     [setSearchParams],
   )
   const selectPage = useCallback((id: string) => changeParams((params) => params.set('page', id)), [changeParams])
+  const { view: planView, changeView: changePlanView } = usePlanView(editor)
+  const { filter, changeFilter } = usePageFilter(editor)
   // An unknown page, e.g. one deleted by another participant, is replaced with the first page.
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
@@ -364,6 +412,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   useEffect(() => editor?.onCommentPoint((point) => commentOn({ point })), [editor, commentOn])
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
+  const libraries = useLibraries()
+  const [savingToLibrary, setSavingToLibrary] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
   // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
@@ -376,6 +426,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setElementsOpen(true)
     setElementsRequest({ key })
   }
+  // The panel of the checks of the board.
+  const [checksOpen, setChecksOpen] = useState(false)
   // The window that merges the selected shapes into one element, or that removes an element from all pages.
   const [elementWindow, setElementWindow] = useState<{
     kind: 'merge' | 'delete'
@@ -391,10 +443,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     openComments()
     setCommentFocus({ threadId: thread.id })
   }
+  const showDecisionsOf = (cellId: string) => {
+    if (!editor) return
+    openDecisions()
+    setDecisionFocus({ pageId: editor.pageId, cellId })
+  }
   // A link, e.g. from a notification, asks the page once to open something: the page opens it as soon as it can and
   // takes the request out of the address, so that a reload does not open it again.
   // `?thread=` opens the comments on that thread, once the threads are there and the board is synced, and goes to its
-  // page and its element or its point; a thread that is gone opens the comments only. A local copy shown before the
+  // page and its element or its point; a thread that is gone opens the comments only. A thread about a decision opens
+  // the decisions on it. A local copy shown before the
   // board is synced may lack the element or the page, e.g. one added since the user was here last.
   const linkedThread = searchParams.get('thread')
   const linkable = status === 'synced' && pages.length > 0
@@ -404,15 +462,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setOpenedLink(readyLink)
     if (readyLink) {
       const thread = threads.data?.find((candidate) => candidate.id === readyLink)
-      openComments()
-      setCommentDraft(null)
-      setCommentFocus(thread ? { threadId: thread.id } : null)
+      if (thread?.decisionId) {
+        openDecisions()
+        setDecisionFocus({ decisionId: thread.decisionId, threadId: thread.id })
+      } else {
+        openComments()
+        setCommentDraft(null)
+        setCommentFocus(thread ? { threadId: thread.id } : null)
+      }
     }
   }
   useEffect(() => {
     if (!linkedThread || !threads.data || !linkable) return
     const thread = threads.data.find((candidate) => candidate.id === linkedThread)
-    const shown = thread && pages.some((page) => page.id === thread.pageId) ? thread : null
+    const shown = thread && !thread.decisionId && pages.some((page) => page.id === thread.pageId) ? thread : null
     if (shown) revealThread(shown)
     changeParams((params) => {
       params.delete('thread')
@@ -475,7 +538,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
-      <div className="flex items-center gap-x-4 border-b px-3 py-2">
+      <div className="flex items-center gap-x-3 border-b px-3 py-2">
         <BoardHeading
           board={board}
           onChanged={notifyBoardChanged}
@@ -483,12 +546,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             setHistoryOpen(true)
             closeComments()
             closeProposals()
+            closeDecisions()
             setShowingVisit(false)
           }}
         />
-        <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
+        {/* The text of the status shows on wide screens; the tools of the line need the room on the others. */}
+        <span
+          role="status"
+          title={STATUS_LABELS[status]}
+          className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground"
+        >
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
-          {STATUS_LABELS[status]}
+          <span className="sr-only 2xl:not-sr-only">{STATUS_LABELS[status]}</span>
         </span>
         {readOnly && (
           <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-sm whitespace-nowrap text-muted-foreground">
@@ -510,6 +579,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           boardTitle={board.title}
           pageName={currentPage?.name ?? ''}
           pageCount={pages.length}
+          layerViews={layerViews}
         />
         <SqlMenu
           editor={editor}
@@ -523,7 +593,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onProposalCreated={proposalCreated}
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-        <EditorToolbar editor={editor} readOnly={readOnly} />
+        <EditorToolbar
+          editor={editor}
+          readOnly={readOnly}
+          planView={planView}
+          onPlanViewChange={changePlanView}
+          filter={filter}
+          onFilterChange={changeFilter}
+        />
         <Participants
           participants={participants}
           pages={pages}
@@ -541,12 +618,19 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onToggle={following.presenting ? following.stopPresenting : following.startPresenting}
           />
           <StatusSummary document={document} onSelect={showElement} />
+          <LayersButton open={layersOpen} onToggle={() => setLayersOpen((open) => !open)} />
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
+          <ChecksButton document={document} open={checksOpen} onToggle={() => setChecksOpen((open) => !open)} />
           <CommentsButton
-            threads={threads.data}
+            threads={boardThreads}
             open={commentsOpen}
             onToggle={() => (commentsOpen ? closeComments() : openComments())}
+          />
+          <DecisionsButton
+            decisions={decisions.data}
+            open={decisionsOpen}
+            onToggle={() => (decisionsOpen ? closeDecisions() : openDecisions())}
           />
           <ProposalsButton
             proposals={proposals.data}
@@ -623,6 +707,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   closeHistory()
                   closeComments()
                   closeProposals()
+                  closeDecisions()
                 }
               : null
           }
@@ -630,7 +715,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         />
       )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} />}
+        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} libraries={libraries} />}
         {preview && document ? (
           <VersionPreview
             key={preview.id}
@@ -695,16 +780,27 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     participantName={author.name}
                     participantId={author.id}
                     images={imageHost}
+                    layerViews={layerViews}
                     onEditor={setEditor}
+                    onDropComponent={libraries.drop}
                   />
                   <StickySignatures editor={editor} />
+                  <DetailCrumbs
+                    document={document}
+                    pageId={currentPage.id}
+                    onSelectPage={(id) => {
+                      following.stop()
+                      selectPage(id)
+                    }}
+                  />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
-                  <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
+                  <CommentBadges editor={editor} threads={boardThreads} onOpen={showThreadsOf} />
+                  <DecisionBadges editor={editor} decisions={decisions.data} onOpen={showDecisionsOf} />
                   <CommentPins
                     editor={editor}
                     boardId={board.id}
-                    threads={threads.data}
+                    threads={boardThreads}
                     draft={commentDraft}
                     showResolved={commentsOpen && commentFilter === 'resolved'}
                     focusedThreadId={commentFocus && 'threadId' in commentFocus ? commentFocus.threadId : null}
@@ -721,7 +817,17 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <FieldPopover editor={editor} />}
                   {!readOnly && <StickyPanel editor={editor} />}
                   <SidePanels>
+                    <ImpactPanel editor={editor} document={document} onShow={showCell} />
                     <EdgeApiPanel editor={editor} request={apiRequest} />
+                    {layersOpen && (
+                      <LayersPanel
+                        editor={editor}
+                        onClose={() => {
+                          setLayersOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                     {propertiesOpen && (
                       <PropertiesPanel
                         editor={editor}
@@ -745,6 +851,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         }}
                       />
                     )}
+                    {checksOpen && (
+                      <ChecksPanel
+                        document={document}
+                        canChange={!readOnly}
+                        onShow={showCell}
+                        onMerge={(refs, keep) => editor?.mergeElementCells(refs, keep)}
+                        onClose={() => {
+                          setChecksOpen(false)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                   </SidePanels>
                   <CanvasMenu
                     editor={editor}
@@ -761,9 +879,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                       readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'delete', editor, request })
                     }
                     onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
+                    onDetail={(pageId) => {
+                      following.stop()
+                      selectPage(pageId)
+                    }}
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                    onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                   />
                   {elementWindow &&
                     elementWindow.editor === editor &&
@@ -781,6 +904,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                         onClose={() => setElementWindow(null)}
                       />
                     ))}
+                  {savingToLibrary && savingToLibrary.editor === editor && (
+                    <SaveToLibraryDialog
+                      editor={savingToLibrary.editor}
+                      shelf={libraries}
+                      request={savingToLibrary.request}
+                      onClose={() => setSavingToLibrary(null)}
+                    />
+                  )}
                   {linking && linking.editor === editor && (
                     <LinkDialog
                       editor={linking.editor}
@@ -838,7 +969,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             boardId={board.id}
             userId={user.id}
             isOwner={isOwner}
-            threads={threads.data}
+            threads={boardThreads}
             failed={threads.isError}
             pages={pages}
             currentPageId={currentPage?.id ?? null}
@@ -850,6 +981,29 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onShow={showThread}
             onChanged={notifyCommentsChanged}
             onClose={closeComments}
+          />
+        )}
+        {decisionsOpen && (
+          <DecisionsPanel
+            boardId={board.id}
+            boardTitle={board.title}
+            userId={user.id}
+            isOwner={isOwner}
+            // Decisions are kept by the backend, not in the board document: the role decides.
+            canEdit={!viewer}
+            decisions={decisions.data}
+            failed={decisions.isError}
+            threads={threads.data}
+            pages={pages}
+            currentPageId={currentPage?.id ?? null}
+            document={document}
+            editor={editor}
+            focus={decisionFocus}
+            onFocusChange={setDecisionFocus}
+            onShowElement={showCell}
+            onChanged={notifyDecisionsChanged}
+            onCommentsChanged={notifyCommentsChanged}
+            onClose={closeDecisions}
           />
         )}
         {proposalsOpen && (

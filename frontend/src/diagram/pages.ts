@@ -47,6 +47,14 @@ function orderAfter(before: PageInfo | undefined, after: PageInfo | undefined): 
   return orderBetween(low, high)
 }
 
+/** An order key that puts a new page right after the page `afterId`, or at the end. */
+export function orderAfterPage(doc: Y.Doc, afterId: string | null): string {
+  const pages = listPages(doc)
+  const index = afterId ? pages.findIndex((page) => page.id === afterId) : -1
+  const position = index >= 0 ? index : pages.length - 1
+  return orderAfter(pages[position], pages[position + 1])
+}
+
 /** Adds an empty page after `afterId` (or at the end) and returns its id. */
 export function addPage(doc: Y.Doc, afterId?: string | null, name?: string): string {
   const pages = listPages(doc)
@@ -112,7 +120,8 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
     })
     const target = getCells(doc, copyId)
     source.forEach((cell, cellId) => {
-      if (cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID) return
+      // The main layer of the copy, which the page got above, takes the name, the lock and the visibility of the original.
+      if (cellId === ROOT_CELL_ID) return
       const copy = copyMap(
         cell,
         (key, value) => (REFERENCES.has(key) ? remap(value) : value),
@@ -121,7 +130,7 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
       )
       // Written into the copy before it is added, so that the document keeps one value of each key. A copy is a new
       // element, which nobody has reviewed: it has no status.
-      if (author) writeAttribution(copy, author, at)
+      if (author && cell.get('kind') !== 'layer') writeAttribution(copy, author, at)
       clearStatus(copy)
       target.set(ids.get(cellId)!, copy)
     })
@@ -170,7 +179,10 @@ export function deletePage(doc: Y.Doc, id: string): boolean {
   return true
 }
 
-/** A page without shapes and edges: only its root and layer cells. */
+/** A page without shapes and edges: only its root and its layers. */
 export function isPageEmpty(doc: Y.Doc, id: string): boolean {
-  return Array.from(getCells(doc, id).keys()).every((cellId) => cellId === ROOT_CELL_ID || cellId === LAYER_CELL_ID)
+  return Array.from(getCells(doc, id).values()).every((cell) => {
+    const kind = cell instanceof Y.Map ? cell.get('kind') : undefined
+    return kind === 'root' || kind === 'layer'
+  })
 }

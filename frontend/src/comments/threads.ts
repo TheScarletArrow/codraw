@@ -105,9 +105,10 @@ export interface CellInfo {
 
 /** What a thread is about, as its header says it; `cell` is `null` when the page no longer has the element. */
 export function threadTarget(
-  thread: Pick<CommentThread, 'cellId' | 'point'>,
+  thread: Pick<CommentThread, 'cellId' | 'point'> & Partial<Pick<CommentThread, 'decisionId'>>,
   cell: CellInfo | null,
 ): { label: string; deleted: boolean } {
+  if (thread.decisionId) return { label: 'Обсуждение решения', deleted: false }
   if (thread.point) return { label: 'Место на холсте', deleted: false }
   if (thread.cellId === null) return { label: 'Вся страница', deleted: false }
   if (!cell) return { label: 'Элемент удалён', deleted: true }

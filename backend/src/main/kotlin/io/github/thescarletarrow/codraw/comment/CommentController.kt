@@ -56,6 +56,9 @@ class CommentController(private val boards: BoardService, private val comments: 
         request.cellId?.let { checkCellId("cellId", it) }
         request.point?.let(::checkPoint)
         if (request.cellId != null && request.point != null) badRequest("A thread is about an element or at a point, not both")
+        if (request.decisionId != null && (request.cellId != null || request.point != null)) {
+            badRequest("A thread about a decision is about no element and stands at no point")
+        }
         val thread = comments.start(
             board,
             principal.userId,
@@ -64,6 +67,7 @@ class CommentController(private val boards: BoardService, private val comments: 
             request.point,
             text(request.body),
             mentions(request.mentions),
+            request.decisionId,
         )
         return ResponseEntity.created(URI.create("/api/boards/${board.id}/threads/${thread.id}")).body(thread)
     }
@@ -237,6 +241,8 @@ data class StartThreadRequest(
     val cellId: String? = null,
     /** The point of the page the thread stands at; none for a thread about an element or about the page. */
     val point: ThreadPoint? = null,
+    /** The decision of the board the thread discusses; none for a thread about the diagram. */
+    val decisionId: UUID? = null,
     val body: String,
     /** Users the comment mentions; those who cannot open the board are dropped. */
     val mentions: List<UUID> = emptyList(),

@@ -44,6 +44,8 @@ class MigrationsTest {
         private val reviewRequestNotificationColumns =
             notificationColumns + setOf("thread_id", "proposal_id", "page_id", "cell_id")
         private val imagesTables = organizationTables + "board_images"
+        private val librariesTables = imagesTables + setOf("shape_libraries", "library_components")
+        private val decisionsTables = librariesTables + setOf("decisions", "decision_elements")
     }
 
     private val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -55,15 +57,28 @@ class MigrationsTest {
     }
 
     @Test
-    fun `V1 to V19 create tables on an empty database and U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
-        assertEquals(18, flyway("19").migrate().migrationsExecuted)
-        assertEquals(imagesTables, appTables())
+    fun `V1 to V21 create tables on an empty database and U21, U20, U19, U18, U17, U15, U14, U13, U12, U11, U10, U9, U8, U7, U6, U5, U4, U3, U2, U1 revert them`() {
+        assertEquals(20, flyway("21").migrate().migrationsExecuted)
+        assertEquals(decisionsTables, appTables())
+        assertEquals(pointThreadColumns + setOf("assignee_id", "decision_id"), columns("comment_threads"))
+
+        revert("U21__claude_wonderful_allen_fwvz3q_decisions.sql")
+        assertEquals(librariesTables, appTables())
+        assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
+        assertEquals(setOf("id", "user_id", "name", "created_at"), columns("shape_libraries"))
+        assertEquals(
+            setOf("id", "library_id", "name", "content", "preview", "size", "created_at", "updated_at"),
+            columns("library_components"),
+        )
         assertEquals(
             setOf("id", "board_id", "sha256", "content_type", "size", "width", "height", "created_at"),
             columns("board_images"),
         )
         assertEquals(documentColumns + "search_text", columns("board_documents"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
+
+        revert("U20__claude_eloquent_davinci_zrxuv4_shape_libraries.sql")
+        assertEquals(imagesTables, appTables())
 
         revert("U19__claude_eager_tesla_oz6ry8_canvas_images.sql")
         assertEquals(organizationTables, appTables())
@@ -132,9 +147,9 @@ class MigrationsTest {
         revert("U1__claude_relaxed_euler_o3h2ky.sql")
         assertEquals(emptySet(), appTables())
 
-        assertEquals(18, flyway("19").migrate().migrationsExecuted)
-        assertEquals(imagesTables, appTables())
-        assertEquals(pointThreadColumns + "assignee_id", columns("comment_threads"))
+        assertEquals(20, flyway("21").migrate().migrationsExecuted)
+        assertEquals(decisionsTables, appTables())
+        assertEquals(pointThreadColumns + setOf("assignee_id", "decision_id"), columns("comment_threads"))
         assertEquals(reviewRequestNotificationColumns, columns("notifications"))
         assertEquals(versionAuthorsColumns, columns("board_versions"))
     }
@@ -245,6 +260,102 @@ class MigrationsTest {
         assertEquals(proposalsTables, appTables())
         assertEquals(documentColumns, columns("board_documents"))
         assertEquals(1, flyway("17").migrate().migrationsExecuted)
+    }
+
+    @Test
+    fun `V21 keeps decisions with a number of their own on the board and a known status, which go with their board, and their elements and threads with them`() {
+        assertEquals(20, flyway("21").migrate().migrationsExecuted)
+        jdbcClient.sql(
+            "INSERT INTO users (id, provider, provider_user_id, name, created_at) VALUES ('0199a000-0000-7000-8000-0000000000a1'::uuid, 'github', '1', 'Alice', now())",
+        ).update()
+        jdbcClient.sql(
+            "INSERT INTO boards (id, title, owner_id, created_at, updated_at) VALUES ('0199a000-0000-7000-8000-0000000000b1'::uuid, 'Доска', '0199a000-0000-7000-8000-0000000000a1'::uuid, now(), now())",
+        ).update()
+        val insert = { id: String, number: Int, status: String, supersededBy: String? ->
+            jdbcClient.sql(
+                """
+                INSERT INTO decisions (id, board_id, number, title, status, superseded_by, decided_on, author_id, context, options,
+                                       outcome, consequences, created_at, updated_at)
+                VALUES ('$id'::uuid, '0199a000-0000-7000-8000-0000000000b1'::uuid, $number, 'Kafka', '$status',
+                        ${supersededBy?.let { "'$it'::uuid" } ?: "NULL"}, current_date, '0199a000-0000-7000-8000-0000000000a1'::uuid,
+                        '', '', '', '', now(), now())
+                """,
+            ).update()
+        }
+        insert("0199a000-0000-7000-8000-0000000000c1", 1, "ACCEPTED", null)
+        insert("0199a000-0000-7000-8000-0000000000c2", 2, "SUPERSEDED", "0199a000-0000-7000-8000-0000000000c1")
+
+        assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-0000000000c3", 1, "PROPOSED", null) }
+        assertFailsWith<DataIntegrityViolationException> { insert("0199a000-0000-7000-8000-0000000000c4", 4, "DONE", null) }
+        assertFailsWith<DataIntegrityViolationException> {
+            insert("0199a000-0000-7000-8000-0000000000c5", 5, "ACCEPTED", "0199a000-0000-7000-8000-0000000000c1")
+        }
+        jdbcClient.sql(
+            "INSERT INTO decision_elements (decision_id, page_id, cell_id) VALUES ('0199a000-0000-7000-8000-0000000000c1'::uuid, 'page-1', 'cell-1')",
+        ).update()
+        jdbcClient.sql(
+            "INSERT INTO comment_threads (board_id, page_id, decision_id, created_at) VALUES ('0199a000-0000-7000-8000-0000000000b1'::uuid, 'page-1', '0199a000-0000-7000-8000-0000000000c1'::uuid, now())",
+        ).update()
+
+        // The decision that superseded another goes, the other stays without it; then the board takes the rest.
+        jdbcClient.sql("DELETE FROM decisions WHERE id = '0199a000-0000-7000-8000-0000000000c1'::uuid").update()
+        assertEquals(listOf<String?>(null), jdbcClient.sql("SELECT superseded_by::text FROM decisions").query(String::class.java).list())
+        assertEquals(0, count("decision_elements"))
+        assertEquals(0, count("comment_threads"))
+        jdbcClient.sql("DELETE FROM boards").update()
+        assertEquals(0, count("decisions"))
+    }
+
+    @Test
+    fun `V20 keeps libraries of a user with short trimmed names, whose components go with their library and user`() {
+        assertEquals(19, flyway("20").migrate().migrationsExecuted)
+        jdbcClient.sql(
+            """
+            INSERT INTO users (id, provider, provider_user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-0000000000a1', 'github', '1', 'Alice', now()),
+                   ('0199a000-0000-7000-8000-0000000000b1', 'github', '2', 'Bob', now());
+            INSERT INTO shape_libraries (id, user_id, name, created_at)
+            VALUES ('0199a000-0000-7000-8000-000000000101', '0199a000-0000-7000-8000-0000000000a1', 'Платежи', now()),
+                   ('0199a000-0000-7000-8000-000000000102', '0199a000-0000-7000-8000-0000000000a1', 'платежи', now()),
+                   ('0199a000-0000-7000-8000-000000000103', '0199a000-0000-7000-8000-0000000000b1', 'Эскизы', now())
+            """,
+        ).update()
+        val library = { name: String ->
+            jdbcClient.sql(
+                "INSERT INTO shape_libraries (user_id, name, created_at) VALUES ('0199a000-0000-7000-8000-0000000000a1', :name, now())",
+            ).param("name", name).update()
+        }
+        val component = { library: String, name: String, size: Int ->
+            jdbcClient.sql(
+                """
+                INSERT INTO library_components (library_id, name, content, size, created_at, updated_at)
+                VALUES (:library::uuid, :name, '<mxGraphModel/>', :size, now(), now())
+                """,
+            ).param("library", library).param("name", name).param("size", size).update()
+        }
+        component("0199a000-0000-7000-8000-000000000101", "Сервис", 15)
+        component("0199a000-0000-7000-8000-000000000103", "Набросок", 15)
+
+        for (wrong in listOf(
+            { library("") },
+            { library(" Идеи") },
+            { library("я".repeat(61)) },
+            { component("0199a000-0000-7000-8000-000000000101", "", 15) },
+            { component("0199a000-0000-7000-8000-000000000101", "Сервис ", 15) },
+            { component("0199a000-0000-7000-8000-000000000101", "я".repeat(81), 15) },
+            { component("0199a000-0000-7000-8000-000000000101", "Пустой", 0) },
+            { component("0199a000-0000-7000-8000-000000000199", "Без библиотеки", 15) },
+        )) {
+            assertFailsWith<DataIntegrityViolationException> { wrong() }
+        }
+        library("я".repeat(60))
+        component("0199a000-0000-7000-8000-000000000101", "я".repeat(80), 15)
+
+        jdbcClient.sql("DELETE FROM shape_libraries WHERE id = '0199a000-0000-7000-8000-000000000101'").update()
+        assertEquals(1, count("library_components"))
+        jdbcClient.sql("DELETE FROM users WHERE id = '0199a000-0000-7000-8000-0000000000b1'").update()
+        assertEquals(2, count("shape_libraries"))
+        assertEquals(0, count("library_components"))
     }
 
     @Test

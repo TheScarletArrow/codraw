@@ -14,6 +14,7 @@ import {
 import { EDGE_TECHNOLOGIES, KIND_SECTIONS, kindLabel, technologySuggestions, usedProperties } from '../diagram/elementProps.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
+import { IconField, IconView } from './IconField.tsx'
 
 /** The button of the header of the board that shows and hides the panel of properties. */
 export function PropertiesButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
@@ -234,6 +235,9 @@ function ShapeForm({
         />
         <Suggestions id={`${id}-technologies`} values={technologySuggestions(properties.kind, used.technologies)} />
       </Field>
+      <Field label="Значок" htmlFor={`${id}-icon`}>
+        <IconField id={`${id}-icon`} icon={selection.icon} technology={properties.technology} onChange={(icon) => change({ icon })} />
+      </Field>
       {selection.format === 'plain' && (
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -424,6 +428,9 @@ function ShapeView({ selection }: { selection: ShapeSelection }) {
       <Entry term="Имя">{shown(properties.name)}</Entry>
       <Entry term="Тип">{properties.kind ? kindLabel(properties.kind) : '—'}</Entry>
       <Entry term="Технология">{shown(properties.technology)}</Entry>
+      <Entry term="Значок">
+        <IconView icon={selection.icon} technology={properties.technology} />
+      </Entry>
       <Entry term="Описание">{shown(properties.description)}</Entry>
       <Entry term="Владелец">{shown(properties.owner)}</Entry>
       <Entry term="Теги">

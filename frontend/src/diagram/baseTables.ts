@@ -48,14 +48,10 @@ export function inheritedFieldId(cell: Cell | null | undefined): string | null {
   return cell?.isVertex() && isTable(cell.getParent()) ? stringKey(cell, INHERITED_KEY) : null
 }
 
-/** Tables of the page by id, those inside groups too. */
+/** Tables of the page by id, those inside groups too, of every layer. */
 export function pageTables(graph: AbstractGraph): Map<string, Cell> {
-  return new Map(
-    graph
-      .getDefaultParent()
-      .filterDescendants((cell) => isTable(cell))
-      .map((table) => [table.getId()!, table]),
-  )
+  const root = graph.getDataModel().getRoot()
+  return new Map((root?.filterDescendants((cell) => isTable(cell)) ?? []).map((table) => [table.getId()!, table]))
 }
 
 /**

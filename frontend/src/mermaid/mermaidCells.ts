@@ -125,7 +125,7 @@ function referencingColumn(table: SqlTable, referenced: string): (SqlColumn & { 
  * its «many» side has a column marked FK for it, else an edge between the tables, with the markers of its cardinalities.
  */
 async function erCells(diagram: ErDiagram, origin: { x: number; y: number }, engine?: () => Promise<LayoutEngine>, sourcePrefix?: string) {
-  const schema: SqlSchema = { tables: diagram.tables.map((table) => ({ ...table, foreignKeys: [] })), skipped: 0 }
+  const schema: SqlSchema = { tables: diagram.tables.map((table) => ({ ...table, foreignKeys: [] })), views: [], skipped: 0 }
   const table = (name: string) => schema.tables.find((candidate) => candidate.name === name)!
   const links: TableLink[] = []
   for (const relation of diagram.relations) {
