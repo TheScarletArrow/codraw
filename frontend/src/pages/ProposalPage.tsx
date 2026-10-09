@@ -14,7 +14,9 @@ import { Minimap } from '../board/Minimap.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { StatusBadges } from '../board/StatusBadges.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { useImageUploads } from '../board/imageUploads.ts'
+import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { usePages } from '../board/usePages.ts'
 import type { Author } from '../diagram/attribution.ts'
@@ -111,7 +113,16 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   const requestedPage = searchParams.get('page')
   const currentPage = pages.find((page) => page.id === requestedPage) ?? pages[0] ?? null
   const selectPage = useCallback(
-    (id: string) => setSearchParams((params) => new URLSearchParams({ ...Object.fromEntries(params), page: id }), { replace: true }),
+    (id: string) =>
+      setSearchParams(
+        (params) => {
+          // The parameters of the filter repeat: the others stay as they are.
+          const next = new URLSearchParams(params)
+          next.set('page', id)
+          return next
+        },
+        { replace: true },
+      ),
     [setSearchParams],
   )
   useEffect(() => {
@@ -125,6 +136,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
     applySchemaUpdate(document, update.pageId, update.cells, author)
     selectPage(update.pageId)
   }, [document, readOnly, proposal.id, author, selectPage])
+  const { filter, changeFilter } = usePageFilter(editor)
   const showCell = useRevealCell(editor, selectPage)
 
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
@@ -205,7 +217,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         {/* Nobody else is on a draft, and comments are about the board: no laser pointer and no comment tool. */}
-        <EditorToolbar editor={editor} readOnly={readOnly} collaboration={false} />
+        <EditorToolbar editor={editor} readOnly={readOnly} collaboration={false} filter={filter} onFilterChange={changeFilter} />
         <div className="flex shrink-0 items-center gap-1">
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
@@ -284,6 +296,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 {!readOnly && <FieldPopover editor={editor} />}
                 {!readOnly && <StickyPanel editor={editor} />}
                 <SidePanels>
+                  <ImpactPanel editor={editor} document={document} onShow={showCell} />
                   <EdgeApiPanel editor={editor} request={apiRequest} />
                   {propertiesOpen && (
                     <PropertiesPanel

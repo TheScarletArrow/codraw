@@ -57,6 +57,24 @@ describe('Minimap', () => {
     expect(Number(frame.getAttribute('width'))).toBeCloseTo(800 * shown().scale)
   })
 
+  it('draws pale what the filter of the page leaves out', () => {
+    const shape = { x: 0, y: 0, width: 100, height: 50, rotation: 0, ellipse: false, fill: '#ffffff', stroke: '#000000', header: null }
+    editor.pageSketch = () => ({
+      shapes: [
+        { ...shape, id: 'kept' },
+        { ...shape, id: 'left', x: 300, dimmed: true },
+      ],
+      edges: [{ id: 'edge', points: [{ x: 100, y: 25 }, { x: 300, y: 25 }], dimmed: true }],
+      bounds: { x: 0, y: 0, width: 400, height: 50 },
+    })
+    render(<Minimap editor={editor} />)
+
+    const groups = screen.getByRole('region', { name: 'Мини-карта' }).querySelectorAll('g[opacity]')
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.querySelector('rect')).toHaveAttribute('x', '300')
+    expect(screen.getByRole('region', { name: 'Мини-карта' }).querySelector('polyline')).toHaveAttribute('opacity', '0.3')
+  })
+
   it('shows nothing without a canvas or on an empty page', () => {
     const { rerender } = render(<Minimap editor={null} />)
     expect(screen.queryByTestId('minimap')).toBeNull()

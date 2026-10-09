@@ -42,6 +42,18 @@ describe('CanvasMenu', () => {
     expect(within(screen.getByRole('menu')).getAllByRole('separator')).toHaveLength(4)
   })
 
+  it('shows the dependencies of an element and the path between two selected ones', async () => {
+    vi.mocked(editor.canAnalyze).mockReturnValue(true)
+    rightClick('shape')
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Зависимости' }))
+    expect(editor.showDependencies).toHaveBeenCalledWith('cell-1')
+
+    vi.mocked(editor.canShowPath).mockReturnValue(true)
+    rightClick('selection')
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Путь между' }))
+    expect(editor.showPathBetween).toHaveBeenCalled()
+  })
+
   it('wraps a message of a sequence diagram into a frame and copies the diagram as Mermaid', async () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })

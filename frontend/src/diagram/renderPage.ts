@@ -1,6 +1,7 @@
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import type { PageLayerView } from './layerViews.ts'
+import type { PageFilter } from './pageFilter.ts'
 import { edgesRouted } from './routing/edgeRouter.ts'
 import type { ExportedImage, SvgOptions } from './svgExport.ts'
 
@@ -49,20 +50,21 @@ export function renderPageSvg(document: Y.Doc, pageId: string): string | null {
 /**
  * Draws any page of the board into an image at 100%, as the editor of the page would, without showing it. Its edges go
  * around the shapes as on the canvas: the hidden editor waits for their routes, but not longer than
- * {@link ROUTES_WAIT}. With `layerView`, the layers show as the participant chose for themselves. `null` for a page
- * without shapes.
+ * {@link ROUTES_WAIT}. With a `filter`, only what matches it (see `pageFilter.ts`); with `layerView`, the layers show as
+ * the participant chose for themselves. `null` for a page without shapes.
  */
 export async function renderPage(
   document: Y.Doc,
   pageId: string,
-  options: SvgOptions = {},
+  { filter = null, ...options }: SvgOptions & { filter?: PageFilter | null } = {},
   layerView: PageLayerView | null = null,
 ): Promise<ExportedImage | null> {
   const { editor, close } = openHiddenEditor(document, pageId, layerView)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
+    if (filter) editor.setFilter({ ...filter, hide: true })
     await Promise.race([edgesRouted(editor.graph), new Promise<void>((resolve) => (timer = setTimeout(resolve, ROUTES_WAIT)))])
-    return editor.exportSvg(options)
+    return editor.exportSvg({ ...options, onlyVisible: filter !== null })
   } finally {
     clearTimeout(timer)
     close()

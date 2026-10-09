@@ -14,10 +14,12 @@ import { useCurrentUser } from '../auth/session.ts'
 import { ACCESS_POLL_INTERVAL, accessRequestsKey } from '../board/accessRequests.ts'
 import { BoardHeading } from '../board/BoardHeading.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { CursorChat } from '../board/CursorChat.tsx'
 import { EditRequestButton } from '../board/EditRequestButton.tsx'
 import { participantIdentity } from '../board/identity.ts'
 import { useImageUploads } from '../board/imageUploads.ts'
+import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
@@ -242,6 +244,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     [setSearchParams],
   )
   const selectPage = useCallback((id: string) => changeParams((params) => params.set('page', id)), [changeParams])
+  const { filter, changeFilter } = usePageFilter(editor)
   // An unknown page, e.g. one deleted by another participant, is replaced with the first page.
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
@@ -542,7 +545,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onProposalCreated={proposalCreated}
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-        <EditorToolbar editor={editor} readOnly={readOnly} />
+        <EditorToolbar editor={editor} readOnly={readOnly} filter={filter} onFilterChange={changeFilter} />
         <Participants
           participants={participants}
           pages={pages}
@@ -744,6 +747,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   {!readOnly && <FieldPopover editor={editor} />}
                   {!readOnly && <StickyPanel editor={editor} />}
                   <SidePanels>
+                    <ImpactPanel editor={editor} document={document} onShow={showCell} />
                     <EdgeApiPanel editor={editor} request={apiRequest} />
                     {layersOpen && (
                       <LayersPanel
