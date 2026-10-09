@@ -31,8 +31,8 @@ interface ThreadCardProps {
   /** The thread is about the element the participant came from, e.g. by its badge. */
   highlighted: boolean
   actions: ThreadActions
-  /** Goes to the page of the thread and to its element or its point. */
-  onShow: (thread: CommentThread) => void
+  /** Goes to the page of the thread and to its element or its point; without it, what the thread is about is a title. */
+  onShow?: (thread: CommentThread) => void
 }
 
 /** A thread: what it is about, its assignee, its comments with their reactions, an answer and the «Решено» mark. */
@@ -57,17 +57,21 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
       className={cn('flex flex-col gap-2 rounded-md border p-2', highlighted && 'ring-2 ring-primary', resolved && 'opacity-80')}
     >
       <div className="flex items-start gap-1">
-        <button
-          type="button"
-          title="Показать на холсте"
-          className={cn(
-            'min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-medium hover:bg-accent',
-            target.deleted && 'text-muted-foreground italic',
-          )}
-          onClick={() => onShow(thread)}
-        >
-          {target.label}
-        </button>
+        {onShow ? (
+          <button
+            type="button"
+            title="Показать на холсте"
+            className={cn(
+              'min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-medium hover:bg-accent',
+              target.deleted && 'text-muted-foreground italic',
+            )}
+            onClick={() => onShow(thread)}
+          >
+            {target.label}
+          </button>
+        ) : (
+          <span className="min-w-0 flex-1 truncate px-1 text-xs font-medium">{target.label}</span>
+        )}
         {!thread.assignee && (
           <AssignButton
             people={people}

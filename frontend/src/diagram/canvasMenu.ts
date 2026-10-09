@@ -1,3 +1,4 @@
+import type { Plan, SelectionPlan } from './plan.ts'
 import { FRAME_KINDS, type FrameKind } from './sequence.ts'
 import type { ElementStatus, SelectionStatus } from './status.ts'
 
@@ -44,6 +45,7 @@ export type MenuCommand =
   | 'lock'
   | 'unlock'
   | StatusCommand
+  | PlanCommand
   | 'delete'
   | 'comment'
   | 'commentHere'
@@ -60,6 +62,9 @@ export type MenuCommand =
   | 'detachElement'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'detail'
+  | 'dependencies'
+  | 'pathBetween'
   | 'saveToLibrary'
 
 /** Items that put the selected message of a sequence diagram into a frame of a kind. */
@@ -87,6 +92,18 @@ export const STATUS_COMMANDS: Record<StatusCommand, ElementStatus | null> = {
 }
 
 export const isStatusCommand = (command: MenuCommand): command is StatusCommand => command in STATUS_COMMANDS
+
+/** Items that mark the selection as what will appear, what will go, or what is (see `plan.ts`). */
+export type PlanCommand = 'planNone' | 'planAdded' | 'planRemoved'
+
+/** The mark each item of the plan sets; `null` takes it off. */
+export const PLAN_COMMANDS: Record<PlanCommand, Plan | null> = {
+  planNone: null,
+  planAdded: 'added',
+  planRemoved: 'removed',
+}
+
+export const isPlanCommand = (command: MenuCommand): command is PlanCommand => command in PLAN_COMMANDS
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
 export type Shortcut =
@@ -155,10 +172,18 @@ export interface MenuAvailability {
   canDeleteElementEverywhere?: boolean
   /** The selected shapes show more than one element, and the page asks which to keep: «Объединить в один элемент…». */
   canMergeElements?: boolean
+  /** The single selected shape has a page of detail, or the participant may make one, and the page opens it: «Детализировать». */
+  canDetail?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
+  /** The marks of plan of the selected elements that may have one: the items of «Изменение» are offered, with it chosen. */
+  plan?: SelectionPlan | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
   canBranch?: boolean
+  /** The single selected shape or table depends on others by its kind: «Зависимости» is offered. */
+  canShowDependencies?: boolean
+  /** Two elements are selected: «Путь между» is offered. */
+  canShowPath?: boolean
   /** The page saves the selection into a library of the user: «Сохранить в библиотеку…» is offered, to viewers too. */
   canSaveToLibrary?: boolean
 }
@@ -173,6 +198,9 @@ const VIEWING_COMMANDS = new Set<MenuCommand>([
   'properties',
   'copyMermaid',
   'whereUsed',
+  'detail',
+  'dependencies',
+  'pathBetween',
   'saveToLibrary',
 ])
 
@@ -199,6 +227,7 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'detachElement',
   'deleteElementEverywhere',
   'mergeElements',
+  ...(Object.keys(PLAN_COMMANDS) as PlanCommand[]),
 ])
 
 type Entry = [MenuCommand, string, Shortcut?]
@@ -223,11 +252,13 @@ const COMMENT: Entry[] = [['comment', 'Комментировать']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
 const EDGE_API: Entry = ['edgeApi', 'Описание API…']
 const PROPERTIES: Entry = ['properties', 'Свойства…']
+const DETAIL: Entry = ['detail', 'Детализировать']
 const SHARED: Entry[] = [
   ['whereUsed', 'Где используется…'],
   ['detachElement', 'Отделить от элемента'],
 ]
 const DELETE_EVERYWHERE: Entry = ['deleteElementEverywhere', 'Удалить со всех страниц…']
+const DEPENDENCIES: Entry = ['dependencies', 'Зависимости']
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -243,6 +274,11 @@ const STATUS: Entry[] = [
   ['statusReview', 'Нужно ревью'],
   ['statusDone', 'Готово'],
   ['statusNone', 'Без статуса'],
+]
+const PLAN: Entry[] = [
+  ['planNone', 'Есть'],
+  ['planAdded', 'Появится'],
+  ['planRemoved', 'Уйдёт'],
 ]
 
 /** Groups of the menu of each target, in the order of the menu. */
@@ -260,7 +296,18 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], COPYING, STYLE, ORDER, LOCK, STATUS, [...LINK, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
+  shape: [
+    [EDIT_LABEL],
+    COPYING,
+    STYLE,
+    ORDER,
+    LOCK,
+    STATUS,
+    PLAN,
+    [...LINK, DETAIL, PROPERTIES, DEPENDENCIES, ...SHARED],
+    COMMENT,
+    [DELETE, DELETE_EVERYWHERE],
+  ],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     COPYING,
@@ -268,7 +315,8 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ORDER,
     LOCK,
     STATUS,
-    LINK,
+    PLAN,
+    [...LINK, DEPENDENCIES],
     COMMENT,
     [DELETE],
   ],
@@ -290,19 +338,21 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, COMMENT, [DELETE]],
   selection: [
     [
       ['group', 'Сгруппировать', 'Mod+G'],
       ['mergeElements', 'Объединить в один элемент…'],
+      ['pathBetween', 'Путь между'],
     ],
     COPYING,
     [PASTE_STYLE],
     ORDER,
     LOCK,
     STATUS,
+    PLAN,
     [DELETE],
   ],
   sequence: [
@@ -380,8 +430,12 @@ export function menuItems(
     sharedElement = false,
     canDeleteElementEverywhere = false,
     canMergeElements = false,
+    canDetail = false,
     status = null,
+    plan = null,
     canBranch = false,
+    canShowDependencies = false,
+    canShowPath = false,
     canSaveToLibrary = false,
   }: MenuAvailability,
 ): MenuItem[] {
@@ -407,8 +461,12 @@ export function menuItems(
     detachElement: sharedElement,
     deleteElementEverywhere: canDeleteElementEverywhere,
     mergeElements: canMergeElements,
+    detail: canDetail,
+    dependencies: canShowDependencies,
+    pathBetween: canShowPath,
     saveToLibrary: canSaveToLibrary,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
+    ...Object.fromEntries(Object.keys(PLAN_COMMANDS).map((command) => [command, plan !== null])),
   }
   const groups = MENUS[target]
     .map((group) =>
@@ -426,6 +484,14 @@ export function menuItems(
       }
       // The frames a message goes into are a group of their own.
       if (isFrameCommand(command)) return index === 0 ? { ...item, heading: 'Рамка' } : item
+      // What will appear and what will go are a choice too; nothing chosen is what is.
+      if (isPlanCommand(command)) {
+        return {
+          ...item,
+          ...(index === 0 && { heading: 'Изменение' }),
+          checked: plan !== null && !plan.mixed && PLAN_COMMANDS[command] === plan.value,
+        }
+      }
       if (!isStatusCommand(command)) return item
       // Different statuses choose none of them.
       return {

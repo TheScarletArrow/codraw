@@ -91,8 +91,12 @@ export function createFakeEditor({
     edgeApi: null,
     stickies: null,
     status: null,
+    selectionPlan: null,
+    plan: { view: 'diff', added: 0, removed: 0 },
     properties: null,
     sequence: null,
+    impact: null,
+    filter: null,
     canPasteAsSameElement: false,
     canMergeElements: false,
     layers: [],
@@ -106,6 +110,7 @@ export function createFakeEditor({
   const listeners = new Set<() => void>()
   const pointerListeners = new Set<(point: Point | null) => void>()
   const selectionListeners = new Set<(ids: string[]) => void>()
+  let selection: string[] = []
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const viewListeners = new Set<() => void>()
   const editingListeners = new Set<(editing: LabelEditing | null) => void>()
@@ -190,6 +195,9 @@ export function createFakeEditor({
     ungroup: vi.fn(),
     setLocked: vi.fn(),
     setStatus: vi.fn(() => []),
+    setPlan: vi.fn(),
+    setPlanView: vi.fn(),
+    applyTargetState: vi.fn(() => false),
     editLabel: vi.fn(),
     deleteSelection: vi.fn(),
     focus: vi.fn(),
@@ -232,6 +240,9 @@ export function createFakeEditor({
     selectedElement: vi.fn(() => null),
     mergeCandidates: vi.fn(() => []),
     mergeElements: vi.fn(),
+    mergeElementCells: vi.fn(() => false),
+    detailOffer: vi.fn(() => null),
+    detailElement: vi.fn(() => null),
     detachElement: vi.fn(),
     deleteElementEverywhere: vi.fn(),
     getLinks: () => links,
@@ -257,6 +268,15 @@ export function createFakeEditor({
       changeView()
     }),
     revealCell: vi.fn((id: string) => cells.get(id) != null),
+    showDependencies: vi.fn(() => true),
+    showPathBetween: vi.fn(() => true),
+    clearImpact: vi.fn(),
+    canAnalyze: vi.fn(() => false),
+    canShowPath: vi.fn(() => false),
+    setFilter: vi.fn(),
+    currentFilter: vi.fn(() => null),
+    filterChoices: vi.fn(() => ({ tags: [], kinds: [], technologies: [], owners: [], interactions: [] })),
+    filterStatus: vi.fn(() => null),
     clearSelection: vi.fn(),
     viewportCenter: () => ({ x: offset.x + viewport.width / 2, y: offset.y + viewport.height / 2 }),
     zoomTo: vi.fn((scale: number) => {
@@ -285,6 +305,7 @@ export function createFakeEditor({
       state = { ...state, pencilLine: { ...state.pencilLine, ...Object.fromEntries(defined) } }
       listeners.forEach((listener) => listener())
     }),
+    selectedCellIds: () => selection,
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -307,6 +328,7 @@ export function createFakeEditor({
       pointerListeners.forEach((listener) => listener(point))
     },
     select(ids) {
+      selection = ids
       selectionListeners.forEach((listener) => listener(ids))
     },
     rightClick(request) {

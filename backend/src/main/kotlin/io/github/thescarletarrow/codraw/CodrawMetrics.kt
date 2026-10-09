@@ -14,6 +14,7 @@ enum class Limit(val tag: String) {
     VERSION("version"),
     CLIENT_ERRORS("client-errors"),
     COMMENTS("comments"),
+    DECISIONS("decisions"),
     EMBED("embed"),
     MEMBERS("members"),
     INVITES("invites"),

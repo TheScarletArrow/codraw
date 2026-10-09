@@ -72,6 +72,22 @@ export interface CellData {
 export interface PageData {
   name: string
   order: string
+  /** The element this page details (see `detail.ts`): its cell on the page it was detailed from, and the element. */
+  detailOf?: DetailOf
+}
+
+/** The element a page of detail is about. */
+export interface DetailOf {
+  pageId: string
+  cellId: string
+  elementId: string
+}
+
+/** The element a page names as the one it details, from a value of the document; `undefined` for anything else. */
+function readDetailOf(value: unknown): DetailOf | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const { pageId, cellId, elementId } = value as Record<string, unknown>
+  return typeof pageId === 'string' && typeof cellId === 'string' && typeof elementId === 'string' ? { pageId, cellId, elementId } : undefined
 }
 
 export type CellMap = Y.Map<unknown>
@@ -263,9 +279,11 @@ export function layerIds(cells: Iterable<Pick<CellData, 'id' | 'kind'>>): Set<st
 
 export function readPage(entry: PageEntry): PageData {
   if (entry instanceof Y.Map) {
+    const detailOf = readDetailOf(entry.get('detailOf'))
     return {
       name: String(entry.get('name') ?? ''),
       order: (entry.get('order') as string | undefined) ?? generateKeyBetween(null, null),
+      ...(detailOf && { detailOf }),
     }
   }
   return { name: String(entry.name ?? ''), order: entry.order ?? generateKeyBetween(null, null) }
@@ -276,6 +294,7 @@ export function writePage(doc: Y.Doc, id: string, page: PageData) {
   const entry = new Y.Map<unknown>()
   entry.set('name', page.name)
   entry.set('order', page.order)
+  if (page.detailOf) entry.set('detailOf', { ...page.detailOf })
   getPages(doc).set(id, entry)
   writeStructuralCells(getCells(doc, id))
 }

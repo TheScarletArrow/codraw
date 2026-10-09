@@ -21,6 +21,9 @@ data class LimitProperties(
     /** The most comments a board holds, in all its threads. */
     @field:Positive
     val commentsPerBoard: Int = 5000,
+    /** The most architecture decisions a board holds. */
+    @field:Positive
+    val decisionsPerBoard: Int = 500,
     /** The most members a board has, besides its owner. */
     @field:Positive
     val membersPerBoard: Int = 100,
