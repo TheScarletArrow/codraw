@@ -1175,7 +1175,7 @@ class MigrationsTest {
 
     @Test
     fun `V26 accepts boards shown without a sign-in, and U26 makes them viewable through their links only`() {
-        flyway("24").migrate()
+        flyway("25").migrate()
         jdbcClient.sql(
             """
             INSERT INTO users (id, provider, provider_user_id, name, created_at)

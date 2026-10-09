@@ -24,6 +24,9 @@ data class LimitProperties(
     /** The most architecture decisions a board holds. */
     @field:Positive
     val decisionsPerBoard: Int = 500,
+    /** The most issues of the tracker linked to elements and threads of a board. */
+    @field:Positive
+    val issueLinksPerBoard: Int = 1000,
     /** The most members a board has, besides its owner. */
     @field:Positive
     val membersPerBoard: Int = 100,

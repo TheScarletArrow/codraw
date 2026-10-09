@@ -16,6 +16,8 @@ export interface LegalInfo {
   closedProposalsPerBoard: number
   /** Whether users may read schemas of databases through the server, with the user and the password of a database. */
   schemaImport: boolean
+  /** Whether users may connect GitHub with a token of theirs and link its issues to elements and threads of boards. */
+  issues: boolean
 }
 
 export function fetchLegal(): Promise<LegalInfo> {
