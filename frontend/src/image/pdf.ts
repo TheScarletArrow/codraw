@@ -30,7 +30,7 @@ export function pdfPages(doc: Y.Doc): PageInfo[] {
 /**
  * Images of the pages of a PDF of the whole board, see {@link pdfPages}. The page of the editor is drawn by the editor,
  * as for the other buttons of the export; the others are drawn out of sight once their edges are routed, with the layers
- * the participant shows on them (`layerViews`).
+ * the participant shows on them (`layerViews`) and in the view of the plan of the editor.
  */
 export async function boardImages(
   doc: Y.Doc,
@@ -39,13 +39,14 @@ export async function boardImages(
   layerViews: LayerViews | null = null,
 ): Promise<ExportedImage[]> {
   const images: ExportedImage[] = []
+  const view = editor.getState().plan.view
   // Only what matches the filter of the canvas, on every page.
   const filter = onlyVisible ? editor.currentFilter() : null
   for (const page of pdfPages(doc)) {
     const image =
       page.id === editor.pageId
         ? editor.exportSvg({ ...options, onlyVisible })
-        : await renderPage(doc, page.id, { ...options, filter }, layerViews?.page(page.id) ?? null)
+        : await renderPage(doc, page.id, { ...options, filter }, layerViews?.page(page.id) ?? null, view)
     if (image) images.push(image)
   }
   return images

@@ -3,18 +3,23 @@ import { Check, Lock } from 'lucide-react'
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 import {
   FRAME_COMMANDS,
+  isPlanCommand,
   isStatusCommand,
   menuItems,
+  PLAN_COMMANDS,
   shortcutLabel,
   STATUS_COMMANDS,
   type MenuCommand,
+  type PlanCommand,
   type StatusCommand,
 } from './canvasMenu.ts'
 import { readSystemClipboard, writeSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor, Point, SequencePartState } from './editor.ts'
 import { lockLabel } from './locks.ts'
+import { PLAN_COLORS } from './plan.ts'
 import { BRANCH_WORDS } from './sequence.ts'
 import type { ElementStatus } from './status.ts'
 import { StatusIcon } from './StatusIcon.tsx'
@@ -44,7 +49,7 @@ type PageCommand =
   | 'saveToLibrary'
 
 const COMMANDS: Record<
-  Exclude<MenuCommand, PageCommand | StatusCommand>,
+  Exclude<MenuCommand, PageCommand | StatusCommand | PlanCommand>,
   (editor: DiagramEditor, request: ContextMenuRequest) => void
 > = {
   // The system clipboard first; when the browser does not let the page read it, the clipboard of the tab.
@@ -153,6 +158,7 @@ export function CanvasMenu({
     sequence,
     canPasteAsSameElement,
     canMergeElements,
+    selectionPlan,
   } = useEditorState(editor)
   const lockId = useId()
 
@@ -239,6 +245,10 @@ export function CanvasMenu({
       ;(command === 'mergeElements' ? onMergeElements : onDeleteElementEverywhere)?.(request)
       return
     }
+    if (isPlanCommand(command)) {
+      editor.setPlan(PLAN_COMMANDS[command])
+      return
+    }
     if (isStatusCommand(command)) {
       const changed = editor.setStatus(STATUS_COMMANDS[command])
       if (changed.length > 0) onStatusChange?.(STATUS_COMMANDS[command], changed)
@@ -315,12 +325,14 @@ export function CanvasMenu({
             canMergeElements: onMergeElements !== undefined && canMergeElements,
             canDetail: onDetail !== undefined && request.cellId !== null && editor.detailOffer(request.cellId) !== null,
             status,
+            plan: selectionPlan,
             canBranch: canBranch(sequence?.part ?? null),
             canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),
             canShowPath: request.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
+            const planned = isPlanCommand(item.command) ? PLAN_COMMANDS[item.command] : undefined
             return (
               <Fragment key={item.command}>
                 {item.separatorBefore && <div role="separator" className="-mx-1 my-1 h-px bg-border" />}
@@ -341,7 +353,16 @@ export function CanvasMenu({
                   disabled={item.disabled}
                   onClick={() => run(item.command)}
                 >
-                  {choice === undefined ? (
+                  {planned !== undefined ? (
+                    <span className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={cn('size-4 shrink-0 rounded-sm border-2', planned === 'removed' && 'border-dashed')}
+                        style={{ borderColor: planned ? PLAN_COLORS[planned] : undefined }}
+                      />
+                      {item.label}
+                    </span>
+                  ) : choice === undefined ? (
                     item.label
                   ) : (
                     <span className="flex items-center gap-2">

@@ -130,9 +130,12 @@ import {
   type StoredImage,
 } from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
+import { commonPlan, PLAN_KEY, planOf, type Plan, type PlanView, type SelectionPlan } from './plan.ts'
+import { configurePlan } from './planView.ts'
 import { impactNode, type ImpactDepth } from './impact.ts'
 import { configureImpact, modelImpactRecords, type ImpactState } from './impactView.ts'
 import { configureFilter, modelFilterRecords, type FilterStatus } from './filterView.ts'
+import { cellVisibility } from './cellVisibility.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import {
   DEFAULT_END_ARROW,
@@ -729,6 +732,10 @@ export interface EditorState {
    * them may.
    */
   status: SelectionStatus | null
+  /** The marks of plan of the selected elements that may have one (see {@link DiagramEditor.setPlan}), `null` when none may. */
+  selectionPlan: SelectionPlan | null
+  /** How this participant shows the page (see `plan.ts`), and how many elements of it will appear and will go. */
+  plan: { view: PlanView; added: number; removed: number }
   /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
   properties: SelectionProperties | null
   /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
@@ -966,6 +973,18 @@ export interface DiagramEditor {
    * status changed, in the order of the selection; a read-only editor changes none.
    */
   setStatus(status: ElementStatus | null): string[]
+  /**
+   * Marks the selected shapes, tables, groups and edges, a field or an index for its table, as elements that will appear
+   * or will go, or with `null` as they are, as one undo step; locked elements stay as they are.
+   */
+  setPlan(plan: Plan | null): void
+  /** Shows the page as it is now, as it will be, or with the difference (see `plan.ts`): for this participant alone. */
+  setPlanView(view: PlanView): void
+  /**
+   * «Применить целевое состояние»: removes the elements of the page that will go, with their edges, and takes the mark off
+   * those that will appear, as one undo step; locked elements stay. Returns whether it changed anything.
+   */
+  applyTargetState(): boolean
   /** Starts editing the label of the selected element. */
   editLabel(): void
   deleteSelection(): void
@@ -1649,13 +1668,18 @@ export function createDiagramEditor(
   configureTextWrap(graph)
   const unconfigureSequences = configureSequences(graph)
   const unconfigureLegends = configureLegends(graph)
+  // The view of the plan and the filter both hide cells: a cell is drawn while neither hides it.
+  const visibility = cellVisibility()
+  // The view of the plan of this participant; it tells the state of the editor once there is one.
+  let planChanged = () => {}
+  const planView = configurePlan(graph, () => planChanged(), visibility)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
   // Before the theme, so that the theme sees the colors of the analysis and the pale style of what does not match.
   let impactChanged = () => {}
   const impactView = configureImpact(graph, () => impactChanged())
   let filterChanged = () => {}
-  const filterView = configureFilter(graph, () => filterChanged())
+  const filterView = configureFilter(graph, () => filterChanged(), visibility)
   configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
@@ -2244,6 +2268,20 @@ export function createDiagramEditor(
   ]
   const selectionStatus = (): SelectionStatus | null =>
     commonStatus(statusTargets().map((cell) => readStatus(cells.get(cell.getId() ?? ''))?.status ?? null))
+  /**
+   * The elements whose mark of plan {@link DiagramEditor.setPlan} sets: the selected shapes, tables, groups and edges and
+   * the tables of selected fields and indexes, each once; not labels of edges.
+   */
+  const planTargets = (): Cell[] => [
+    ...new Set(
+      graph.getSelectionCells().flatMap((cell) => {
+        const target = lockTarget(cell)
+        return target.isEdge() || (target.isVertex() && !target.getParent()?.isEdge()) ? [target] : []
+      }),
+    ),
+  ]
+  const selectionPlan = (): SelectionPlan | null =>
+    commonPlan(planTargets().map((cell) => planOf(cell.getStyle() as Record<string, unknown>)))
   const fontStyleOf = (cell: Cell) => Number(graph.getCellStyle(cell).fontStyle ?? 0)
   const hasFontStyle = (cells: Cell[], flag: FontStyleFlag) =>
     cells.every((cell) => (fontStyleOf(cell) & FONT_STYLE_BITS[flag]) !== 0)
@@ -2652,6 +2690,8 @@ export function createDiagramEditor(
       edgeApi: selectionEdgeApi(),
       stickies: selectionStickies(),
       status: selectionStatus(),
+      selectionPlan: selectionPlan(),
+      plan: { view: planView.view(), ...planView.counts() },
       properties: selectionProperties(),
       sequence: selectionSequence(),
       impact: impactView.state(),
@@ -2686,6 +2726,7 @@ export function createDiagramEditor(
     state = readState()
     listeners.forEach((listener) => listener())
   }
+  planChanged = notify
   undoManager.on('stack-item-added', notify)
   undoManager.on('stack-item-popped', notify)
   undoManager.on('stack-cleared', notify)
@@ -4287,6 +4328,36 @@ export function createDiagramEditor(
       if (changed.length > 0) notify()
       return changed
     },
+    setPlan(plan) {
+      const targets = unlocked(planTargets())
+      if (readOnly || destroyed || targets.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => setStyleValue(targets, PLAN_KEY, plan ?? undefined))
+    },
+    setPlanView(view) {
+      if (!destroyed) planView.set(view)
+    },
+    applyTargetState() {
+      if (readOnly || destroyed) return false
+      const going: Cell[] = []
+      const arrived: Cell[] = []
+      const visit = (cell: Cell) => {
+        for (const child of cell.getChildren()) {
+          const plan = planOf(child.getStyle() as Record<string, unknown>)
+          if (plan && isUnlocked(child)) (plan === 'removed' ? going : arrived).push(child)
+          // What goes goes with what is in it.
+          if (plan !== 'removed') visit(child)
+        }
+      }
+      visit(graph.getDefaultParent())
+      if (going.length === 0 && arrived.length === 0) return false
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        if (arrived.length > 0) setStyleValue(arrived, PLAN_KEY, undefined)
+        if (going.length > 0) graph.removeCells(going, true)
+      })
+      return true
+    },
     reverseEdge() {
       const edge = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
       if (!edge?.isEdge() || !isUnlocked(edge)) return
@@ -5025,6 +5096,7 @@ export function createDiagramEditor(
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
+      planView.destroy()
       impactView.destroy()
       filterView.destroy()
       unwatchLocks()

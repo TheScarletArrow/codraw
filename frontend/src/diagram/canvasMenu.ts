@@ -1,3 +1,4 @@
+import type { Plan, SelectionPlan } from './plan.ts'
 import { FRAME_KINDS, type FrameKind } from './sequence.ts'
 import type { ElementStatus, SelectionStatus } from './status.ts'
 
@@ -44,6 +45,7 @@ export type MenuCommand =
   | 'lock'
   | 'unlock'
   | StatusCommand
+  | PlanCommand
   | 'delete'
   | 'comment'
   | 'commentHere'
@@ -90,6 +92,18 @@ export const STATUS_COMMANDS: Record<StatusCommand, ElementStatus | null> = {
 }
 
 export const isStatusCommand = (command: MenuCommand): command is StatusCommand => command in STATUS_COMMANDS
+
+/** Items that mark the selection as what will appear, what will go, or what is (see `plan.ts`). */
+export type PlanCommand = 'planNone' | 'planAdded' | 'planRemoved'
+
+/** The mark each item of the plan sets; `null` takes it off. */
+export const PLAN_COMMANDS: Record<PlanCommand, Plan | null> = {
+  planNone: null,
+  planAdded: 'added',
+  planRemoved: 'removed',
+}
+
+export const isPlanCommand = (command: MenuCommand): command is PlanCommand => command in PLAN_COMMANDS
 
 /** A key combination; `Mod` is Ctrl, or Cmd on macOS. */
 export type Shortcut =
@@ -162,6 +176,8 @@ export interface MenuAvailability {
   canDetail?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
+  /** The marks of plan of the selected elements that may have one: the items of «Изменение» are offered, with it chosen. */
+  plan?: SelectionPlan | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
   canBranch?: boolean
   /** The single selected shape or table depends on others by its kind: «Зависимости» is offered. */
@@ -211,6 +227,7 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   'detachElement',
   'deleteElementEverywhere',
   'mergeElements',
+  ...(Object.keys(PLAN_COMMANDS) as PlanCommand[]),
 ])
 
 type Entry = [MenuCommand, string, Shortcut?]
@@ -258,6 +275,11 @@ const STATUS: Entry[] = [
   ['statusDone', 'Готово'],
   ['statusNone', 'Без статуса'],
 ]
+const PLAN: Entry[] = [
+  ['planNone', 'Есть'],
+  ['planAdded', 'Появится'],
+  ['planRemoved', 'Уйдёт'],
+]
 
 /** Groups of the menu of each target, in the order of the menu. */
 const MENUS: Record<MenuTarget, Entry[][]> = {
@@ -281,6 +303,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ORDER,
     LOCK,
     STATUS,
+    PLAN,
     [...LINK, DETAIL, PROPERTIES, DEPENDENCIES, ...SHARED],
     COMMENT,
     [DELETE, DELETE_EVERYWHERE],
@@ -292,6 +315,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ORDER,
     LOCK,
     STATUS,
+    PLAN,
     [...LINK, DEPENDENCIES],
     COMMENT,
     [DELETE],
@@ -314,9 +338,9 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     COMMENT,
     [['delete', 'Удалить индекс', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, LINK, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, COMMENT, [DELETE]],
   selection: [
     [
       ['group', 'Сгруппировать', 'Mod+G'],
@@ -328,6 +352,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ORDER,
     LOCK,
     STATUS,
+    PLAN,
     [DELETE],
   ],
   sequence: [
@@ -407,6 +432,7 @@ export function menuItems(
     canMergeElements = false,
     canDetail = false,
     status = null,
+    plan = null,
     canBranch = false,
     canShowDependencies = false,
     canShowPath = false,
@@ -440,6 +466,7 @@ export function menuItems(
     pathBetween: canShowPath,
     saveToLibrary: canSaveToLibrary,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
+    ...Object.fromEntries(Object.keys(PLAN_COMMANDS).map((command) => [command, plan !== null])),
   }
   const groups = MENUS[target]
     .map((group) =>
@@ -457,6 +484,14 @@ export function menuItems(
       }
       // The frames a message goes into are a group of their own.
       if (isFrameCommand(command)) return index === 0 ? { ...item, heading: 'Рамка' } : item
+      // What will appear and what will go are a choice too; nothing chosen is what is.
+      if (isPlanCommand(command)) {
+        return {
+          ...item,
+          ...(index === 0 && { heading: 'Изменение' }),
+          checked: plan !== null && !plan.mixed && PLAN_COMMANDS[command] === plan.value,
+        }
+      }
       if (!isStatusCommand(command)) return item
       // Different statuses choose none of them.
       return {

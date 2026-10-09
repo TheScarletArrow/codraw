@@ -38,6 +38,8 @@ const NO_EDITOR: EditorState = {
   edgeApi: null,
   stickies: null,
   status: null,
+  selectionPlan: null,
+  plan: { view: 'diff', added: 0, removed: 0 },
   properties: null,
   sequence: null,
   impact: null,

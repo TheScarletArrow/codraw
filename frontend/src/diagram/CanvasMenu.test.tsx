@@ -531,6 +531,20 @@ describe('CanvasMenu', () => {
     })
   })
 
+  it('marks the selection as what will appear or will go', async () => {
+    act(() => editor.setState({ selectionPlan: { value: null, mixed: false } }))
+    rightClick('edge')
+    const plans = within(screen.getByRole('menu')).getAllByRole('menuitemradio').filter((item) => ['Есть', 'Появится', 'Уйдёт'].includes(item.getAttribute('aria-label')!))
+    expect(plans.map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')])).toEqual([
+      ['Есть', 'true'],
+      ['Появится', 'false'],
+      ['Уйдёт', 'false'],
+    ])
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Появится' }))
+    expect(editor.setPlan).toHaveBeenCalledWith('added')
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   describe('detail of an element', () => {
     it('opens the page of detail that the editor finds or makes, for a viewer too', async () => {
       document.body.innerHTML = ''

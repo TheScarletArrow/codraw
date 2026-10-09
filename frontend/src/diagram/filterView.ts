@@ -1,5 +1,6 @@
 import { InternalEvent, type Cell, type Graph } from '@maxgraph/core'
 import { filterCounts, filteredOut, isFilterActive, type FilterRecord, type PageFilter } from './pageFilter.ts'
+import { cellVisibility, type CellVisibility } from './cellVisibility.ts'
 
 /**
  * The filter of a page on the canvas (see `pageFilter.ts`): a cell that does not match is drawn pale, a hook of the style
@@ -60,7 +61,11 @@ export interface FilterView {
  * The filter of the canvas of `graph`. Call before the hook of the theme, so that the theme sees the pale style. `onChange`
  * hears when what the filter does to the page changed.
  */
-export function configureFilter(graph: Graph, onChange: () => void): FilterView {
+export function configureFilter(
+  graph: Graph,
+  onChange: () => void,
+  visibility: CellVisibility = cellVisibility(),
+): FilterView {
   let current: PageFilter | null = null
   let out = new Set<string>()
   let hiding = false
@@ -95,9 +100,7 @@ export function configureFilter(graph: Graph, onChange: () => void): FilterView 
         const id = child.getId() ?? ''
         const was = out.has(id)
         const is = next.has(id)
-        const visible = !(hide && is)
-        if (child.isVisible() !== visible) {
-          child.setVisible(visible)
+        if (visibility.set(child, 'filter', hide && is)) {
           touched.push(child)
         } else if (was !== is || (is && hiding !== hide)) {
           touched.push(child)
