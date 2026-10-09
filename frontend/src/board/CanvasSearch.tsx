@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { sameMatch, searchCanvas, stepMatch, type CanvasMatch } from '../diagram/canvasSearch.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import type { PageInfo } from '../diagram/pages.ts'
+import { useEditorState } from '../diagram/useEditorState.ts'
 import { isModLetter } from '../lib/keyboard.ts'
 
 /** The shortest time between two searches of a board that others change: a drag gives dozens of changes a second. */
@@ -64,6 +65,9 @@ export function CanvasSearch({
   const input = useRef<HTMLInputElement>(null)
   const { matches, find } = useMatches(document, query, open)
   const index = current ? matches.findIndex((match) => sameMatch(match, current)) : -1
+  // What the filter of the canvas does to the current match, read again whenever the filter or the page changes.
+  const { filter } = useEditorState(editor)
+  const filtered = filter && current && editor?.pageId === current.pageId ? editor.filterStatus(current.cellId) : null
   const pageIds = pages.map((page) => page.id)
 
   useEffect(() => {
@@ -127,7 +131,7 @@ export function CanvasSearch({
     : matches.length === 0
       ? 'Нет совпадений'
       : index >= 0
-        ? `${index + 1} из ${matches.length}`
+        ? `${index + 1} из ${matches.length}${filtered === 'hidden' ? ' · скрыто фильтром' : filtered === 'dimmed' ? ' · приглушено фильтром' : ''}`
         : matchCount(matches.length)
 
   return (

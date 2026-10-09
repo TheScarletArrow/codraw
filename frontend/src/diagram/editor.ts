@@ -130,6 +130,9 @@ import {
   type StoredImage,
 } from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
+import { impactNode, type ImpactDepth } from './impact.ts'
+import { configureImpact, modelImpactRecords, type ImpactState } from './impactView.ts'
+import { configureFilter, modelFilterRecords, type FilterStatus } from './filterView.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import {
   DEFAULT_END_ARROW,
@@ -159,6 +162,7 @@ import {
   unlockCopy,
 } from './locks.ts'
 import { sketchPage, type PageSketch } from './minimap.ts'
+import { filterChoices, isFilterActive, type FilterChoices, type PageFilter } from './pageFilter.ts'
 import { sequenceMermaid as mermaidOfSequence } from '../mermaid/sequenceMermaid.ts'
 import {
   ACTIVATE_KEY,
@@ -729,6 +733,10 @@ export interface EditorState {
   properties: SelectionProperties | null
   /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
   sequence: SelectedSequence | null
+  /** The impact analysis the canvas shows, `null` without one; see {@link DiagramEditor.showDependencies}. */
+  impact: ImpactState | null
+  /** The filter of the page while it chooses something: how many elements match, of how many, and whether it hides. */
+  filter: { matched: number; total: number; hide: boolean } | null
   /** The clipboard of the browser tab holds copied cells: «Вставить как тот же элемент» pastes them. */
   canPasteAsSameElement: boolean
   /** The selection has shapes of at least two elements, or of shapes that are no elements yet, that may be merged. */
@@ -972,7 +980,33 @@ export interface DiagramEditor {
    * Draws the page, or with `selectionOnly` what {@link copy} would take, into an SVG image at 100%, in the colors of the
    * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
-  exportSvg(options?: SvgOptions & { selectionOnly?: boolean }): ExportedImage | null
+  exportSvg(options?: SvgOptions & { selectionOnly?: boolean; onlyVisible?: boolean }): ExportedImage | null
+  /**
+   * Shows what the element of the cell `cellId` depends on and what depends on it, up to `depth` steps (see
+   * `impact.ts`), on this canvas only: they are outlined in their colors and everything else is pale. `false` for a cell
+   * that depends on nothing by its kind, e.g. an edge.
+   */
+  showDependencies(cellId: string, depth?: ImpactDepth): boolean
+  /** Shows the shortest paths between the cells `from` and `to`, or between the two selected shapes, on this canvas only. */
+  showPathBetween(from?: string, to?: string): boolean
+  /** Ends the impact analysis of the canvas. */
+  clearImpact(): void
+  /** The cell is an element whose dependencies the analysis shows: a shape, a table, a field of a table. */
+  canAnalyze(cellId: string): boolean
+  /** Two shapes are selected whose paths the analysis shows. */
+  canShowPath(): boolean
+  /**
+   * Shows the page through `filter` (see `pageFilter.ts`): what does not match drawn pale, or not at all when it hides.
+   * Only this editor changes, not the document; `null`, or a filter that chooses nothing, shows everything. While a
+   * filter is on, an image of {@link exportSvg} has the page without it, or with `onlyVisible` only what matches.
+   */
+  setFilter(filter: PageFilter | null): void
+  /** The filter the page is shown through, `null` without one. */
+  currentFilter(): PageFilter | null
+  /** The values the facets of the filter offer on the page, with those `filter` chose; see `filterChoices`. */
+  filterChoices(filter?: PageFilter | null): FilterChoices
+  /** What the filter does to the cell `cellId`: drawn pale, hidden, or nothing. */
+  filterStatus(cellId: string): FilterStatus
   /** Reports right clicks on the canvas; returns an unsubscribe function. */
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
@@ -1107,6 +1141,12 @@ export interface DiagramEditor {
    * element with the properties of the element of the cell `keepCellId`, as one undo step; their labels follow.
    */
   mergeElements(keepCellId: string): void
+  /**
+   * Makes the shapes `refs` of any pages that may be elements, and all the cells of their elements on all pages, cells of
+   * one element with the properties of the element of `keep`, as one undo step of this page: e.g. probable duplicates
+   * that the checks found. Locked shapes stay out. Returns whether they were merged.
+   */
+  mergeElementCells(refs: readonly CellRef[], keep: CellRef): boolean
   /**
    * What «Детализировать» does for the shape `cellId` (see `detail.ts`): opens its page of detail, makes one — for who
    * edits the board, when the shape is not locked — or nothing.
@@ -1611,6 +1651,11 @@ export function createDiagramEditor(
   const unconfigureLegends = configureLegends(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
+  // Before the theme, so that the theme sees the colors of the analysis and the pale style of what does not match.
+  let impactChanged = () => {}
+  const impactView = configureImpact(graph, () => impactChanged())
+  let filterChanged = () => {}
+  const filterView = configureFilter(graph, () => filterChanged())
   configureCanvasTheme(graph, () => theme)
   const unwatchTableRows = watchTableRows(graph)
   configureConnections(graph)
@@ -2077,6 +2122,12 @@ export function createDiagramEditor(
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
     if (!cell || !isLinkable(cell)) return null
     return { cellId: cell.getId()!, link: linkOf(cell.getStyle()), canChange: !readOnly && isUnlocked(cell) }
+  }
+  /** The filter of the page while it chooses something; see {@link EditorState.filter}. */
+  const filterState = (): EditorState['filter'] => {
+    const counts = filterView.counts()
+    const filter = filterView.filter()
+    return counts && filter ? { ...counts, hide: filter.hide } : null
   }
   /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
   const selectionProperties = (): SelectionProperties | null => {
@@ -2603,6 +2654,8 @@ export function createDiagramEditor(
       status: selectionStatus(),
       properties: selectionProperties(),
       sequence: selectionSequence(),
+      impact: impactView.state(),
+      filter: filterState(),
       canPasteAsSameElement: !readOnly && clipboard.read() !== null,
       canMergeElements: !readOnly && selectedElements().length >= 2,
       layers: layerStates(),
@@ -3110,6 +3163,29 @@ export function createDiagramEditor(
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
   model.addListener(InternalEvent.CHANGE, notifyView)
   cells.observeDeep(handleTextAuthors)
+  // The analysis, and what the filter shows, are changes of the drawing and of the state that tells them.
+  impactChanged = () => {
+    drawingVersion++
+    notify()
+    notifyView()
+  }
+  filterChanged = impactChanged
+  /** The cell stands for an element whose dependencies the analysis shows: a shape that may be an element, a table or its field. */
+  const analysable = (records: ReturnType<typeof modelImpactRecords>, cellId: string) => {
+    const node = impactNode(records, cellId)
+    const cell = node === null ? null : model.getCell(node)
+    return !!cell && (isTable(cell) || propertiesTarget(cell) === 'shape')
+  }
+  /** The two selected cells whose paths the analysis would show: two different elements. */
+  const pathEnds = (): [string, string] | null => {
+    const selected = graph.getSelectionCells()
+    if (selected.length !== 2) return null
+    const records = modelImpactRecords(graph)
+    const ids = selected.map((cell) => cell.getId()!)
+    if (!ids.every((id) => analysable(records, id))) return null
+    const [a, b] = ids.map((id) => impactNode(records, id))
+    return a !== b ? [ids[0]!, ids[1]!] : null
+  }
 
   const listen = <T>(set: Set<T>, listener: T) => {
     set.add(listener)
@@ -3377,6 +3453,25 @@ export function createDiagramEditor(
     Array.from(cells.entries())
       .filter(([, cell]) => cellElementId(cell) === id)
       .map(([cellId]) => cellId)
+  /** Merges the elements of the shapes `refs` into the element of `keep` as one undo step; whether they were merged. */
+  const mergeCells = (refs: readonly CellRef[], keep: CellRef): boolean => {
+    graph.stopEditing(false)
+    let target: string | null = null
+    document.transact(() => {
+      const merged = mergeDocumentElements(document, refs, keep)
+      if (!merged) return
+      target = merged.id
+      if (!author) return
+      const at = Date.now()
+      for (const ref of [keep, ...merged.cells]) {
+        const entry = getCells(document, ref.pageId).get(ref.cellId)
+        if (entry) writeAttribution(entry, author, at)
+      }
+    }, origin)
+    if (target === null) return false
+    binding.refresh(cellsOfElement(target))
+    return true
+  }
   /** Adds image shapes of stored images in a row whose middle is at `center`, as one change, and selects them. */
   const insertImages = (stored: StoredImage[], center: Point) => {
     const sizes = stored.map((image) => fittedImageSize(image.width, image.height))
@@ -3433,6 +3528,38 @@ export function createDiagramEditor(
   }
   /** Selected cells without table fields and parts of sequence diagrams: their layouts, not the user, order them. */
   const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
+
+  /**
+   * The image of {@link DiagramEditor.exportSvg} as the page is drawn now: with `onlyVisible` only the cells drawn, which
+   * the image names then as it names a selection.
+   */
+  const drawImage = (selectionOnly: boolean, options: SvgOptions): ExportedImage | null => {
+    const copied = selectionOnly ? new Set(cellsToCopy()) : null
+    // In the order of the page, so that what lies on top on the canvas lies on top in the image: what this canvas shows,
+    // without the layers hidden on it, what the filter hides and the edges that end in them.
+    const graphView = graph.getView()
+    const children = pageChildren()
+    const cells = children.filter((cell) => graphView.getState(cell) && (!copied || copied.has(cell)))
+    if (copied && cells.length === 0) return null
+    // The diagram of an image has what the image draws: the whole page, unless something of it is not drawn.
+    const named = copied !== null || cells.length < children.length
+    // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
+    // participant never sees.
+    const shown = theme
+    if (shown !== 'light') {
+      theme = 'light'
+      restyle(graph)
+    }
+    try {
+      const image = renderSvg(graph, cells, options)
+      return image && { ...image, cellIds: named ? cells.flatMap((cell) => cell.getId() ?? []) : null }
+    } finally {
+      if (shown !== 'light') {
+        theme = shown
+        restyle(graph)
+      }
+    }
+  }
 
   const editor: DiagramEditor = {
     graph,
@@ -4204,32 +4331,46 @@ export function createDiagramEditor(
       theme = next
       restyle(graph)
     },
-    exportSvg({ selectionOnly = false, ...options } = {}) {
-      const copied = selectionOnly ? new Set(cellsToCopy()) : null
-      // In the order of the page, so that what lies on top on the canvas lies on top in the image: what this canvas shows,
-      // without the layers hidden on it and the edges that end in them.
-      const graphView = graph.getView()
-      const children = pageChildren()
-      const cells = children.filter((cell) => graphView.getState(cell) && (!copied || copied.has(cell)))
-      if (copied && cells.length === 0) return null
-      // The diagram of an image has what the image draws: the whole page, unless something of it is not drawn.
-      const drawn = copied !== null || cells.length < children.length ? cells.flatMap((cell) => cell.getId() ?? []) : null
-      // The image has the colors of the diagram: the page is drawn light for it and back in one task, which the
-      // participant never sees.
-      const shown = theme
-      if (shown !== 'light') {
-        theme = 'light'
-        restyle(graph)
-      }
-      try {
-        const image = renderSvg(graph, cells, options)
-        return image && { ...image, cellIds: drawn }
-      } finally {
-        if (shown !== 'light') {
-          theme = shown
-          restyle(graph)
-        }
-      }
+    exportSvg({ selectionOnly = false, onlyVisible = false, ...options } = {}) {
+      // The analysis is of this canvas: the image has the page without it. With a filter, the image has only what
+      // matches, or the page without the filter.
+      return impactView.drawn(() => filterView.drawn(onlyVisible ? 'hidden' : 'unfiltered', () => drawImage(selectionOnly, options)))
+    },
+    showDependencies(cellId, depth = 1) {
+      if (destroyed) return false
+      impactView.set({ mode: 'dependencies', cellId, depth })
+      return impactView.state() !== null
+    },
+    showPathBetween(from, to) {
+      if (destroyed) return false
+      const ends: [string, string] | null = from && to ? [from, to] : pathEnds()
+      if (!ends) return false
+      impactView.set({ mode: 'path', from: ends[0], to: ends[1] })
+      return impactView.state() !== null
+    },
+    clearImpact() {
+      if (impactView.state()) impactView.set(null)
+    },
+    canAnalyze(cellId) {
+      return analysable(modelImpactRecords(graph), cellId)
+    },
+    canShowPath() {
+      return pathEnds() !== null
+    },
+    setFilter(filter) {
+      if (destroyed) return
+      graph.stopEditing(false)
+      filterView.set(isFilterActive(filter) ? filter : null)
+      // A hidden cell is not selected.
+      graph.setSelectionCells(graph.getSelectionCells().filter((cell) => cell.isVisible()))
+    },
+    currentFilter: () => filterView.filter(),
+    filterChoices(filter) {
+      return filterChoices(modelFilterRecords(graph), filter ?? filterView.filter() ?? undefined)
+    },
+    filterStatus(cellId) {
+      const cell = model.getCell(cellId)
+      return cell ? filterView.status(cell) : null
     },
     focus() {
       if (!graph.isEditing()) container.focus({ preventScroll: true })
@@ -4661,20 +4802,16 @@ export function createDiagramEditor(
       if (readOnly || destroyed || selectedElements().length < 2) return
       const refs = mergeableCells().map((cell) => ({ pageId, cellId: cell.getId()! }))
       if (!refs.some((ref) => ref.cellId === keepCellId)) return
-      graph.stopEditing(false)
-      let target: string | null = null
-      document.transact(() => {
-        const merged = mergeDocumentElements(document, refs, { pageId, cellId: keepCellId })
-        if (!merged) return
-        target = merged.id
-        if (!author) return
-        const at = Date.now()
-        for (const ref of [{ pageId, cellId: keepCellId }, ...merged.cells]) {
-          const entry = getCells(document, ref.pageId).get(ref.cellId)
-          if (entry) writeAttribution(entry, author, at)
-        }
-      }, origin)
-      if (target !== null) binding.refresh(cellsOfElement(target))
+      mergeCells(refs, { pageId, cellId: keepCellId })
+    },
+    mergeElementCells(refs, keep) {
+      if (readOnly || destroyed) return false
+      const usable = refs.filter((ref) => {
+        const pageCells = getCells(document, ref.pageId)
+        return mayBeElement(pageCells, ref.cellId) && !isLockedCell(pageCells, ref.cellId)
+      })
+      if (usable.length < 2 || !usable.some((ref) => ref.pageId === keep.pageId && ref.cellId === keep.cellId)) return false
+      return mergeCells(usable, keep)
     },
     detailOffer(cellId) {
       return detailOffer(cellId)
@@ -4752,7 +4889,9 @@ export function createDiagramEditor(
       }
     },
     pageSketch() {
-      if (sketch?.version !== drawingVersion) sketch = { version: drawingVersion, sketch: sketchPage(graph) }
+      if (sketch?.version !== drawingVersion) {
+        sketch = { version: drawingVersion, sketch: sketchPage(graph, (cell) => filterView.status(cell) !== null) }
+      }
       return sketch.sketch
     },
     centerOn({ x, y }) {
@@ -4886,6 +5025,8 @@ export function createDiagramEditor(
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
+      impactView.destroy()
+      filterView.destroy()
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)

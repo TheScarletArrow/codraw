@@ -85,6 +85,8 @@ const COMMANDS: Record<
   unlock: (editor) => editor.setLocked(false),
   delete: (editor) => editor.deleteSelection(),
   detachElement: (editor, { cellId }) => cellId && editor.detachElement(cellId),
+  dependencies: (editor, { cellId }) => cellId && editor.showDependencies(cellId),
+  pathBetween: (editor) => editor.showPathBetween(),
 }
 
 /**
@@ -175,6 +177,8 @@ export function CanvasMenu({
             canShowProperties,
             canShowWhereUsed,
             canDetail,
+            canShowDependencies: next.cellId !== null && editor.canAnalyze(next.cellId),
+            canShowPath: next.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,
           }).length === 0
         ) {
@@ -312,6 +316,8 @@ export function CanvasMenu({
             canDetail: onDetail !== undefined && request.cellId !== null && editor.detailOffer(request.cellId) !== null,
             status,
             canBranch: canBranch(sequence?.part ?? null),
+            canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),
+            canShowPath: request.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined

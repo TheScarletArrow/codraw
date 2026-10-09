@@ -37,6 +37,8 @@ import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
 import { lockLabel } from './locks.ts'
 import { NumberField } from './NumberField.tsx'
+import { FilterPicker } from './FilterPicker.tsx'
+import type { PageFilter } from './pageFilter.ts'
 import { SequenceTools } from './SequenceTools.tsx'
 import { TableTools } from './TableTools.tsx'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from './textSize.ts'
@@ -48,9 +50,12 @@ interface EditorToolbarProps {
   readOnly?: boolean
   /** The page works on a board with others: the laser pointer and the comment tool are shown. */
   collaboration?: boolean
+  /** The filter of the page and how it changes; without them the toolbar has no «Фильтр». */
+  filter?: PageFilter
+  onFilterChange?: (filter: PageFilter) => void
 }
 
-export function EditorToolbar({ editor, readOnly = false, collaboration = true }: EditorToolbarProps) {
+export function EditorToolbar({ editor, readOnly = false, collaboration = true, filter, onFilterChange }: EditorToolbarProps) {
   const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
 
   return (
@@ -127,6 +132,7 @@ export function EditorToolbar({ editor, readOnly = false, collaboration = true }
       >
         <Maximize />
       </Button>
+      {filter && onFilterChange && <FilterPicker editor={editor} filter={filter} onChange={onFilterChange} />}
       {collaboration && (
         <>
           <Button
