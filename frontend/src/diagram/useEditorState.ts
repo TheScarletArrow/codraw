@@ -11,6 +11,7 @@ const NO_EDITOR: EditorState = {
   field: null,
   index: null,
   tableBase: null,
+  tableView: null,
   edgeMarkers: null,
   colors: null,
   line: null,

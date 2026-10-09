@@ -48,6 +48,14 @@ describe('menuItems', () => {
     ])
   })
 
+  it('offers no index for a view that is not materialized, nor below an index of one', () => {
+    const offered = (target: 'table' | 'index') =>
+      menuItems(target, { canPaste: false, canUndo: false, canRedo: false, canAddIndex: false }).map((item) => item.command)
+    expect(offered('table')).toContain('addField')
+    expect(offered('table')).not.toContain('addIndex')
+    expect(offered('index')).not.toContain('addIndex')
+  })
+
   it('offers only editing, a new field, the look and deletion for a field', () => {
     expect(labels('field')).toEqual(['Изменить', 'Добавить поле ниже', 'Копировать стиль', 'Вставить стиль', 'Удалить поле'])
   })

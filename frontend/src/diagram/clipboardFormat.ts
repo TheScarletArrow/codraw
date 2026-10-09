@@ -35,9 +35,9 @@ export function cellsXml(cells: Cell[]): string {
 const DIAGRAM_ATTRIBUTE = 'data-codraw'
 
 /**
- * What copied cells put into the clipboard of the system. Tables alone, with their edges, are SQL for other programs:
- * the text is their DDL, and the HTML is the same DDL with the cells in {@link DIAGRAM_ATTRIBUTE}, which CoDraw pastes.
- * Anything else, and base tables alone, which have no DDL, are the text of {@link clipboardText} without HTML.
+ * What copied cells put into the clipboard of the system. Tables and views alone, with their edges, are SQL for other
+ * programs: the text is their DDL, and the HTML is the same DDL with the cells in {@link DIAGRAM_ATTRIBUTE}, which CoDraw
+ * pastes. Anything else, and base tables alone, which have no DDL, are the text of {@link clipboardText} without HTML.
  */
 export function clipboardContent(cells: Cell[]): { text: string; html: string | null } {
   const data = clipboardData(cells)
@@ -45,7 +45,7 @@ export function clipboardContent(cells: Cell[]): { text: string; html: string | 
   const shapes = data.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')
   const tablesOnly = shapes.length > 0 && shapes.every((cell) => isTableStyle(cell.style as ShapeStyle))
   const schema = tablesOnly ? diagramSchema(data) : null
-  if (!schema || schema.tables.length === 0) return { text: diagram, html: null }
+  if (!schema || schema.tables.length + schema.views.length === 0) return { text: diagram, html: null }
   const sql = schemaSql(schema)
   const escaped = sql.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
   return { text: sql, html: `<meta charset="utf-8"><pre ${DIAGRAM_ATTRIBUTE}="${diagram}">${escaped}</pre>` }
@@ -87,7 +87,7 @@ function clipboardData(cells: Cell[]): CellData[] {
 /**
  * Reads the clipboard: cells that CoDraw put into its HTML, or its text. A `<mxGraphModel>` or `<mxfile>` of draw.io or
  * CoDraw, encoded or not, becomes cells (of the first page of a file) with their children inside them and edges
- * connected to their ends; a flowchart or an ER diagram of Mermaid, and DDL with tables, become a laid out diagram; any
+ * connected to their ends; a flowchart or an ER diagram of Mermaid, and DDL with tables or views, become a laid out diagram; any
  * other text that is not empty becomes text without spaces at its ends. `null` when there is nothing to paste.
  */
 export async function readClipboardText(text: string, html = ''): Promise<ClipboardContent | null> {
@@ -108,7 +108,7 @@ export async function readClipboardText(text: string, html = ''): Promise<Clipbo
     }
   }
   const schema = parseSql(trimmed)
-  if (schema.tables.length > 0) return { kind: 'diagram', cells: dataToCells(await schemaCells(schema, { x: 0, y: 0 })) }
+  if (schema.tables.length + schema.views.length > 0) return { kind: 'diagram', cells: dataToCells(await schemaCells(schema, { x: 0, y: 0 })) }
   return { kind: 'text', text: trimmed }
 }
 

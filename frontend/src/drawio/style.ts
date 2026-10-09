@@ -3,6 +3,7 @@ import { INTERACTION_KEY } from '../diagram/elementKinds.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
 import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, HIDDEN_LAYER_KEY, OWN_LINES_KEY, type StyleValue } from '../diagram/model.ts'
+import { VIEW_QUERY_KEY } from '../diagram/views.ts'
 
 export type Style = Record<string, StyleValue>
 /** What a style is of: a layer has none of the defaults of shapes and edges. */
@@ -28,6 +29,8 @@ const BOOLEAN_KEYS = new Set([
   'codrawLegendPart',
   'codrawSeqNumbers',
   'codrawShowTechnology',
+  'codrawView',
+  'codrawViewMaterialized',
   'connectable',
   'curved',
   'dashed',
@@ -172,8 +175,9 @@ const BOARD_KEYS = new Set([LOCKED_BY_KEY, OWN_LINES_KEY])
 
 /**
  * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its
- * style: the link, the description of the call of an edge, the element of a cell and the properties of elements and
- * edges (see `drawio/serialize.ts`), and a layer hidden for everybody as `visible="0"` of the layer itself.
+ * style: the link, the description of the call of an edge, the element of a cell, the properties of elements and
+ * edges and the query of a view (see `drawio/serialize.ts`), and a layer hidden for everybody as `visible="0"` of the
+ * layer itself.
  */
 const ATTRIBUTE_KEYS = new Set([
   LINK_KEY,
@@ -181,6 +185,7 @@ const ATTRIBUTE_KEYS = new Set([
   ELEMENT_KEY,
   ...Object.values(ELEMENT_STYLE_KEYS),
   INTERACTION_KEY,
+  VIEW_QUERY_KEY,
   HIDDEN_LAYER_KEY,
 ])
 

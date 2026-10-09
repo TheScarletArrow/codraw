@@ -1,5 +1,6 @@
 import { isServiceStatement } from './statementKinds.ts'
 import { defaultIndexName, indexColumnNames, renameIndexColumn, tokenEnd, writtenName } from './tableIndex.ts'
+import { readViewQuery } from './viewQuery.ts'
 
 /** A column of a table, as DDL declares it. */
 export interface SqlColumn {
@@ -41,11 +42,26 @@ export interface SqlTable {
   indexes: SqlIndex[]
 }
 
-/** Tables of a database, in the order DDL creates them. */
+/** A view of a database: a query that the database runs whenever it is read, or whose rows it keeps (materialized). */
+export interface SqlView {
+  name: string
+  /** Columns with names and types only: a view has no keys. */
+  columns: SqlColumn[]
+  /** The query after `AS`, as written, without `WITH [NO] DATA` of a materialized view and without the final `;`. */
+  query: string
+  materialized: boolean
+  /** Indexes of a materialized view. */
+  indexes: SqlIndex[]
+  /** Names of the tables and views that the query reads, in the order it names them. */
+  dependencies: string[]
+}
+
+/** Tables and views of a database, each in the order DDL creates them. */
 export interface SqlSchema {
   tables: SqlTable[]
+  views: SqlView[]
   /**
-   * Statements about what is not drawn, e.g. `CREATE VIEW` or `CREATE FUNCTION`, and those not understood; not those
+   * Statements about what is not drawn, e.g. `CREATE FUNCTION` or `CREATE TRIGGER`, and those not understood; not those
    * that describe no table, e.g. `SET` or `INSERT`.
    */
   skipped: number
@@ -86,7 +102,8 @@ const copiesFromStdin = (statement: Token[]) =>
  *
  * A `script` is a file or a text of statements, e.g. a dump: its statements end with `end` tokens, and it may have what
  * clients of databases read rather than the server — lines of meta-commands of psql (`\restrict …`, `\connect …`),
- * `DELIMITER` of the MySQL client and the data of `COPY … FROM stdin` up to `\.`, which are left out.
+ * `DELIMITER` of the MySQL client and the data of `COPY … FROM stdin` up to `\.`, which are left out — and executable
+ * comments of MySQL (`/*!50001 CREATE VIEW … *\/`), whose text MySQL runs, so that a script reads it as statements.
  */
 export function tokenize(sql: string, { script = false }: { script?: boolean } = {}): Token[] {
   const tokens: Token[] = []
@@ -94,6 +111,8 @@ export function tokenize(sql: string, { script = false }: { script?: boolean } =
   let delimiter = ';'
   // Where the tokens of the statement being read start.
   let statementStart = 0
+  // Inside `/*!NNNNN … */` of MySQL, which its `*/` ends.
+  let executable = false
   const match = (pattern: RegExp) => {
     pattern.lastIndex = at
     return pattern.exec(sql)
@@ -125,6 +144,14 @@ export function tokenize(sql: string, { script = false }: { script?: boolean } =
       skipLine()
     } else if (sql.startsWith('--', at)) {
       skipLine()
+    } else if (script && !executable && sql.startsWith('/*!', at)) {
+      // MySQL runs the text after the version it needs; `/*M!` of MariaDB stays a comment.
+      at += 3
+      while (at < sql.length && /\d/.test(sql[at]!)) at++
+      executable = true
+    } else if (executable && sql.startsWith('*/', at)) {
+      at += 2
+      executable = false
     } else if (sql.startsWith('/*', at)) {
       const end = sql.indexOf('*/', at + 2)
       at = end === -1 ? sql.length : end + 2
@@ -371,6 +398,21 @@ function findTable(schema: SqlSchema, name: string): SqlTable | undefined {
   return schema.tables.find((table) => table.name === name)
 }
 
+function findView(schema: SqlSchema, name: string): SqlView | undefined {
+  return schema.views.find((view) => view.name === name)
+}
+
+/** What has indexes: a table, or a materialized view. */
+type Indexed = Pick<SqlTable, 'name' | 'indexes'>
+
+/** The table or the materialized view of the name, whose indexes an index of that name joins. */
+function findIndexed(schema: SqlSchema, name: string): Indexed | undefined {
+  return findTable(schema, name) ?? schema.views.find((view) => view.materialized && view.name === name)
+}
+
+/** Tables and materialized views, whose indexes a name of an index may name. */
+const indexedOf = (schema: SqlSchema): Indexed[] => [...schema.tables, ...schema.views.filter((view) => view.materialized)]
+
 /**
  * Names of the partitions of tables of each schema being parsed: a partition is part of its table, not a table of its
  * own, and statements of dumps about it are not skipped. Kept beside the schema, since migrations are parsed into it
@@ -435,7 +477,7 @@ function tableConstraint(table: SqlTable, tokens: Token[]) {
 }
 
 /** Adds an index to the table, with the name PostgreSQL would give it when it has none; it replaces one of its name. */
-function addIndex(table: SqlTable, name: string | null, columns: string, unique: boolean, suffix: 'idx' | 'key', method = '', rest = '') {
+function addIndex(table: Indexed, name: string | null, columns: string, unique: boolean, suffix: 'idx' | 'key', method = '', rest = '') {
   const index: SqlIndex = { name: name ?? defaultIndexName(table.name, columns, suffix), columns, unique, method, rest }
   table.indexes = table.indexes.filter((existing) => existing.name !== index.name)
   table.indexes.push(index)
@@ -478,6 +520,9 @@ function alterTable(schema: SqlSchema, reader: Reader): boolean {
   reader.take('ONLY')
   const name = reader.name()
   const table = name === null ? undefined : findTable(schema, name)
+  // PostgreSQL renames a view with `ALTER TABLE` too.
+  const view = name === null || table ? undefined : findView(schema, name)
+  if (view) return alterViewActions(schema, view, reader)
   if (!table) return name !== null && partitions(schema).has(name)
   while (!reader.done) {
     const action = new Reader(reader.element())
@@ -549,7 +594,13 @@ function renameTable(schema: SqlSchema, table: SqlTable, name: string) {
   for (const other of schema.tables) {
     for (const foreignKey of other.foreignKeys) if (foreignKey.table === table.name) foreignKey.table = name
   }
+  renameDependency(schema, table.name, name)
   table.name = name
+}
+
+/** The views that read the relation `from` read it as `to`: a database follows the rename, the text of a query not. */
+function renameDependency(schema: SqlSchema, from: string, to: string) {
+  for (const view of schema.views) view.dependencies = view.dependencies.map((name) => (name === from ? to : name))
 }
 
 function renameColumn(schema: SqlSchema, table: SqlTable, from: string, to: string) {
@@ -579,7 +630,7 @@ function createIndex(schema: SqlSchema, reader: Reader, unique: boolean, sql: st
   if (!reader.take('ON')) return false
   reader.take('ONLY')
   const tableName = reader.name()
-  const table = tableName === null ? undefined : findTable(schema, tableName)
+  const table = tableName === null ? undefined : findIndexed(schema, tableName)
   // An index of a partition is part of an index of its table.
   if (!table) return tableName !== null && partitions(schema).has(tableName)
   const method = reader.take('USING') ? (reader.next()?.text ?? '') : ''
@@ -605,7 +656,7 @@ function dropIndexes(schema: SqlSchema, reader: Reader): boolean {
     const name = reader.name()
     if (name !== null) names.add(name)
   } while (reader.take(','))
-  for (const table of schema.tables) table.indexes = table.indexes.filter((index) => !names.has(index.name))
+  for (const table of indexedOf(schema)) table.indexes = table.indexes.filter((index) => !names.has(index.name))
   return names.size > 0
 }
 
@@ -617,7 +668,7 @@ function alterIndex(schema: SqlSchema, reader: Reader): boolean {
   if (name === null || !reader.take('RENAME', 'TO')) return false
   const renamed = reader.name()
   if (renamed === null) return false
-  for (const table of schema.tables) {
+  for (const table of indexedOf(schema)) {
     for (const index of table.indexes) if (index.name === name) index.name = renamed
   }
   return true
@@ -640,6 +691,109 @@ function dropTables(schema: SqlSchema, reader: Reader): boolean {
   return names.size > 0
 }
 
+/**
+ * What may stand between `CREATE [OR REPLACE]` and `VIEW`: `RECURSIVE` of PostgreSQL, `ALGORITHM = …`, `DEFINER = …`
+ * and `SQL SECURITY …` of MySQL, `FORCE` and `EDITIONABLE` of Oracle.
+ */
+function skipViewOptions(reader: Reader) {
+  for (;;) {
+    if (['RECURSIVE', 'FORCE', 'NOFORCE', 'EDITIONABLE', 'NONEDITIONABLE'].some((word) => reader.take(word))) continue
+    if (reader.take('ALGORITHM')) {
+      reader.take('=')
+      reader.next()
+    } else if (reader.take('DEFINER')) {
+      reader.take('=')
+      // `user`@`host`, 'user'@'%' or CURRENT_USER[()].
+      reader.next()
+      if (reader.take('(')) reader.take(')')
+      if (reader.take('@')) reader.next()
+    } else if (reader.take('SQL', 'SECURITY')) {
+      reader.next()
+    } else {
+      return
+    }
+  }
+}
+
+/**
+ * `VIEW [IF NOT EXISTS] name [(columns)] [WITH (…)] [USING …] [TABLESPACE …] AS query`: a view with the columns its
+ * query gives, named by the list when it has one, and the query as written in `sql`.
+ */
+function createView(schema: SqlSchema, reader: Reader, materialized: boolean, sql: string): boolean {
+  reader.take('IF', 'NOT', 'EXISTS')
+  const name = reader.name()
+  if (name === null) return false
+  const names = reader.names()
+  while (!reader.done && !reader.sees('AS')) {
+    if (reader.sees('(')) reader.skipGroup()
+    else reader.next()
+  }
+  if (!reader.take('AS')) return false
+  const query = rest(reader)
+  // `WITH [NO] DATA` tells whether to fill a materialized view now, not what it is.
+  const data = query.length - (query.at(-2)?.value === 'NO' ? 3 : 2)
+  if (materialized && query[data]?.value === 'WITH' && query.at(-1)?.value === 'DATA') query.splice(data)
+  if (query.length === 0) return false
+  const relation = (relation: string) => (findTable(schema, relation) ?? findView(schema, relation))?.columns ?? null
+  const read = readViewQuery(query, relation)
+  const columns = read.columns.map((column, index) => ({
+    name: names[index] ?? column.name,
+    type: column.type,
+    notNull: false,
+    primaryKey: false,
+    unique: false,
+  }))
+  // A name the query reads that is neither a table nor a view, e.g. a column of `EXTRACT(… FROM column)`, is not one.
+  const dependencies = read.dependencies.filter((dependency) => dependency !== name && relation(dependency) !== null)
+  const text = sql.slice(query[0]!.start, tokenEnd(query.at(-1)!, sql)).trim()
+  schema.views = schema.views.filter((view) => view.name !== name)
+  schema.views.push({ name, columns, query: text, materialized, indexes: [], dependencies })
+  return true
+}
+
+/** `ALTER [MATERIALIZED] VIEW [IF EXISTS] name …` of a view of the schema. */
+function alterView(schema: SqlSchema, reader: Reader): boolean {
+  reader.take('IF', 'EXISTS')
+  const name = reader.name()
+  const view = name === null ? undefined : findView(schema, name)
+  return view ? alterViewActions(schema, view, reader) : false
+}
+
+/** Renames the view or its columns; other changes of a view, e.g. of its options or schema, change nothing drawn. */
+function alterViewActions(schema: SqlSchema, view: SqlView, reader: Reader): boolean {
+  if (!reader.take('RENAME')) return true
+  if (reader.take('TO')) {
+    const renamed = reader.name()
+    if (renamed !== null) {
+      renameDependency(schema, view.name, renamed)
+      view.name = renamed
+    }
+    return true
+  }
+  reader.take('COLUMN')
+  const from = reader.identifier()
+  reader.take('TO')
+  const to = reader.identifier()
+  const column = view.columns.find((candidate) => candidate.name === from)
+  if (column && from !== null && to !== null) {
+    column.name = to
+    for (const index of view.indexes) index.columns = renameIndexColumn(index.columns, from, writtenName(to))
+  }
+  return true
+}
+
+/** `DROP [MATERIALIZED] VIEW [IF EXISTS] a, b [CASCADE]`. */
+function dropViews(schema: SqlSchema, reader: Reader): boolean {
+  reader.take('IF', 'EXISTS')
+  const names = new Set<string>()
+  do {
+    const name = reader.name()
+    if (name !== null) names.add(name)
+  } while (reader.take(','))
+  schema.views = schema.views.filter((view) => !names.has(view.name))
+  return names.size > 0
+}
+
 function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
   const reader = new Reader(tokens)
   if (reader.take('CREATE')) {
@@ -648,7 +802,10 @@ function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
     if (reader.take('INDEX')) return createIndex(schema, reader, unique, sql)
     if (unique) return false
     for (const word of ['GLOBAL', 'LOCAL', 'TEMPORARY', 'TEMP', 'UNLOGGED']) reader.take(word)
-    if (!reader.take('TABLE')) return false
+    skipViewOptions(reader)
+    const materialized = reader.take('MATERIALIZED')
+    if (reader.take('VIEW')) return createView(schema, reader, materialized, sql)
+    if (materialized || !reader.take('TABLE')) return false
     // `CREATE TABLE … AS SELECT` copies the rows of a query: it is not drawn.
     const parenthesis = tokens.findIndex((token) => token.kind === 'symbol' && token.value === '(')
     const as = tokens.findIndex((token) => token.kind === 'word' && token.value === 'AS')
@@ -659,16 +816,18 @@ function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
   if (reader.take('DROP', 'TABLE')) return dropTables(schema, reader)
   if (reader.take('ALTER', 'INDEX')) return alterIndex(schema, reader)
   if (reader.take('DROP', 'INDEX')) return dropIndexes(schema, reader)
+  if (reader.take('ALTER', 'VIEW') || reader.take('ALTER', 'MATERIALIZED', 'VIEW')) return alterView(schema, reader)
+  if (reader.take('DROP', 'VIEW') || reader.take('DROP', 'MATERIALIZED', 'VIEW')) return dropViews(schema, reader)
   return false
 }
 
 /**
  * Applies the DDL of PostgreSQL (and the common part of MySQL) to the schema: `CREATE TABLE`, `ALTER TABLE` that adds,
- * drops, renames and changes columns and constraints, `DROP TABLE`, `CREATE INDEX`, `DROP INDEX` and renaming an index.
- * Dumps of pg_dump, mysqldump and mariadb-dump are DDL too. Statements that describe no table, e.g. `SET`, `GRANT` or
+ * drops, renames and changes columns and constraints, `DROP TABLE`, `CREATE INDEX`, `DROP INDEX` and renaming an index,
+ * `CREATE [MATERIALIZED] VIEW`, renaming and dropping views. Dumps of pg_dump, mysqldump and mariadb-dump are DDL too. Statements that describe no table, e.g. `SET`, `GRANT` or
  * `INSERT` (see {@link isServiceStatement}), are passed over; others are counted as skipped.
  */
-export function parseSql(sql: string, schema: SqlSchema = { tables: [], skipped: 0 }): SqlSchema {
+export function parseSql(sql: string, schema: SqlSchema = { tables: [], views: [], skipped: 0 }): SqlSchema {
   for (const tokens of statements(tokenize(sql, { script: true }))) {
     if (!isServiceStatement(tokens) && !statement(schema, tokens, sql)) schema.skipped++
   }
@@ -714,7 +873,7 @@ export function orderSqlFiles(files: SqlFile[]): SqlFile[] {
 
 /** The schema that the files make, in the order a database gets them. */
 export function parseSqlFiles(files: SqlFile[]): SqlSchema {
-  const schema: SqlSchema = { tables: [], skipped: 0 }
+  const schema: SqlSchema = { tables: [], views: [], skipped: 0 }
   for (const file of orderSqlFiles(files)) parseSql(file.text, schema)
   return schema
 }

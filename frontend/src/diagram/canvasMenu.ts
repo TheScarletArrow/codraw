@@ -180,6 +180,8 @@ export interface MenuAvailability {
   plan?: SelectionPlan | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
   canBranch?: boolean
+  /** The selected table may have indexes, not being a view that is not materialized: «Добавить индекс» is offered. */
+  canAddIndex?: boolean
   /** The single selected shape or table depends on others by its kind: «Зависимости» is offered. */
   canShowDependencies?: boolean
   /** Two elements are selected: «Путь между» is offered. */
@@ -434,6 +436,7 @@ export function menuItems(
     status = null,
     plan = null,
     canBranch = false,
+    canAddIndex = true,
     canShowDependencies = false,
     canShowPath = false,
     canSaveToLibrary = false,
@@ -457,6 +460,7 @@ export function menuItems(
     edgeApi: canDescribeApi,
     properties: canShowProperties,
     addBranch: canBranch,
+    addIndex: canAddIndex,
     whereUsed: canShowWhereUsed,
     detachElement: sharedElement,
     deleteElementEverywhere: canDeleteElementEverywhere,

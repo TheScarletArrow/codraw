@@ -1,9 +1,6 @@
-# sql-schema Specification
+# Spec Delta
 
-## Purpose
-Превращает DDL базы данных в ER-диаграмму доски и выгружает таблицы страницы обратно в DDL и Mermaid.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Импорт SQL
 

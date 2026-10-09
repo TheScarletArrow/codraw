@@ -25,12 +25,14 @@ import {
   type FieldIcon,
   type TableRow,
 } from './tableRows.ts'
+import { isViewTable, viewBadge } from './views.ts'
 
 /** Shape of a field drawn in columns; set when the field is drawn, never stored. */
 export const TABLE_FIELD_SHAPE = 'codraw.tableField'
 
 const BADGE_FONT_SIZE = 9
 const BASE_BADGE_COLOR = '#57606a'
+const VIEW_BADGE_COLOR = '#0e7490'
 
 const KEY_COLOR = '#b7791f'
 const LINK_COLOR = '#2563eb'
@@ -113,6 +115,7 @@ export function tableRowsOf(graph: AbstractGraph, table: Cell): Map<Cell, TableR
     fields.map((field) => ({ text: String(field.getValue() ?? ''), font: fontOf(graph, field), reference: referenceOf(field) })),
     measureLabel,
     indexes.map((index) => ({ text: String(index.getValue() ?? ''), font: fontOf(graph, index), reference: null })),
+    { view: isViewTable(table) },
   )
   const result = new Map([...fields, ...indexes].map((row, index) => [row, rows[index]!]))
   caches.get(graph)?.set(table, result)
@@ -250,7 +253,8 @@ class TableFieldShape extends RectangleShape {
 
 /**
  * A swimlane that, as a table with a database, has the badge of the database at the left of its header, as a base
- * table the badge of a base at the right, and above its indexes a line with their caption.
+ * table the badge of a base at the right, as a view the badge of a view there, and above its indexes a line with their
+ * caption.
  */
 class TableShape extends SwimlaneShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
@@ -260,7 +264,9 @@ class TableShape extends SwimlaneShape {
     const vendor = cell ? vendorOf(cell.getStyle()) : null
     const top = (Math.min(this.getTitleSize(), h) - BADGE_HEIGHT) / 2
     if (vendor) paintBadge(c, BADGE_X, top, vendor.badge, vendor.color, vendor.textColor)
-    if (isBaseTable(cell)) paintBadge(c, w - BADGE_X - badgeWidth(BASE_BADGE), top, BASE_BADGE, BASE_BADGE_COLOR, '#ffffff')
+    const view = cell ? viewBadge(cell.getStyle() as Record<string, unknown>) : null
+    if (view) paintBadge(c, w - BADGE_X - badgeWidth(view), top, view, VIEW_BADGE_COLOR, '#ffffff')
+    else if (isBaseTable(cell)) paintBadge(c, w - BADGE_X - badgeWidth(BASE_BADGE), top, BASE_BADGE, BASE_BADGE_COLOR, '#ffffff')
     const firstIndex = cell?.getChildren().find(isIndexRow)?.getGeometry()
     if (firstIndex) this.paintIndexesCaption(c, w, firstIndex.y - TABLE_INDEX_GAP)
   }

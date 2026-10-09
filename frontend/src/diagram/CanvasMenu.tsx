@@ -158,6 +158,7 @@ export function CanvasMenu({
     sequence,
     canPasteAsSameElement,
     canMergeElements,
+    tableView,
     selectionPlan,
   } = useEditorState(editor)
   const lockId = useId()
@@ -327,6 +328,7 @@ export function CanvasMenu({
             status,
             plan: selectionPlan,
             canBranch: canBranch(sequence?.part ?? null),
+            canAddIndex: tableView?.view !== true || tableView.materialized,
             canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),
             canShowPath: request.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,

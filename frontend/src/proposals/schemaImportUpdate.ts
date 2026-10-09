@@ -20,6 +20,7 @@ import {
 } from '../diagram/model.ts'
 import { isTableIndexStyle, isTableStyle, TABLE_INDEX_KEY, type ShapeStyle } from '../diagram/shapes.ts'
 import { SOURCE_KEY, sourceOf } from '../diagram/sources.ts'
+import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { parseFieldLabel } from '../sql/erDiagram.ts'
 import { plainText } from '../sql/tableField.ts'
 import { splitIndex } from '../sql/tableIndex.ts'
@@ -47,6 +48,9 @@ const DATA_STYLE_KEYS = new Set<string>([
   INTERACTION_KEY,
   TABLE_INDEX_KEY,
   'codrawApi',
+  VIEW_KEY,
+  MATERIALIZED_KEY,
+  VIEW_QUERY_KEY,
 ])
 
 const hasGeometry = (cell: CellData): cell is CellData & { geometry: NonNullable<CellData['geometry']> } => cell.geometry !== null

@@ -117,6 +117,9 @@ class SchemaImportApiTest(
                     CREATE TABLE shop.events (id bigint NOT NULL, at date NOT NULL, PRIMARY KEY (id, at)) PARTITION BY RANGE (at);
                     CREATE TABLE shop.events_2026 PARTITION OF shop.events FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
                     CREATE VIEW shop.active_orders AS SELECT * FROM shop.orders WHERE deleted_at IS NULL;
+                    CREATE MATERIALIZED VIEW shop.order_totals AS SELECT user_id, sum(total) AS total FROM shop.active_orders GROUP BY user_id;
+                    CREATE UNIQUE INDEX order_totals_user_id_idx ON shop.order_totals (user_id);
+                    CREATE VIEW shop.big_spenders AS SELECT user_id FROM shop.order_totals WHERE total > 100;
                     CREATE SCHEMA wide;
                     """.trimIndent() + (1..6).joinToString("") { "CREATE TABLE wide.t$it (id int);" },
                 )
@@ -177,7 +180,7 @@ class SchemaImportApiTest(
     private fun pairs(event: ILoggingEvent) = event.keyValuePairs.orEmpty().associate { it.key to it.value }
 
     @Test
-    fun `reads the tables of a schema into DDL as pg_dump writes it, with a user who may read nothing else`() {
+    fun `reads the tables and views of a schema into DDL as pg_dump writes it, with a user who may read nothing else`() {
         val user = newUser()
         val succeeded = imports("success")
 
@@ -211,6 +214,27 @@ class SchemaImportApiTest(
                 created_at timestamp with time zone DEFAULT now() NOT NULL
             );
 
+            CREATE VIEW active_orders AS
+             SELECT id,
+                user_id,
+                total,
+                code,
+                deleted_at
+               FROM shop.orders
+              WHERE (deleted_at IS NULL);
+
+            CREATE MATERIALIZED VIEW order_totals AS
+             SELECT user_id,
+                sum(total) AS total
+               FROM shop.active_orders
+              GROUP BY user_id
+              WITH NO DATA;
+
+            CREATE VIEW big_spenders AS
+             SELECT user_id
+               FROM shop.order_totals
+              WHERE (total > (100)::numeric);
+
             ALTER TABLE ONLY events
                 ADD CONSTRAINT events_pkey PRIMARY KEY (id, at);
 
@@ -225,6 +249,8 @@ class SchemaImportApiTest(
 
             ALTER TABLE ONLY users
                 ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+            CREATE UNIQUE INDEX order_totals_user_id_idx ON shop.order_totals USING btree (user_id);
 
             CREATE INDEX orders_user_id_idx ON shop.orders USING btree (user_id) WHERE (deleted_at IS NULL);
 

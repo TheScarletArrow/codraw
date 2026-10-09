@@ -282,6 +282,17 @@ import {
 } from './shapes.ts'
 import { BASE_BADGE, badgeRoom, nameX, ROW_PADDING } from './tableRows.ts'
 import {
+  isMaterializedStyle,
+  isViewTable,
+  MATERIALIZED_KEY,
+  MAX_VIEW_QUERY,
+  normalizeViewQuery,
+  viewBadge,
+  viewQueryOf,
+  VIEW_KEY,
+  VIEW_QUERY_KEY,
+} from './views.ts'
+import {
   FIELD_PLACEHOLDER,
   INDEX_PLACEHOLDER,
   isColumnField,
@@ -410,6 +421,8 @@ export interface SelectedField {
   unique: boolean
   /** The name of the base table whose field this one inherits, or `null` for a field of its own. */
   inheritedFrom: string | null
+  /** The field is a column of a view, which has a type and no keys. */
+  inView: boolean
 }
 
 /** The columns and the uniqueness of the selected index of a table, as its text has them. */
@@ -432,6 +445,16 @@ export interface TableBase {
   baseId: string | null
   /** Base tables the table may inherit: those of the page but itself and the tables that inherit it. */
   options: { id: string; name: string }[]
+}
+
+/** What the selected table, or the table of the selected field, is as to views. */
+export interface TableView {
+  /** The table is a view: its fields are the columns of its query. */
+  view: boolean
+  /** The view is materialized: the database keeps its rows, and it may have indexes. */
+  materialized: boolean
+  /** The query of the view, the text after `AS`; empty without one. */
+  query: string
 }
 
 /** A lock that holds selected elements: the element that has it, the selected one or a group or table above it. */
@@ -677,6 +700,8 @@ export interface EditorState {
   index: SelectedIndex | null
   /** The selected table, or the table of the selected field, as to base tables; `null` when none is selected. */
   tableBase: TableBase | null
+  /** The selected table, or the table of the selected field, as to views; `null` when none is selected. */
+  tableView: TableView | null
   /** Markers of the selected edges, or `null` when no edge is selected. */
   edgeMarkers: EdgeMarkers | null
   /** Colors of the selection, or `null` when nothing is selected. */
@@ -1084,6 +1109,15 @@ export interface DiagramEditor {
   setDefaultBase(enabled: boolean): void
   /** Chooses the base of the selected table among {@link TableBase.options}; none removes the inherited fields. */
   setTableBase(baseId: string | null): void
+  /**
+   * Makes the selected table a view, which is no base table and has no base, keeping its inherited fields as its own, or
+   * a table again, without the materialization and the query of the view.
+   */
+  setViewTable(enabled: boolean): void
+  /** Makes the selected view materialized or not; its rows of indexes stay. */
+  setViewMaterialized(enabled: boolean): void
+  /** Sets the query of the selected view without the final `;`; an empty one removes it, one too long is not kept. */
+  setViewQuery(query: string): void
   /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
   setGeometry(changes: Partial<Box>): void
   /**
@@ -1622,6 +1656,9 @@ const CHANGING_COMMANDS = [
   'setBaseTable',
   'setDefaultBase',
   'setTableBase',
+  'setViewTable',
+  'setViewMaterialized',
+  'setViewQuery',
   'setGeometry',
   'setRotation',
   'setPencil',
@@ -2026,7 +2063,8 @@ export function createDiagramEditor(
     const { type, notNull, primaryKey, unique } = parts
     const inherited = inheritedFieldId(field)
     const inheritedFrom = inherited === null ? null : plainText(String(model.getCell(inherited)?.getParent()?.getValue() ?? ''))
-    return { cellId: field.getId()!, tableId: field.getParent()!.getId()!, type, notNull, primaryKey, unique, inheritedFrom }
+    const inView = isViewTable(field.getParent())
+    return { cellId: field.getId()!, tableId: field.getParent()!.getId()!, type, notNull, primaryKey, unique, inheritedFrom, inView }
   }
   const selectedIndexRow = (): Cell | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
@@ -2048,6 +2086,12 @@ export function createDiagramEditor(
       baseId: baseTableId(table),
       options: baseOptions(table, tables).map((base) => ({ id: base.getId()!, name: plainText(String(base.getValue() ?? '')) })),
     }
+  }
+  const selectedTableView = (): TableView | null => {
+    const table = selectedTable()
+    if (!table) return null
+    const style = table.getStyle() as Record<string, unknown>
+    return { view: isViewTable(table), materialized: isMaterializedStyle(style), query: viewQueryOf(style) }
   }
   /**
    * The single selected shape with a group; a table field is part of its table, not a shape of its own, and a locked
@@ -2411,7 +2455,9 @@ export function createDiagramEditor(
       if (!label) return []
       const style = { fontSize: fontSizeOf(part), ...graph.getCellStyle(part) }
       const vendor = isTable(part) && style.shape === 'swimlane' ? vendorOf(part.getStyle()) : null
-      const badge = Math.max(vendor ? badgeRoom(vendor.badge) : 0, isBaseTable(part) ? badgeRoom(BASE_BADGE) : 0)
+      // A view has its badge where a base table has its own.
+      const right = isTable(part) ? (viewBadge(part.getStyle() as Record<string, unknown>) ?? (isBaseTable(part) ? BASE_BADGE : null)) : null
+      const badge = Math.max(vendor ? badgeRoom(vendor.badge) : 0, right ? badgeRoom(right) : 0)
       return [fittedWidth(measureLabel(label, style) + 2 * badge, style, gridSize)]
     })
     return widths.length > 0 ? Math.max(...widths) : null
@@ -2681,6 +2727,7 @@ export function createDiagramEditor(
       field: selectedFieldProps(),
       index: selectedIndexProps(),
       tableBase: selectedTableBase(),
+      tableView: selectedTableView(),
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       colors: selectionColors(),
       line: selectionLine(),
@@ -3741,7 +3788,8 @@ export function createDiagramEditor(
     },
     addTableIndex() {
       const table = selectedTable()
-      if (!table || !isUnlocked(table)) return null
+      // A view keeps no rows to index unless it is materialized.
+      if (!table || !isUnlocked(table) || (isViewTable(table) && !isMaterializedStyle(table.getStyle() as Record<string, unknown>))) return null
       const selected = graph.getSelectionCell()
       const after = isIndexRow(selected) ? selected : (table.getChildren().at(-1) ?? null)
       return addTableRow(table, after, { [TABLE_INDEX_KEY]: true })
@@ -3776,7 +3824,8 @@ export function createDiagramEditor(
     },
     setBaseTable(enabled) {
       const table = selectedTable()
-      if (!table || !isUnlocked(table) || isBaseTable(table) === enabled) return
+      // A view is no template of fields.
+      if (!table || !isUnlocked(table) || isBaseTable(table) === enabled || (enabled && isViewTable(table))) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
         setStyleValue([table], BASE_KEY, enabled ? true : undefined)
@@ -3795,7 +3844,8 @@ export function createDiagramEditor(
     },
     setTableBase(baseId) {
       const table = selectedTable()
-      if (!table || !isUnlocked(table) || baseTableId(table) === baseId) return
+      // The columns of a view are those of its query, inherited from no base.
+      if (!table || !isUnlocked(table) || baseTableId(table) === baseId || (baseId !== null && isViewTable(table))) return
       if (baseId !== null && !baseOptions(table, pageTables(graph)).some((base) => base.getId() === baseId)) return
       graph.stopEditing(false)
       model.batchUpdate(() => {
@@ -3804,6 +3854,37 @@ export function createDiagramEditor(
         if (baseId === null) graph.removeCells(table.getChildren().filter((field) => inheritedFieldId(field) !== null), true)
         fitAutoWidth([table])
       })
+    },
+    setViewTable(enabled) {
+      const table = selectedTable()
+      if (!table || !isUnlocked(table) || isViewTable(table) === enabled) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        setStyleKeys(
+          table,
+          enabled
+            ? // The sync of bases keeps the copies of the fields of its base as fields of its own.
+              { [VIEW_KEY]: true, [BASE_KEY]: undefined, [DEFAULT_BASE_KEY]: undefined, [BASE_TABLE_KEY]: undefined }
+            : { [VIEW_KEY]: undefined, [MATERIALIZED_KEY]: undefined, [VIEW_QUERY_KEY]: undefined },
+        )
+        fitAutoWidth([table])
+      })
+    },
+    setViewMaterialized(enabled) {
+      const table = selectedTable()
+      const style = table?.getStyle() as Record<string, unknown> | undefined
+      if (!table || !isUnlocked(table) || !isViewTable(table) || isMaterializedStyle(style!) === enabled) return
+      model.batchUpdate(() => {
+        setStyleValue([table], MATERIALIZED_KEY, enabled ? true : undefined)
+        fitAutoWidth([table])
+      })
+    },
+    setViewQuery(query) {
+      const table = selectedTable()
+      const normalized = normalizeViewQuery(query)
+      if (!table || !isUnlocked(table) || !isViewTable(table) || normalized.length > MAX_VIEW_QUERY) return
+      if (normalized === viewQueryOf(table.getStyle() as Record<string, unknown>)) return
+      setStyleValue([table], VIEW_QUERY_KEY, normalized || undefined)
     },
     setTableVendor(vendor) {
       const table = selectedTable()
