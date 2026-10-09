@@ -6,7 +6,10 @@ import { composeGraph } from './composeGraph.ts'
 import { infraCells } from './infraCells.ts'
 import type { InfraGraph } from './infraGraph.ts'
 import { parseCompose } from './parseCompose.ts'
+import { parseTerraform } from './parseTerraform.ts'
+import { terraformGraph } from './terraformGraph.ts'
 import { NETWORKS_COMPOSE, SHOP_COMPOSE } from './testCompose.ts'
+import { SHOP_PLAN } from './testTerraform.ts'
 
 const graphOf = async (text: string) => composeGraph(await parseCompose({ name: 'docker-compose.yml', text }), { environment: true, c4: false })
 const byValue = (cells: CellData[], value: string) => {
@@ -130,6 +133,41 @@ describe('infraCells', () => {
         label(bucket, ['documents-and-pictures-of-users', 'rustfs/rustfs:1.0.1']),
       ),
     ).toBe(false)
+  })
+
+  it('marks the cells with the first lines of their nodes, or with the keys of nodes and frames that have one', async () => {
+    const compose = await infraCells(await graphOf(SHOP_COMPOSE), { x: 0, y: 0 }, undefined, 'compose')
+    expect(byValue(compose, 'backend\n./backend').style.codrawSource).toBe('compose:node:backend')
+    expect(compose.find((cell) => cell.kind === 'edge')!.style.codrawSource).toBe('compose:edge:backend->postgres:')
+
+    const graph = terraformGraph([await parseTerraform({ name: 'plan.json', text: SHOP_PLAN })], { environment: true, c4: false })
+    const cells = await infraCells(graph, { x: 0, y: 0 }, undefined, 'terraform')
+    expect(byValue(cells, 'aws_rds_cluster.main\naurora-postgresql 16.4').style.codrawSource).toBe('terraform:node:module.app.module.db.aws_rds_cluster.main')
+    expect(byValue(cells, 'module.db').style.codrawSource).toBe('terraform:frame:module.app.module.db')
+    expect(cells.filter((cell) => cell.kind === 'edge').map((edge) => edge.style.codrawSource)).toContain(
+      'terraform:edge:module.app.aws_ecs_service.api->module.network.aws_subnet.this:',
+    )
+  })
+
+  it('puts a frame in the frame of its parent, drawn over it, and gives the shapes the properties of their elements', async () => {
+    const graph = terraformGraph([await parseTerraform({ name: 'plan.json', text: SHOP_PLAN })], { environment: true, c4: false })
+    const cells = await infraCells(graph, { x: 0, y: 0 })
+
+    const app = byValue(cells, 'module.app')
+    const db = byValue(cells, 'module.db')
+    const cluster = byValue(cells, 'aws_rds_cluster.main\naurora-postgresql 16.4')
+    expect(inside(app.geometry!, db.geometry!)).toBe(true)
+    expect(inside(db.geometry!, cluster.geometry!)).toBe(true)
+    expect(inside(app.geometry!, byValue(cells, 'aws_ecs_service.api').geometry!)).toBe(true)
+    expect(inside(app.geometry!, byValue(cells, 'module.network').geometry!)).toBe(false)
+    expect(cells.indexOf(app)).toBeLessThan(cells.indexOf(db))
+    expect(cluster.style).toMatchObject({
+      codrawName: 'aws_rds_cluster.main',
+      codrawTechnology: 'aws_rds_cluster',
+      codrawKind: 'database',
+      codrawDescription: expect.stringMatching(/^Terraform: module\.app\.module\.db\.aws_rds_cluster\.main\n/),
+    })
+    expect(typeof cluster.style.codrawElement).toBe('string')
   })
 
   it('adds no tables: the exports of SQL skip the services', async () => {

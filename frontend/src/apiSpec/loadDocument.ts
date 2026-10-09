@@ -57,10 +57,10 @@ export function position(text: string, offset: number): { line: number; column: 
 /**
  * The value of a document of JSON or YAML. JSON is read without the YAML library; JSON that does not parse goes to it
  * too, since YAML 1.2 reads JSON and tells the line and the column of an error, which `JSON.parse` of Chrome does not.
- * Throws {@link ApiSpecError} for a document too large, with an error of syntax or with too many aliases.
+ * Throws {@link ApiSpecError} for a document larger than `limit`, with an error of syntax or with too many aliases.
  */
-export async function loadDocument({ name, text, size }: ApiSource): Promise<unknown> {
-  if ((size ?? text.length) > MAX_DOCUMENT_SIZE) throw new ApiSpecError(`${name}: файл больше ${MAX_DOCUMENT_SIZE / 1024 / 1024} МБ`)
+export async function loadDocument({ name, text, size }: ApiSource, limit = MAX_DOCUMENT_SIZE): Promise<unknown> {
+  if ((size ?? text.length) > limit) throw new ApiSpecError(`${name}: файл больше ${limit / 1024 / 1024} МБ`)
   const source = text.replace(/^\uFEFF/, '')
   if (/^\s*\{/.test(source)) {
     try {

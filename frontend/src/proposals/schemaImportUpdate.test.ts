@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, readCell, writeCell } from '../diagram/model.ts'
+import { infraCells } from '../infra/infraCells.ts'
+import { parseTerraform } from '../infra/parseTerraform.ts'
+import { terraformGraph } from '../infra/terraformGraph.ts'
+import { SHOP_STATE } from '../infra/testTerraform.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { parseSql } from '../sql/parseSql.ts'
 import { schemaCells } from '../sql/erDiagram.ts'
@@ -73,5 +77,36 @@ describe('schema import update', () => {
 
     expect(summary).toMatchObject({ added: 0, removed: 0, changed: 1 })
     expect(cellsOf(doc).find((cell) => cell.id === users.id)).toMatchObject({ parent: 'db', geometry: { x: 100, y: 80 } })
+  })
+
+  it('matches resources of Terraform by their addresses: a moved server keeps its place and gets its new details', async () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const terraformCells = async (text: string, origin: { x: number; y: number }) =>
+      infraCells(terraformGraph([await parseTerraform({ name: 'state.json', text })], { environment: true, c4: false }), origin, undefined, 'terraform')
+    const before = await terraformCells(SHOP_STATE, { x: 100, y: 80 })
+    const server = before.find((cell) => cell.value === 'aws_instance.web\nt3.micro, ×2')!
+    doc.transact(() =>
+      before.forEach((cell) => writeCell(getCells(doc, DEFAULT_PAGE_ID), cell.id === server.id ? { ...cell, geometry: { ...cell.geometry!, x: 2000, y: 1500 } } : cell)),
+    )
+
+    type Resource = { address: string; type: string; name: string; values: Record<string, unknown> }
+    const state = JSON.parse(SHOP_STATE) as { values: { root_module: { resources: Resource[] } } }
+    const resources = state.values.root_module.resources
+    for (const resource of resources) if (resource.address.startsWith('aws_instance.web')) resource.values.instance_type = 't3.large'
+    const vpc = resources.find((resource) => resource.address === 'aws_vpc.main')!
+    resources.push({ ...vpc, address: 'aws_lb.web', type: 'aws_lb', name: 'web', values: { load_balancer_type: 'application' } })
+    const summary = applySchemaUpdate(doc, DEFAULT_PAGE_ID, await terraformCells(JSON.stringify(state), { x: 900, y: 80 }))
+    const cells = cellsOf(doc)
+    const updated = cells.find((cell) => cell.id === server.id)!
+
+    expect(summary).toMatchObject({ added: 1, removed: 0, changed: 8, matchedByName: [] })
+    expect(updated.value).toBe('aws_instance.web\nt3.large, ×2')
+    expect(updated.geometry).toMatchObject({ x: 2000, y: 1500 })
+    expect(updated.style.codrawDescription).toContain('instance_type = t3.large')
+    expect(cells.find((cell) => cell.value === 'aws_lb.web\napplication')!.style).toMatchObject({
+      codrawShape: 'load-balancer',
+      codrawSource: 'terraform:node:aws_lb.web',
+    })
   })
 })
