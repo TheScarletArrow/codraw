@@ -95,6 +95,7 @@ export function createFakeEditor({
     sequence: null,
     canPasteAsSameElement: false,
     canMergeElements: false,
+    layers: [],
   }
   let offset: Point = { x: 0, y: 0 }
   let viewVersion = 0
@@ -215,6 +216,15 @@ export function createFakeEditor({
     setElementProperties: vi.fn(),
     setEdgeProperties: vi.fn(),
     setLegendItem: vi.fn(),
+    addLayer: vi.fn(() => null),
+    renameLayer: vi.fn(),
+    moveLayer: vi.fn(),
+    setLayerLocked: vi.fn(),
+    setLayerHidden: vi.fn(),
+    setLayerVisible: vi.fn(),
+    setActiveLayer: vi.fn(),
+    moveSelectionToLayer: vi.fn(),
+    deleteLayer: vi.fn(),
     pasteAsSameElement: vi.fn(),
     placeElement: vi.fn(),
     selectedElement: vi.fn(() => null),

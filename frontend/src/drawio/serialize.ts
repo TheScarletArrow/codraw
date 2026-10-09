@@ -8,6 +8,8 @@ import {
   ELEMENT_STYLE_KEYS,
   elementIdOf,
   getCells,
+  HIDDEN_LAYER_KEY,
+  isHiddenLayerStyle,
   LAYER_CELL_ID,
   readAttrs,
   readCell,
@@ -167,19 +169,42 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
 }
 
 /**
- * Cells of a page in the order of the tree: every cell is followed by its children, siblings in drawing order. With
- * `only`, just these cells of the layer with their descendants. A sequence diagram is written as shapes of draw.io, and
- * so is a legend, with the items of the whole page.
+ * A layer of a page as a layer of draw.io: its name, `visible="0"` when it is hidden for everybody and its style, e.g.
+ * `locked=1`.
+ */
+function layerXml(layer: CellData): string {
+  const { [HIDDEN_LAYER_KEY]: _hidden, ...style } = layer.style
+  return `<mxCell${attributes({
+    id: layer.id,
+    value: layer.value,
+    style: formatStyle(style, 'layer'),
+    parent: ROOT_CELL_ID,
+    visible: isHiddenLayerStyle(layer.style) ? 0 : null,
+  })}/>`
+}
+
+/**
+ * Layers of a page in drawing order, each followed by its cells in the order of the tree: every cell is followed by its
+ * children, siblings in drawing order. With `only`, just these cells of the layers with their descendants, and the
+ * layers that have them. A sequence diagram is written as shapes of draw.io, and so is a legend, with the items of the
+ * whole page.
  */
 function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, images?: EmbeddedImages): string {
   const cells = getCells(doc, pageId)
-  const entries = Array.from(cells.entries())
-    .filter(([id]) => id !== ROOT_CELL_ID && id !== LAYER_CELL_ID)
+  const read = Array.from(cells.entries())
+    .filter(([id]) => id !== ROOT_CELL_ID)
     .map(([id, map]) => ({ data: readCell(id, map), attrs: readAttrs(map) }))
-  const known = new Set(entries.map(({ data }) => data.id))
+  const layers = read.filter(({ data }) => data.kind === 'layer')
+  if (!layers.some(({ data }) => data.id === LAYER_CELL_ID)) {
+    layers.push({ data: { ...emptyLayer, order: '' }, attrs: {} })
+  }
+  layers.sort((a, b) => compareCells(a.data, b.data))
+  const layerIds = new Set(layers.map(({ data }) => data.id))
+  const entries = read.filter(({ data }) => data.kind !== 'layer')
+  const known = new Set(read.map(({ data }) => data.id))
   const children = new Map<string, typeof entries>()
   for (const entry of entries) {
-    // Cells whose parent is missing are shown on the layer, as the editor does.
+    // Cells whose parent is missing are shown on the main layer, as the editor does.
     const parent = entry.data.parent && known.has(entry.data.parent) ? entry.data.parent : LAYER_CELL_ID
     entry.data.parent = parent
     children.set(parent, [...(children.get(parent) ?? []), entry])
@@ -199,14 +224,14 @@ function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, im
         walk(entry.data.id)
       }
     }
-    walk(LAYER_CELL_ID)
+    layers.forEach(({ data }) => walk(data.id))
     return (ordered = cells)
   }
   const xml: string[] = []
   const visited = new Set<string>()
   const visit = (parent: string) => {
     for (const entry of children.get(parent) ?? []) {
-      if (visited.has(entry.data.id) || (only && parent === LAYER_CELL_ID && !only.has(entry.data.id))) continue
+      if (visited.has(entry.data.id) || (only && layerIds.has(parent) && !only.has(entry.data.id))) continue
       visited.add(entry.data.id)
       if (entry.data.kind === 'vertex' && isLegendStyle(entry.data.style)) {
         const [frame, ...parts] = legendDrawioCells(entry.data, drawingOrder())
@@ -233,8 +258,25 @@ function pageCellsXml(doc: Y.Doc, pageId: string, only?: ReadonlySet<string>, im
       visit(entry.data.id)
     }
   }
-  visit(LAYER_CELL_ID)
+  for (const { data } of layers) {
+    if (only && !(children.get(data.id) ?? []).some((entry) => only.has(entry.data.id))) continue
+    xml.push(layerXml(data))
+    visit(data.id)
+  }
   return xml.join('')
+}
+
+/** The main layer of a page that lacks it in the document. */
+const emptyLayer: CellData = {
+  id: LAYER_CELL_ID,
+  kind: 'layer',
+  parent: ROOT_CELL_ID,
+  order: '',
+  value: '',
+  geometry: null,
+  source: null,
+  target: null,
+  style: {},
 }
 
 /** Attributes of the model of every diagram that CoDraw writes. */
@@ -263,7 +305,7 @@ function diagramXml(
 ): string {
   return (
     `<diagram${attributes({ id: page.id, name: page.name })}>` +
-    `<mxGraphModel${MODEL_ATTRIBUTES}><root><mxCell id="${ROOT_CELL_ID}"/><mxCell id="${LAYER_CELL_ID}" parent="${ROOT_CELL_ID}"/>` +
+    `<mxGraphModel${MODEL_ATTRIBUTES}><root><mxCell id="${ROOT_CELL_ID}"/>` +
     pageCellsXml(doc, page.id, only, images) +
     `</root></mxGraphModel></diagram>`
   )

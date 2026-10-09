@@ -5,6 +5,7 @@ import { currentTheme, useTheme } from '../theme/theme.ts'
 import type { PageHistories } from './binding.ts'
 import { createDiagramEditor, type DiagramEditor, type Point } from './editor.ts'
 import { filesOf, type ImageHost } from './images.ts'
+import type { LayerViews } from './layerViews.ts'
 import { SHAPE_DRAG_TYPE, type ShapeId } from './shapes.ts'
 import { ELEMENT_DRAG_TYPE, readElementDrag } from './sharedElements.ts'
 
@@ -34,6 +35,11 @@ interface DiagramCanvasProps {
    */
   images?: ImageHost | null
   /**
+   * What the participant chose about the layers of the pages for themselves: the layers they show or hide and the layer
+   * new elements go into. Must be stable: new choices create a new canvas.
+   */
+  layerViews?: LayerViews | null
+  /**
    * Receives the editor once the canvas is created and `null` when it is destroyed.
    * Must be stable (e.g. a state setter): a new function recreates the canvas.
    */
@@ -58,6 +64,7 @@ export function DiagramCanvas({
   participantId,
   collaboration = true,
   images = null,
+  layerViews = null,
   onEditor,
   onDropComponent,
 }: DiagramCanvasProps) {
@@ -76,6 +83,7 @@ export function DiagramCanvas({
       images,
       // The theme of the moment: a change of the theme does not create the canvas again.
       theme: currentTheme(),
+      layerView: layerViews?.page(pageId) ?? null,
     })
     editorRef.current = editor
     onEditor(editor)
@@ -84,7 +92,7 @@ export function DiagramCanvas({
       editorRef.current = null
       editor.destroy()
     }
-  }, [document, pageId, histories, readOnly, participantName, participantId, collaboration, images, onEditor])
+  }, [document, pageId, histories, readOnly, participantName, participantId, collaboration, images, layerViews, onEditor])
 
   useEffect(() => {
     editorRef.current?.setTheme(theme)

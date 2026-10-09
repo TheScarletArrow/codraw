@@ -42,6 +42,7 @@ const NO_EDITOR: EditorState = {
   sequence: null,
   canPasteAsSameElement: false,
   canMergeElements: false,
+  layers: [],
 }
 
 /** Current undo/redo availability, zoom and selection of the editor; re-renders when they change. */

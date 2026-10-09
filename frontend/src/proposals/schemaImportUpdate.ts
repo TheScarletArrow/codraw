@@ -11,6 +11,7 @@ import {
   elementIdOf,
   getCells,
   LAYER_CELL_ID,
+  layerIds,
   orderBetween,
   readCell,
   writeCell,
@@ -110,7 +111,9 @@ interface RootPlan {
 }
 
 function planRoots(existing: CellData[], imported: CellData[]): RootPlan {
-  const existingRoots = existing.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')
+  // The tables of the page in any of its layers.
+  const layers = layerIds(existing)
+  const existingRoots = existing.filter((cell) => cell.parent !== null && layers.has(cell.parent) && cell.kind === 'vertex')
   const importedRoots = imported.filter((cell) => cell.parent === LAYER_CELL_ID && cell.kind === 'vertex')
   const importedPrefixes = new Set(importedRoots.flatMap((cell) => (sourceOf(cell) ? [sourcePrefix(sourceOf(cell)!)] : [])))
   const importedCategories = new Set(importedRoots.map(category))
@@ -227,11 +230,12 @@ function descendants(cells: CellData[], parent: string): CellData[] {
 
 function rootOf(cells: CellData[]): Map<string, string> {
   const byId = new Map(cells.map((cell) => [cell.id, cell]))
+  const layers = layerIds(cells)
   const root = new Map<string, string>()
   for (const cell of cells) {
     let current: CellData | undefined = cell
-    while (current?.parent && current.parent !== LAYER_CELL_ID) current = byId.get(current.parent)
-    if (current?.parent === LAYER_CELL_ID) root.set(cell.id, current.id)
+    while (current?.parent && !layers.has(current.parent)) current = byId.get(current.parent)
+    if (current?.parent && layers.has(current.parent)) root.set(cell.id, current.id)
   }
   return root
 }
@@ -368,7 +372,8 @@ export function applySchemaUpdate(doc: Y.Doc, pageId: string, imported: CellData
     const importedRoot = importedById.get(importedRootId)
     const existingRoot = existingById.get(existingRootId)
     if (!importedRoot || !existingRoot) continue
-    write(matchedCell(existingRoot, importedRoot, existingRootId, LAYER_CELL_ID))
+    // A table stays in its layer.
+    write(matchedCell(existingRoot, importedRoot, existingRootId, existingRoot.parent ?? LAYER_CELL_ID))
     syncChildren(importedRootId, existingRootId)
   }
 

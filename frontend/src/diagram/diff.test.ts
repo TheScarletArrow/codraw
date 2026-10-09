@@ -91,6 +91,20 @@ describe('comparing two states of a board', () => {
     expect(added.type === 'added' && added.after.value).toBe('БД')
   })
 
+  it('takes the layers of a page for no change, and an element moved into another layer for a change of its parent', () => {
+    const version = boardWith(shapeData('note', 'a0', { value: 'Идея' }))
+    const now = laterState(version, (doc) => {
+      writeCell(getCells(doc), { ...shapeData('notes', 'a1', { value: 'Заметки' }), kind: 'layer', parent: '0', geometry: null })
+      cell(doc, 'note').set('parent', 'notes')
+      cell(doc, '1').set('value', 'Схема')
+    })
+
+    const page = pageDiff(version, now)!
+
+    expect(summary(page.cells)).toEqual([['changed', 'note']])
+    expect(changesOf(page, 'note')!.fields).toEqual(['parent'])
+  })
+
   it('names the style keys that were changed, added and removed', () => {
     const version = boardWith(shapeData('a', 'a0', { style: { fillColor: '#ffffff', dashed: true, shape: 'ellipse' } }))
     const now = laterState(version, (doc) => {

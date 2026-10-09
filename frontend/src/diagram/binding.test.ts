@@ -518,3 +518,159 @@ describe('elements', () => {
     expect(alice.model.getCell(cell.getId()!)!.getStyle()).toEqual(elementStyle())
   })
 })
+
+describe('layers', () => {
+  /** Adds a layer on top of the others of the model, as one change. */
+  const addLayer = (model: GraphDataModel, name: string, style: CellStyle = {}) => {
+    const added = new Cell(name, undefined, style)
+    model.batchUpdate(() => model.add(model.getRoot()!, added))
+    return added
+  }
+  const layerIdsOf = (model: GraphDataModel) => model.getRoot()!.getChildren().map((child) => child.getId())
+
+  it('writes a new layer as a cell of the root and reads it back for others, on top of the main layer', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+
+    const added = addLayer(alice.model, 'Инфраструктура')
+
+    expect(readCell(added.getId()!, getCells(alice.doc).get(added.getId()!)!)).toMatchObject({
+      kind: 'layer',
+      parent: '0',
+      value: 'Инфраструктура',
+    })
+    const theirs = bob.model.getCell(added.getId()!)!
+    expect(theirs.isVertex() || theirs.isEdge()).toBe(false)
+    expect(layerIdsOf(bob.model)).toEqual([LAYER_CELL_ID, added.getId()])
+  })
+
+  it('moves a shape into another layer for everybody, and undo brings it back', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const history = createUndoManager(getCells(alice.doc))
+    const shape = addVertex(alice.model, 'Сервис')
+    const notes = addLayer(alice.model, 'Заметки')
+
+    alice.model.batchUpdate(() => alice.model.add(notes, shape))
+
+    expect(bob.model.getCell(shape.getId()!)!.getParent()!.getId()).toBe(notes.getId())
+    history.undo()
+    expect(bob.model.getCell(shape.getId()!)!.getParent()!.getId()).toBe(LAYER_CELL_ID)
+    expect(alice.model.getCell(shape.getId()!)!.getParent()!.getId()).toBe(LAYER_CELL_ID)
+  })
+
+  it('names, locks and orders layers for everybody', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const notes = addLayer(alice.model, 'Заметки')
+
+    alice.model.batchUpdate(() => {
+      alice.model.setValue(layer(alice.model), 'Схема')
+      alice.model.setStyle(notes, { locked: true } as CellStyle)
+      alice.model.add(alice.model.getRoot()!, notes, 0)
+    })
+
+    expect(bob.model.getCell(LAYER_CELL_ID)!.getValue()).toBe('Схема')
+    expect(bob.model.getCell(notes.getId()!)!.getStyle()).toEqual({ locked: true })
+    expect(layerIdsOf(bob.model)).toEqual([notes.getId(), LAYER_CELL_ID])
+  })
+
+  it('removes a layer with what it holds for everybody, and undo brings both back', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const history = createUndoManager(getCells(alice.doc))
+    const notes = addLayer(alice.model, 'Заметки')
+    const sticky = new Cell('Идея', new Geometry(0, 0, 80, 80), {})
+    sticky.setVertex(true)
+    alice.model.batchUpdate(() => alice.model.add(notes, sticky))
+
+    alice.model.batchUpdate(() => alice.model.remove(notes))
+
+    expect(getCells(bob.doc).has(sticky.getId()!)).toBe(false)
+    expect(bob.model.getCell(notes.getId()!)).toBeFalsy()
+    history.undo()
+    expect(bob.model.getCell(sticky.getId()!)!.getParent()!.getId()).toBe(notes.getId())
+  })
+
+  it('keeps a shape added to a layer that another participant removed at the same time, in the main layer', () => {
+    const alice = createClient()
+    const bob = createClient()
+    const link = connect(alice.doc, bob.doc)
+    const notes = addLayer(alice.model, 'Заметки')
+    link.disconnect()
+    alice.model.batchUpdate(() => alice.model.remove(alice.model.getCell(notes.getId()!)!))
+    const sticky = new Cell('Идея', new Geometry(0, 0, 80, 80), {})
+    sticky.setVertex(true)
+    bob.model.batchUpdate(() => bob.model.add(bob.model.getCell(notes.getId()!)!, sticky))
+
+    link.reconnect()
+
+    for (const client of [alice, bob]) {
+      expect(client.model.getCell(sticky.getId()!)!.getParent()!.getId()).toBe(LAYER_CELL_ID)
+      expect(client.model.getCell(notes.getId()!)).toBeFalsy()
+    }
+  })
+
+  it('keeps the main layer in the model', () => {
+    const { doc, model } = createClient()
+
+    remote(doc, (cells) => cells.delete(LAYER_CELL_ID))
+
+    expect(model.getCell(LAYER_CELL_ID)).toBeTruthy()
+  })
+
+  it('shows a layer as the participant sees it, and writes nothing for it', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    remote(doc, (cells) => {
+      writeCell(cells, { ...vertexData('notes'), kind: 'layer', parent: '0', value: 'Заметки', geometry: null, style: { codrawHidden: true } })
+      writeCell(cells, { ...vertexData('infra'), kind: 'layer', parent: '0', value: 'Инфраструктура', geometry: null, style: {} })
+    })
+    const own = new Map<string, boolean>([['infra', false]])
+    const model = new GraphDataModel()
+    const binding = new DiagramBinding(model, getCells(doc), 'test:local', false, null, true, (id, hidden) => own.get(id) ?? !hidden)
+    const writes = vi.fn()
+    doc.on('update', writes)
+
+    expect(model.getCell('notes')!.isVisible()).toBe(false)
+    expect(model.getCell('infra')!.isVisible()).toBe(false)
+    expect(model.getCell(LAYER_CELL_ID)!.isVisible()).toBe(true)
+    own.set('notes', true)
+    binding.refresh(['notes'])
+    expect(model.getCell('notes')!.isVisible()).toBe(true)
+    expect(writes).not.toHaveBeenCalled()
+  })
+
+  it('shows a layer that the participant hid for everybody as hidden, and again after undo', () => {
+    const alice = createClient()
+    const history = createUndoManager(getCells(alice.doc))
+    const notes = addLayer(alice.model, 'Заметки')
+
+    alice.model.batchUpdate(() => alice.model.setStyle(notes, { codrawHidden: true } as CellStyle))
+    expect(notes.isVisible()).toBe(false)
+    history.undo()
+    expect(notes.isVisible()).toBe(true)
+  })
+
+  it('keeps an edge between shapes of two layers in its layer', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const service = addVertex(alice.model, 'Сервис')
+    const infra = addLayer(alice.model, 'Инфраструктура')
+    const database = new Cell('База', new Geometry(300, 0, 120, 60), {})
+    database.setVertex(true)
+    alice.model.batchUpdate(() => alice.model.add(infra, database))
+
+    const edge = addEdge(alice.model, service, database)
+
+    expect(edge.getParent()!.getId()).toBe(LAYER_CELL_ID)
+    const theirs = bob.model.getCell(edge.getId()!)!
+    expect(theirs.getParent()!.getId()).toBe(LAYER_CELL_ID)
+    expect(theirs.getTerminal(false)!.getId()).toBe(database.getId())
+  })
+})
