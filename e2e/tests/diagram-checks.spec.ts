@@ -48,8 +48,8 @@ test('the checks list the remarks of the board for every participant, go to the 
   const at = center(await cellBox(alice, service))
   await alice.mouse.click(at.x, at.y)
   await expect(properties(alice).getByLabel('Имя', { exact: true })).toHaveValue('Сервис')
-  await properties(alice).getByLabel('Технология').fill('Kotlin')
-  await properties(alice).getByLabel('Технология').press('Enter')
+  await properties(alice).getByLabel('Технология', { exact: true }).fill('Kotlin')
+  await properties(alice).getByLabel('Технология', { exact: true }).press('Enter')
   await expect(checks(bob).getByRole('region', { name: 'Без технологии', exact: true })).toContainText('Без технологии (1)')
   await expect(bob.getByRole('button', { name: 'Проверки: 1 замечание' })).toBeVisible()
 
