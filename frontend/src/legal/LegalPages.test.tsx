@@ -68,6 +68,9 @@ describe('legal pages', () => {
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent('Участие в досках')
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'кто в каком пространстве участник и с какой ролью',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'кто какой реакцией отметил комментарий и кто назначен ответственным за ветку',
     )
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(

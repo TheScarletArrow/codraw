@@ -6,6 +6,7 @@ import type { Board } from '../api/boards.ts'
 import type { AccessRequest } from '../api/accessRequests.ts'
 import type { Invite, Participant } from '../api/members.ts'
 import { createQueryClient } from '../queryClient.ts'
+import { MemoryRouter } from 'react-router'
 import { mockFetch, type MockResponse } from '../test/render.tsx'
 import { ShareButton } from './ShareButton.tsx'
 
@@ -331,6 +332,75 @@ describe('ShareButton', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Создать ссылку' }))
 
       expect(await screen.findByRole('alert')).toHaveTextContent('У доски уже 20 приглашений — отзовите ненужные')
+    })
+  })
+
+  describe('a board of a workspace', () => {
+    const teamBoard: Board = {
+      ...board,
+      workspace: { id: 'w1', name: 'Платформа' },
+      projectId: null,
+      workspaceAccess: 'edit',
+    }
+
+    function renderTeamShare(shown: Board, responses: Record<string, MockResponse | MockResponse[]> = {}) {
+      const fetchMock = mockFetch({
+        [`GET ${boardUrl}/members`]: { body: members },
+        [`GET ${boardUrl}/visitors`]: { body: [] },
+        [`GET ${boardUrl}/invites`]: { body: [] },
+        [`GET ${boardUrl}/access-requests`]: { body: [] },
+        'GET /api/workspaces/w1/members': {
+          body: [
+            { id: 'alice', name: 'Алиса', avatarUrl: null, role: 'owner', joinedAt: '2026-10-01T10:00:00Z' },
+            { id: 'dave', name: 'Дима', avatarUrl: null, role: 'viewer', joinedAt: '2026-10-01T10:00:00Z' },
+          ],
+        },
+        ...responses,
+      })
+      const onChanged = vi.fn()
+      render(
+        <QueryClientProvider client={createQueryClient()}>
+          <MemoryRouter>
+            <ShareButton board={shown} pageId="page-1" onChanged={onChanged} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+      return { fetchMock, onChanged }
+    }
+
+    it('lets who manages it choose what the workspace gives its members, and tells collab', async () => {
+      const { fetchMock, onChanged } = renderTeamShare(teamBoard, {
+        [`PATCH ${boardUrl}`]: { body: { ...teamBoard, workspaceAccess: 'view' } },
+      })
+      await openShare()
+
+      const access = screen.getByRole('group', { name: 'Доступ участникам пространства' })
+      expect(within(access).getByRole('radio', { name: /Редактирование/ })).toBeChecked()
+      await userEvent.click(within(access).getByRole('radio', { name: /Просмотр/ }))
+
+      await waitFor(() => expect(onChanged).toHaveBeenCalled())
+      expect(bodyOf(fetchMock, 'PATCH', boardUrl)).toEqual({ workspaceAccess: 'view' })
+    })
+
+    it('adds a member of the workspace with a role of their own', async () => {
+      const { fetchMock } = renderTeamShare(teamBoard, {
+        [`PUT ${boardUrl}/members/dave`]: { body: { id: 'dave', name: 'Дима', avatarUrl: null, role: 'editor' } },
+      })
+      await openShare()
+
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Участник пространства' }), 'dave')
+      await userEvent.click(within(screen.getByRole('region', { name: 'Добавить участника пространства' })).getByRole('button', { name: 'Добавить' }))
+
+      await waitFor(() => expect(requests(fetchMock, 'PUT', `${boardUrl}/members/dave`)).toHaveLength(1))
+      expect(bodyOf(fetchMock, 'PUT', `${boardUrl}/members/dave`)).toEqual({ role: 'editor' })
+    })
+
+    it('tells the others what the workspace gives', async () => {
+      renderTeamShare({ ...teamBoard, role: 'viewer', workspaceAccess: 'view' })
+      await openShare()
+
+      expect(screen.getByText(/Участники пространства смотрят доску без правки/)).toBeInTheDocument()
+      expect(screen.queryByRole('group', { name: 'Доступ участникам пространства' })).not.toBeInTheDocument()
     })
   })
 })

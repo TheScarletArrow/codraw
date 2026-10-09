@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
@@ -103,6 +103,7 @@ import { draftPath, PROPOSALS_POLL_INTERVAL, proposalsKey } from '../proposals/p
 import { ProposalReview } from '../proposals/ProposalReview.tsx'
 import { ProposalsButton } from '../proposals/ProposalsButton.tsx'
 import { ProposalsPanel } from '../proposals/ProposalsPanel.tsx'
+import { workspacePath } from '../workspaces/workspaces.ts'
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Подключение',
@@ -555,6 +556,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
       <div className="flex items-center gap-x-3 border-b px-3 py-2">
+        {board.workspace && (
+          <Link
+            to={workspacePath(board.workspace.id)}
+            title={`Пространство «${board.workspace.name}»`}
+            className="max-w-32 shrink truncate text-sm text-muted-foreground hover:underline"
+          >
+            {board.workspace.name}
+          </Link>
+        )}
         <BoardHeading
           board={board}
           onChanged={notifyBoardChanged}

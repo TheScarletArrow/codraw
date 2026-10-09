@@ -9,6 +9,18 @@ export type BoardRole = 'owner' | 'editor' | 'viewer'
 /** What a link to a board gives to users other than its owner and its members: nothing, viewing or editing. */
 export type LinkAccess = 'none' | 'view' | 'edit'
 
+/**
+ * What the workspace of a board gives its editors and viewers on it: their roles, viewing, or nothing. Owners and
+ * administrators of the workspace manage its boards whatever it is.
+ */
+export type WorkspaceAccess = 'none' | 'view' | 'edit'
+
+/** The workspace that a board belongs to. */
+export interface BoardWorkspace {
+  id: string
+  name: string
+}
+
 export interface BoardOwner {
   id: string
   name: string
@@ -24,6 +36,12 @@ export interface Board {
   owner: BoardOwner
   /** The role of the current user. */
   role: BoardRole
+  /** The workspace of the board; `null` for a personal board, missing in the lists of boards. */
+  workspace?: BoardWorkspace | null
+  /** The project of its workspace that the board is in. */
+  projectId?: string | null
+  /** What the workspace gives its editors and viewers on the board. */
+  workspaceAccess?: WorkspaceAccess
 }
 
 /** A board in a list of boards of the current user, with how the user organized it: only they see it. */
@@ -108,6 +126,15 @@ export function changeLinkAccess(id: string, linkAccess: LinkAccess): Promise<Bo
   })
 }
 
+/** Sets what the workspace of a board gives its editors and viewers on it. */
+export function changeWorkspaceAccess(id: string, workspaceAccess: WorkspaceAccess): Promise<Board> {
+  return request(`/api/boards/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspaceAccess }),
+  })
+}
+
 /** The user may change the document of the board. */
 export const canEdit = (board: Pick<Board, 'role'>) => board.role !== 'viewer'
 
@@ -146,7 +173,7 @@ export function searchBoards(query: string, signal?: AbortSignal): Promise<Board
   return request(`/api/boards/search?q=${encodeURIComponent(query)}`, { signal })
 }
 
-/** Moves a board to the owner's trash for 30 days. */
+/** Moves a board to the trash for 30 days: of its owner, and of those who manage its workspace. */
 export function deleteBoard(id: string): Promise<void> {
   return request(`/api/boards/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
@@ -156,6 +183,8 @@ export interface TrashedBoard {
   title: string
   deletedAt: string
   expiresAt: string
+  /** The workspace that the board belongs to; `null` for a personal board. */
+  workspace?: BoardWorkspace | null
 }
 
 export const TRASH_QUERY_KEY = ['board-trash'] as const

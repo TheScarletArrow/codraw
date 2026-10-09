@@ -8,6 +8,7 @@ import { fetchAccessRequests } from '../api/accessRequests.ts'
 import { changeLinkAccess, type Board, type LinkAccess } from '../api/boards.ts'
 import type { Embed } from '../api/embed.ts'
 import { EmbedSection } from '../embed/EmbedSection.tsx'
+import { WorkspaceAccessSection } from '../workspaces/WorkspaceAccessSection.tsx'
 import type * as Y from 'yjs'
 import { accessRequestsKey, REQUESTS_POLL_INTERVAL } from './accessRequests.ts'
 import { AccessRequestsSection } from './AccessRequestsSection.tsx'
@@ -202,6 +203,7 @@ export function ShareButton({
         ) : (
           <p className="text-sm text-muted-foreground">{ACCESS_OF_OTHERS[board.linkAccess]}</p>
         )}
+        {board.workspace && <WorkspaceAccessSection board={board} onChanged={onChanged} />}
         {isOwner && <AccessRequestsSection board={board} requests={requests.data} onChanged={onChanged} />}
         <MembersSection board={board} onChanged={onChanged} />
         {isOwner && <InvitesSection board={board} />}

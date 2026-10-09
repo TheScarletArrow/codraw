@@ -5,7 +5,10 @@ import { boardLimitOf, fetchTrash, purgeTrashedBoard, restoreTrashedBoard, TRASH
 
 const date = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** Recovery belongs only to the owner; a trashed board cannot be opened by its former participants. */
+/**
+ * Recovery belongs to the owner, and for a board of a workspace to those who manage the workspace; a trashed board cannot
+ * be opened by its former participants.
+ */
 export function BoardTrash() {
   const client = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -17,6 +20,7 @@ export function BoardTrash() {
       client.invalidateQueries({ queryKey: TRASH_QUERY_KEY }),
       client.invalidateQueries({ queryKey: ['boards'] }),
       client.invalidateQueries({ queryKey: ['shared-boards'] }),
+      client.invalidateQueries({ queryKey: ['workspaces'] }),
     ])
   }
   const restore = useMutation({ mutationFn: restoreTrashedBoard, onSuccess: refresh })
@@ -40,6 +44,9 @@ export function BoardTrash() {
           {trash.data?.map((board) => (
             <div key={board.id} className="rounded-md border p-3">
               <p className="font-medium">{board.title}</p>
+              {board.workspace && (
+                <p className="text-sm text-muted-foreground">Пространство «{board.workspace.name}»</p>
+              )}
               <p className="text-sm text-muted-foreground">Удалена {date.format(new Date(board.deletedAt))}. Хранится до {date.format(new Date(board.expiresAt))}.</p>
               {confirm === board.id ? (
                 <div role="alertdialog" aria-label={`Окончательное удаление «${board.title}»`} className="mt-2">
