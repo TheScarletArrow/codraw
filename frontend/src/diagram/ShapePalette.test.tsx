@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { SHAPE_DRAG_TYPE } from './shapes.ts'
+import { LOGO_DRAG_TYPE } from './techIcons.ts'
 import { ShapePalette } from './ShapePalette.tsx'
 
 describe('ShapePalette', () => {
@@ -65,10 +66,40 @@ describe('ShapePalette', () => {
 
     expect(screen.queryByRole('group', { name: 'C4' })).toBeNull()
     const found = screen.getByRole('group', { name: 'Найденные фигуры' })
-    expect(within(found).getAllByRole('button').map((button) => button.textContent)).toEqual(['Kafka', 'Топик событий'])
+    const shapes = within(found)
+      .getAllByRole('button')
+      .filter((button) => !button.closest('section'))
+    expect(shapes.map((button) => button.textContent)).toEqual(['Kafka', 'Топик событий'])
 
     await userEvent.keyboard('{Enter}')
     expect(editor.addShape).toHaveBeenCalledWith('provider-kafka')
+  })
+
+  it('finds logos of technologies too, and adds one with a click or drags it onto the canvas', async () => {
+    const editor = createFakeEditor()
+    render(<ShapePalette editor={editor} />)
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Поиск фигур' }), 'kotlin')
+
+    const logos = await screen.findByRole('region', { name: 'Логотипы' })
+    const kotlin = within(logos).getByRole('button', { name: 'Kotlin' })
+    await userEvent.click(kotlin)
+    await vi.waitFor(() => expect(editor.addLogo).toHaveBeenCalledWith('kotlin'))
+    const setData = vi.fn()
+    fireEvent.dragStart(kotlin, { dataTransfer: { setData, effectAllowed: '' } })
+    expect(setData).toHaveBeenCalledWith(LOGO_DRAG_TYPE, 'kotlin')
+  })
+
+  it('adds the first logo with Enter when no shape is found', async () => {
+    const editor = createFakeEditor()
+    render(<ShapePalette editor={editor} />)
+    const search = screen.getByRole('searchbox', { name: 'Поиск фигур' })
+
+    await userEvent.type(search, 'figma')
+    await screen.findByRole('region', { name: 'Логотипы' })
+    await userEvent.keyboard('{Enter}')
+
+    await vi.waitFor(() => expect(editor.addLogo).toHaveBeenCalledWith('figma'))
   })
 
   it('tells when nothing is found, and Escape brings the sections back', async () => {

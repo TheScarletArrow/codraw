@@ -250,6 +250,8 @@ import { startEdgeRouting } from './routing/edgeRouter.ts'
 import { fittedFontSize, rememberStickyColor, stickyColor } from './stickies.ts'
 import { copyLook, styleChanges, styleClipboard, TABLE_ROW_KEYS, type CopiedStyle, type StyleKind } from './styleCopy.ts'
 import { renderSvg, type ExportedImage, type SvgOptions } from './svgExport.ts'
+import { configureIconBadges } from './iconBadges.ts'
+import { ICON_KEY, iconPathNow, logoShape, techIconsNow } from './techIcons.ts'
 import {
   findShape,
   groupShapes,
@@ -490,6 +492,8 @@ export type SelectionProperties =
       showTechnology: boolean
       /** The shape is a cell of an element of the board, which keeps its properties; otherwise its label tells them. */
       element: boolean
+      /** The logo chosen for the shape (a slug of simple-icons or `none`), `null` for that of its technology. */
+      icon: string | null
       /** The participant may change them: they edit the board and the shape is not locked. */
       canChange: boolean
     }
@@ -517,7 +521,11 @@ export interface LegendPanelItem extends Pick<LegendItem, 'key' | 'type'> {
 }
 
 /** Changes of the properties of a shape, and whether its plain label shows the technology. */
-export type ElementPropertiesChange = Partial<ElementProperties> & { showTechnology?: boolean }
+/**
+ * A change of the properties of a shape; `icon` is the slug of a logo of simple-icons chosen for it, `none` for no logo,
+ * or `null` for that of its technology (see `techIcons.ts`).
+ */
+export type ElementPropertiesChange = Partial<ElementProperties> & { showTechnology?: boolean; icon?: string | null }
 
 /** The element that the single selected shape shows, and where; see {@link DiagramEditor.selectedElement}. */
 export interface SelectionElement {
@@ -778,6 +786,13 @@ export interface DiagramEditor {
    * the color of new stickies.
    */
   addShape(shape: ShapeId, center?: Point): Cell | null
+  /**
+   * Adds the logo `slug` of simple-icons as a picture of 64 × 64 named by it, like {@link addShape}; `null` while the
+   * catalog of the logos or the logo itself is not loaded yet (see `techIcons.ts`).
+   */
+  addLogo(slug: string, center?: Point): Cell | null
+  /** Resolves once the logos of the technologies of the page are drawn on its shapes (see `iconBadges.ts`). */
+  iconsReady(): Promise<void>
   /**
    * Adds a sticky of the color of new stickies centred at `center`, without it at the pointer over the canvas or in the
    * middle of the visible area, selects it and starts editing its text: the text applied in that editing is the undo
@@ -1598,6 +1613,7 @@ export function createDiagramEditor(
   configureTextWrap(graph)
   const unconfigureSequences = configureSequences(graph)
   const unconfigureLegends = configureLegends(graph)
+  const iconBadges = configureIconBadges(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
   configureCanvasTheme(graph, () => theme)
@@ -2098,6 +2114,7 @@ export function createDiagramEditor(
       format: labelFormat(style, properties.kind),
       showTechnology: showsTechnology(style, value),
       element: hasElement(style),
+      icon: typeof style[ICON_KEY] === 'string' && style[ICON_KEY] !== '' ? (style[ICON_KEY] as string) : null,
       canChange,
     }
   }
@@ -3108,7 +3125,7 @@ export function createDiagramEditor(
   }
 
   /** Inserts a palette shape with its children; the caller wraps it in a model update. */
-  const insertShape = (preset: ShapePreset, parent: Cell, x: number, y: number): Cell => {
+  const insertShape = (preset: ShapePreset, parent: Cell, x: number, y: number, marked = true): Cell => {
     // A sequence diagram starts with two participants, a call and its answer; its layout gives it its size.
     if (preset.id === SEQUENCE_PRESET) return graph.addCell(diagramCell(sequenceCells(starterSequence(), { x, y })), parent)
     // A new table with the default base of the page has the fields of the base instead of those of the preset.
@@ -3119,7 +3136,7 @@ export function createDiagramEditor(
       value: shape.value,
       position: [x, y],
       size: [shape.width, shape.height],
-      style: markedStyle(shape) as CellStyle,
+      style: (marked ? markedStyle(shape) : shape.style) as CellStyle,
     })
     let childY = isTableStyle(shape.style) ? TABLE_HEADER_HEIGHT : 0
     for (const child of shape.children ?? []) {
@@ -3415,6 +3432,46 @@ export function createDiagramEditor(
   /** Selected cells without table fields and parts of sequence diagrams: their layouts, not the user, order them. */
   const selectedShapesAndEdges = () => graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
 
+  /**
+   * Adds a shape of the palette in the middle of the view, or at `center`, aside of the shapes there, as one undo step,
+   * and selects it; `marked` marks it as the shape of the palette it is (see `markedStyle`).
+   */
+  const placeShape = (shape: ShapePreset, center: Point, marked: boolean): Cell => {
+    const size = graph.getGridSize()
+    const snap = (value: number) => Math.round(value / size) * size
+    const parent = graph.getDefaultParent()
+    // The shapes the participant sees, of every layer.
+    const vertices = pageChildren().filter((cell) => cell.isVertex() && isShown(cell))
+    const occupied = (cx: number, cy: number) =>
+      vertices.some((cell) => {
+        const geometry = cell.getGeometry()
+        return (
+          geometry !== null &&
+          Math.abs(geometry.x + geometry.width / 2 - cx) < size &&
+          Math.abs(geometry.y + geometry.height / 2 - cy) < size
+        )
+      })
+    // Repeated clicks would stack shapes on top of each other; cascade them instead.
+    let { x: cx, y: cy } = center
+    while (occupied(cx, cy)) {
+      cx += 2 * size
+      cy += 2 * size
+    }
+    const x = snap(cx - shape.width / 2)
+    const y = snap(cy - shape.height / 2)
+    // The shape and its children, e.g. the first field of a table, are one change and one undo step.
+    model.beginUpdate()
+    let cell: Cell
+    try {
+      cell = insertShape(shape, parent, x, y, marked)
+    } finally {
+      model.endUpdate()
+    }
+    graph.setSelectionCell(cell)
+    container.focus({ preventScroll: true })
+    return cell
+  }
+
   const editor: DiagramEditor = {
     graph,
     pageId,
@@ -3424,40 +3481,15 @@ export function createDiagramEditor(
       if (!preset) return null
       const shape =
         preset.id === 'sticky' ? { ...preset, style: { ...preset.style, fillColor: stickyColor() } } : preset
-      const size = graph.getGridSize()
-      const snap = (value: number) => Math.round(value / size) * size
-      const parent = graph.getDefaultParent()
-      // The shapes the participant sees, of every layer.
-      const vertices = pageChildren().filter((cell) => cell.isVertex() && isShown(cell))
-      const occupied = (cx: number, cy: number) =>
-        vertices.some((cell) => {
-          const geometry = cell.getGeometry()
-          return (
-            geometry !== null &&
-            Math.abs(geometry.x + geometry.width / 2 - cx) < size &&
-            Math.abs(geometry.y + geometry.height / 2 - cy) < size
-          )
-        })
-      // Repeated clicks would stack shapes on top of each other; cascade them instead.
-      let { x: cx, y: cy } = center
-      while (occupied(cx, cy)) {
-        cx += 2 * size
-        cy += 2 * size
-      }
-      const x = snap(cx - shape.width / 2)
-      const y = snap(cy - shape.height / 2)
-      // The shape and its children, e.g. the first field of a table, are one change and one undo step.
-      model.beginUpdate()
-      let cell: Cell
-      try {
-        cell = insertShape(shape, parent, x, y)
-      } finally {
-        model.endUpdate()
-      }
-      graph.setSelectionCell(cell)
-      container.focus({ preventScroll: true })
-      return cell
+      return placeShape(shape, center, true)
     },
+    addLogo(slug, center = visibleCenter()) {
+      const icon = techIconsNow()?.bySlug.get(slug)
+      const path = icon && iconPathNow(slug)
+      if (!icon || !path || readOnly) return null
+      return placeShape({ id: 'rectangle', ...logoShape(icon, path) }, center, false)
+    },
+    iconsReady: () => iconBadges.ready(),
     addSticky(center) {
       graph.stopEditing(false)
       setTool(null)
@@ -4405,7 +4437,7 @@ export function createDiagramEditor(
       const style = cell.getStyle() as Record<string, unknown>
       const value = String(cell.getValue() ?? '')
       const current = elementProperties(style, value)
-      const { showTechnology, ...properties } = changes
+      const { showTechnology, icon, ...properties } = changes
       let next = normalizeProperties({ ...current, ...properties })
       const was = labelFormat(style, current.kind)
       const now = labelFormat(style, next.kind)
@@ -4422,7 +4454,9 @@ export function createDiagramEditor(
       // A cell keeps its showing of the technology while its label is of C4, which shows the technology its own way.
       const ownShowing = style[SHOW_TECHNOLOGY_KEY] === true || style[SHOW_TECHNOLOGY_KEY] === 1 || style[SHOW_TECHNOLOGY_KEY] === '1'
       const show = now === 'plain' && (showTechnology ?? (was === 'c4' ? ownShowing : shown))
-      if (sameProperties(current, next) && show === shown) return
+      const ownIcon = typeof style[ICON_KEY] === 'string' && style[ICON_KEY] !== '' ? (style[ICON_KEY] as string) : null
+      const nextIcon = icon === undefined ? ownIcon : icon
+      if (sameProperties(current, next) && show === shown && nextIcon === ownIcon) return
       const restored = was === 'c4' && now === 'plain'
       const label = restored
         ? composeLabel(next, style, { showTechnology: show, rest: kept === undefined ? [] : kept.split('\n') })
@@ -4436,6 +4470,7 @@ export function createDiagramEditor(
           ...propertiesStyle(next),
           [SHOW_TECHNOLOGY_KEY]: now === 'c4' ? (style[SHOW_TECHNOLOGY_KEY] as StyleValue | undefined) : show || undefined,
           [OWN_LINES_KEY]: aside,
+          [ICON_KEY]: nextIcon ?? undefined,
         })
         if (label !== value) model.setValue(cell, label)
       })
@@ -4850,6 +4885,7 @@ export function createDiagramEditor(
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
+      iconBadges.destroy()
       unwatchLocks()
       graph.removeListener(handleResize)
       model.removeListener(notifyView)

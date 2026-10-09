@@ -61,7 +61,9 @@ export async function renderPage(
   const { editor, close } = openHiddenEditor(document, pageId, layerView)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await Promise.race([edgesRouted(editor.graph), new Promise<void>((resolve) => (timer = setTimeout(resolve, ROUTES_WAIT)))])
+    // The routes of the edges and the logos of the technologies of the shapes.
+    const drawn = Promise.all([edgesRouted(editor.graph), editor.iconsReady()])
+    await Promise.race([drawn, new Promise<void>((resolve) => (timer = setTimeout(resolve, ROUTES_WAIT)))])
     return editor.exportSvg(options)
   } finally {
     clearTimeout(timer)

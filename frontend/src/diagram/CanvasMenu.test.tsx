@@ -415,6 +415,7 @@ describe('CanvasMenu', () => {
       format: 'plain' as const,
       showTechnology: false,
       element: false,
+      icon: null,
       canChange: true,
     }
 

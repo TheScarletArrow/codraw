@@ -34,7 +34,8 @@ export const IMAGE_BACKGROUND = '#ffffff'
 /**
  * Draws `cells` with their descendants, in the given order, into an SVG document at 100% with a margin, whatever the
  * zoom and scroll of the canvas. maxGraph draws them with the code that draws the canvas, so custom shapes and markers
- * look the same; nothing else of the canvas (grid, handles, connection points) is drawn. `null` when there is nothing.
+ * look the same, with the badges of the logos of their technologies; nothing else of the canvas (grid, handles, connection
+ * points) is drawn. `null` when there is nothing.
  */
 export function renderSvg(
   graph: Graph,
@@ -81,6 +82,8 @@ export function renderSvg(
     canvas.scale(1 / scale)
     canvas.translate(border - bounds.x / scale, border - bounds.y / scale)
     const painter = new ImageExport()
+    // The overlays of the shapes are the badges of the logos of their technologies (see `iconBadges.ts`).
+    painter.includeOverlays = true
     if (links) painter.getLinkForCellState = (state) => imageLinkOf(state.cell)
     for (const cell of cells) {
       const state = view.getState(cell)

@@ -143,6 +143,8 @@ export function createFakeEditor({
     pageId,
     readOnly,
     addShape: vi.fn(() => null),
+    addLogo: vi.fn(() => null),
+    iconsReady: vi.fn(() => Promise.resolve()),
     addSticky: vi.fn(() => null),
     setStickyColor: vi.fn(),
     setTextFit: vi.fn(),
