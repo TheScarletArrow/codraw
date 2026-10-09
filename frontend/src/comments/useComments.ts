@@ -1,8 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useSyncExternalStore } from 'react'
 import * as Y from 'yjs'
-import { fetchPeople, fetchThreads } from '../api/comments.ts'
+import {
+  addReaction,
+  assignThread,
+  deleteComment,
+  editComment,
+  fetchPeople,
+  fetchThreads,
+  removeReaction,
+  replyToThread,
+  resolveThread,
+  unassignThread,
+  type Comment,
+  type CommentText,
+  type CommentThread,
+  type Person,
+  type Reaction,
+} from '../api/comments.ts'
 import { getCells, type CellKind } from '../diagram/model.ts'
+import type { ThreadActions } from './ThreadCard.tsx'
 import { cellLabel, peopleKey, threadsKey, type CellInfo } from './threads.ts'
 
 /** All threads of the board; other participants' changes come with the message `comments-changed`. */
@@ -28,6 +45,42 @@ export function useCommentChange<T, R>(boardId: string, onChanged: () => void, c
       await queryClient.invalidateQueries({ queryKey: threadsKey(boardId) })
     },
   })
+}
+
+/** What may be done with a thread that is there: answer it, change and delete its comments, resolve and assign it. */
+export function useThreadActions(boardId: string, onChanged: () => void): ThreadActions {
+  const reply = useCommentChange(boardId, onChanged, ({ thread, text }: { thread: CommentThread; text: CommentText }) =>
+    replyToThread(boardId, thread.id, text),
+  )
+  const edit = useCommentChange(
+    boardId,
+    onChanged,
+    ({ thread, comment, text }: { thread: CommentThread; comment: Comment; text: CommentText }) =>
+      editComment(boardId, thread.id, comment.id, text),
+  )
+  const remove = useCommentChange(boardId, onChanged, ({ thread, comment }: { thread: CommentThread; comment: Comment }) =>
+    deleteComment(boardId, thread.id, comment.id),
+  )
+  const resolve = useCommentChange(boardId, onChanged, ({ thread, resolved }: { thread: CommentThread; resolved: boolean }) =>
+    resolveThread(boardId, thread.id, resolved),
+  )
+  const react = useCommentChange(
+    boardId,
+    onChanged,
+    ({ thread, comment, reaction, on }: { thread: CommentThread; comment: Comment; reaction: Reaction; on: boolean }) =>
+      (on ? addReaction : removeReaction)(boardId, thread.id, comment.id, reaction),
+  )
+  const assign = useCommentChange(boardId, onChanged, ({ thread, assignee }: { thread: CommentThread; assignee: Person | null }) =>
+    assignee ? assignThread(boardId, thread.id, assignee.id) : unassignThread(boardId, thread.id),
+  )
+  return {
+    reply: (thread, text) => reply.mutateAsync({ thread, text }),
+    edit: (thread, comment, text) => edit.mutateAsync({ thread, comment, text }),
+    remove: (thread, comment) => remove.mutateAsync({ thread, comment }),
+    resolve: (thread, resolved) => resolve.mutateAsync({ thread, resolved }),
+    react: (thread, comment, reaction, on) => react.mutateAsync({ thread, comment, reaction, on }),
+    assign: (thread, assignee) => assign.mutateAsync({ thread, assignee }),
+  }
 }
 
 /**

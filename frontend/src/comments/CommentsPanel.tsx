@@ -3,25 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import {
-  addReaction,
-  assignThread,
-  deleteComment,
-  editComment,
-  removeReaction,
-  replyToThread,
-  resolveThread,
-  startThread,
-  unassignThread,
-  type Comment,
-  type CommentText,
-  type CommentThread,
-  type Person,
-  type Reaction,
-  type ThreadPoint,
-} from '../api/comments.ts'
+import { startThread, type CommentText, type CommentThread, type ThreadPoint } from '../api/comments.ts'
 import { CommentComposer } from './CommentComposer.tsx'
-import { ThreadCard, type ThreadActions } from './ThreadCard.tsx'
+import { ThreadCard } from './ThreadCard.tsx'
 import {
   filterFor,
   filterThreads,
@@ -31,7 +15,7 @@ import {
   type ThreadFilter,
   type ThreadFocus,
 } from './threads.ts'
-import { useCellInfo, useCommentChange, usePeople } from './useComments.ts'
+import { useCellInfo, useCommentChange, usePeople, useThreadActions } from './useComments.ts'
 
 /** What a new thread will be about: an element of a page, a point of it, or the page when neither is set. */
 export interface ThreadDraft {
@@ -124,38 +108,7 @@ export function CommentsPanel({
   const start = useCommentChange(boardId, onChanged, (variables: ThreadDraft & CommentText) =>
     startThread(boardId, variables),
   )
-  const reply = useCommentChange(boardId, onChanged, ({ thread, text }: { thread: CommentThread; text: CommentText }) =>
-    replyToThread(boardId, thread.id, text),
-  )
-  const edit = useCommentChange(
-    boardId,
-    onChanged,
-    ({ thread, comment, text }: { thread: CommentThread; comment: Comment; text: CommentText }) =>
-      editComment(boardId, thread.id, comment.id, text),
-  )
-  const remove = useCommentChange(boardId, onChanged, ({ thread, comment }: { thread: CommentThread; comment: Comment }) =>
-    deleteComment(boardId, thread.id, comment.id),
-  )
-  const resolve = useCommentChange(boardId, onChanged, ({ thread, resolved }: { thread: CommentThread; resolved: boolean }) =>
-    resolveThread(boardId, thread.id, resolved),
-  )
-  const react = useCommentChange(
-    boardId,
-    onChanged,
-    ({ thread, comment, reaction, on }: { thread: CommentThread; comment: Comment; reaction: Reaction; on: boolean }) =>
-      (on ? addReaction : removeReaction)(boardId, thread.id, comment.id, reaction),
-  )
-  const assign = useCommentChange(boardId, onChanged, ({ thread, assignee }: { thread: CommentThread; assignee: Person | null }) =>
-    assignee ? assignThread(boardId, thread.id, assignee.id) : unassignThread(boardId, thread.id),
-  )
-  const actions: ThreadActions = {
-    reply: (thread, text) => reply.mutateAsync({ thread, text }),
-    edit: (thread, comment, text) => edit.mutateAsync({ thread, comment, text }),
-    remove: (thread, comment) => remove.mutateAsync({ thread, comment }),
-    resolve: (thread, resolved) => resolve.mutateAsync({ thread, resolved }),
-    react: (thread, comment, reaction, on) => react.mutateAsync({ thread, comment, reaction, on }),
-    assign: (thread, assignee) => assign.mutateAsync({ thread, assignee }),
-  }
+  const actions = useThreadActions(boardId, onChanged)
 
   useEffect(() => {
     if (!focus || !threads) return

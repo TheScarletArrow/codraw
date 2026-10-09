@@ -1255,6 +1255,8 @@ export interface DiagramEditor {
    * the color of lines or their width or dash for the selection ({@link setColor}, {@link setLineStyle}) sets them too.
    */
   setPencilLine(changes: Partial<PencilLine>): void
+  /** The ids of the selected cells, in the order of the selection. */
+  selectedCellIds(): string[]
   /** Reports the ids of the selected cells whenever the selection changes. */
   onSelectionChange(listener: (ids: string[]) => void): () => void
   /** Reports that the picture on the screen moved: scrolling, zooming or changed cells. */
@@ -3179,8 +3181,9 @@ export function createDiagramEditor(
   container.addEventListener('contextmenu', preventBrowserMenu)
 
   const selectionListeners = new Set<(ids: string[]) => void>()
+  const selectedCellIds = () => graph.getSelectionCells().flatMap((cell) => cell.getId() ?? [])
   const handleSelectionChange = () => {
-    const ids = graph.getSelectionCells().flatMap((cell) => cell.getId() ?? [])
+    const ids = selectedCellIds()
     selectionListeners.forEach((listener) => listener(ids))
   }
   graph.getSelectionModel().addListener(InternalEvent.CHANGE, handleSelectionChange)
@@ -5035,6 +5038,7 @@ export function createDiagramEditor(
       if (dash !== undefined) changes.dash = dash
       if (pencilLine.set(changes)) notify()
     },
+    selectedCellIds,
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,

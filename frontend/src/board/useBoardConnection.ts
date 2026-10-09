@@ -7,12 +7,13 @@ import { isForbidden, isNotFound, isUnauthorized } from '../api/http.ts'
 import { recheckSession } from '../auth/session.ts'
 import type { ParticipantIdentity } from './identity.ts'
 import { threadsKey } from '../comments/threads.ts'
+import { decisionsKey } from '../decisions/decisions.ts'
 import { getPages } from '../diagram/model.ts'
 import { embedKey } from '../embed/links.ts'
 import { hasUnsentEdits, localCopiesAvailable, openLocalCopy, setUnsentEdits } from '../offline/localCopies.ts'
 import { membersKey } from './members.ts'
 import { proposalsKey } from '../proposals/proposals.ts'
-import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED, PROPOSALS_CHANGED } from './messages.ts'
+import { BOARD_CHANGED, changeOf, COMMENTS_CHANGED, DECISIONS_CHANGED, PROPOSALS_CHANGED } from './messages.ts'
 import { participantPage, type Awareness } from './presence.ts'
 
 /** `forbidden`: the owner closed the link to the board or removed the participant, who has no access to it any more. */
@@ -284,12 +285,16 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
       },
       onUnsyncedChanges: () => checkSent(),
       // Another participant renamed or deleted the board: its title, or its absence, comes from the API. So do the
-      // comments and the proposals that another participant changed.
+      // comments, the decisions and the proposals that another participant changed.
       onStateless: ({ payload }) => {
         const change = changeOf(payload)
         if (change === 'board-changed') void refetchBoard()
         else if (change === 'comments-changed') void queryClient.invalidateQueries({ queryKey: threadsKey(boardId) })
-        else if (change === 'proposals-changed') void queryClient.invalidateQueries({ queryKey: proposalsKey(boardId) })
+        else if (change === 'decisions-changed') {
+          // The discussion of a deleted decision goes away with it.
+          void queryClient.invalidateQueries({ queryKey: decisionsKey(boardId) })
+          void queryClient.invalidateQueries({ queryKey: threadsKey(boardId) })
+        } else if (change === 'proposals-changed') void queryClient.invalidateQueries({ queryKey: proposalsKey(boardId) })
       },
     })
     providerRef.current = provider
@@ -365,6 +370,9 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
   /** Tells the other participants that the comments changed, so that they fetch them again. */
   const notifyCommentsChanged = useCallback(() => providerRef.current?.sendStateless(COMMENTS_CHANGED), [])
 
+  /** Tells the other participants that the decisions changed, so that they fetch them again. */
+  const notifyDecisionsChanged = useCallback(() => providerRef.current?.sendStateless(DECISIONS_CHANGED), [])
+
   /** Tells the other participants that a proposal was made or decided, so that they fetch the proposals again. */
   const notifyProposalsChanged = useCallback(() => providerRef.current?.sendStateless(PROPOSALS_CHANGED), [])
 
@@ -391,6 +399,7 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
     awareness: session?.awareness ?? null,
     notifyBoardChanged,
     notifyCommentsChanged,
+    notifyDecisionsChanged,
     notifyProposalsChanged,
   }
 }
