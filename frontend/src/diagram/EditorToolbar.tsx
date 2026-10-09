@@ -72,7 +72,13 @@ export function EditorToolbar({
   const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
 
   return (
-    <div role="toolbar" aria-label="Инструменты" className="flex min-w-0 items-center gap-1 overflow-x-auto">
+    // Takes the room the line leaves and scrolls beyond it; the tools with a text show it while that room is enough. The
+    // line keeps at least the room of the tools up to «Показать всё».
+    <div
+      role="toolbar"
+      aria-label="Инструменты"
+      className="@container flex min-w-65 flex-1 items-center gap-1 overflow-x-auto"
+    >
       {!readOnly && (
         <>
           <Button

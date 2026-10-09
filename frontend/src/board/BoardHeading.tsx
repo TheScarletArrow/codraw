@@ -49,11 +49,11 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
   })
 
   if (board.role !== 'owner') {
-    const heading = <h2 className="max-w-64 shrink-0 truncate font-semibold">{board.title}</h2>
+    const heading = <h2 className="max-w-64 min-w-24 truncate font-semibold">{board.title}</h2>
     const onHistory = canManageVersions(board) ? onOpenHistory : undefined
     if (!onHistory && !notifications) return heading
     return (
-      <div className="flex max-w-72 shrink-0 items-center gap-1">
+      <div className="flex max-w-72 min-w-0 items-center gap-1">
         {heading}
         <BoardActions title={board.title} onHistory={onHistory} notifications={notifications} />
       </div>
@@ -62,7 +62,8 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
 
   const title = rename.isPending ? rename.variables : board.title
   return (
-    <div className="flex max-w-72 shrink-0 items-center gap-1">
+    // A long title shortens before the tools of the line lose their room.
+    <div className="flex max-w-72 min-w-0 items-center gap-1">
       {renaming ? (
         <TitleInput
           title={board.title}
@@ -74,7 +75,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
           }}
         />
       ) : (
-        <h2 className="min-w-0 font-semibold">
+        <h2 className="min-w-24 font-semibold">
           <button
             type="button"
             title="Переименовать доску"
