@@ -46,7 +46,7 @@ CoDraw со ссылкой обратно, а статус приходит из
   `LegalController` (`issues`); тесты с GitHub на этой машине.
 - `collab`: сообщение `issues-changed`.
 - `frontend`: `api/issues.ts`, `issues/` (панель, значки, задачи ветки, формы), страница «Подключения», пункт меню,
-  `ThreadCard`, `BoardPage`, `useBoardConnection`, политика конфиденциальности, «Что нового» 0.24.0.
+  `ThreadCard`, `BoardPage`, `useBoardConnection`, политика конфиденциальности, «Что нового» 0.25.0.
 - `docs/adr/0009-issue-tracker.md`, `docs/deploy.md`, `docker-compose.prod.yml`, `.env.prod.example`, README.
 - Новых зависимостей нет: запросы к GitHub идут HTTP-клиентом JDK, подпись вебхука — `javax.crypto`.
 - Вне рамок: другие трекеры, OAuth и GitHub App, двусторонняя синхронизация статусов, pull request, привязка задач при

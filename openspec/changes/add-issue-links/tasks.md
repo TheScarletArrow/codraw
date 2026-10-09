@@ -25,5 +25,5 @@
 ## 3. Документация и проверка
 
 - [x] 3.1 ADR-0009, README, `docs/deploy.md`, `docker-compose.prod.yml`, `.env.prod.example`, политика
-  конфиденциальности, «Что нового» 0.24.0, версия фронтенда
+  конфиденциальности, «Что нового» 0.25.0, версия фронтенда
 - [x] 3.2 `./gradlew build`, typecheck, lint, тесты и сборка `frontend` и `collab`

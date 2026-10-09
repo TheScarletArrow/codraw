@@ -21,6 +21,7 @@ import {
   type CellData,
 } from '../diagram/model.ts'
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
+import { DiagramBuilder } from '../templates/builder.ts'
 import { restoreDocument } from '../diagram/restore.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { writeStatus } from '../diagram/status.ts'
@@ -1590,6 +1591,35 @@ describe('BoardPage', () => {
       expect(tabs()).toHaveLength(1)
       expect(shownPage()).toBe(DEFAULT_PAGE_ID)
       expect(router.state.location.search).toBe(`?page=${DEFAULT_PAGE_ID}`)
+    })
+
+    it('makes a view of the model in the window of its rule, opens it under its bar and keeps it in line with the model', async () => {
+      const { document } = await openPages()
+      const drawn = new DiagramBuilder()
+      drawn.shape('c4-boundary', 0, 0, { value: 'Магазин\n[Software System]', width: 800, height: 500 })
+      drawn.shape('c4-container', 40, 80, { value: 'API\n[Container]' })
+      act(() => document.transact(() => drawn.build().forEach((cell) => writeCell(getCells(document), cell))))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Новое представление' }))
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Новое представление' })).getByRole('button', { name: 'Создать' }))
+
+      const view = listPages(document)[1]!
+      expect(view).toMatchObject({ name: 'Магазин: контейнеры', view: { rule: { kind: 'containers' } } })
+      expect(screen.getByRole('tab', { name: 'Магазин: контейнеры' })).toHaveAttribute('aria-selected', 'true')
+      expect(shownPage()).toBe(view.id)
+      expect(screen.getByRole('region', { name: 'Представление' })).toHaveTextContent('Контейнеры системы Магазин')
+      const names = () =>
+        Array.from(getCells(document, view.id).values())
+          .filter((cell) => cell.get('kind') === 'vertex')
+          .map((cell) => String(cell.get('value')).split('\n')[0])
+          .sort()
+      expect(names()).toEqual(['API', 'Магазин'])
+
+      // Who edits the board keeps the view in line: a container drawn in the boundary appears on it.
+      const more = new DiagramBuilder()
+      more.shape('service', 400, 80, { value: 'Склад' })
+      act(() => document.transact(() => more.build().forEach((cell) => writeCell(getCells(document), cell))))
+      expect(names()).toEqual(['API', 'Магазин', 'Склад'])
     })
 
     it('duplicates and deletes pages from the tab menu', async () => {

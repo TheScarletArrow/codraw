@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { kindLabel } from '../diagram/elementProps.ts'
 import { ELEMENT_DRAG_TYPE, type ElementDrag } from '../diagram/sharedElements.ts'
+import { ModelTree } from '../views/ModelTree.tsx'
 import { elementsStore, pagesLabel, searchElements, type ElementItem } from './elementList.ts'
 
 /** The button of the header of the board that shows and hides the panel of the elements of the board. */
@@ -38,7 +39,8 @@ const noSubscription = () => () => {}
  * The elements of all pages of the board, at the right of the canvas while it is open: the name, the kind, the
  * technology and the number of pages of each, a search by their properties, and the pages and cells of an item when it
  * is opened, where a click goes. Who edits the board drags an item onto the canvas to add another cell of its element.
- * A new `request`, e.g. of «Где используется…», opens that item.
+ * A new `request`, e.g. of «Где используется…», opens that item in the list. The tab «Модель» shows the same elements as
+ * the tree of the model of the board, searched by the same field.
  */
 export function ElementsPanel({
   document,
@@ -58,6 +60,7 @@ export function ElementsPanel({
   const store = document ? elementsStore(document) : null
   const items = useSyncExternalStore(store?.subscribe ?? noSubscription, () => store?.get() ?? NO_ITEMS)
   const [query, setQuery] = useState('')
+  const [tab, setTab] = useState<'list' | 'model'>('list')
   const [opened, setOpened] = useState<string | null>(request?.key ?? null)
   // A new request opens its item in the whole list.
   const [requested, setRequested] = useState(request)
@@ -65,6 +68,7 @@ export function ElementsPanel({
     setRequested(request)
     if (request) {
       setQuery('')
+      setTab('list')
       setOpened(request.key)
     }
   }
@@ -89,6 +93,23 @@ export function ElementsPanel({
           <X />
         </Button>
       </header>
+      <div role="tablist" aria-label="Вид панели" className="flex gap-1 border-b px-2 pt-2">
+        {(['list', 'model'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            className={cn(
+              '-mb-px rounded-t-md border border-transparent px-3 py-1 text-sm',
+              tab === value ? 'border-border border-b-background bg-background font-medium' : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setTab(value)}
+          >
+            {value === 'list' ? 'Список' : 'Модель'}
+          </button>
+        ))}
+      </div>
       <div className="border-b p-2">
         <label className="relative flex items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-4 text-muted-foreground" />
@@ -109,7 +130,9 @@ export function ElementsPanel({
         </label>
       </div>
       <div className="overflow-y-auto p-1">
-        {items.length === 0 ? (
+        {tab === 'model' && document ? (
+          <ModelTree document={document} query={query} canPlace={canPlace} onShow={onShow} />
+        ) : items.length === 0 ? (
           <p className="p-2 text-sm text-muted-foreground">На доске нет элементов</p>
         ) : found.length === 0 ? (
           <p className="p-2 text-sm text-muted-foreground">Ничего не найдено</p>

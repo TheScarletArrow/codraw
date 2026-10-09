@@ -88,8 +88,9 @@ export function movePage(doc: Y.Doc, id: string, index: number) {
 
 /**
  * Copies a page with all its cells right after it and returns the id of the copy. Cells get new ids, and cells of
- * elements copies of their elements, so the copy is independent of the original. With an `author`, the copies keep
- * them as who changed them last, as pasted copies do.
+ * elements copies of their elements, so the copy is independent of the original. A view of the model (see
+ * `modelViews.ts`) is copied as another view of the same model: with its rule, what is hidden and where things stood, its
+ * cells cells of the same elements. With an `author`, the copies keep them as who changed them last, as pasted copies do.
  */
 export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = null): string | null {
   const pages = listPages(doc)
@@ -103,17 +104,24 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
   for (const cellId of source.keys()) if (!ids.has(cellId)) ids.set(cellId, newId())
   const remap = (value: unknown) => (typeof value === 'string' ? (ids.get(value) ?? value) : value)
   const elements = getElements(doc)
+  const view = pages[index]!.view
   // One copy of each element, should several cells of the page show it; an element the document lacks gets a new id too.
   const elementCopies = new Map<string, string>()
-  source.forEach((cell) => {
-    const element = cellElementId(cell)
-    if (element !== null && !elementCopies.has(element)) elementCopies.set(element, newId())
-  })
+  if (!view) {
+    source.forEach((cell) => {
+      const element = cellElementId(cell)
+      if (element !== null && !elementCopies.has(element)) elementCopies.set(element, newId())
+    })
+  }
 
   const copyId = newId()
   const at = Date.now()
   doc.transact(() => {
-    writePage(doc, copyId, { name: `${pages[index]!.name} (копия)`, order: orderAfter(pages[index], pages[index + 1]) })
+    writePage(doc, copyId, {
+      name: `${pages[index]!.name} (копия)`,
+      order: orderAfter(pages[index], pages[index + 1]),
+      ...(view && { view }),
+    })
     elementCopies.forEach((copy, element) => {
       const original = elements.get(element)
       if (original instanceof Y.Map) elements.set(copy, copyMap(original))

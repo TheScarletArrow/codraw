@@ -1,8 +1,9 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
+import { DiagramBuilder } from '../templates/builder.ts'
 import type { SelectionProperties } from '../diagram/editor.ts'
 import { ELEMENT_KEY, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
 import { shapeData } from '../diagram/testing.ts'
@@ -33,6 +34,7 @@ const QUEUE_EDGE: SelectionProperties = {
   target: 'edge',
   cellId: 'flow',
   properties: { technology: 'Kafka', interaction: 'async' },
+  relations: null,
   canChange: true,
 }
 
@@ -271,5 +273,46 @@ describe('PropertiesPanel', () => {
 
     act(() => editor.setState({ properties: { ...LEGEND, items: [] } }))
     expect(panel()).toHaveTextContent('На странице нет фигур и связей')
+  })
+
+  it('places a container in a system of the model, by the drawing unless chosen, and sets the environment of a node', async () => {
+    const page = new DiagramBuilder()
+    page.shape('c4-boundary', 0, 0, { element: { name: 'Магазин', kind: 'c4-system' }, width: 800, height: 500 })
+    const api = page.shape('c4-container', 40, 80, { value: 'API\n[Container]' })
+    page.shape('c4-system', 1000, 0, { element: { name: 'Платежи' } })
+    const node = page.shape('c4-deployment-node', 0, 800, { value: 'k8s\n[Kubernetes]' })
+    doc.transact(() => page.build().forEach((cell) => writeCell(getCells(doc), cell)))
+
+    act(() => editor.setState({ properties: { ...API, cellId: api } }))
+    const parent = await within(panel()).findByLabelText('Входит в')
+    expect(parent).toHaveValue('')
+    expect(within(parent).getByRole('option', { name: 'По схеме: Магазин' })).toBeInTheDocument()
+    await userEvent.selectOptions(parent, within(parent).getByRole('option', { name: 'Платежи' }))
+    expect(editor.setModelField).toHaveBeenCalledWith(api, 'parent', expect.any(String))
+
+    act(() => editor.setState({ properties: { ...API, cellId: node, properties: { ...API.properties, kind: null } } }))
+    await userEvent.type(field('Окружение'), 'prod{Enter}')
+    expect(editor.setModelField).toHaveBeenCalledWith(node, 'environment', 'prod')
+  })
+
+  it('shows the relations of the model an edge of a view is made of, and goes to them', async () => {
+    cleanup()
+    const onShow = vi.fn()
+    render(<PropertiesPanel editor={editor} document={doc} onShow={onShow} onClose={onClose} />)
+    act(() =>
+      editor.setState({
+        properties: {
+          ...QUEUE_EDGE,
+          canChange: false,
+          relations: [{ pageId: 'p1', pageName: 'Компоненты', cellId: 'e1', source: 'Оплата', target: 'Шлюз банка', label: 'Списывает', technology: 'HTTPS' }],
+        },
+      }),
+    )
+    expect(within(panel()).getByRole('heading')).toHaveTextContent('Связь представления')
+    expect(within(panel()).queryByLabelText('Технология / протокол')).toBeNull()
+    const relation = within(within(panel()).getByRole('list', { name: 'Связи модели' })).getByRole('button', { name: /Оплата → Шлюз банка/ })
+    expect(relation).toHaveTextContent('Списывает · HTTPS · Компоненты')
+    await userEvent.click(relation)
+    expect(onShow).toHaveBeenCalledWith('p1', 'e1')
   })
 })

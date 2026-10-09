@@ -1,5 +1,6 @@
 import * as Y from 'yjs'
 import { architectureModel, labelLines, type ArchNode, type BoundaryKind } from '../architecture/model.ts'
+import { isComputedCell } from '../diagram/boardModel.ts'
 import type { C4Kind, C4Variant, ElementProperties } from '../diagram/elementKinds.ts'
 import { elementProperties, kindLabel, labelFormat } from '../diagram/elementProps.ts'
 import { elementIdOf, getCells, readCell, type CellData } from '../diagram/model.ts'
@@ -207,6 +208,8 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
       if (entry instanceof Y.Map) cells.push(readCell(node.id, entry))
     }
     const byId = new Map(cells.map((cell) => [cell.id, cell]))
+    // What a view of the model computed shows the relations and the frames of the model, which are checked where drawn.
+    const computed = (cellId: string) => isComputedCell(byId.get(cellId)?.style ?? {}, page.view !== undefined)
     const keyOf = (cellId: string) => elementIdOf(byId.get(cellId)?.style) ?? `${page.id}/${cellId}`
     const placeOf = (cellId: string): CheckPlace => ({ pageId: page.id, pageName: page.name, cellId })
     const model = architectureModel(cells, page.name)
@@ -246,7 +249,7 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
             : c4 && node.kind === 'component' && !frames.includes('container')
               ? 'Компонент вне границы контейнера'
               : null
-        if (detail) {
+        if (detail && !computed(node.cellId)) {
           nesting.push({ key: `nesting:${page.id}/${node.cellId}`, rule: 'nesting', subject: named(node.name), detail, places: [placeOf(node.cellId)] })
         }
       }
@@ -263,6 +266,7 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
       cells.filter((cell) => cell.kind === 'vertex' && cell.parent && byId.get(cell.parent)?.kind === 'edge' && labelLines(cell).length > 0).map((cell) => cell.parent),
     )
     for (const relation of model.relations) {
+      if (computed(relation.edgeId)) continue
       links.push({
         place: placeOf(relation.edgeId),
         source: keyOf(relation.source.cellId),

@@ -90,11 +90,14 @@ export function searchElements(items: readonly ElementItem[], query: string): El
 /** How often the list is taken again while the board changes, at most. */
 export const ELEMENTS_INTERVAL_MS = 150
 
-/** The elements of a board for `useSyncExternalStore`: the panel «Элементы доски» and the badges share one. */
-export interface ElementsStore {
-  get(): readonly ElementItem[]
+/** Something read from a board for `useSyncExternalStore`, e.g. its elements, which the panel and the badges share. */
+export interface DocumentStore<T> {
+  get(): T
   subscribe(onChange: () => void): () => void
 }
+
+/** The elements of a board for `useSyncExternalStore`: the panel «Элементы доски» and the badges share one. */
+export type ElementsStore = DocumentStore<readonly ElementItem[]>
 
 const stores = new WeakMap<Y.Doc, ElementsStore>()
 
@@ -106,16 +109,20 @@ const stores = new WeakMap<Y.Doc, ElementsStore>()
 export function elementsStore(doc: Y.Doc): ElementsStore {
   let store = stores.get(doc)
   if (!store) {
-    store = createElementsStore(doc)
+    store = documentStore(doc, listElements)
     stores.set(doc, store)
   }
   return store
 }
 
-function createElementsStore(doc: Y.Doc): ElementsStore {
-  // Changes of the document seen so far, and the list as it was after some of them.
+/**
+ * A store of what `read` takes from a board: the same value until the document changes, and while it does, taken again
+ * at most every {@link ELEMENTS_INTERVAL_MS}. A change heard by nobody is taken at the next read.
+ */
+export function documentStore<T>(doc: Y.Doc, read: (doc: Y.Doc) => T): DocumentStore<T> {
+  // Changes of the document seen so far, and the value as it was after some of them.
   let version = 0
-  let snapshot: { version: number; items: readonly ElementItem[] } | null = null
+  let snapshot: { version: number; value: T } | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   const listeners = new Set<() => void>()
   // Heard as long as the document lives, listened to or not: a change heard by nobody is taken at the next read.
@@ -130,9 +137,9 @@ function createElementsStore(doc: Y.Doc): ElementsStore {
   })
   return {
     get() {
-      // While a notification is due, the list stays as it is.
-      if (!snapshot || (snapshot.version !== version && timer === undefined)) snapshot = { version, items: listElements(doc) }
-      return snapshot.items
+      // While a notification is due, the value stays as it is.
+      if (!snapshot || (snapshot.version !== version && timer === undefined)) snapshot = { version, value: read(doc) }
+      return snapshot.value
     },
     subscribe(onChange) {
       listeners.add(onChange)

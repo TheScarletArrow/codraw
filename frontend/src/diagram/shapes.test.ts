@@ -57,7 +57,17 @@ describe('shape presets', () => {
       ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка', 'Диаграмма последовательности']],
       [
         'C4',
-        ['Person', 'Software System', 'Container', 'Component', 'Database', 'External System', 'Граница системы', 'Легенда'],
+        [
+          'Person',
+          'Software System',
+          'Container',
+          'Component',
+          'Database',
+          'External System',
+          'Граница системы',
+          'Узел развёртывания',
+          'Легенда',
+        ],
       ],
       ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
@@ -156,6 +166,8 @@ describe('shape presets', () => {
       expect(findShape(id)!.style).toMatchObject({ fillColor: 'none', dashed: true, pointerEvents: false })
     }
     expect(findShape('bpmn-pool')!.style).toMatchObject({ fillColor: 'none', pointerEvents: false })
+    // A node of deployment is a frame of solid lines.
+    expect(findShape('c4-deployment-node')!.style).toMatchObject({ fillColor: 'none', dashed: false, pointerEvents: false })
   })
 })
 
@@ -223,6 +235,7 @@ describe('shape groups', () => {
       'bpmn-pool',
       'kubernetes-cluster',
       'c4-boundary',
+      'c4-deployment-node',
     ])
     for (const section of SHAPE_SECTIONS) {
       for (const shape of section.shapes) {
@@ -251,6 +264,7 @@ describe('shape groups', () => {
     expect(system).not.toContain('boundary')
     expect(system).not.toContain('kubernetes-cluster')
     expect(ids(groupShapes('c4'))).not.toContain('c4-boundary')
+    expect(ids(groupShapes('c4'))).not.toContain('c4-deployment-node')
   })
 
   it('mark a style with the palette shape it comes from', () => {

@@ -136,6 +136,10 @@ import { impactNode, type ImpactDepth } from './impact.ts'
 import { configureImpact, modelImpactRecords, type ImpactState } from './impactView.ts'
 import { configureFilter, modelFilterRecords, type FilterStatus } from './filterView.ts'
 import { cellVisibility } from './cellVisibility.ts'
+import { buildModel, writeModelField } from './boardModel.ts'
+import { listPages } from './pages.ts'
+import { detachView as detachPageView, isViewPage, showOnView, viewContents, viewOf, writeViewRule } from './modelViews.ts'
+import { COMPUTED_KEY, type ViewRule } from './viewRule.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import {
   DEFAULT_END_ARROW,
@@ -220,6 +224,7 @@ import {
   OWN_LINES_KEY,
   readCell,
   type CellData,
+  type ModelField,
   type StyleValue,
 } from './model.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
@@ -532,6 +537,11 @@ export type SelectionProperties =
       target: 'edge'
       cellId: string
       properties: EdgeProperties
+      /**
+       * Of an edge a view computed: the relations of the model it shows, which are changed where they are drawn; `null`
+       * for an edge drawn on the page.
+       */
+      relations: ViewRelation[] | null
       canChange: boolean
     }
   | {
@@ -541,6 +551,17 @@ export type SelectionProperties =
       items: LegendPanelItem[]
       canChange: boolean
     }
+
+/** A relation of the model that an edge of a view shows: the edge of a page between two elements. */
+export interface ViewRelation {
+  pageId: string
+  pageName: string
+  cellId: string
+  source: string
+  target: string
+  label: string
+  technology: string
+}
 
 /** An item of a legend as its panel shows it; see {@link DiagramEditor.setLegendItem}. */
 export interface LegendPanelItem extends Pick<LegendItem, 'key' | 'type'> {
@@ -1200,6 +1221,18 @@ export interface DiagramEditor {
    * its cells, one on this page if there is one; a shape that is no element yet becomes one with it. Selects it.
    */
   placeElement(source: ElementSource, at: Point): void
+  /**
+   * Sets a field of the model of the element of the shape `cellId` (see `boardModel.ts`): the element it is a part of,
+   * or the environment of a node of deployment; an empty value removes it. A shape that is no element yet becomes one.
+   * One undo step; a locked shape and an editor only for reading change nothing.
+   */
+  setModelField(cellId: string, field: ModelField, value: string): void
+  /** Sets the rule of the view the page is (see `modelViews.ts`), as one undo step of the page. */
+  setViewRule(rule: ViewRule): void
+  /** Shows again what was hidden on the view the page is: the keys `keys`, or all; one undo step. */
+  showOnView(keys: readonly string[] | 'all'): void
+  /** Makes the view a page of its own: its rule goes, its cells stay cells of their elements; one undo step. */
+  detachView(): void
   /** The element of the single selected shape that may be one, and the pages with its cells; `null` without one. */
   selectedElement(): SelectionElement | null
   /** The elements of the selected shapes that may be merged into one, each once, in the order of the selection. */
@@ -1741,6 +1774,9 @@ export function createDiagramEditor(
   configureFreehand(graph)
   const unwatchLocks = configureLocks(graph)
   configureSelection(graph)
+  // The label of an edge that the view computed follows the model: it is changed where its relations are drawn.
+  const isCellEditable = graph.isCellEditable.bind(graph)
+  graph.isCellEditable = (cell) => isCellEditable(cell) && !isComputedEdge(cell)
 
   // Layers. What the participant chose about them for themselves, or without a view of the board, for the editor only.
   const view = layerView ?? new LayerViews().page(pageId)
@@ -2215,6 +2251,31 @@ export function createDiagramEditor(
     const filter = filterView.filter()
     return counts && filter ? { ...counts, hide: filter.hide } : null
   }
+  /** The edge is one that the view of the page computed: it shows relations of the model, and follows them. */
+  const isComputedEdge = (cell: Cell) => {
+    const key = (cell.getStyle() as Record<string, unknown>)[COMPUTED_KEY]
+    return cell.isEdge() && typeof key === 'string' && key !== '' && isViewPage(document, pageId)
+  }
+  /** The relations of the model a computed edge of the view shows; `null` for an edge drawn on the page. */
+  const viewRelations = (cell: Cell): ViewRelation[] | null => {
+    if (!isComputedEdge(cell)) return null
+    const view = viewOf(document, pageId)
+    const key = (cell.getStyle() as Record<string, unknown>)[COMPUTED_KEY]
+    if (!view) return []
+    const boardModel = buildModel(document)
+    const edge = viewContents(boardModel, view.rule, new Set(view.hidden)).edges.find((candidate) => candidate.key === key)
+    const pageNames = new Map(listPages(document).map((page) => [page.id, page.name]))
+    const nameOf = (id: string) => boardModel.elements.get(id)?.properties.name ?? ''
+    return (edge?.relations ?? []).map((relation) => ({
+      pageId: relation.edge.pageId,
+      pageName: pageNames.get(relation.edge.pageId) ?? '',
+      cellId: relation.edge.cellId,
+      source: nameOf(relation.source),
+      target: nameOf(relation.target),
+      label: relation.label,
+      technology: relation.technology,
+    }))
+  }
   /** The properties of the single selected shape or edge that has them; see {@link SelectionProperties}. */
   const selectionProperties = (): SelectionProperties | null => {
     const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
@@ -2235,7 +2296,10 @@ export function createDiagramEditor(
     const cellId = cell.getId()!
     const canChange = !readOnly && isUnlocked(cell)
     const style = cell.getStyle() as Record<string, unknown>
-    if (target === 'edge') return { target, cellId, properties: edgeProperties(style), canChange }
+    if (target === 'edge') {
+      const relations = viewRelations(cell)
+      return { target, cellId, properties: edgeProperties(style), relations, canChange: canChange && relations === null }
+    }
     const value = String(cell.getValue() ?? '')
     const properties = elementProperties(style, value)
     return {
@@ -4963,6 +5027,41 @@ export function createDiagramEditor(
       graph.setSelectionCell(added)
       container.focus({ preventScroll: true })
     },
+    setModelField(cellId, field, value) {
+      // The panel applies what was typed when it goes away, which may be after the editor did.
+      if (readOnly || destroyed) return
+      const cell = model.getCell(cellId)
+      if (!cell || propertiesTarget(cell) !== 'shape' || !isUnlocked(cell)) return
+      graph.stopEditing(false)
+      let changed = false
+      document.transact(() => {
+        // A shape without an element becomes one, as a change of its properties makes it.
+        const id = ensureElement(document, { pageId, cellId })
+        changed = id !== null && writeModelField(document, id, field, value)
+        if (changed && author) writeAttribution(cells.get(cellId)!, author, Date.now())
+      }, origin)
+      binding.refresh([cellId])
+      if (changed) notify()
+    },
+    setViewRule(rule) {
+      if (readOnly || destroyed) return
+      graph.stopEditing(false)
+      document.transact(() => writeViewRule(document, pageId, rule), origin)
+    },
+    showOnView(keys) {
+      if (readOnly || destroyed) return
+      document.transact(() => showOnView(document, pageId, keys === 'all' ? 'all' : [...keys]), origin)
+    },
+    detachView() {
+      if (readOnly || destroyed) return
+      graph.stopEditing(false)
+      let changed: string[] = []
+      document.transact(() => {
+        changed = detachPageView(document, pageId)
+      }, origin)
+      binding.refresh(changed)
+      notify()
+    },
     selectedElement() {
       const cell = graph.getSelectionCount() === 1 ? graph.getSelectionCell() : null
       if (!cell || propertiesTarget(cell) !== 'shape') return null
@@ -5298,6 +5397,16 @@ function propertiesTarget(cell: Cell): 'shape' | 'edge' | null {
   if (!cell.isVertex() || cell.getParent()?.isEdge() || isTable(cell) || isTable(cell.getParent()) || isGroup(cell)) return null
   if (isSequence(cell) || isSequencePart(cell)) return null
   return canBeElement(cell.getStyle() as Record<string, unknown>) ? 'shape' : null
+}
+
+/** Takes the mark of a cell computed by a view off a copy and its descendants: whoever pastes it draws it. */
+function forgetComputed(cell: Cell) {
+  const style = cell.getStyle() as Record<string, unknown>
+  if (COMPUTED_KEY in style) {
+    const { [COMPUTED_KEY]: _computed, ...rest } = style
+    cell.setStyle(rest as CellStyle)
+  }
+  cell.getChildren().forEach(forgetComputed)
 }
 
 /** While set, clones keep the elements of the cells they copy: those of the clipboard, and the cells of the same elements. */
@@ -5756,8 +5865,9 @@ function configureLocks(graph: Graph): () => void {
   const cloneCells = graph.cloneCells.bind(graph)
   graph.cloneCells = (...args) => {
     const clones = cloneCells(...args)
-    // maxGraph leaves no clone of an edge that would be invalid without its ends.
+    // maxGraph leaves no clone of an edge that would be invalid without its ends. A copy is drawn: no view computed it.
     clones.forEach((clone) => clone && unlockCopy(clone))
+    clones.forEach((clone) => clone && forgetComputed(clone))
     // A copy is an element of its own, unless it is to be a cell of the same element (see `keepElements`); the copies of
     // the cells of one element are cells of one new element.
     const renewed = new Map<string, string>()

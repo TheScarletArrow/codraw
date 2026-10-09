@@ -38,6 +38,7 @@ import {
   type PointData,
   type StyleValue,
 } from './model.ts'
+import { hideOnView, isViewPage, keysHiddenByRemoval } from './modelViews.ts'
 import { isStickyStyle } from './shapes.ts'
 import { elementData, healLabels, relabelElementCells, RELABEL_ORIGIN } from './sharedElements.ts'
 
@@ -112,6 +113,9 @@ function keepEdgesInLayers(model: GraphDataModel) {
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
  * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.
+ *
+ * On a page that is a view of the model (see `modelViews.ts`), removing a cell the view computed hides it on the view
+ * in the same transaction, so that the view does not bring it back and undo shows it again.
  *
  * Layers are cells of the root like any other: their names, order, locks and visibility for everybody are written and
  * read; the main layer is never removed from the model. Whether a layer shows on this canvas is the participant's
@@ -277,7 +281,10 @@ export class DiagramBinding {
     const layers = new Set<string>()
     doc.transact(() => {
       const removedElements = removed.map((id) => cellElementId(this.cells.get(id)))
+      const page = this.pageId()
+      const hiding = page !== null && removed.length > 0 && isViewPage(doc, page) ? keysHiddenByRemoval(this.cells, removed) : null
       removed.forEach((id) => deleteCell(this.cells, id))
+      if (hiding && hiding.keys.length > 0) hideOnView(doc, page!, hiding.keys, hiding.places)
       const at = Date.now()
       const written = new Set(alive.map((cell) => cell.getId()!))
       // The properties of the elements of the written cells before the change, and those the change changed.
@@ -306,7 +313,6 @@ export class DiagramBinding {
         }
       }
       for (const element of before.keys()) if (!changedElements.has(element)) before.delete(element)
-      const page = this.pageId()
       for (const ref of relabelElementCells(doc, before, (ref) => ref.pageId === page && written.has(ref.cellId))) {
         const entry = getCells(doc, ref.pageId).get(ref.cellId)!
         if (this.author) writeAttribution(entry, this.author, at)

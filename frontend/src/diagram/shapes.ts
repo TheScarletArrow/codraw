@@ -69,6 +69,7 @@ export type ShapeId =
   | 'c4-database'
   | 'c4-external-system'
   | 'c4-boundary'
+  | 'c4-deployment-node'
   | 'legend'
 
 /**
@@ -707,6 +708,15 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
         value: 'Граница системы\n[Software System]',
         style: { ...boundaryStyle('#666666'), fontColor: '#333333' },
       },
+      {
+        id: 'c4-deployment-node',
+        label: 'Узел развёртывания',
+        width: 360,
+        height: 240,
+        value: 'Узел развёртывания\n[технология]',
+        // A frame of solid lines, as nodes of deployment are drawn in C4: what lies inside runs on the node.
+        style: { ...boundaryStyle('#444444'), dashed: false, rounded: true, arcSize: 3, fontColor: '#333333' },
+      },
       LEGEND,
     ],
   },
@@ -735,6 +745,7 @@ export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>([
   'bpmn-pool',
   'kubernetes-cluster',
   'c4-boundary',
+  'c4-deployment-node',
 ])
 
 const GROUPS = new Map<ShapeId, ShapeGroup>(
