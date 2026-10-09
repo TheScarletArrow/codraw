@@ -62,6 +62,7 @@ export type MenuCommand =
   | 'detachElement'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'saveToLibrary'
 
 /** Items that put the selected message of a sequence diagram into a frame of a kind. */
 export type FrameCommand = 'frameAlt' | 'frameOpt' | 'frameLoop' | 'framePar'
@@ -174,6 +175,8 @@ export interface MenuAvailability {
   plan?: SelectionPlan | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
   canBranch?: boolean
+  /** The page saves the selection into a library of the user: «Сохранить в библиотеку…» is offered, to viewers too. */
+  canSaveToLibrary?: boolean
 }
 
 /** Items of a participant who may only view the board. */
@@ -186,6 +189,7 @@ const VIEWING_COMMANDS = new Set<MenuCommand>([
   'properties',
   'copyMermaid',
   'whereUsed',
+  'saveToLibrary',
 ])
 
 /** Items that change the selected elements, which a lock keeps from changing. */
@@ -221,6 +225,8 @@ const CLIPBOARD: Entry[] = [
   ['copy', 'Копировать', 'Mod+C'],
   ['duplicate', 'Дублировать', 'Mod+D'],
 ]
+/** Copying, then saving into a library, which takes what copying takes. */
+const COPYING: Entry[] = [...CLIPBOARD, ['saveToLibrary', 'Сохранить в библиотеку…']]
 const COPY_STYLE: Entry = ['copyStyle', 'Копировать стиль', 'Mod+Alt+C']
 const PASTE_STYLE: Entry = ['pasteStyle', 'Вставить стиль', 'Mod+Alt+V']
 const STYLE: Entry[] = [COPY_STYLE, PASTE_STYLE]
@@ -276,10 +282,10 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], CLIPBOARD, STYLE, ORDER, LOCK, STATUS, PLAN, [...LINK, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
+  shape: [[EDIT_LABEL], COPYING, STYLE, ORDER, LOCK, STATUS, PLAN, [...LINK, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
-    CLIPBOARD,
+    COPYING,
     STYLE,
     ORDER,
     LOCK,
@@ -309,13 +315,13 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   ],
   edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], COMMENT, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], CLIPBOARD, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, COMMENT, [DELETE]],
+  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, COMMENT, [DELETE]],
   selection: [
     [
       ['group', 'Сгруппировать', 'Mod+G'],
       ['mergeElements', 'Объединить в один элемент…'],
     ],
-    CLIPBOARD,
+    COPYING,
     [PASTE_STYLE],
     ORDER,
     LOCK,
@@ -326,7 +332,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   sequence: [
     [EDIT_LABEL, ['addParticipant', 'Добавить участника'], ['addMessage', 'Добавить сообщение']],
     COPY_MERMAID,
-    CLIPBOARD,
+    COPYING,
     STYLE,
     ORDER,
     LOCK,
@@ -401,6 +407,7 @@ export function menuItems(
     status = null,
     plan = null,
     canBranch = false,
+    canSaveToLibrary = false,
   }: MenuAvailability,
 ): MenuItem[] {
   const unavailable: Partial<Record<MenuCommand, boolean>> = {
@@ -425,6 +432,7 @@ export function menuItems(
     detachElement: sharedElement,
     deleteElementEverywhere: canDeleteElementEverywhere,
     mergeElements: canMergeElements,
+    saveToLibrary: canSaveToLibrary,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
     ...Object.fromEntries(Object.keys(PLAN_COMMANDS).map((command) => [command, plan !== null])),
   }

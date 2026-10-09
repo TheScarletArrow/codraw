@@ -87,6 +87,11 @@ export function configurePlan(graph: Graph, onChange: () => void): PlanViewContr
     const touched: Cell[] = []
     const update = (cell: Cell) => {
       for (const child of cell.getChildren()) {
+        // Layers of the page are shown or hidden by the participant, not by the plan: only what is in them.
+        if (!child.isVertex() && !child.isEdge()) {
+          update(child)
+          continue
+        }
         const id = child.getId() ?? ''
         const visible = !hidden.has(child)
         if (child.isVisible() !== visible) {

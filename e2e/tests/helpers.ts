@@ -171,9 +171,9 @@ export function cells(page: Page): Promise<CellInfo[]> {
     const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any> | null
     const editor = container?.__codrawEditor
     if (!editor) return []
-    const parent = editor.graph.getDefaultParent()
-    return Array.from({ length: parent.getChildCount() }, (_, index) => {
-      const cell = parent.getChildAt(index)
+    // The elements of every layer of the page, the bottom layer first.
+    const layers: any[] = editor.graph.getDataModel().getRoot().getChildren()
+    return layers.flatMap((layer) => layer.getChildren()).map((cell: any) => {
       const geometry = cell.getGeometry()
       return {
         id: cell.getId(),

@@ -85,7 +85,7 @@ export function startEdgeRouting(
   const update = () => {
     scheduled = false
     if (stopped) return
-    const input = routingInput(graph.getDefaultParent())
+    const input = routingInput(graph.getDataModel().getRoot()!)
     const key = JSON.stringify(input)
     if (key !== sent) {
       sent = key

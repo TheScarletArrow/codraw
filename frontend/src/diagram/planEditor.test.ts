@@ -60,6 +60,22 @@ describe('the current and the target architecture in the editor', () => {
     expect(stored(doc, ledger)).toBe('added')
   })
 
+  it('leaves the layers hidden as they are in every view', () => {
+    const { editor } = open()
+    const { api, db } = page(editor)
+    const notes = editor.addLayer()!
+    const later = editor.addShape('service', { x: 900, y: 0 })!
+    editor.setLayerHidden(notes, true)
+
+    for (const view of ['current', 'target', 'diff'] as const) {
+      editor.setPlanView(view)
+      expect(shown(editor, later)).toBe(false)
+    }
+    editor.setPlanView('target')
+    expect([shown(editor, api), shown(editor, db)]).toEqual([true, false])
+    expect(editor.exportSvg()!.cellIds).not.toContain(later.getId())
+  })
+
   it('shows the page as it is and as it will be for its participant alone, without what is left out and its edges', () => {
     const { doc, editor } = open()
     const other = open({ doc: new Y.Doc() })
