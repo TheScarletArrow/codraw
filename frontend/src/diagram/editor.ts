@@ -130,6 +130,8 @@ import {
   type StoredImage,
 } from './images.ts'
 import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
+import { impactNode, type ImpactDepth } from './impact.ts'
+import { configureImpact, modelImpactRecords, type ImpactState } from './impactView.ts'
 import { configureFilter, modelFilterRecords, type FilterStatus } from './filterView.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import {
@@ -730,6 +732,8 @@ export interface EditorState {
   properties: SelectionProperties | null
   /** The sequence diagram of the selection, or `null` when the selection is not one or its parts. */
   sequence: SelectedSequence | null
+  /** The impact analysis the canvas shows, `null` without one; see {@link DiagramEditor.showDependencies}. */
+  impact: ImpactState | null
   /** The filter of the page while it chooses something: how many elements match, of how many, and whether it hides. */
   filter: { matched: number; total: number; hide: boolean } | null
   /** The clipboard of the browser tab holds copied cells: «Вставить как тот же элемент» pastes them. */
@@ -976,6 +980,20 @@ export interface DiagramEditor {
    * diagram whatever the theme of the canvas; `null` when there is nothing to draw.
    */
   exportSvg(options?: SvgOptions & { selectionOnly?: boolean; onlyVisible?: boolean }): ExportedImage | null
+  /**
+   * Shows what the element of the cell `cellId` depends on and what depends on it, up to `depth` steps (see
+   * `impact.ts`), on this canvas only: they are outlined in their colors and everything else is pale. `false` for a cell
+   * that depends on nothing by its kind, e.g. an edge.
+   */
+  showDependencies(cellId: string, depth?: ImpactDepth): boolean
+  /** Shows the shortest paths between the cells `from` and `to`, or between the two selected shapes, on this canvas only. */
+  showPathBetween(from?: string, to?: string): boolean
+  /** Ends the impact analysis of the canvas. */
+  clearImpact(): void
+  /** The cell is an element whose dependencies the analysis shows: a shape, a table, a field of a table. */
+  canAnalyze(cellId: string): boolean
+  /** Two shapes are selected whose paths the analysis shows. */
+  canShowPath(): boolean
   /**
    * Shows the page through `filter` (see `pageFilter.ts`): what does not match drawn pale, or not at all when it hides.
    * Only this editor changes, not the document; `null`, or a filter that chooses nothing, shows everything. While a
@@ -1616,7 +1634,9 @@ export function createDiagramEditor(
   const unconfigureLegends = configureLegends(graph)
   let theme = initialTheme
   // After the other hooks of styles, so that it sees the style a cell is drawn with.
-  // Before the theme, so that the theme sees the pale style of what does not match.
+  // Before the theme, so that the theme sees the colors of the analysis and the pale style of what does not match.
+  let impactChanged = () => {}
+  const impactView = configureImpact(graph, () => impactChanged())
   let filterChanged = () => {}
   const filterView = configureFilter(graph, () => filterChanged())
   configureCanvasTheme(graph, () => theme)
@@ -2617,6 +2637,7 @@ export function createDiagramEditor(
       status: selectionStatus(),
       properties: selectionProperties(),
       sequence: selectionSequence(),
+      impact: impactView.state(),
       filter: filterState(),
       canPasteAsSameElement: !readOnly && clipboard.read() !== null,
       canMergeElements: !readOnly && selectedElements().length >= 2,
@@ -3125,11 +3146,28 @@ export function createDiagramEditor(
   graph.getView().addListener(InternalEvent.SCALE_AND_TRANSLATE, notifyView)
   model.addListener(InternalEvent.CHANGE, notifyView)
   cells.observeDeep(handleTextAuthors)
-  // What the filter shows is a change of the drawing, and of the state that tells how many elements match.
-  filterChanged = () => {
+  // The analysis, and what the filter shows, are changes of the drawing and of the state that tells them.
+  impactChanged = () => {
     drawingVersion++
     notify()
     notifyView()
+  }
+  filterChanged = impactChanged
+  /** The cell stands for an element whose dependencies the analysis shows: a shape that may be an element, a table or its field. */
+  const analysable = (records: ReturnType<typeof modelImpactRecords>, cellId: string) => {
+    const node = impactNode(records, cellId)
+    const cell = node === null ? null : model.getCell(node)
+    return !!cell && (isTable(cell) || propertiesTarget(cell) === 'shape')
+  }
+  /** The two selected cells whose paths the analysis would show: two different elements. */
+  const pathEnds = (): [string, string] | null => {
+    const selected = graph.getSelectionCells()
+    if (selected.length !== 2) return null
+    const records = modelImpactRecords(graph)
+    const ids = selected.map((cell) => cell.getId()!)
+    if (!ids.every((id) => analysable(records, id))) return null
+    const [a, b] = ids.map((id) => impactNode(records, id))
+    return a !== b ? [ids[0]!, ids[1]!] : null
   }
 
   const listen = <T>(set: Set<T>, listener: T) => {
@@ -4250,8 +4288,30 @@ export function createDiagramEditor(
       restyle(graph)
     },
     exportSvg({ selectionOnly = false, onlyVisible = false, ...options } = {}) {
-      // With a filter, the image has only what matches, or the page without the filter.
-      return filterView.drawn(onlyVisible ? 'hidden' : 'unfiltered', () => drawImage(selectionOnly, options))
+      // The analysis is of this canvas: the image has the page without it. With a filter, the image has only what
+      // matches, or the page without the filter.
+      return impactView.drawn(() => filterView.drawn(onlyVisible ? 'hidden' : 'unfiltered', () => drawImage(selectionOnly, options)))
+    },
+    showDependencies(cellId, depth = 1) {
+      if (destroyed) return false
+      impactView.set({ mode: 'dependencies', cellId, depth })
+      return impactView.state() !== null
+    },
+    showPathBetween(from, to) {
+      if (destroyed) return false
+      const ends: [string, string] | null = from && to ? [from, to] : pathEnds()
+      if (!ends) return false
+      impactView.set({ mode: 'path', from: ends[0], to: ends[1] })
+      return impactView.state() !== null
+    },
+    clearImpact() {
+      if (impactView.state()) impactView.set(null)
+    },
+    canAnalyze(cellId) {
+      return analysable(modelImpactRecords(graph), cellId)
+    },
+    canShowPath() {
+      return pathEnds() !== null
     },
     setFilter(filter) {
       if (destroyed) return
@@ -4908,6 +4968,7 @@ export function createDiagramEditor(
       unwatchTableRows()
       unconfigureSequences()
       unconfigureLegends()
+      impactView.destroy()
       filterView.destroy()
       unwatchLocks()
       graph.removeListener(handleResize)
