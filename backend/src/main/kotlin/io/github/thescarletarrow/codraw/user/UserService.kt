@@ -24,6 +24,7 @@ class UserService(
     private val decisions: DecisionService,
     private val notifications: NotificationService,
     private val proposals: ProposalService,
+    private val templates: io.github.thescarletarrow.codraw.template.PersonalTemplateRepository,
     private val libraries: LibraryService,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
@@ -59,6 +60,7 @@ class UserService(
             decisions.transfer(guest.id, user.id)
             notifications.transfer(guest.id, user.id)
             proposals.transfer(guest.id, user.id)
+            templates.transfer(guest.id, user.id)
             libraries.transfer(guest.id, user.id)
         }
         return user

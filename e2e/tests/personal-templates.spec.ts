@@ -1,0 +1,25 @@
+import { expect, test } from '@playwright/test'
+import { addShape, createBoard, userPage, vertices } from './helpers.ts'
+
+test('a personal template creates an independent board and inserts with one undo', async ({ browser }) => {
+  const alice = await userPage(browser, 'Шаблоны')
+  const original = await createBoard(alice)
+  const originalId = await addShape(alice, 'Прямоугольник')
+  await alice.getByRole('button', { name: 'Мои шаблоны', exact: true }).click()
+  await alice.getByRole('button', { name: 'Сохранить доску как шаблон' }).click()
+  await alice.getByRole('textbox', { name: 'Название шаблона' }).fill('Типовой API')
+  await alice.getByRole('button', { name: 'Сохранить шаблон' }).click()
+  await expect(alice.getByText('Типовой API', { exact: true })).toBeVisible()
+  await alice.getByRole('button', { name: 'Создать доску', exact: true }).click()
+  await expect(alice.getByRole('heading', { name: 'Типовой API', level: 2 })).toBeVisible()
+  expect(new URL(alice.url()).pathname).not.toBe(new URL(original).pathname)
+  await expect.poll(async () => (await vertices(alice)).length).toBe(1)
+  expect((await vertices(alice))[0]!.id).not.toBe(originalId)
+  await alice.getByRole('button', { name: 'Мои шаблоны', exact: true }).click()
+  await alice.getByRole('button', { name: 'Вставить на страницу' }).click()
+  await alice.getByRole('button', { name: 'Вставить', exact: true }).click()
+  await expect.poll(async () => (await vertices(alice)).length).toBe(2)
+  await alice.keyboard.press('Control+z')
+  await expect.poll(async () => (await vertices(alice)).length).toBe(1)
+  await alice.context().close()
+})
