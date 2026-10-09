@@ -131,6 +131,11 @@ describe('locks in files of draw.io', () => {
   it('takes no name of who locked from a file', () => {
     expect(parseStyle('locked=1;codrawLockedBy=Мэллори;', 'vertex')).not.toHaveProperty('codrawLockedBy')
   })
+
+  it('leaves the mark of a cell a view of the model computed on the board: a file has drawn cells only', () => {
+    expect(formatStyle({ rounded: true, codrawComputed: 'e1' }, 'vertex')).not.toContain('codrawComputed')
+    expect(parseStyle('rounded=1;codrawComputed=e1;', 'vertex')).not.toHaveProperty('codrawComputed')
+  })
 })
 
 describe('fill opacity in files of draw.io', () => {

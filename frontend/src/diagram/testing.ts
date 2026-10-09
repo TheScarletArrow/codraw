@@ -2,7 +2,9 @@ import { Cell, Geometry, GraphDataModel, type CellStyle } from '@maxgraph/core'
 import * as Y from 'yjs'
 import type { Author } from './attribution.ts'
 import { DiagramBinding, LOCAL_ORIGIN } from './binding.ts'
-import { getCells, initializeDocument, LAYER_CELL_ID, writeCell, type CellData } from './model.ts'
+import type { DiagramBuilder } from '../templates/builder.ts'
+import { DEFAULT_PAGE_ID, getCells, getPages, initializeDocument, LAYER_CELL_ID, writeCell, type CellData } from './model.ts'
+import { addPage } from './pages.ts'
 
 export const REMOTE_ORIGIN = 'test:remote'
 
@@ -121,3 +123,20 @@ export const shapeData = (id: string, order: string, changes: Partial<CellData> 
 /** The data of an edge of the layer between two cells. */
 export const edgeData = (id: string, order: string, source: string | null, target: string | null, changes: Partial<CellData> = {}) =>
   shapeData(id, order, { kind: 'edge', source, target, geometry: { x: 0, y: 0, width: 0, height: 0, relative: true }, ...changes })
+
+/** A board with a page for each builder, named by its key, in their order. */
+export function boardOf(pages: Record<string, DiagramBuilder>): { doc: Y.Doc; pages: Record<string, string> } {
+  const doc = new Y.Doc()
+  initializeDocument(doc)
+  const ids: Record<string, string> = {}
+  let last: string | null = null
+  for (const [name, builder] of Object.entries(pages)) {
+    const id: string = last === null ? DEFAULT_PAGE_ID : addPage(doc, last, name)
+    if (last === null) doc.transact(() => (getPages(doc).get(DEFAULT_PAGE_ID) as Y.Map<unknown>).set('name', name))
+    doc.transact(() => builder.build().forEach((cell) => writeCell(getCells(doc, id), cell)))
+    ids[name] = id
+    last = id
+  }
+  return { doc, pages: ids }
+}
+

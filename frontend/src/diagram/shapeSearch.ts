@@ -80,6 +80,7 @@ export const SHAPE_KEYWORDS: Record<ShapeId, string[]> = {
   'c4-database': ['c4', 'database', 'db', 'бд'],
   'c4-external-system': ['c4', 'external', 'внешняя'],
   'c4-boundary': ['c4', 'boundary', 'граница', 'рамка'],
+  'c4-deployment-node': ['c4', 'deployment', 'node', 'узел', 'развёртывание', 'развертывание', 'окружение', 'рамка'],
   legend: ['legend', 'key', 'notation', 'легенда', 'условные обозначения', 'обозначения', 'нотация'],
 }
 

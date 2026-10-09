@@ -10,6 +10,7 @@ import { fetchProposal, withdrawProposal, type Proposal } from '../api/proposals
 import { useCurrentUser } from '../auth/session.ts'
 import { usePlanView } from '../board/usePlanView.ts'
 import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
+import { ViewBar } from '../views/ViewBar.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { Minimap } from '../board/Minimap.tsx'
@@ -300,6 +301,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 />
                 <StickySignatures editor={editor} />
                 <DetailCrumbs document={document} pageId={currentPage.id} onSelectPage={selectPage} />
+                {/* A draft keeps its views as they were: the board brings them in line with its model once it takes them. */}
+                {currentPage.view && <ViewBar document={document} pageId={currentPage.id} editor={editor} readOnly onEditRule={() => {}} />}
                 <StatusBadges editor={editor} document={document} />
                 <SharedBadges editor={editor} document={document} onShow={showWhereUsed} />
                 <LockBadges editor={editor} />
@@ -315,6 +318,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                       editor={editor}
                       document={document}
                       request={propertiesRequest}
+                      onShow={showCell}
                       onClose={() => {
                         setPropertiesOpen(false)
                         editor?.focus()

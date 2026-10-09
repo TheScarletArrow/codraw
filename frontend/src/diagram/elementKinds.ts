@@ -61,6 +61,7 @@ export const ELEMENT_KINDS: Readonly<Partial<Record<ShapeId, KindInfo>>> = {
 /** Frames that hold elements: the boundary of C4, a system or a container, and frames of no kind of C4. */
 export const FRAME_SHAPES: Readonly<Partial<Record<ShapeId, 'c4' | 'group'>>> = {
   'c4-boundary': 'c4',
+  'c4-deployment-node': 'group',
   boundary: 'group',
   'kubernetes-cluster': 'group',
   'uml-package': 'group',

@@ -1,4 +1,4 @@
-import { ChevronDown, Plus } from 'lucide-react'
+import { ChevronDown, Plus, ScanEye } from 'lucide-react'
 import { useId, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
@@ -25,6 +25,10 @@ interface PageTabsProps {
   visitors?: PageVisitor[]
   onSelect: (id: string) => void
   onAdd: () => void
+  /** Opens the window of the rule of a new view of the model of the board; without it there is no button. */
+  onAddView?: () => void
+  /** Opens the window of the rule of the view `id`. */
+  onViewRule?: (id: string) => void
   onRename: (id: string, name: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
@@ -45,6 +49,8 @@ export function PageTabs({
   visitors = [],
   onSelect,
   onAdd,
+  onAddView,
+  onViewRule,
   onRename,
   onDuplicate,
   onDelete,
@@ -119,6 +125,12 @@ export function PageTabs({
                   ) : (
                     <span className={cn('truncate', change === 'removed' && 'line-through')}>{page.name}</span>
                   )}
+                  {page.view && (
+                    <span title="Представление модели" className="flex shrink-0 text-muted-foreground">
+                      <ScanEye aria-hidden className="size-3.5" />
+                      <span className="sr-only">Представление модели</span>
+                    </span>
+                  )}
                   {change && (
                     <>
                       <ChangeIcon type={change} className="size-3.5" />
@@ -171,6 +183,14 @@ export function PageTabs({
                   setMenuFor(null)
                   onDuplicate(page.id)
                 }}
+                onViewRule={
+                  page.view && onViewRule
+                    ? () => {
+                        setMenuFor(null)
+                        onViewRule(page.id)
+                      }
+                    : undefined
+                }
                 onMove={(offset) => {
                   setMenuFor(null)
                   onMove(page.id, index + offset)
@@ -195,6 +215,19 @@ export function PageTabs({
           onClick={onAdd}
         >
           <Plus />
+        </Button>
+      )}
+      {!readOnly && onAddView && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="m-0.5 size-8"
+          aria-label="Новое представление"
+          title="Новое представление модели: ландшафт, система, контейнеры, компоненты или развёртывание"
+          onClick={onAddView}
+        >
+          <ScanEye />
         </Button>
       )}
       {children && <div className="ml-auto flex max-w-96 min-w-0 shrink-0 items-center px-3">{children}</div>}
@@ -241,12 +274,14 @@ interface PageMenuProps {
   isOnly: boolean
   onRename: () => void
   onDuplicate: () => void
+  /** Of a view of the model: opens the window of its rule. */
+  onViewRule?: () => void
   onMove: (offset: -1 | 1) => void
   onDelete: () => void
 }
 
 /** Actions with a page; deleting asks for confirmation, as it cannot be undone. */
-function PageMenu({ page, isFirst, isLast, isOnly, onRename, onDuplicate, onMove, onDelete }: PageMenuProps) {
+function PageMenu({ page, isFirst, isLast, isOnly, onRename, onDuplicate, onViewRule, onMove, onDelete }: PageMenuProps) {
   const [confirming, setConfirming] = useState(false)
   const item = 'justify-start font-normal'
 
@@ -278,6 +313,11 @@ function PageMenu({ page, isFirst, isLast, isOnly, onRename, onDuplicate, onMove
           <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={onDuplicate}>
             Дублировать
           </Button>
+          {onViewRule && (
+            <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={onViewRule}>
+              Правило представления…
+            </Button>
+          )}
           <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} disabled={isFirst} onClick={() => onMove(-1)}>
             Переместить влево
           </Button>

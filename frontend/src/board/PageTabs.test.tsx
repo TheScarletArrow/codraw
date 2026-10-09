@@ -201,4 +201,25 @@ describe('PageTabs', () => {
     expect(tab('Контекст')).not.toHaveAttribute('aria-describedby')
     expect(tab('Контекст').querySelector('[data-change-icon]')).toBeNull()
   })
+
+  it('marks the views of the model, offers a new view to who edits, and opens the rule of a view from its menu', async () => {
+    const onAddView = vi.fn()
+    const onViewRule = vi.fn()
+    const view = { rule: { kind: 'landscape' as const, scope: null, environment: null, owners: [], tags: [], technologies: [] }, hidden: [], places: {} }
+    renderTabs({ pages: [PAGES[0]!, { ...PAGES[1]!, view }], onAddView, onViewRule })
+
+    expect(within(tab('Контейнеры')).getByTitle('Представление модели')).toBeInTheDocument()
+    expect(within(tab('Контекст')).queryByTitle('Представление модели')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Новое представление' }))
+    expect(onAddView).toHaveBeenCalled()
+    expect(within(await openMenu('Контекст')).queryByRole('menuitem', { name: 'Правило представления…' })).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(within(await openMenu('Контейнеры')).getByRole('menuitem', { name: 'Правило представления…' }))
+    expect(onViewRule).toHaveBeenCalledWith('p2')
+  })
+
+  it('offers no new view to a viewer', () => {
+    renderTabs({ onAddView: vi.fn(), readOnly: true })
+    expect(screen.queryByRole('button', { name: 'Новое представление' })).toBeNull()
+  })
 })
