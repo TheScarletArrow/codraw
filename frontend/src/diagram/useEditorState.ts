@@ -40,6 +40,7 @@ const NO_EDITOR: EditorState = {
   status: null,
   properties: null,
   sequence: null,
+  filter: null,
   canPasteAsSameElement: false,
   canMergeElements: false,
   layers: [],
