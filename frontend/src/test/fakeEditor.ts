@@ -233,6 +233,8 @@ export function createFakeEditor({
     mergeCandidates: vi.fn(() => []),
     mergeElements: vi.fn(),
     mergeElementCells: vi.fn(() => false),
+    detailOffer: vi.fn(() => null),
+    detailElement: vi.fn(() => null),
     detachElement: vi.fn(),
     deleteElementEverywhere: vi.fn(),
     getLinks: () => links,

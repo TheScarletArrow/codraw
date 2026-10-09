@@ -24,6 +24,7 @@ import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatu
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
+import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
 import { useFollowing } from '../board/following.ts'
 import { Minimap, MINIMAP_SELECTOR } from '../board/Minimap.tsx'
@@ -724,6 +725,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onDropComponent={libraries.drop}
                   />
                   <StickySignatures editor={editor} />
+                  <DetailCrumbs
+                    document={document}
+                    pageId={currentPage.id}
+                    onSelectPage={(id) => {
+                      following.stop()
+                      selectPage(id)
+                    }}
+                  />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
@@ -809,6 +818,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                       readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'delete', editor, request })
                     }
                     onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
+                    onDetail={(pageId) => {
+                      following.stop()
+                      selectPage(pageId)
+                    }}
                     onComment={commentOn}
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}

@@ -147,6 +147,16 @@ describe('menuItems', () => {
     expect(locked).not.toContain('Где используется…')
   })
 
+  it('offers the detail of a system or a container before its properties, for viewers and locked shapes too', () => {
+    const detail = { ...all, canShowProperties: true, canDetail: true }
+
+    expect(labels('shape', detail).slice(-3)).toEqual(['Детализировать', 'Свойства…', 'Удалить'])
+    expect(labels('shape', { ...detail, canDetail: false })).not.toContain('Детализировать')
+    expect(labels('shape', { ...detail, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Детализировать', 'Свойства…'])
+    expect(menuItems('shape', { ...detail, locked: true }).find((item) => item.command === 'detail')).toMatchObject({ disabled: false })
+    for (const target of ['edge', 'table', 'selection'] as const) expect(labels(target, detail)).not.toContain('Детализировать')
+  })
+
   it('offers the dependencies of an element after its properties and the path between two elements, also to a viewer', () => {
     const analysed = { ...all, canShowProperties: true, canShowDependencies: true, canShowWhereUsed: true }
     expect(labels('shape', analysed).slice(-4, -1)).toEqual(['Свойства…', 'Зависимости', 'Где используется…'])

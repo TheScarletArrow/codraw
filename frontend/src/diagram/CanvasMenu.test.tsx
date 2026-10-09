@@ -531,6 +531,29 @@ describe('CanvasMenu', () => {
     })
   })
 
+  describe('detail of an element', () => {
+    it('opens the page of detail that the editor finds or makes, for a viewer too', async () => {
+      document.body.innerHTML = ''
+      editor = createFakeEditor({ readOnly: true })
+      const onDetail = vi.fn()
+      render(<CanvasMenu editor={editor} onDetail={onDetail} />)
+      rightClick('shape')
+      // A viewer may not make a page of detail.
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать', 'Копировать стиль'])
+      await userEvent.keyboard('{Escape}')
+
+      vi.mocked(editor.detailOffer).mockReturnValue('open')
+      vi.mocked(editor.detailElement).mockReturnValue('page-2')
+      rightClick('shape')
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать', 'Копировать стиль', 'Детализировать'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Детализировать' }))
+
+      expect(editor.detailElement).toHaveBeenCalledWith('cell-1')
+      expect(onDetail).toHaveBeenCalledWith('page-2')
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+  })
+
   describe('one element on several pages', () => {
     const properties = { name: 'Payments', kind: 'c4-container' as const, technology: '', description: '', owner: '', tags: [] }
     const place = (pageId: string, cellIds: string[]) => ({ pageId, pageName: pageId, cellIds, locked: [] })

@@ -40,6 +40,7 @@ type PageCommand =
   | 'whereUsed'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'detail'
   | 'saveToLibrary'
 
 const COMMANDS: Record<
@@ -94,10 +95,12 @@ const COMMANDS: Record<
  * too. With `onLink`, a single shape, table, group or edge gets «Ссылка…», which asks the page to open the window of its
  * link at the point of the click. With `onEdgeApi`, a single edge gets «Описание API…», which asks the page to open the
  * description of its call for editing. With `onProperties`, a single shape or edge that has properties gets «Свойства…»,
- * for viewers too, which asks the page to show them. With `onSaveToLibrary`, shapes, tables, groups, sequence diagrams
- * and several elements get «Сохранить в библиотеку…», for viewers too, which asks the page to open the window of saving
- * at the point of the click. The menu of locked elements says who locked them. The items of the status set it, and
- * `onStatusChange` hears of the elements whose status they changed.
+ * for viewers too, which asks the page to show them. With `onDetail`, a software system or a container that has a page
+ * of detail, or may get one, gets «Детализировать», which opens that page, made first when there is none. With
+ * `onSaveToLibrary`, shapes, tables, groups, sequence diagrams and several elements get «Сохранить в библиотеку…», for
+ * viewers too, which asks the page to open the window of saving at the point of the click. The menu of locked elements
+ * says who locked them. The items of the status set it, and `onStatusChange` hears of the elements whose status they
+ * changed.
  */
 export function CanvasMenu({
   editor,
@@ -108,6 +111,7 @@ export function CanvasMenu({
   onWhereUsed,
   onDeleteElementEverywhere,
   onMergeElements,
+  onDetail,
   onStatusChange,
   onSaveToLibrary,
 }: {
@@ -122,6 +126,8 @@ export function CanvasMenu({
   onDeleteElementEverywhere?: (request: ContextMenuRequest) => void
   /** Asks which properties to keep when merging the selected shapes into one element, at the point of the click. */
   onMergeElements?: (request: ContextMenuRequest) => void
+  /** Opens the page of detail of the shape of the menu, which «Детализировать» found or made. */
+  onDetail?: (pageId: string) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
   /** Opens the window that saves the selection into a library of the user, at the point of the click. */
   onSaveToLibrary?: (request: ContextMenuRequest) => void
@@ -160,6 +166,7 @@ export function CanvasMenu({
           onWhereUsed !== undefined &&
           element?.cellId === next.cellId &&
           (element.elementId !== null || element.properties.kind !== null)
+        const canDetail = onDetail !== undefined && next.cellId !== null && editor.detailOffer(next.cellId) !== null
         if (
           menuItems(next.target, {
             canPaste: false,
@@ -169,6 +176,7 @@ export function CanvasMenu({
             canComment,
             canShowProperties,
             canShowWhereUsed,
+            canDetail,
             canShowDependencies: next.cellId !== null && editor.canAnalyze(next.cellId),
             canShowPath: next.target === 'selection' && editor.canShowPath(),
             canSaveToLibrary: onSaveToLibrary !== undefined,
@@ -179,7 +187,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties, onWhereUsed, onSaveToLibrary],
+    [editor, canComment, onProperties, onWhereUsed, onDetail, onSaveToLibrary],
   )
 
   if (!editor || !request) return null
@@ -211,6 +219,12 @@ export function CanvasMenu({
       // The panel of elements takes the keyboard.
       focusTaken.current = true
       if (request.cellId) onWhereUsed?.(request.cellId)
+      return
+    }
+    if (command === 'detail') {
+      // The page of detail takes the canvas.
+      const page = request.cellId ? editor.detailElement(request.cellId) : null
+      if (page) onDetail?.(page)
       return
     }
     if (command === 'saveToLibrary') {
@@ -299,6 +313,7 @@ export function CanvasMenu({
             sharedElement: elementCells > 1,
             canDeleteElementEverywhere: onDeleteElementEverywhere !== undefined && elementCells > 1,
             canMergeElements: onMergeElements !== undefined && canMergeElements,
+            canDetail: onDetail !== undefined && request.cellId !== null && editor.detailOffer(request.cellId) !== null,
             status,
             canBranch: canBranch(sequence?.part ?? null),
             canShowDependencies: request.cellId !== null && editor.canAnalyze(request.cellId),

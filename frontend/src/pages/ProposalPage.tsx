@@ -8,6 +8,7 @@ import { fetchBoard, type Board } from '../api/boards.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposal, withdrawProposal, type Proposal } from '../api/proposals.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { Minimap } from '../board/Minimap.tsx'
@@ -288,6 +289,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   onDropComponent={libraries.drop}
                 />
                 <StickySignatures editor={editor} />
+                <DetailCrumbs document={document} pageId={currentPage.id} onSelectPage={selectPage} />
                 <StatusBadges editor={editor} document={document} />
                 <SharedBadges editor={editor} document={document} onShow={showWhereUsed} />
                 <LockBadges editor={editor} />
@@ -349,6 +351,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                     readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'delete', editor, request })
                   }
                   onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
+                  onDetail={selectPage}
                   onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
                   onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                 />
