@@ -84,7 +84,7 @@ import { createCell, createUndoManager, DiagramBinding, isLayerCell, layerOf, lo
 import type { MenuTarget } from './canvasMenu.ts'
 import { coversChildren, darkCanvasStyle, type CanvasTheme } from './canvasTheme.ts'
 import { canReadSystemClipboard, clipboard, writeSystemClipboard, type ClipboardSource } from './clipboard.ts'
-import { clipboardContent, dataToCells, readClipboardText } from './clipboardFormat.ts'
+import { clipboardContent, dataToCells, diagramCells, readClipboardText } from './clipboardFormat.ts'
 import type { CellSnapshot } from './diff.ts'
 import { apiLabel, EDGE_API_KEY, edgeApiOf, writeEdgeApi, type EdgeApi } from './edgeApi.ts'
 import {
@@ -106,6 +106,7 @@ import {
   elementProperties,
   hasElement,
   labelFormat,
+  labelLines,
   ownLines,
   propertiesOfLabel,
   relabel,
@@ -691,6 +692,11 @@ export interface EditorState {
    * participant who may only view.
    */
   canPasteStyle: boolean
+  /**
+   * The selection has an element that is not locked to give a look to, e.g. of a component of a library (see
+   * {@link DiagramEditor.applyComponentStyle}); never for a participant who only views.
+   */
+  canTakeStyle: boolean
   /** {@link DiagramEditor.autoLayout} lays out the selection: it has two shapes, tables or groups at least. */
   layoutSelection: boolean
   /** The laser pointer is on: dragging on the canvas draws its trail instead of selecting or moving anything. */
@@ -728,6 +734,16 @@ export interface EditorState {
   canMergeElements: boolean
   /** The layers of the page, the top one first: the one drawn over the others. */
   layers: LayerState[]
+}
+
+/** The selection as a component of a library; see {@link DiagramEditor.selectionComponent}. */
+export interface SelectionComponent {
+  /** Clones of what copying takes, with their descendants, that no graph holds. */
+  cells: Cell[]
+  /** The selection drawn as {@link DiagramEditor.exportSvg} draws it, without a background. */
+  image: ExportedImage | null
+  /** The label of the single selected shape, or «Компонент». */
+  name: string
 }
 
 /** A right click on the canvas, reported after maxGraph has updated the selection for it. */
@@ -879,6 +895,24 @@ export interface DiagramEditor {
    * they are.
    */
   pasteStyle(): void
+  /**
+   * The selection as a component of a library: clones of what {@link copy} would copy, the image of the selection and a
+   * name for it. Changes nothing; `null` when nothing is selected that copying takes.
+   */
+  selectionComponent(): SelectionComponent | null
+  /**
+   * Adds a copy of a component of a library, `content` being its `<mxGraphModel>` of draw.io, as one undo step, with
+   * its middle at `center`, or in the middle of the visible area, and selects it. The copy has cells and elements of its
+   * own and nothing locked, and the pictures that the board must store are stored first, as {@link paste} does.
+   * Resolves to whether there was anything to add.
+   */
+  insertComponent(content: string, center?: Point): Promise<boolean>
+  /**
+   * Gives the selected elements the look of the first shape of a component of a library (without shapes, of its first
+   * edge) as {@link pasteStyle} gives a copied look, as one undo step; the look copied in the tab stays. Resolves to
+   * whether anything changed.
+   */
+  applyComponentStyle(content: string): Promise<boolean>
   /** Adds the cells of a diagram, e.g. of a template, as one undo step, selects them and shows the whole page. */
   insertCells(cells: CellData[]): void
   /**
@@ -1471,6 +1505,8 @@ const CHANGING_COMMANDS = [
   'addImages',
   'duplicate',
   'pasteStyle',
+  'insertComponent',
+  'applyComponentStyle',
   'insertCells',
   'restoreCells',
   'moveSelection',
@@ -2355,9 +2391,34 @@ export function createDiagramEditor(
     }
     return changes
   }
+  /** Gives the selection the look `copied` as one undo step (see {@link DiagramEditor.pasteStyle}); whether anything changed. */
+  const applyLook = (copied: CopiedStyle): boolean => {
+    const changes = pastedStyles(copied)
+    if (changes.size === 0) return false
+    graph.stopEditing(false)
+    // One change: one undo step, and one transaction that the other participants get.
+    model.batchUpdate(() => {
+      for (const [cell, keys] of changes) {
+        const { fontSize, ...rest } = keys
+        if (Object.keys(rest).length > 0) {
+          const style = cell.getClonedStyle() as Record<string, unknown>
+          for (const [key, value] of Object.entries(rest)) {
+            if (value === undefined) delete style[key]
+            else style[key] = value
+          }
+          model.setStyle(cell, style as CellStyle)
+        }
+        // The size of the text sets the height of the header and the fields of a table.
+        if (typeof fontSize === 'number') writeFontSize(cell, fontSize)
+      }
+      fitAutoWidth([...changes.keys()])
+    })
+    return true
+  }
+  /** The selection has a cell that is not locked to give a look to. */
+  const canTakeStyle = () => [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
   /** A look is copied, and the selection has a cell that is not locked to paste it into. */
-  const canPasteStyle = () =>
-    styleClipboard.read() !== null && [...styleTargets().keys()].some((cell) => styleKindOf(cell) && isUnlocked(cell))
+  const canPasteStyle = () => styleClipboard.read() !== null && canTakeStyle()
 
   // The label of a shape with auto width changes inside this event, so the new width is a part of the same change; a
   // field or a table also changes the references that the fields of other tables show.
@@ -2516,6 +2577,7 @@ export function createDiagramEditor(
       canCopy: graph.getSelectionCells().some((cell) => cell.isVertex() || isFreehand(cell)),
       canCopyStyle: styleSource() !== null,
       canPasteStyle: !readOnly && canPasteStyle(),
+      canTakeStyle: !readOnly && canTakeStyle(),
       layoutSelection: selectedLayoutCells().length >= 2,
       laser: tool === 'laser',
       commentTool: tool === 'comment',
@@ -3758,26 +3820,48 @@ export function createDiagramEditor(
     },
     pasteStyle() {
       const copied = styleClipboard.read()
-      const changes = copied ? pastedStyles(copied) : null
-      if (!changes || changes.size === 0) return
-      graph.stopEditing(false)
-      // One change: one undo step, and one transaction that the other participants get.
-      model.batchUpdate(() => {
-        for (const [cell, keys] of changes) {
-          const { fontSize, ...rest } = keys
-          if (Object.keys(rest).length > 0) {
-            const style = cell.getClonedStyle() as Record<string, unknown>
-            for (const [key, value] of Object.entries(rest)) {
-              if (value === undefined) delete style[key]
-              else style[key] = value
-            }
-            model.setStyle(cell, style as CellStyle)
-          }
-          // The size of the text sets the height of the header and the fields of a table.
-          if (typeof fontSize === 'number') writeFontSize(cell, fontSize)
-        }
-        fitAutoWidth([...changes.keys()])
-      })
+      if (copied) applyLook(copied)
+    },
+    selectionComponent() {
+      const cells = cellsToCopy()
+      if (cells.length === 0) return null
+      const clones = graph.cloneCells(cells, false)
+      // As in the clipboard: without a parent, maxGraph would take an edge for the label of an edge and drop it.
+      const holder = new Cell()
+      clones.forEach((clone) => clone && holder.insert(clone))
+      const shapes = cells.filter((cell) => cell.isVertex())
+      const single = shapes.length === 1 ? shapes[0]! : null
+      const label = single ? labelLines(String(single.getValue() ?? ''), single.getStyle() as Record<string, unknown>)[0] : undefined
+      return {
+        cells: clones.filter((clone): clone is Cell => clone !== null),
+        image: editor.exportSvg({ selectionOnly: true, transparent: true }),
+        name: label || 'Компонент',
+      }
+    },
+    async insertComponent(content, center) {
+      const cells = await diagramCells(content)
+      if (destroyed || cells.length === 0) return false
+      const holder = new Cell()
+      cells.forEach((cell) => holder.insert(cell))
+      const bounds = graph.getBoundingBoxFromGeometry(cells, false)
+      const middle = center ?? visibleCenter()
+      const size = graph.getGridSize()
+      const snap = (value: number) => Math.round(value / size) * size
+      pasteCells(cells, { x: snap(middle.x - (bounds?.width ?? 0) / 2), y: snap(middle.y - (bounds?.height ?? 0) / 2) })
+      notify()
+      return true
+    },
+    async applyComponentStyle(content) {
+      const cells = await diagramCells(content)
+      if (destroyed) return false
+      const holder = new Cell()
+      cells.forEach((cell) => holder.insert(cell))
+      // The first shape, a text too, inside groups too; without shapes, the first edge.
+      const shapes = (list: Cell[]): Cell[] =>
+        list.flatMap((cell) => (cell.isEdge() ? [] : isGroup(cell) ? shapes(cell.getChildren()) : [cell]))
+      const source = shapes(cells)[0] ?? cells.find((cell) => cell.isEdge())
+      const kind = source ? styleKindOf(source) : null
+      return source !== undefined && kind !== null && applyLook(copyLook(lookOf(source), kind))
     },
     insertCells(data) {
       const cells = dataToCells(data)

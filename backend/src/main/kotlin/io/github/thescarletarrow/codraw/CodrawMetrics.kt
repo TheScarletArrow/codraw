@@ -26,6 +26,10 @@ enum class Limit(val tag: String) {
     SCHEMA_IMPORTS("schema-imports"),
     IMAGE("image"),
     IMAGES("images"),
+    LIBRARIES("libraries"),
+    LIBRARY_COMPONENTS("library-components"),
+    LIBRARY_COMPONENT("library-component"),
+    LIBRARIES_SIZE("libraries-size"),
 }
 
 /** Where an error in a browser came from; the tag of [CodrawMetrics.clientError]. */

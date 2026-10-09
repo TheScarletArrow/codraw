@@ -41,6 +41,8 @@ import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
 import { useRevealCell } from '../elements/useRevealCell.ts'
+import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
+import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
@@ -126,6 +128,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
 
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
+  const libraries = useLibraries()
+  const [savingToLibrary, setSavingToLibrary] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
   // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
@@ -250,7 +254,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && <ShapePalette editor={editor} />}
+        {!readOnly && <ShapePalette editor={editor} libraries={libraries} />}
         <div className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             {document && currentPage ? (
@@ -265,6 +269,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   collaboration={false}
                   images={imageUploads.host}
                   onEditor={setEditor}
+                  onDropComponent={libraries.drop}
                 />
                 <StickySignatures editor={editor} />
                 <StatusBadges editor={editor} document={document} />
@@ -316,6 +321,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   }
                   onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
                   onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                  onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                 />
                 {elementWindow &&
                   elementWindow.editor === editor &&
@@ -333,6 +339,14 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                       onClose={() => setElementWindow(null)}
                     />
                   ))}
+                {savingToLibrary && savingToLibrary.editor === editor && (
+                  <SaveToLibraryDialog
+                    editor={savingToLibrary.editor}
+                    shelf={libraries}
+                    request={savingToLibrary.request}
+                    onClose={() => setSavingToLibrary(null)}
+                  />
+                )}
                 {linking && linking.editor === editor && (
                   <LinkDialog
                     editor={linking.editor}

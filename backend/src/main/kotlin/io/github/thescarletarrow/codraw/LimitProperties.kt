@@ -57,6 +57,12 @@ data class LimitProperties(
     /** The most imports of the schema of a database that a user tries in an hour, refused ones too. */
     @field:Positive
     val schemaImportsPerUserPerHour: Int = 30,
+    /** The most libraries of shapes a user has; libraries that pass from a guest at sign-in are not limited. */
+    @field:Positive
+    val librariesPerUser: Int = 20,
+    /** The most components a library of shapes holds. */
+    @field:Positive
+    val componentsPerLibrary: Int = 200,
     /** The largest state of a board document, stored by collab or saved as a version. Above the limit of collab. */
     val documentSize: DataSize = DataSize.ofMegabytes(32),
     /** The largest live image of a board, as the browsers of participants publish it. */
@@ -67,4 +73,10 @@ data class LimitProperties(
     val imageSize: DataSize = DataSize.ofMegabytes(10),
     /** The most that the images of a board take together, the same file once; they stay as long as the board. */
     val imagesSizePerBoard: DataSize = DataSize.ofMegabytes(100),
+    /** The largest component of a library of shapes: its diagram with the pictures in it, and its preview. */
+    val libraryComponentSize: DataSize = DataSize.ofMegabytes(4),
+    /** The largest picture inside a component of a library, and so the largest file of a picture added to a library. */
+    val libraryImageSize: DataSize = DataSize.ofMegabytes(2),
+    /** The most that the components of all libraries of a user take together. */
+    val librariesSizePerUser: DataSize = DataSize.ofMegabytes(50),
 )
