@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { IMPACT_COLORS } from './impactView.ts'
 import { initializeDocument } from './model.ts'
+import { NO_FILTER } from './pageFilter.ts'
 import { connect } from './testing.ts'
 
 describe('impact analysis in the editor', () => {
@@ -122,6 +123,28 @@ describe('impact analysis in the editor', () => {
     editor.showDependencies(api.getId()!)
     expect(editor.exportSvg()!.svg).toBe(plain)
     expect(drawn(editor, note).opacity).toBe(25)
+  })
+
+  it('goes along with the filter of the page, and neither reaches the images', () => {
+    const { editor } = open()
+    const { web, api, ledger, db } = chain(editor)
+    editor.setElementProperties(api.getId()!, { owner: 'Платежи' })
+    editor.setElementProperties(ledger.getId()!, { owner: 'Платежи' })
+    const plain = editor.exportSvg()!.svg
+    editor.setFilter({ ...NO_FILTER, owners: ['Платежи'] })
+    const filtered = editor.exportSvg({ onlyVisible: true })!.svg
+
+    editor.showDependencies(api.getId()!)
+
+    // Pale twice: out of the filter and out of the analysis.
+    expect(drawn(editor, db).opacity).toBe(25 * 0.25)
+    expect(drawn(editor, ledger).strokeColor).toBe(IMPACT_COLORS.dependency)
+    expect(drawn(editor, web).opacity).toBe(25)
+    expect(editor.exportSvg()!.svg).toBe(plain)
+    expect(editor.exportSvg({ onlyVisible: true })!.svg).toBe(filtered)
+    // The canvas is drawn as it was.
+    expect(drawn(editor, ledger).strokeColor).toBe(IMPACT_COLORS.dependency)
+    expect(drawn(editor, db).opacity).toBe(25 * 0.25)
   })
 
   it('works for a viewer too', () => {
