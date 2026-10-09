@@ -24,6 +24,7 @@ import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
+import { InHeader } from '../headerSlot.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
 import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
 import { BANNER_SELECTOR, FollowingBanner } from '../board/FollowBanner.tsx'
@@ -639,17 +640,19 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           filter={filter}
           onFilterChange={changeFilter}
         />
-        <Participants
-          participants={participants}
-          pages={pages}
-          currentPageId={currentPage?.id ?? null}
-          // The presenter leads and follows nobody.
-          onFollow={following.presenting ? undefined : following.follow}
-          followingClientId={leader?.clientId ?? null}
-          className="ml-auto shrink-0"
-        />
+        {/* Who is on the board shows in the header of the app: however many come, the line keeps its room for the tools. */}
+        <InHeader>
+          <Participants
+            participants={participants}
+            pages={pages}
+            currentPageId={currentPage?.id ?? null}
+            // The presenter leads and follows nobody.
+            onFollow={following.presenting ? undefined : following.follow}
+            followingClientId={leader?.clientId ?? null}
+          />
+        </InHeader>
         {/* The buttons of icons stand close together, as on a toolbar: the line keeps its room for the tools. */}
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <PresentButton
             presenting={following.presenting}
             disabled={!awareness}

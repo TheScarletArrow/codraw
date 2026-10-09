@@ -41,7 +41,8 @@ export function AutoLayoutPicker({ editor, isMac = Client.IS_MAC }: { editor: Di
           disabled={!editor || !hasCells || pending}
         >
           <Network />
-          {pending ? 'Раскладка…' : 'Автораскладка'}
+          {/* Only while the toolbar has the room: otherwise an icon, as the other tools. */}
+          <span className="hidden @min-[35rem]:inline">{pending ? 'Раскладка…' : 'Автораскладка'}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent aria-label="Автораскладка" className="flex w-56 flex-col gap-1 p-2">
