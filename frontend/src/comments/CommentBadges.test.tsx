@@ -10,6 +10,7 @@ const thread = (id: string, cellId: string | null, changes: Partial<CommentThrea
   pageId: 'page-1',
   cellId,
   point: null,
+  decisionId: null,
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,

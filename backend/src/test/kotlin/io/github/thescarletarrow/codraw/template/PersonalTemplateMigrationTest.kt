@@ -21,23 +21,23 @@ class PersonalTemplateMigrationTest {
     fun `personal template migration undo and reapply preserve existing boards`() {
         val source = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         val jdbc = JdbcClient.create(source)
-        Flyway.configure().dataSource(source).target("19").load().migrate()
+        Flyway.configure().dataSource(source).target("23").load().migrate()
         jdbc.sql("""
             INSERT INTO users(id, provider, provider_user_id, name, created_at)
             VALUES ('0199a000-0000-7000-8000-000000000001', 'github', '1', 'Alice', now());
             INSERT INTO boards(title, owner_id, created_at, updated_at)
             VALUES ('Схема', '0199a000-0000-7000-8000-000000000001', now(), now());
         """).update()
-        // V20 belongs to the independent trash PR, so do not assume how many migrations precede V21.
-        Flyway.configure().dataSource(source).target("21").load().migrate()
+        // Migrations before V24 come from other changes, so do not assume how many of them there are.
+        Flyway.configure().dataSource(source).target("24").load().migrate()
         jdbc.sql("""
             INSERT INTO personal_templates(owner_id, title, description, drawio, created_at, updated_at)
             VALUES ('0199a000-0000-7000-8000-000000000001', 'Шаблон', '', '<mxfile><diagram/></mxfile>', now(), now())
         """).update()
         assertEquals(1, jdbc.sql("SELECT count(*) FROM personal_templates").query(Int::class.java).single())
-        source.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U21__personal_templates.sql")) }
+        source.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U24__personal_templates.sql")) }
         assertEquals(1, jdbc.sql("SELECT count(*) FROM boards").query(Int::class.java).single())
-        assertEquals(1, Flyway.configure().dataSource(source).target("21").load().migrate().migrationsExecuted)
+        assertEquals(1, Flyway.configure().dataSource(source).target("24").load().migrate().migrationsExecuted)
         assertEquals(0, jdbc.sql("SELECT count(*) FROM personal_templates").query(Int::class.java).single())
     }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@codraw/frontend",
   "private": true,
-  "version": "0.12.0",
+  "version": "0.23.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -45,6 +45,7 @@
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.1.1",
     "oxlint": "^1.81.0",
+    "simple-icons": "16.34.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",

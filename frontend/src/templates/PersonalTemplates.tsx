@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { LayoutTemplate } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type * as Y from 'yjs'
@@ -14,9 +15,12 @@ import type { DrawioPage } from '../drawio/parse.ts'
 import { LINK_KEY, pageLink, parseLink } from '../diagram/links.ts'
 import { personalTemplatePages, templateSnapshot } from './personalTemplates.ts'
 
-/** Private reusable diagrams, available both from the board list and alongside the editor. */
-export function PersonalTemplates({ document = null, editor = null, title = 'Мой шаблон', images = null }: {
-  document?: Y.Doc | null; editor?: DiagramEditor | null; title?: string; images?: ImageHost | null
+/**
+ * Private reusable diagrams, available both from the board list and alongside the editor. On the line of the tools of a
+ * board the button is an icon, as its neighbours are: the line keeps its room for the tools of the canvas.
+ */
+export function PersonalTemplates({ document = null, editor = null, title = 'Мой шаблон', images = null, compact = false }: {
+  document?: Y.Doc | null; editor?: DiagramEditor | null; title?: string; images?: ImageHost | null; compact?: boolean
 }) {
   const navigate = useNavigate()
   const client = useQueryClient()
@@ -91,7 +95,21 @@ export function PersonalTemplates({ document = null, editor = null, title = 'М�
   })
   return (
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) { setForm(false); setInserting(null); setRemoving(null); setError(null) } }}>
-      <PopoverTrigger asChild><Button type="button" variant="outline" size="sm">Мои шаблоны</Button></PopoverTrigger>
+      <PopoverTrigger asChild>
+        {compact ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Мои шаблоны"
+            title="Мои шаблоны: сохранить доску или выделенное, создать доску или вставить страницу из шаблона"
+          >
+            <LayoutTemplate />
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm">Мои шаблоны</Button>
+        )}
+      </PopoverTrigger>
       <PopoverContent align="end" aria-label="Мои шаблоны" className="max-h-[75vh] w-96 max-w-[95vw] overflow-y-auto">
         <h3 className="mb-3 font-semibold">Мои шаблоны</h3>
         {error && <p role="alert" className="mb-2 text-sm text-destructive">{error}</p>}

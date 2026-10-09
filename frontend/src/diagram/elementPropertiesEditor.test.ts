@@ -51,6 +51,7 @@ describe('properties of elements in the editor', () => {
       format: 'c4',
       showTechnology: false,
       element: false,
+      icon: null,
       canChange: true,
     })
 

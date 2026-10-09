@@ -2,6 +2,7 @@ import type { jsPDF } from 'jspdf'
 import * as Y from 'yjs'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { isPageEmpty, listPages, type PageInfo } from '../diagram/pages.ts'
+import type { LayerViews } from '../diagram/layerViews.ts'
 import { renderPage } from '../diagram/renderPage.ts'
 import type { ExportedImage, SvgOptions } from '../diagram/svgExport.ts'
 import { PDF_FONT_NAMES, pdfFont, pdfFontFile, pdfFontStyle, type PdfFont, type PdfFontStyle } from './pdfFonts.ts'
@@ -28,12 +29,24 @@ export function pdfPages(doc: Y.Doc): PageInfo[] {
 
 /**
  * Images of the pages of a PDF of the whole board, see {@link pdfPages}. The page of the editor is drawn by the editor,
- * as for the other buttons of the export; the others are drawn out of sight once their edges are routed.
+ * as for the other buttons of the export; the others are drawn out of sight once their edges are routed, with the layers
+ * the participant shows on them (`layerViews`) and in the view of the plan of the editor.
  */
-export async function boardImages(doc: Y.Doc, editor: DiagramEditor, options: SvgOptions = {}): Promise<ExportedImage[]> {
+export async function boardImages(
+  doc: Y.Doc,
+  editor: DiagramEditor,
+  { onlyVisible = false, ...options }: SvgOptions & { onlyVisible?: boolean } = {},
+  layerViews: LayerViews | null = null,
+): Promise<ExportedImage[]> {
   const images: ExportedImage[] = []
+  const view = editor.getState().plan.view
+  // Only what matches the filter of the canvas, on every page.
+  const filter = onlyVisible ? editor.currentFilter() : null
   for (const page of pdfPages(doc)) {
-    const image = page.id === editor.pageId ? editor.exportSvg(options) : await renderPage(doc, page.id, options)
+    const image =
+      page.id === editor.pageId
+        ? editor.exportSvg({ ...options, onlyVisible })
+        : await renderPage(doc, page.id, { ...options, filter }, layerViews?.page(page.id) ?? null, view)
     if (image) images.push(image)
   }
   return images

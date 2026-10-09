@@ -18,6 +18,10 @@ spring:
 
 codraw:
   internal-token: dev-internal-token
+  # Letters and messages of chats link to the dev server of the frontend. Letters need an SMTP server too, e.g. Mailpit:
+  # SPRING_MAIL_HOST=localhost SPRING_MAIL_PORT=1025 CODRAW_NOTIFICATIONS_EMAIL_FROM="CoDraw <codraw@localhost>".
+  notifications:
+    app-url: http://localhost:5173
   # The storage of images of `docker compose up s3`.
   images:
     s3:

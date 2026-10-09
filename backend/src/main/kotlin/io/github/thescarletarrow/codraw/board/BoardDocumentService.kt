@@ -16,7 +16,7 @@ class BoardDocumentService(
 
     @Transactional(readOnly = true)
     fun load(boardId: UUID): StoredDocument {
-        if (!boards.existsById(boardId)) {
+        if (!boards.existsActive(boardId)) {
             return StoredDocument.BoardNotFound
         }
         return documents.findState(boardId)?.let { StoredDocument.State(it) } ?: StoredDocument.Empty

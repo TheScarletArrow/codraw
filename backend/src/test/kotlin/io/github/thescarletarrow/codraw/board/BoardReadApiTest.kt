@@ -314,6 +314,10 @@ class BoardReadApiTest(
             with(alice.session())
             with(csrf())
         }.andExpect { status { isNoContent() } }
+        mockMvc.delete("/api/boards/trash/$board") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isNoContent() } }
         assertEquals(0, reads(board))
     }
 

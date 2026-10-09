@@ -21,6 +21,11 @@ interface BoardActionsProps {
    * the menu; without it there is no such item.
    */
   folder?: (close: () => void) => ReactNode
+  /**
+   * Whether the notifications of the board go to the email and the chat of the user, and what turns them off or on;
+   * without it, as for a guest or a user without such channels, there is no such item.
+   */
+  notifications?: { muted: boolean; onToggle: () => void }
   disabled?: boolean
 }
 
@@ -28,8 +33,9 @@ interface BoardActionsProps {
 type View = 'items' | 'confirm' | 'tags' | 'folder'
 
 /**
- * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions, and in the list of boards the
- * user gives it their tags and folder. Deleting asks for confirmation, as a deleted board cannot be restored.
+ * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions, in the list of boards the
+ * user gives it their tags and folder, and on the board the user stops or lets its notifications go to their email and
+ * chat. Deleting moves it to the owner's trash.
  */
 export function BoardActions({
   title,
@@ -39,6 +45,7 @@ export function BoardActions({
   onDelete,
   tags,
   folder,
+  notifications,
   disabled = false,
 }: BoardActionsProps) {
   const [open, setOpen] = useState(false)
@@ -74,7 +81,7 @@ export function BoardActions({
         {view === 'folder' && folder?.(() => setOpen(false))}
         {view === 'confirm' && (
           <div role="alertdialog" aria-label="Удаление доски" className="flex flex-col gap-2 p-2">
-            <p className="text-sm">Удалить доску «{title}»? Её нельзя будет восстановить.</p>
+            <p className="text-sm">Переместить доску «{title}» в корзину? Её можно восстановить в течение 30 дней.</p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setView('items')}>
                 Отмена
@@ -147,6 +154,26 @@ export function BoardActions({
                 }}
               >
                 История версий
+              </Button>
+            )}
+            {notifications && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                title={
+                  notifications.muted
+                    ? 'События доски снова будут приходить на почту и в чат'
+                    : 'События доски не будут приходить на почту и в чат; колокольчик их покажет'
+                }
+                onClick={() => {
+                  setOpen(false)
+                  notifications.onToggle()
+                }}
+              >
+                {notifications.muted ? 'Присылать уведомления' : 'Не присылать уведомления'}
               </Button>
             )}
             {onDelete && (

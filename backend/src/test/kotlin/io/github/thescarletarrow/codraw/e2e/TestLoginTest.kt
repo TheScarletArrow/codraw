@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.e2e
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.SESSION_COOKIE
 import io.github.thescarletarrow.codraw.gitHubUser
+import io.github.thescarletarrow.codraw.notification.Email
 import io.github.thescarletarrow.codraw.session
 import io.github.thescarletarrow.codraw.user.UserService
 import jakarta.servlet.http.Cookie
@@ -53,12 +54,36 @@ class TestLoginTest {
             val testUsers = jdbcClient.sql("SELECT count(*) FROM users WHERE provider = 'e2e'").query(Int::class.java).single()
             assertEquals(0, testUsers)
         }
+
+        @Test
+        fun `gives letters to nobody`() {
+            assertTrue(context.getBeanNamesForType(TestEmailController::class.java).isEmpty())
+            mockMvc.get(TestEmailController.PATH) { param("to", "bob@example.com") }.andExpect { status { isUnauthorized() } }
+        }
     }
 
     @Nested
     @IntegrationTest
     @ActiveProfiles("e2e")
-    inner class E2eProfile(@Autowired private val mockMvc: MockMvc) {
+    inner class E2eProfile(
+        @Autowired private val mockMvc: MockMvc,
+        @Autowired private val letters: RecordingEmailTransport,
+    ) {
+
+        @Test
+        fun `keeps letters in memory and gives them to the tests without a sign-in`() {
+            letters.send(Email("bob@example.com", "Тема", "Текст", "https://codraw.example.com/settings/notifications"))
+
+            mockMvc.get(TestEmailController.PATH) { param("to", "BOB@example.com") }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].subject") { value("Тема") }
+                jsonPath("$[0].text") { value("Текст") }
+            }
+            mockMvc.get(TestEmailController.PATH) { param("to", "carol@example.com") }.andExpect {
+                jsonPath("$.length()") { value(0) }
+            }
+        }
 
         @Test
         fun `signs in as the named test user without CSRF token`() {

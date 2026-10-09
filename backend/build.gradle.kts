@@ -26,6 +26,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-session-jdbc")
+    // Letters about notifications go through the SMTP server of the installation (docs/adr/0008-external-notifications.md).
+    implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("org.flywaydb:flyway-database-postgresql")
     // Images of boards live in S3-compatible storage (docs/adr/0006-image-storage.md). Requests go through the client
     // of the JDK: neither Netty nor the Apache clients are needed.

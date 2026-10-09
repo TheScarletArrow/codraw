@@ -2,7 +2,7 @@ import type { Token } from './parseSql.ts'
 
 /**
  * First words of statements that describe no table: settings of the session and of the client, transactions and locks,
- * rights, comments, upkeep and data.
+ * rights, comments, upkeep and data, the rows of a materialized view too.
  */
 const SERVICE_WORDS = new Set([
   'SET',
@@ -30,6 +30,7 @@ const SERVICE_WORDS = new Set([
   'DELETE',
   'REPLACE',
   'TRUNCATE',
+  'REFRESH',
 ])
 
 /** Objects whose `CREATE` and `ALTER` describe no table: schemas, databases, extensions, sequences and roles. */
@@ -44,7 +45,8 @@ const isWord = (token: Token | undefined, ...values: string[]) => token?.kind ==
  * Whether a statement is one that dumps and migrations are full of but that describes no table, so that it is not
  * counted as skipped: `SET`, `SELECT pg_catalog.set_config(…)`, transactions and locks, `… OWNER TO …`, `GRANT`,
  * `REVOKE`, `ALTER DEFAULT PRIVILEGES`, `COMMENT ON`, schemas, databases, extensions, sequences and roles, dropping
- * objects other than tables and indexes, and data (`INSERT`, `COPY`, `UPDATE`, `DELETE`, `REPLACE`, `TRUNCATE`).
+ * objects other than tables, indexes and views, and data (`INSERT`, `COPY`, `UPDATE`, `DELETE`, `REPLACE`, `TRUNCATE`,
+ * `REFRESH MATERIALIZED VIEW`).
  */
 export function isServiceStatement(tokens: Token[]): boolean {
   const [first, second, third] = tokens
@@ -63,7 +65,7 @@ export function isServiceStatement(tokens: Token[]): boolean {
     return isWord(object, ...SERVICE_OBJECTS)
   }
   if (first.value === 'ALTER') return isWord(second, ...SERVICE_OBJECTS) || (isWord(second, 'DEFAULT') && isWord(third, 'PRIVILEGES'))
-  // Dropping a view, a function or a trigger changes no table; dropping a table or an index does.
-  if (first.value === 'DROP') return second?.kind === 'word' && second.value !== 'TABLE' && second.value !== 'INDEX'
+  // Dropping a function or a trigger changes nothing drawn; dropping a table, an index or a view does.
+  if (first.value === 'DROP') return second?.kind === 'word' && !['TABLE', 'INDEX', 'VIEW', 'MATERIALIZED'].includes(second.value)
   return false
 }

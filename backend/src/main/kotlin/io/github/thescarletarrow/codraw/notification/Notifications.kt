@@ -58,6 +58,8 @@ data class Actor(
 /** A stored notification with what its recipient may see of it: the board and the comment as they are now. */
 data class StoredNotification(
     val id: UUID,
+    /** The recipient. */
+    val userId: UUID,
     val kind: NotificationKind,
     val board: Board,
     /** The role of the recipient as a member of the board, `null` when they are not one. */
@@ -92,6 +94,7 @@ class Notifications(private val jdbc: JdbcClient) {
     /**
      * Notifies each of the users [userIds] of the [kind] at [at]. A user who has a notification about the comment
      * [commentId] or the thread [threadId] already is skipped: one notification per comment or thread and recipient.
+     * Returns the ids of the notifications it created.
      */
     fun add(
         userIds: Collection<UUID>,
@@ -103,9 +106,9 @@ class Notifications(private val jdbc: JdbcClient) {
         role: MemberRole?,
         at: Instant,
         proposalId: UUID? = null,
-    ) {
-        if (userIds.isEmpty()) return
-        jdbc.sql(
+    ): List<UUID> {
+        if (userIds.isEmpty()) return emptyList()
+        return jdbc.sql(
             """
             INSERT INTO notifications
                 (user_id, kind, board_id, comment_id, thread_id, proposal_id, actor_id, role, created_at)
@@ -113,6 +116,7 @@ class Notifications(private val jdbc: JdbcClient) {
                    :at
             FROM unnest(:userIds::uuid[]) AS recipient
             ON CONFLICT DO NOTHING
+            RETURNING id
             """,
         )
             .param("userIds", userIds.toTypedArray())
@@ -124,13 +128,15 @@ class Notifications(private val jdbc: JdbcClient) {
             .param("actorId", actorId)
             .param("role", role?.name)
             .param("at", at.atOffset(ZoneOffset.UTC))
-            .update()
+            .query(UUID::class.java)
+            .list()
+            .filterNotNull()
     }
 
     /**
      * Notifies the owner [ownerId] of the board [boardId] at [at] that the user [actorId] asks them to review the element
      * [cellId] of the page [pageId], unless the owner has a notification about that element created after [notifiedAfter].
-     * Returns whether it notified them.
+     * Returns the id of the notification, `null` when it did not notify them.
      */
     fun addReviewRequest(
         ownerId: UUID,
@@ -140,7 +146,7 @@ class Notifications(private val jdbc: JdbcClient) {
         actorId: UUID,
         at: Instant,
         notifiedAfter: Instant,
-    ): Boolean = jdbc.sql(
+    ): UUID? = jdbc.sql(
         """
         INSERT INTO notifications (user_id, kind, board_id, page_id, cell_id, actor_id, created_at)
         SELECT :ownerId, 'REVIEW_REQUEST', :boardId, :pageId, :cellId, :actorId, :at
@@ -149,6 +155,7 @@ class Notifications(private val jdbc: JdbcClient) {
             WHERE user_id = :ownerId AND board_id = :boardId AND kind = 'REVIEW_REQUEST'
               AND page_id = :pageId AND cell_id = :cellId AND created_at > :notifiedAfter
         )
+        RETURNING id
         """,
     )
         .param("ownerId", ownerId)
@@ -158,7 +165,9 @@ class Notifications(private val jdbc: JdbcClient) {
         .param("actorId", actorId)
         .param("at", at.atOffset(ZoneOffset.UTC))
         .param("notifiedAfter", notifiedAfter.atOffset(ZoneOffset.UTC))
-        .update() > 0
+        .query(UUID::class.java)
+        .optional()
+        .orElse(null)
 
     /** How many notifications about requests for reviews the user [actorId] caused after [after]. */
     fun reviewRequestsAfter(actorId: UUID, after: Instant): Int = jdbc.sql(
@@ -254,24 +263,8 @@ class Notifications(private val jdbc: JdbcClient) {
      */
     fun page(userId: UUID, before: UUID?, limit: Int): List<StoredNotification> = jdbc.sql(
         """
-        SELECT n.id, n.kind, n.comment_id, n.proposal_id, n.role, n.created_at, n.read_at,
-               b.id AS board_id, b.title, b.owner_id, b.created_at AS board_created_at,
-               b.updated_at AS board_updated_at, b.link_access, m.role AS member_role,
-               a.id AS actor_id, a.name AS actor_name, a.avatar_url AS actor_avatar_url,
-               t.id AS thread_id, coalesce(t.page_id, n.page_id) AS page_id, n.cell_id,
-               left(coalesce(c.body, f.body, p.title), :snippetLength + 1) AS body
-        FROM notifications n
-        JOIN boards b ON b.id = n.board_id
-        LEFT JOIN board_members m ON m.board_id = n.board_id AND m.user_id = n.user_id
-        LEFT JOIN users a ON a.id = n.actor_id
-        LEFT JOIN comments c ON c.id = n.comment_id
-        LEFT JOIN comment_threads t ON t.id = coalesce(c.thread_id, n.thread_id)
-        -- The first comment of an assigned thread tells what the thread is about.
-        LEFT JOIN LATERAL (
-            SELECT body FROM comments WHERE thread_id = n.thread_id ORDER BY created_at, id LIMIT 1
-        ) f ON true
-        LEFT JOIN proposals p ON p.id = n.proposal_id
-        WHERE n.user_id = :userId AND (:before::uuid IS NULL OR n.id < :before::uuid)
+        $SELECT_STORED
+        WHERE b.deleted_at IS NULL AND n.user_id = :userId AND (:before::uuid IS NULL OR n.id < :before::uuid)
         ORDER BY n.id DESC
         LIMIT :limit
         """,
@@ -283,8 +276,16 @@ class Notifications(private val jdbc: JdbcClient) {
         .query { rs, _ -> rs.toStoredNotification() }
         .list()
 
+    /** The notification [id] with what its recipient may see of it, `null` once it is gone. */
+    fun find(id: UUID): StoredNotification? = jdbc.sql("$SELECT_STORED WHERE n.id = :id")
+        .param("id", id)
+        .param("snippetLength", SNIPPET_LENGTH)
+        .query { rs, _ -> rs.toStoredNotification() }
+        .optional()
+        .orElse(null)
+
     fun unreadCount(userId: UUID): Int = jdbc.sql(
-        "SELECT count(*) FROM notifications WHERE user_id = :userId AND read_at IS NULL",
+        "SELECT count(*) FROM notifications n JOIN boards b ON b.id = n.board_id WHERE n.user_id = :userId AND n.read_at IS NULL AND b.deleted_at IS NULL",
     )
         .param("userId", userId)
         .query(Int::class.java)
@@ -374,6 +375,7 @@ class Notifications(private val jdbc: JdbcClient) {
 
     private fun ResultSet.toStoredNotification() = StoredNotification(
         id = getObject("id", UUID::class.java),
+        userId = getObject("user_id", UUID::class.java),
         kind = NotificationKind.valueOf(getString("kind")),
         board = Board(
             id = getObject("board_id", UUID::class.java),
@@ -407,5 +409,26 @@ class Notifications(private val jdbc: JdbcClient) {
     companion object {
         /** The most characters of a comment that a notification shows. */
         const val SNIPPET_LENGTH = 200
+
+        /** Notifications with their board, the role of the recipient on it, the actor, the thread and the snippet. */
+        private const val SELECT_STORED = """
+            SELECT n.id, n.user_id, n.kind, n.comment_id, n.proposal_id, n.role, n.created_at, n.read_at,
+                   b.id AS board_id, b.title, b.owner_id, b.created_at AS board_created_at,
+                   b.updated_at AS board_updated_at, b.link_access, m.role AS member_role,
+                   a.id AS actor_id, a.name AS actor_name, a.avatar_url AS actor_avatar_url,
+                   t.id AS thread_id, coalesce(t.page_id, n.page_id) AS page_id, n.cell_id,
+                   left(coalesce(c.body, f.body, p.title), :snippetLength + 1) AS body
+            FROM notifications n
+            JOIN boards b ON b.id = n.board_id
+            LEFT JOIN board_members m ON m.board_id = n.board_id AND m.user_id = n.user_id
+            LEFT JOIN users a ON a.id = n.actor_id
+            LEFT JOIN comments c ON c.id = n.comment_id
+            LEFT JOIN comment_threads t ON t.id = coalesce(c.thread_id, n.thread_id)
+            -- The first comment of an assigned thread tells what the thread is about.
+            LEFT JOIN LATERAL (
+                SELECT body FROM comments WHERE thread_id = n.thread_id ORDER BY created_at, id LIMIT 1
+            ) f ON true
+            LEFT JOIN proposals p ON p.id = n.proposal_id
+        """
     }
 }

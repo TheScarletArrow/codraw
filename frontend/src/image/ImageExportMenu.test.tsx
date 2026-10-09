@@ -93,7 +93,7 @@ describe('ImageExportMenu', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить SVG' }))
 
-    expect(editor.exportSvg).toHaveBeenCalledWith({ selectionOnly: false, transparent: false, links: true })
+    expect(editor.exportSvg).toHaveBeenCalledWith({ selectionOnly: false, onlyVisible: false, transparent: false, links: true })
     expect(saved).toHaveLength(1)
     expect(saved[0]!.name).toBe('Архитектура — Контейнеры.svg')
     const svg = await saved[0]!.blob.text()
@@ -111,13 +111,30 @@ describe('ImageExportMenu', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Прозрачный фон' }))
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить SVG' }))
 
-    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: true, transparent: true, links: true })
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: true, onlyVisible: false, transparent: true, links: true })
 
     // The selection is gone: the whole page is saved.
     act(() => editor.setState({ canCopy: false }))
     expect(screen.getByRole('checkbox', { name: 'Только выделенное' })).not.toBeChecked()
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить SVG' }))
-    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, transparent: true, links: true })
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, onlyVisible: false, transparent: true, links: true })
+  })
+
+  it('offers only what is visible while the page is filtered', async () => {
+    act(() => editor.setState({ hasCells: true }))
+    await open()
+    expect(screen.queryByRole('checkbox', { name: 'Только видимое' })).toBeNull()
+
+    act(() => editor.setState({ filter: { matched: 2, total: 3, hide: false } }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Только видимое' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить SVG' }))
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, onlyVisible: true, transparent: false, links: true })
+
+    // The filter is gone: the whole page is saved.
+    act(() => editor.setState({ filter: null }))
+    expect(screen.queryByRole('checkbox', { name: 'Только видимое' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить SVG' }))
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, onlyVisible: false, transparent: false, links: true })
   })
 
   it('offers PNG scales from 1× to 4×, 2× by default', async () => {
@@ -136,7 +153,7 @@ describe('ImageExportMenu', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Прозрачный фон' }))
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить PDF' }))
 
-    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, transparent: true, links: true })
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, onlyVisible: false, transparent: true, links: true })
     expect(imagesToPdf).toHaveBeenLastCalledWith([IMAGE])
     expect(saved.map(({ name, blob }) => [name, blob.type])).toEqual([['Архитектура — Контейнеры.pdf', 'application/pdf']])
   })
@@ -163,7 +180,7 @@ describe('ImageExportMenu', () => {
     expect(pages).toBeDisabled()
     expect(pages).toHaveValue('current')
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить PDF' }))
-    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: true, transparent: false, links: true })
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: true, onlyVisible: false, transparent: false, links: true })
     expect(saved.map(({ name }) => name)).toEqual(['Архитектура — Контейнеры.pdf'])
   })
 
@@ -228,7 +245,7 @@ describe('ImageExportMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Копировать PNG' }))
 
     // A PNG has nothing to click: its image has no links.
-    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, transparent: false, links: false })
+    expect(editor.exportSvg).toHaveBeenLastCalledWith({ selectionOnly: false, onlyVisible: false, transparent: false, links: false })
     expect(write).toHaveBeenCalled()
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось скопировать изображение')
     vi.unstubAllGlobals()

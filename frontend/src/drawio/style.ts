@@ -2,10 +2,12 @@ import { EDGE_API_KEY } from '../diagram/edgeApi.ts'
 import { INTERACTION_KEY } from '../diagram/elementKinds.ts'
 import { LINK_KEY } from '../diagram/links.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
-import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, OWN_LINES_KEY, type StyleValue } from '../diagram/model.ts'
+import { ELEMENT_KEY, ELEMENT_STYLE_KEYS, HIDDEN_LAYER_KEY, OWN_LINES_KEY, type StyleValue } from '../diagram/model.ts'
+import { VIEW_QUERY_KEY } from '../diagram/views.ts'
 
 export type Style = Record<string, StyleValue>
-export type CellKind = 'vertex' | 'edge'
+/** What a style is of: a layer has none of the defaults of shapes and edges. */
+export type CellKind = 'vertex' | 'edge' | 'layer'
 
 /**
  * Boolean keys of maxGraph styles, and `autosize`, `autosizeText` and `connectable` of draw.io; draw.io writes them as
@@ -27,6 +29,8 @@ const BOOLEAN_KEYS = new Set([
   'codrawLegendPart',
   'codrawSeqNumbers',
   'codrawShowTechnology',
+  'codrawView',
+  'codrawViewMaterialized',
   'connectable',
   'curved',
   'dashed',
@@ -171,10 +175,19 @@ const BOARD_KEYS = new Set([LOCKED_BY_KEY, OWN_LINES_KEY])
 
 /**
  * Keys of CoDraw that a file carries as attributes of the element around the cell, as draw.io does, rather than in its
- * style: the link, the description of the call of an edge, the element of a cell and the properties of elements and
- * edges (see `drawio/serialize.ts`).
+ * style: the link, the description of the call of an edge, the element of a cell, the properties of elements and
+ * edges and the query of a view (see `drawio/serialize.ts`), and a layer hidden for everybody as `visible="0"` of the
+ * layer itself.
  */
-const ATTRIBUTE_KEYS = new Set([LINK_KEY, EDGE_API_KEY, ELEMENT_KEY, ...Object.values(ELEMENT_STYLE_KEYS), INTERACTION_KEY])
+const ATTRIBUTE_KEYS = new Set([
+  LINK_KEY,
+  EDGE_API_KEY,
+  ELEMENT_KEY,
+  ...Object.values(ELEMENT_STYLE_KEYS),
+  INTERACTION_KEY,
+  VIEW_QUERY_KEY,
+  HIDDEN_LAYER_KEY,
+])
 
 /** draw.io writes `data:image/png,<base64>`: a `;` would end the style value. */
 const DATA_IMAGE = /^data:image\/([a-z0-9.+-]+),([A-Za-z0-9+/=]+)$/i
@@ -227,7 +240,7 @@ export function parseStyle(text: string, kind: CellKind): Style {
   if (kind === 'edge') {
     style.edgeStyle ??= 'none'
     style.labelBackgroundColor ??= '#ffffff'
-  } else {
+  } else if (kind === 'vertex') {
     style.fontSize ??= 12
   }
   return style
@@ -247,7 +260,7 @@ export function formatStyle(style: Style, kind: CellKind): string {
   if (kind === 'edge') {
     full.edgeStyle ??= 'orthogonalEdgeStyle'
     full.labelBackgroundColor ??= 'none'
-  } else {
+  } else if (kind === 'vertex') {
     full.fontSize ??= 13
   }
   const names = Array.isArray(full.baseStyleNames) ? full.baseStyleNames : []

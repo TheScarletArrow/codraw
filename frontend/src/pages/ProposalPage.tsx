@@ -8,13 +8,17 @@ import { fetchBoard, type Board } from '../api/boards.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
 import { fetchProposal, withdrawProposal, type Proposal } from '../api/proposals.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { usePlanView } from '../board/usePlanView.ts'
+import { DetailCrumbs } from '../board/DetailCrumbs.tsx'
 import { CanvasSearch } from '../board/CanvasSearch.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { Minimap } from '../board/Minimap.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
 import { StatusBadges } from '../board/StatusBadges.tsx'
 import type { ConnectionStatus } from '../board/useBoardConnection.ts'
+import { ImpactPanel } from '../board/ImpactPanel.tsx'
 import { useImageUploads } from '../board/imageUploads.ts'
+import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { usePages } from '../board/usePages.ts'
 import type { Author } from '../diagram/attribution.ts'
@@ -38,9 +42,12 @@ import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
+import { ChecksButton, ChecksPanel } from '../checks/ChecksPanel.tsx'
 import { PropertiesButton, PropertiesPanel, SidePanels, type PropertiesRequest } from '../elements/PropertiesPanel.tsx'
 import { SharedBadges } from '../elements/SharedBadges.tsx'
 import { useRevealCell } from '../elements/useRevealCell.ts'
+import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
+import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
 import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
@@ -108,9 +115,19 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   const requestedPage = searchParams.get('page')
   const currentPage = pages.find((page) => page.id === requestedPage) ?? pages[0] ?? null
   const selectPage = useCallback(
-    (id: string) => setSearchParams((params) => new URLSearchParams({ ...Object.fromEntries(params), page: id }), { replace: true }),
+    (id: string) =>
+      setSearchParams(
+        (params) => {
+          // The parameters of the filter repeat: the others stay as they are.
+          const next = new URLSearchParams(params)
+          next.set('page', id)
+          return next
+        },
+        { replace: true },
+      ),
     [setSearchParams],
   )
+  const { view: planView, changeView: changePlanView } = usePlanView(editor)
   useEffect(() => {
     if (currentPage && currentPage.id !== requestedPage) selectPage(currentPage.id)
   }, [currentPage, requestedPage, selectPage])
@@ -122,10 +139,13 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
     applySchemaUpdate(document, update.pageId, update.cells, author)
     selectPage(update.pageId)
   }, [document, readOnly, proposal.id, author, selectPage])
+  const { filter, changeFilter } = usePageFilter(editor)
   const showCell = useRevealCell(editor, selectPage)
 
   // The window of the link of an element, which the menu of a right click opens on the canvas of a page.
   const [linking, setLinking] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
+  const libraries = useLibraries()
+  const [savingToLibrary, setSavingToLibrary] = useState<{ editor: DiagramEditor; request: ContextMenuRequest } | null>(null)
   // The description of the call of an edge that its menu asked to edit.
   const [apiRequest, setApiRequest] = useState<EdgeApiRequest | null>(null)
   // The panel of properties, open until it is closed, and the element whose properties the menu asked for.
@@ -134,6 +154,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   // The panel of the elements of the board, and the element whose cells the menu or a badge asked for.
   const [elementsOpen, setElementsOpen] = useState(false)
   const [elementsRequest, setElementsRequest] = useState<ElementsRequest | null>(null)
+  // The panel of the checks of the draft.
+  const [checksOpen, setChecksOpen] = useState(false)
   const showWhereUsed = (key: string) => {
     setElementsOpen(true)
     setElementsRequest({ key })
@@ -198,10 +220,19 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         />
         <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         {/* Nobody else is on a draft, and comments are about the board: no laser pointer and no comment tool. */}
-        <EditorToolbar editor={editor} readOnly={readOnly} collaboration={false} />
+        <EditorToolbar
+          editor={editor}
+          readOnly={readOnly}
+          collaboration={false}
+          planView={planView}
+          onPlanViewChange={changePlanView}
+          filter={filter}
+          onFilterChange={changeFilter}
+        />
         <div className="flex shrink-0 items-center gap-1">
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
+          <ChecksButton document={document} open={checksOpen} onToggle={() => setChecksOpen((open) => !open)} />
           <ShortcutsHelp readOnly={readOnly} collaboration={false} />
         </div>
       </div>
@@ -250,7 +281,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        {!readOnly && <ShapePalette editor={editor} />}
+        {!readOnly && <ShapePalette editor={editor} libraries={libraries} />}
         <div className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             {document && currentPage ? (
@@ -265,8 +296,10 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                   collaboration={false}
                   images={imageUploads.host}
                   onEditor={setEditor}
+                  onDropComponent={libraries.drop}
                 />
                 <StickySignatures editor={editor} />
+                <DetailCrumbs document={document} pageId={currentPage.id} onSelectPage={selectPage} />
                 <StatusBadges editor={editor} document={document} />
                 <SharedBadges editor={editor} document={document} onShow={showWhereUsed} />
                 <LockBadges editor={editor} />
@@ -275,6 +308,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 {!readOnly && <FieldPopover editor={editor} />}
                 {!readOnly && <StickyPanel editor={editor} />}
                 <SidePanels>
+                  <ImpactPanel editor={editor} document={document} onShow={showCell} />
                   <EdgeApiPanel editor={editor} request={apiRequest} />
                   {propertiesOpen && (
                     <PropertiesPanel
@@ -299,6 +333,18 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                       }}
                     />
                   )}
+                  {checksOpen && (
+                    <ChecksPanel
+                      document={document}
+                      canChange={!readOnly}
+                      onShow={showCell}
+                      onMerge={(refs, keep) => editor?.mergeElementCells(refs, keep)}
+                      onClose={() => {
+                        setChecksOpen(false)
+                        editor?.focus()
+                      }}
+                    />
+                  )}
                 </SidePanels>
                 <CanvasMenu
                   editor={editor}
@@ -315,7 +361,9 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                     readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'delete', editor, request })
                   }
                   onMergeElements={readOnly || !editor ? undefined : (request) => setElementWindow({ kind: 'merge', editor, request })}
+                  onDetail={selectPage}
                   onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
+                  onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
                 />
                 {elementWindow &&
                   elementWindow.editor === editor &&
@@ -333,6 +381,14 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                       onClose={() => setElementWindow(null)}
                     />
                   ))}
+                {savingToLibrary && savingToLibrary.editor === editor && (
+                  <SaveToLibraryDialog
+                    editor={savingToLibrary.editor}
+                    shelf={libraries}
+                    request={savingToLibrary.request}
+                    onClose={() => setSavingToLibrary(null)}
+                  />
+                )}
                 {linking && linking.editor === editor && (
                   <LinkDialog
                     editor={linking.editor}

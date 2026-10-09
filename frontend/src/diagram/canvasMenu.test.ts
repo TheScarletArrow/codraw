@@ -48,6 +48,14 @@ describe('menuItems', () => {
     ])
   })
 
+  it('offers no index for a view that is not materialized, nor below an index of one', () => {
+    const offered = (target: 'table' | 'index') =>
+      menuItems(target, { canPaste: false, canUndo: false, canRedo: false, canAddIndex: false }).map((item) => item.command)
+    expect(offered('table')).toContain('addField')
+    expect(offered('table')).not.toContain('addIndex')
+    expect(offered('index')).not.toContain('addIndex')
+  })
+
   it('offers only editing, a new field, the look and deletion for a field', () => {
     expect(labels('field')).toEqual(['Изменить', 'Добавить поле ниже', 'Копировать стиль', 'Вставить стиль', 'Удалить поле'])
   })
@@ -147,6 +155,27 @@ describe('menuItems', () => {
     expect(locked).not.toContain('Где используется…')
   })
 
+  it('offers the detail of a system or a container before its properties, for viewers and locked shapes too', () => {
+    const detail = { ...all, canShowProperties: true, canDetail: true }
+
+    expect(labels('shape', detail).slice(-3)).toEqual(['Детализировать', 'Свойства…', 'Удалить'])
+    expect(labels('shape', { ...detail, canDetail: false })).not.toContain('Детализировать')
+    expect(labels('shape', { ...detail, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Детализировать', 'Свойства…'])
+    expect(menuItems('shape', { ...detail, locked: true }).find((item) => item.command === 'detail')).toMatchObject({ disabled: false })
+    for (const target of ['edge', 'table', 'selection'] as const) expect(labels(target, detail)).not.toContain('Детализировать')
+  })
+
+  it('offers the dependencies of an element after its properties and the path between two elements, also to a viewer', () => {
+    const analysed = { ...all, canShowProperties: true, canShowDependencies: true, canShowWhereUsed: true }
+    expect(labels('shape', analysed).slice(-4, -1)).toEqual(['Свойства…', 'Зависимости', 'Где используется…'])
+    expect(labels('table', { ...all, canShowDependencies: true })).toContain('Зависимости')
+    expect(labels('shape', { ...analysed, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Свойства…', 'Зависимости', 'Где используется…'])
+    expect(labels('shape', all)).not.toContain('Зависимости')
+    expect(labels('selection', { ...all, canGroup: true, canShowPath: true }).slice(0, 2)).toEqual(['Сгруппировать', 'Путь между'])
+    expect(labels('selection', { ...all, canShowPath: true, readOnly: true })).toEqual(['Путь между', 'Копировать'])
+    expect(labels('selection', all)).not.toContain('Путь между')
+  })
+
   it('offers merging several shapes into one element', () => {
     expect(labels('selection', { ...all, canGroup: true, canMergeElements: true }).slice(0, 2)).toEqual([
       'Сгруппировать',
@@ -242,6 +271,27 @@ describe('menuItems', () => {
         ['Вставить стиль', true],
       ])
     }
+  })
+
+  it('offers what will appear and what will go after the statuses, for edges too, chosen as the selection has it', () => {
+    const planned = { ...all, status: { value: null, mixed: false }, plan: { value: 'added' as const, mixed: false } }
+
+    expect(labels('shape', planned).slice(-5)).toEqual(['Без статуса', 'Есть', 'Появится', 'Уйдёт', 'Удалить'])
+    const items = menuItems('shape', planned).filter((item) => item.command.startsWith('plan'))
+    expect(items.map(({ command, heading, separatorBefore, checked }) => [command, heading, separatorBefore, checked])).toEqual([
+      ['planNone', 'Изменение', true, false],
+      ['planAdded', undefined, false, true],
+      ['planRemoved', undefined, false, false],
+    ])
+    expect(labels('edge', { ...all, plan: { value: null, mixed: false } })).toEqual(expect.arrayContaining(['Есть', 'Появится', 'Уйдёт']))
+    for (const target of ['table', 'group', 'selection'] as const) expect(labels(target, planned)).toContain('Уйдёт')
+    expect(labels('field', planned)).not.toContain('Уйдёт')
+    // Different marks choose none of them; a lock keeps them; a viewer has none.
+    const mixed = menuItems('shape', { ...planned, plan: { value: null, mixed: true } })
+    expect(mixed.filter((item) => item.command.startsWith('plan') && item.checked).map((item) => item.command)).toEqual([])
+    expect(menuItems('shape', { ...planned, locked: true }).find((item) => item.command === 'planRemoved')).toMatchObject({ disabled: true })
+    expect(labels('shape', { ...planned, readOnly: true })).not.toContain('Появится')
+    expect(labels('shape', { ...planned, plan: null })).not.toContain('Появится')
   })
 
   it('offers the statuses after locking for shapes, tables, groups and several elements with them', () => {
@@ -430,6 +480,21 @@ describe('shortcutLabel', () => {
     expect(labels('shape', viewing)).toEqual(['Копировать', 'Копировать стиль', 'Комментировать'])
     expect(labels('field', viewing)).toEqual(['Копировать стиль', 'Комментировать'])
     expect(labels('edge', viewing)).toEqual(['Копировать стиль', 'Комментировать'])
+  })
+
+  it('offers saving into a library after copying, also to viewers, but not for an edge, a field or the canvas', () => {
+    const library = { ...all, canSaveToLibrary: true }
+    expect(labels('shape', library).slice(1, 5)).toEqual(['Вырезать', 'Копировать', 'Дублировать', 'Сохранить в библиотеку…'])
+    for (const target of ['table', 'group', 'selection', 'sequence'] as const) {
+      expect(labels(target, library)).toContain('Сохранить в библиотеку…')
+    }
+    for (const target of ['edge', 'field', 'index', 'canvas', 'message'] as const) {
+      expect(labels(target, library)).not.toContain('Сохранить в библиотеку…')
+    }
+    expect(labels('shape', { ...library, readOnly: true })).toEqual(['Копировать', 'Сохранить в библиотеку…', 'Копировать стиль'])
+    expect(labels('shape')).not.toContain('Сохранить в библиотеку…')
+    // Saving changes nothing of a locked element.
+    expect(menuItems('shape', { ...library, locked: true }).find((item) => item.command === 'saveToLibrary')?.disabled).toBe(false)
   })
 
   it('offers new participants and messages and the copy as Mermaid for a sequence diagram', () => {

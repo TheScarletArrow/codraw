@@ -55,6 +55,9 @@ export const BADGE_HEIGHT = 16
 export const badgeWidth = (badge: string) => Math.ceil(badge.length * 6.5) + 8
 /** The badge of a base table, at the right of its header. */
 export const BASE_BADGE = 'БАЗА'
+/** The badges of a view and of a materialized view, at the right of the header, where a base table has its own. */
+export const VIEW_BADGE = 'VIEW'
+export const MATERIALIZED_VIEW_BADGE = 'MAT VIEW'
 /** Room the badge takes in the header of a table on each side of the centred name. */
 export const badgeRoom = (badge: string) => BADGE_X + badgeWidth(badge) + 4
 
@@ -78,8 +81,9 @@ function iconsOf(field: FieldParts | null, reference: string | null, indexed: Se
  * Rows of the fields of a table, then of its indexes: the icons, the name, then the type, the nullability and the
  * reference with the rest of a field, each in a column as wide as its longest text among the fields, so that the
  * columns line up. The names of indexes start where those of fields do, and their columns line up among the indexes.
+ * The columns of a `view` have no nullability: a view does not keep it.
  */
-export function tableRows(fields: RowField[], measure: Measure, indexes: RowField[] = []): TableRow[] {
+export function tableRows(fields: RowField[], measure: Measure, indexes: RowField[] = [], { view = false } = {}): TableRow[] {
   const parts = fields.map((field) => splitField(field.text))
   const indexParts = indexes.map((index) => splitIndex(index.text))
   const indexed = new Set(indexParts.flatMap((index) => (index ? indexColumnNames(index.columns) : [])).map((name) => name.toLowerCase()))
@@ -91,24 +95,25 @@ export function tableRows(fields: RowField[], measure: Measure, indexes: RowFiel
   const typeX = nameEnd + GAP
   const typeWidth = widest((field) => field.type)
   const nullX = typeWidth > 0 ? typeX + typeWidth + GAP : typeX
-  const extraX = nullX + widest(nullability) + GAP
+  const extraX = view ? nullX : nullX + widest(nullability) + GAP
   const rows = fields.map(({ text, font, reference }, index): TableRow => {
     const field = parts[index]!
     if (!field) return textRow(text, font, nameLeft, measure)
     const extra = [reference && `→ ${reference}`, field.rest].filter(Boolean).join('  ')
     const columns: RowColumn[] = [
       ...(field.type ? [{ text: field.type, x: typeX }] : []),
-      { text: nullability(field), x: nullX },
+      ...(view ? [] : [{ text: nullability(field), x: nullX }]),
       ...(extra ? [{ text: extra, x: extraX }] : []),
     ]
-    const last = columns.at(-1)!
+    const last = columns.at(-1)
     return {
       parts: field,
       icons: icons[index]!,
       nameX: nameLeft,
       nameEnd,
       columns,
-      width: last.x + measure(last.text, font) + ROW_PADDING,
+      // A column of a view without a type shows its name alone.
+      width: last ? last.x + measure(last.text, font) + ROW_PADDING : nameLeft + measure(field.name, font) + ROW_PADDING,
     }
   })
   return [...rows, ...indexRows(indexes, indexParts, nameLeft, measure)]

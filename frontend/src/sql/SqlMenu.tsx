@@ -79,7 +79,19 @@ function importedDiagram(text: string): { diagram: MermaidDiagram | null; error:
 const countReferences = (schema: SqlSchema) =>
   schema.tables.reduce((sum, table) => sum + table.foreignKeys.reduce((keys, key) => keys + key.columns.length, 0), 0)
 
-const countIndexes = (schema: SqlSchema) => schema.tables.reduce((sum, table) => sum + table.indexes.length, 0)
+const countIndexes = (schema: SqlSchema) =>
+  [...schema.tables, ...schema.views].reduce((sum, relation) => sum + relation.indexes.length, 0)
+
+/** What an import of SQL finds: tables, views when it has them, references and indexes. */
+const importSummary = (schema: SqlSchema) =>
+  [
+    `Таблиц: ${schema.tables.length}`,
+    schema.views.length > 0 && `представлений: ${schema.views.length}`,
+    `связей: ${countReferences(schema)}`,
+    `индексов: ${countIndexes(schema)}`,
+  ]
+    .filter(Boolean)
+    .join(', ')
 
 type CellFactory = (origin: { x: number; y: number }) => Promise<CellData[]>
 
@@ -127,7 +139,11 @@ export function SqlMenu({
 
   const schema = open && doc && pageId ? diagramSchema(pageCells(doc, pageId)) : null
   const tables = schema?.tables.length ?? 0
+  const views = schema?.views.length ?? 0
+  // A schema of views alone is SQL, but no erDiagram of Mermaid.
+  const exportable = tables + views > 0
   const imported = importing === 'sql' ? importedSchema(files, text) : null
+  const importable = imported !== null && imported.tables.length + imported.views.length > 0
   const mermaid = importing === 'mermaid' ? importedDiagram(text) : null
   // Whether the server reads schemas of databases for this user; asked when «Импорт SQL» opens.
   const schemaImport = useQuery({ queryKey: ['schema-import'], queryFn: fetchSchemaImport, enabled: importing === 'sql', staleTime: 5 * 60_000 })
@@ -203,14 +219,14 @@ export function SqlMenu({
 
   const addTables = () => {
     const diagram = mermaid?.diagram
-    if (imported && imported.tables.length > 0) void insert((origin) => schemaCells(imported, origin, undefined, [], 'sql'))
+    if (imported && importable) void insert((origin) => schemaCells(imported, origin, undefined, [], 'sql'))
     else if (diagram) void insert((origin) => mermaidCells(diagram, origin, undefined, 'mermaid'))
   }
 
   const updateTables = () => {
     const diagram = mermaid?.diagram
-    if (imported && imported.tables.length > 0) {
-      void proposeUpdate(sourceTitle(files, 'SQL'), `Таблиц: ${imported.tables.length}, связей: ${countReferences(imported)}, индексов: ${countIndexes(imported)}`, (origin) =>
+    if (imported && importable) {
+      void proposeUpdate(sourceTitle(files, 'SQL'), importSummary(imported), (origin) =>
         schemaCells(imported, origin, undefined, [], 'sql'),
       )
     } else if (diagram) {
@@ -360,8 +376,7 @@ export function SqlMenu({
               {schemaImport.data?.kind === 'sign-in' && ' Подключиться к базе можно после входа через GitHub или Google.'}
             </p>
             <p role="status" className="text-xs text-muted-foreground">
-              Таблиц: {imported.tables.length}, связей: {countReferences(imported)}, индексов: {countIndexes(imported)},
-              пропущено операторов: {imported.skipped}
+              {importSummary(imported)}, пропущено операторов: {imported.skipped}
             </p>
             {message && (
               <p role="alert" className="text-xs text-destructive">
@@ -369,11 +384,11 @@ export function SqlMenu({
               </p>
             )}
             <div className="flex gap-2">
-              <Button type="button" size="sm" disabled={busy || imported.tables.length === 0} onClick={addTables}>
+              <Button type="button" size="sm" disabled={busy || !importable} onClick={addTables}>
                 Добавить на страницу
               </Button>
               {boardId && onProposalCreated && (
-                <Button type="button" variant="outline" size="sm" disabled={busy || imported.tables.length === 0} onClick={updateTables}>
+                <Button type="button" variant="outline" size="sm" disabled={busy || !importable} onClick={updateTables}>
                   Обновить через предложение
                 </Button>
               )}
@@ -381,7 +396,10 @@ export function SqlMenu({
           </>
         ) : (
           <>
-            <p className="px-2 pb-1 text-xs text-muted-foreground">Таблиц на странице: {tables}</p>
+            <p className="px-2 pb-1 text-xs text-muted-foreground">
+              Таблиц на странице: {tables}
+              {views > 0 && `, представлений: ${views}`}
+            </p>
             {!readOnly && (
               <>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('sql')}>
@@ -421,7 +439,7 @@ export function SqlMenu({
               variant="ghost"
               size="sm"
               className="justify-start font-normal"
-              disabled={tables === 0}
+              disabled={!exportable}
               onClick={() => schema && void copy(schemaSql(schema), 'sql-copied')}
             >
               Скопировать SQL
@@ -431,7 +449,7 @@ export function SqlMenu({
               variant="ghost"
               size="sm"
               className="justify-start font-normal"
-              disabled={tables === 0}
+              disabled={!exportable}
               onClick={() =>
                 schema &&
                 downloadBlob(

@@ -163,3 +163,25 @@ describe('stickies in files of draw.io', () => {
     expect(parseStyle(written, 'vertex')).toEqual(sticky)
   })
 })
+
+describe('logos of technologies in files of draw.io', () => {
+  it('keeps the logo chosen for a shape both ways', () => {
+    for (const icon of ['kotlin', 'none']) {
+      expect(parseStyle(formatStyle({ codrawShape: 'service', codrawIcon: icon }, 'vertex'), 'vertex')).toMatchObject({ codrawIcon: icon })
+    }
+  })
+})
+
+describe('shapes of the cloud sets of draw.io', () => {
+  it('keeps them both ways, so that draw.io draws them again', () => {
+    for (const style of [
+      'shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;',
+      'shape=mxgraph.kubernetes.icon;prIcon=pod;',
+      'shape=mxgraph.gcp2.cloud_run;',
+      'shape=mxgraph.azure.function_apps;',
+    ]) {
+      const written = formatStyle(parseStyle(style, 'vertex'), 'vertex')
+      for (const entry of style.split(';').filter(Boolean)) expect(written).toContain(`${entry};`)
+    }
+  })
+})

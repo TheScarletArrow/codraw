@@ -40,6 +40,7 @@ const page = (notifications: UserNotification[], next: string | null = null): Mo
 const routes = [
   { path: '/', element: <NotificationBell /> },
   { path: '/boards/:boardId', element: <p>Доска</p> },
+  { path: '/settings/notifications', element: <p>Настройки</p> },
 ]
 
 function renderBell(responses: Record<string, MockResponse | MockResponse[]>) {
@@ -52,6 +53,9 @@ const requests = (fetchMock: ReturnType<typeof mockFetch>, method: string, url: 
   fetchMock.mock.calls.filter(([input, init]) => (init?.method ?? 'GET') === method && input.toString() === url)
 
 const list = () => within(screen.getByRole('dialog', { name: 'Уведомления' }))
+
+/** The notifications of the open list, without the other links of the list, such as its settings. */
+const entries = async () => within(await list().findByRole('list', { name: 'Список уведомлений' }))
 
 describe('NotificationBell', () => {
   afterEach(() => {
@@ -102,7 +106,7 @@ describe('NotificationBell', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Уведомления (1)' }))
 
-    const items = await list().findAllByRole('link')
+    const items = await (await entries()).findAllByRole('link')
     expect(items).toHaveLength(2)
     expect(items[0]).toHaveAccessibleName('Аня: упоминание в «Схема БД» @Боб посмотри 5 минут назад Не прочитано')
     expect(within(items[0]!).getByRole('presentation')).toHaveAttribute('src', 'https://avatars.example.com/anya.png')
@@ -129,8 +133,8 @@ describe('NotificationBell', () => {
 
     await userEvent.click(await list().findByRole('button', { name: 'Показать ещё' }))
 
-    await waitFor(() => expect(list().getAllByRole('link')).toHaveLength(2))
-    expect(list().getAllByRole('link')[1]).toHaveTextContent('Старое')
+    await waitFor(async () => expect((await entries()).getAllByRole('link')).toHaveLength(2))
+    expect((await entries()).getAllByRole('link')[1]).toHaveTextContent('Старое')
     expect(list().queryByRole('button', { name: 'Показать ещё' })).toBeNull()
     expect(requests(fetchMock, 'GET', `${listUrl}?before=n-2`)).toHaveLength(1)
   })
@@ -159,7 +163,7 @@ describe('NotificationBell', () => {
     })
     await userEvent.click(await screen.findByRole('button', { name: 'Уведомления (1)' }))
 
-    const item = await list().findByRole('link')
+    const item = await (await entries()).findByRole('link')
     expect(item).toHaveAccessibleName('Аня: вам назначена ветка в «Схема БД» Поправь связь 5 минут назад Не прочитано')
     await userEvent.click(item)
 
@@ -184,5 +188,15 @@ describe('NotificationBell', () => {
     await waitFor(() => expect(list().queryAllByText('Не прочитано')).toHaveLength(0))
     expect(screen.getByRole('button', { name: 'Уведомления' })).toBeInTheDocument()
     expect(requests(fetchMock, 'POST', `${listUrl}/read-all`)).toHaveLength(1)
+  })
+
+  it('leads to the settings of notifications outside of CoDraw and closes the list', async () => {
+    const { router } = renderBell({ [`GET ${countUrl}`]: { body: { count: 0 } }, [`GET ${listUrl}`]: page([]) })
+    await userEvent.click(await screen.findByRole('button', { name: 'Уведомления' }))
+
+    await userEvent.click(list().getByRole('link', { name: 'Настройки уведомлений' }))
+
+    expect(router.state.location.pathname).toBe('/settings/notifications')
+    expect(screen.queryByRole('dialog', { name: 'Уведомления' })).not.toBeInTheDocument()
   })
 })
