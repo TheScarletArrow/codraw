@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { DiagramEditor } from '../diagram/editor.ts'
+import type { LayerViews } from '../diagram/layerViews.ts'
 import { embedDiagram, type ExportedImage } from '../diagram/svgExport.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
 import { exportDrawioPage } from '../drawio/serialize.ts'
@@ -28,6 +29,8 @@ interface ImageExportMenuProps {
   boardTitle: string
   pageName: string
   pageCount: number
+  /** What the participant chose about the layers of the pages: the other pages of a PDF show the layers they show. */
+  layerViews?: LayerViews | null
 }
 
 type Message = 'copied' | 'save-failed' | 'copy-failed' | 'pdf-busy' | 'pdf-failed'
@@ -60,7 +63,14 @@ function useBoardHasCells(doc: Y.Doc | null): boolean {
  * clipboard; the PDF can also have all pages of the board. While the page is filtered, «Только видимое» keeps to what
  * matches the filter.
  */
-export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, pageCount }: ImageExportMenuProps) {
+export function ImageExportMenu({
+  editor,
+  document: doc,
+  boardTitle,
+  pageName,
+  pageCount,
+  layerViews = null,
+}: ImageExportMenuProps) {
   const { hasCells, canCopy, filter } = useEditorState(editor)
   const [selectionOnly, setSelectionOnly] = useState(false)
   const [visibleOnly, setVisibleOnly] = useState(false)
@@ -112,7 +122,9 @@ export function ImageExportMenu({ editor, document: doc, boardTitle, pageName, p
   /** The images of the pages of the PDF: of the pages of the board with objects, or of the current page. */
   const pdfImages = async (): Promise<ExportedImage[]> => {
     const exported =
-      allPages && doc && editor ? await boardImages(doc, editor, { transparent, links: true, onlyVisible }) : [exportImage(true)]
+      allPages && doc && editor
+        ? await boardImages(doc, editor, { transparent, links: true, onlyVisible }, layerViews)
+        : [exportImage(true)]
     const images = exported.filter((image) => image !== null)
     return Promise.all(images.map((image) => withInlinedImages(image, { types: PDF_IMAGE_TYPES })))
   }

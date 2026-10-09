@@ -24,7 +24,7 @@ import { readStatus, writeStatus } from '../diagram/status.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
 import { parseDrawio } from './parse.ts'
-import { exportDrawio, labelTemplate } from './serialize.ts'
+import { exportDrawio, exportDrawioPage, labelTemplate } from './serialize.ts'
 
 function board() {
   const doc = new Y.Doc()
@@ -183,6 +183,62 @@ describe('exportDrawio', () => {
     expect(xml).toContain('style="locked=1;fontSize=13;"')
     expect(xml).not.toContain('Алиса')
     expect(pageCells(copy, DEFAULT_PAGE_ID).api!.style).toEqual({ locked: true, fontSize: 13 })
+  })
+
+  it('writes the layers of a page in their order with their names, hidden and locked, and reads them back', async () => {
+    const doc = board()
+    doc.transact(() => {
+      const cells = getCells(doc)
+      writeCell(cells, { ...cell(LAYER_CELL_ID), kind: 'layer', parent: ROOT_CELL_ID, order: 'a0', value: 'Бизнес', geometry: null })
+      writeCell(cells, {
+        ...cell('notes'),
+        kind: 'layer',
+        parent: ROOT_CELL_ID,
+        order: 'a1',
+        value: 'Заметки',
+        geometry: null,
+        style: { codrawHidden: true, locked: true, codrawLockedBy: 'Алиса' },
+      })
+      writeCell(cells, cell('api'))
+      writeCell(cells, cell('idea', { parent: 'notes' }))
+    })
+
+    const xml = exportDrawio(doc)
+    expect(xml).toContain(
+      '<root><mxCell id="0"/><mxCell id="1" value="Бизнес" parent="0"/><mxCell id="api" value="api" style="fontSize=13;" vertex="1" parent="1">',
+    )
+    expect(xml).toContain('<mxCell id="notes" value="Заметки" style="locked=1;" parent="0" visible="0"/>')
+    expect(xml).toContain('<mxCell id="idea" value="idea" style="fontSize=13;" vertex="1" parent="notes">')
+    expect(xml).not.toContain('Алиса')
+    expect(xml).not.toContain('codrawHidden')
+
+    const copy = new Y.Doc()
+    const [page] = importPages(copy, await parseDrawio(xml))
+    const layers = Array.from(getCells(copy, page!).entries())
+      .map(([id, map]) => readCell(id, map))
+      .filter((data) => data.kind === 'layer')
+      .sort((a, b) => (a.order < b.order ? -1 : 1))
+    expect(layers.map((layer) => [layer.id, layer.value, layer.style])).toEqual([
+      [LAYER_CELL_ID, 'Бизнес', {}],
+      ['notes', 'Заметки', { locked: true, codrawHidden: true }],
+    ])
+    expect(pageCells(copy, page!).idea!.parent).toBe('notes')
+  })
+
+  it('writes only the layers with the cells asked for', () => {
+    const doc = board()
+    doc.transact(() => {
+      const cells = getCells(doc)
+      writeCell(cells, { ...cell('notes'), kind: 'layer', parent: ROOT_CELL_ID, order: 'a1', value: 'Секрет', geometry: null })
+      writeCell(cells, cell('api'))
+      writeCell(cells, cell('idea', { parent: 'notes' }))
+    })
+
+    const xml = exportDrawioPage(doc, DEFAULT_PAGE_ID, ['api'])!
+
+    expect(xml).toContain('id="api"')
+    expect(xml).not.toContain('Секрет')
+    expect(xml).not.toContain('idea')
   })
 
   it('keeps the rotation of a shape through a file of draw.io', async () => {
@@ -425,11 +481,10 @@ describe('importPages', () => {
     const ids = importPages(doc, await parseDrawio(SAMPLE_DRAWIO), { id: 'bob', name: 'Боб' })
 
     for (const id of ids) {
-      const imported = Array.from(getCells(doc, id).entries()).filter(
-        ([cellId]) => cellId !== ROOT_CELL_ID && cellId !== LAYER_CELL_ID,
-      )
+      // Layers are not elements: they name nobody.
+      const imported = Array.from(getCells(doc, id).values()).filter((map) => !['root', 'layer'].includes(map.get('kind') as string))
       expect(imported.length).toBeGreaterThan(0)
-      for (const [, map] of imported) {
+      for (const map of imported) {
         expect(readAttribution(map)).toEqual({ by: 'bob', name: 'Боб', at: Date.UTC(2026, 9, 6, 9, 0, 0) })
       }
     }

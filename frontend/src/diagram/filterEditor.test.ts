@@ -46,6 +46,23 @@ describe('the filter of a page in the editor', () => {
     return { pay, ledger, stock, toLedger, toStock, note }
   }
 
+  it('leaves the layers hidden as they are, and draws an image of what matches in the layers shown', () => {
+    const { editor } = open()
+    const { pay, stock } = payments(editor)
+    const notes = editor.addLayer()!
+    const later = editor.addShape('service', { x: 600, y: 0 })!
+    editor.setElementProperties(later.getId()!, { name: 'Later', owner: 'Платежи' })
+    editor.setLayerHidden(notes, true)
+    const shown = (cell: Cell) => Boolean(editor.graph.getView().getState(cell))
+
+    editor.setFilter(filter({ owners: ['Платежи'], hide: true }))
+
+    expect([shown(pay), shown(stock), shown(later)]).toEqual([true, false, false])
+    expect(editor.exportSvg({ onlyVisible: true })!.cellIds).not.toContain(later.getId())
+    editor.setFilter(null)
+    expect([shown(pay), shown(stock), shown(later)]).toEqual([true, true, false])
+  })
+
   it('draws what does not match pale, keeps it selectable, and changes nothing of the document', () => {
     const { doc, editor } = open()
     const { pay, stock, toLedger, toStock, note } = payments(editor)

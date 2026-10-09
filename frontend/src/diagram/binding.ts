@@ -25,6 +25,7 @@ import {
   getCells,
   getElements,
   isElementStyleKey,
+  isHiddenLayerStyle,
   LAYER_CELL_ID,
   orderBetween,
   readCell,
@@ -52,7 +53,44 @@ export function localOrigin(pageId: string): string {
   return `${LOCAL_ORIGIN}:${pageId}`
 }
 
-const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
+/** The root of a page, which the model has of its own and the binding never writes. */
+const isStructural = (id: string) => id === ROOT_CELL_ID
+
+/**
+ * Whether a layer of the page is shown on this canvas: `hiddenForAll` is the visibility the document gives it. The
+ * participant may show or hide it for themselves (see `layerViews.ts`); without that, a layer shows unless it is hidden
+ * for everybody.
+ */
+export type LayerVisibility = (layerId: string, hiddenForAll: boolean) => boolean
+
+const sharedVisibility: LayerVisibility = (_layerId, hiddenForAll) => !hiddenForAll
+
+/** A layer of a model: a cell of its root, neither a shape nor an edge. */
+export function isLayerCell(model: GraphDataModel, cell: Cell | null | undefined): boolean {
+  return !!cell && !cell.isVertex() && !cell.isEdge() && cell.getParent() === model.getRoot()
+}
+
+/** The layer that holds `cell`, or `null` for the root, a layer and a cell out of the model. */
+export function layerOf(model: GraphDataModel, cell: Cell | null | undefined): Cell | null {
+  for (let current = cell ?? null; current; current = current.getParent()) {
+    if (current.getParent() && isLayerCell(model, current.getParent())) return current.getParent()
+  }
+  return null
+}
+
+/**
+ * maxGraph moves an edge into the nearest common ancestor of its ends, which for ends in two layers is the root: the edge
+ * would become a layer. An edge stays in its layer then.
+ */
+function keepEdgesInLayers(model: GraphDataModel) {
+  const updateEdgeParent = model.updateEdgeParent.bind(model)
+  model.updateEdgeParent = (edge, root) => {
+    const source = layerOf(model, edge.getTerminal(true))
+    const target = layerOf(model, edge.getTerminal(false))
+    if (source && target && source !== target) return
+    updateEdgeParent(edge, root)
+  }
+}
 
 /**
  * Keeps a maxGraph model and the cells of a Yjs page in sync. Yjs is the source of truth:
@@ -74,6 +112,10 @@ const isStructural = (id: string) => id === ROOT_CELL_ID || id === LAYER_CELL_ID
  *
  * A read-only binding writes nothing: the participant may only view the board, and collab would reject the change,
  * leaving the document of this client different from everybody else's. Without an author the cells keep nobody.
+ *
+ * Layers are cells of the root like any other: their names, order, locks and visibility for everybody are written and
+ * read; the main layer is never removed from the model. Whether a layer shows on this canvas is the participant's
+ * {@link LayerVisibility}, which the model gets with the layer and the binding never writes.
  */
 export class DiagramBinding {
   private applyingRemote = false
@@ -84,6 +126,7 @@ export class DiagramBinding {
   private readonly origin: unknown
   private readonly readOnly: boolean
   private readonly author: Author | null
+  private readonly layerVisibility: LayerVisibility
 
   /**
    * With `healOnOpen`, the labels of the cells of shared elements of the page are put right when it opens: a draft of a
@@ -96,6 +139,7 @@ export class DiagramBinding {
     readOnly = false,
     author: Author | null = null,
     healOnOpen = true,
+    layerVisibility: LayerVisibility = sharedVisibility,
   ) {
     this.model = model
     this.cells = cells
@@ -103,6 +147,8 @@ export class DiagramBinding {
     this.origin = origin
     this.readOnly = readOnly
     this.author = author
+    this.layerVisibility = layerVisibility
+    keepEdgesInLayers(model)
     // Cells are created by several clients at once, so ids must be globally unique.
     model.createId = () => newId()
     // maxGraph's ConnectionHandler inserts edges with the id '' and the model only generates ids for null,
@@ -124,7 +170,10 @@ export class DiagramBinding {
     return this.applyingRemote
   }
 
-  /** Reads the cells `ids` of the page into the model, e.g. after a command changed them in the document. */
+  /**
+   * Reads the cells `ids` of the page into the model, e.g. after a command changed them in the document, or a layer after
+   * its visibility on this canvas changed.
+   */
   refresh(ids: Iterable<string>) {
     this.applyRemote(new Set(ids))
   }
@@ -225,6 +274,7 @@ export class DiagramBinding {
     const doc = this.cells.doc!
     // Cells of this page that the change of an element changed without the model: the other cells of the element.
     const relabeled = new Set<string>()
+    const layers = new Set<string>()
     doc.transact(() => {
       const removedElements = removed.map((id) => cellElementId(this.cells.get(id)))
       removed.forEach((id) => deleteCell(this.cells, id))
@@ -244,6 +294,11 @@ export class DiagramBinding {
         const write = writeCell(this.cells, data)
         if (element !== null && write.style.some(isElementStyleKey)) changedElements.add(element)
         const entry = this.cells.get(data.id)!
+        if (data.kind === 'layer') {
+          // Its visibility for everybody may have changed: the model shows it as the participant sees it.
+          layers.add(data.id)
+          continue
+        }
         if (this.author && isAttributedWrite(write)) writeAttribution(entry, this.author, at)
         // Who wrote a sticky changes with its text only, not when the sticky is moved or recolored.
         if (this.author && write.fields.includes('value') && isStickyStyle(data.style)) {
@@ -264,7 +319,7 @@ export class DiagramBinding {
       })
       dropUnusedElements(doc, removedElements)
     }, this.origin)
-    this.applyRemote(relabeled)
+    this.applyRemote(new Set([...relabeled, ...layers]))
   }
 
   /** Makes the model match Yjs for the given cell ids. */
@@ -276,13 +331,21 @@ export class DiagramBinding {
     try {
       const parentsToSort = new Set<Cell>()
       const present: [Cell, CellData][] = []
+      const queue = new Set(ids)
 
-      for (const id of ids) {
+      for (const id of queue) {
         if (isStructural(id)) continue
         const entry = this.cells.get(id)
         const existing = this.find(id)
         if (!entry) {
-          if (existing) {
+          // The main layer stays: every page has it, and the document gets it back.
+          if (existing && id !== LAYER_CELL_ID) {
+            // What it held that the document still has stays on the page, e.g. a shape added to a layer that another
+            // participant removed at the same time: it is read again after the removal, into the main layer.
+            for (const descendant of existing.getDescendants()) {
+              const kept = descendant.getId()
+              if (kept && kept !== id && this.cells.has(kept)) queue.add(kept)
+            }
             const parent = existing.getParent()
             if (parent) parentsToSort.add(parent)
             model.remove(existing)
@@ -296,7 +359,10 @@ export class DiagramBinding {
       // Parents first, so that nested cells find their parent in the model.
       present.sort(([, a], [, b]) => this.depth(a.id) - this.depth(b.id))
       for (const [cell, data] of present) {
-        const parent = this.find(data.parent) ?? this.find(LAYER_CELL_ID)!
+        const root = model.getRoot()!
+        // Only a layer lies in the root; any other cell without its parent lies in the main layer.
+        const found = data.kind === 'layer' ? root : this.find(data.parent)
+        const parent = found && (found !== root || data.kind === 'layer') ? found : this.find(LAYER_CELL_ID)!
         const previousParent = cell.getParent()
         if (previousParent !== parent) {
           if (previousParent) parentsToSort.add(previousParent)
@@ -314,6 +380,10 @@ export class DiagramBinding {
         }
         if (!deepEqual(fromStyle(cell.getStyle()), data.style)) model.setStyle(cell, { ...data.style } as CellStyle)
         cell.setConnectable(isConnectable(data))
+        if (data.kind === 'layer') {
+          const visible = this.layerVisibility(data.id, isHiddenLayerStyle(data.style))
+          if (cell.isVisible() !== visible) model.setVisible(cell, visible)
+        }
         if (data.kind === 'edge') {
           const source = this.find(data.source)
           const target = this.find(data.target)
@@ -374,7 +444,7 @@ export class DiagramBinding {
     const value = cell.getValue()
     return {
       id: cell.getId()!,
-      kind: edge ? 'edge' : 'vertex',
+      kind: edge ? 'edge' : isLayerCell(this.model, cell) ? 'layer' : 'vertex',
       parent: cell.getParent()?.getId() ?? null,
       order: this.orderFor(cell),
       value: value == null ? '' : String(value),
@@ -389,8 +459,9 @@ export class DiagramBinding {
 export function createCell(data: CellData): Cell {
   const cell = new Cell(data.value, toGeometry(data.geometry) ?? undefined, { ...data.style } as CellStyle)
   cell.setId(data.id)
+  // A layer is neither: it holds the shapes and edges.
   if (data.kind === 'edge') cell.setEdge(true)
-  else cell.setVertex(true)
+  else if (data.kind !== 'layer') cell.setVertex(true)
   cell.setConnectable(isConnectable(data))
   return cell
 }

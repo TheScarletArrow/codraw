@@ -87,6 +87,11 @@ export function configureFilter(graph: Graph, onChange: () => void): FilterView 
     const touched: Cell[] = []
     const visit = (cell: Cell) => {
       for (const child of cell.getChildren()) {
+        // Layers of the page are shown or hidden by the participant, not by the filter: only what is in them.
+        if (!child.isVertex() && !child.isEdge()) {
+          visit(child)
+          continue
+        }
         const id = child.getId() ?? ''
         const was = out.has(id)
         const is = next.has(id)
