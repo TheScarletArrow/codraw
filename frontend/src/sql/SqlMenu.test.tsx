@@ -10,6 +10,7 @@ import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../dia
 import { SHOP_COMPOSE } from '../infra/testCompose.ts'
 import { SHOP_GRAPH } from '../infra/testGradle.ts'
 import { SHOP_MANIFESTS } from '../infra/testKubernetes.ts'
+import { SHOP_PLAN } from '../infra/testTerraform.ts'
 import { downloadBlob } from '../lib/download.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -142,6 +143,7 @@ describe('SqlMenu', () => {
     expect(screen.queryByRole('button', { name: 'Импорт docker-compose…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Kubernetes…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Gradle…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт Terraform…' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Архитектура как код…' })).toBeEnabled()
   })
 
@@ -391,6 +393,25 @@ describe('SqlMenu', () => {
     await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
     const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
     expect(cells.filter((cell) => cell.style.codrawShape === 'uml-component')).toHaveLength(4)
+    expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
+  })
+
+  it('adds the resources of a plan of Terraform to the right of the page', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт Terraform…' }))
+
+    await user.upload(screen.getByLabelText('Файлы Terraform'), new File([SHOP_PLAN], 'plan.json'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Ресурсов: 8, связей: 5, модулей: 3'))
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells.find((cell) => cell.value === 'aws_lb.web\napplication')!.style).toMatchObject({
+      codrawShape: 'load-balancer',
+      codrawSource: 'terraform:node:aws_lb.web',
+    })
     expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
   })
 
