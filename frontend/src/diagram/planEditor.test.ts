@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { getCells, initializeDocument, readCell } from './model.ts'
+import { NO_FILTER } from './pageFilter.ts'
 import { PLAN_COLORS, PLAN_KEY } from './plan.ts'
 import { connect } from './testing.ts'
 
@@ -115,6 +116,26 @@ describe('the current and the target architecture in the editor', () => {
     other.editor.setPlan('removed')
     expect(shown(editor, api)).toBe(false)
     expect(editor.getState().plan).toMatchObject({ removed: 2 })
+  })
+
+  it('hides along with the filter of the page: neither shows what the other hides', () => {
+    const { editor } = open()
+    const { api, ledger, db } = page(editor)
+    editor.setElementProperties(api.getId()!, { owner: 'Платежи' })
+    editor.setElementProperties(ledger.getId()!, { owner: 'Платежи' })
+
+    editor.setPlanView('current')
+    editor.setFilter({ ...NO_FILTER, owners: ['Платежи'], hide: true })
+    // Ledger matches the filter, and will appear: as it is now, it is not there.
+    expect([shown(editor, api), shown(editor, ledger), shown(editor, db)]).toEqual([true, false, false])
+
+    editor.setPlanView('diff')
+    expect([shown(editor, api), shown(editor, ledger), shown(editor, db)]).toEqual([true, true, false])
+    editor.setPlanView('target')
+    editor.setFilter(null)
+    expect([shown(editor, api), shown(editor, ledger), shown(editor, db)]).toEqual([true, true, false])
+    editor.setPlanView('diff')
+    expect([shown(editor, api), shown(editor, ledger), shown(editor, db)]).toEqual([true, true, true])
   })
 
   it('applies the target state as one undo step, and keeps locked elements', () => {

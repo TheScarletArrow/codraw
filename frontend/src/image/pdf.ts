@@ -35,16 +35,18 @@ export function pdfPages(doc: Y.Doc): PageInfo[] {
 export async function boardImages(
   doc: Y.Doc,
   editor: DiagramEditor,
-  options: SvgOptions = {},
+  { onlyVisible = false, ...options }: SvgOptions & { onlyVisible?: boolean } = {},
   layerViews: LayerViews | null = null,
 ): Promise<ExportedImage[]> {
   const images: ExportedImage[] = []
   const view = editor.getState().plan.view
+  // Only what matches the filter of the canvas, on every page.
+  const filter = onlyVisible ? editor.currentFilter() : null
   for (const page of pdfPages(doc)) {
     const image =
       page.id === editor.pageId
-        ? editor.exportSvg(options)
-        : await renderPage(doc, page.id, options, layerViews?.page(page.id) ?? null, view)
+        ? editor.exportSvg({ ...options, onlyVisible })
+        : await renderPage(doc, page.id, { ...options, filter }, layerViews?.page(page.id) ?? null, view)
     if (image) images.push(image)
   }
   return images

@@ -1,4 +1,5 @@
 import { InternalEvent, type Cell, type Graph } from '@maxgraph/core'
+import { cellVisibility, type CellVisibility } from './cellVisibility.ts'
 import { hiddenIn, PLAN_COLORS, planOf, type Plan, type PlanView } from './plan.ts'
 
 /**
@@ -35,7 +36,11 @@ function planAt(cell: Cell): Plan | null {
  * The view of the plan on the canvas of `graph`. Call before the hook of the theme, so that the theme sees the colors.
  * `onChange` hears when the view or the counts changed.
  */
-export function configurePlan(graph: Graph, onChange: () => void): PlanViewControl {
+export function configurePlan(
+  graph: Graph,
+  onChange: () => void,
+  visibility: CellVisibility = cellVisibility(),
+): PlanViewControl {
   let view: PlanView = 'diff'
   let counts: PlanCounts = { added: 0, removed: 0 }
   // The mark each cell is drawn with, to draw again those whose mark changes with that of a cell they are in.
@@ -93,9 +98,7 @@ export function configurePlan(graph: Graph, onChange: () => void): PlanViewContr
           continue
         }
         const id = child.getId() ?? ''
-        const visible = !hidden.has(child)
-        if (child.isVisible() !== visible) {
-          child.setVisible(visible)
+        if (visibility.set(child, 'plan', hidden.has(child))) {
           touched.push(child)
         } else if (drawnAs.get(id) !== marks.get(id)) {
           touched.push(child)

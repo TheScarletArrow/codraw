@@ -62,6 +62,9 @@ export type MenuCommand =
   | 'detachElement'
   | 'deleteElementEverywhere'
   | 'mergeElements'
+  | 'detail'
+  | 'dependencies'
+  | 'pathBetween'
   | 'saveToLibrary'
 
 /** Items that put the selected message of a sequence diagram into a frame of a kind. */
@@ -169,12 +172,18 @@ export interface MenuAvailability {
   canDeleteElementEverywhere?: boolean
   /** The selected shapes show more than one element, and the page asks which to keep: «Объединить в один элемент…». */
   canMergeElements?: boolean
+  /** The single selected shape has a page of detail, or the participant may make one, and the page opens it: «Детализировать». */
+  canDetail?: boolean
   /** The status of the selected elements that may have one: the items of the status are offered, with it chosen. */
   status?: SelectionStatus | null
   /** The marks of plan of the selected elements that may have one: the items of «Изменение» are offered, with it chosen. */
   plan?: SelectionPlan | null
   /** The selected frame of a sequence diagram, or the branch of one, has branches: «Добавить ветку» is offered. */
   canBranch?: boolean
+  /** The single selected shape or table depends on others by its kind: «Зависимости» is offered. */
+  canShowDependencies?: boolean
+  /** Two elements are selected: «Путь между» is offered. */
+  canShowPath?: boolean
   /** The page saves the selection into a library of the user: «Сохранить в библиотеку…» is offered, to viewers too. */
   canSaveToLibrary?: boolean
 }
@@ -189,6 +198,9 @@ const VIEWING_COMMANDS = new Set<MenuCommand>([
   'properties',
   'copyMermaid',
   'whereUsed',
+  'detail',
+  'dependencies',
+  'pathBetween',
   'saveToLibrary',
 ])
 
@@ -240,11 +252,13 @@ const COMMENT: Entry[] = [['comment', 'Комментировать']]
 const LINK: Entry[] = [['link', 'Ссылка…']]
 const EDGE_API: Entry = ['edgeApi', 'Описание API…']
 const PROPERTIES: Entry = ['properties', 'Свойства…']
+const DETAIL: Entry = ['detail', 'Детализировать']
 const SHARED: Entry[] = [
   ['whereUsed', 'Где используется…'],
   ['detachElement', 'Отделить от элемента'],
 ]
 const DELETE_EVERYWHERE: Entry = ['deleteElementEverywhere', 'Удалить со всех страниц…']
+const DEPENDENCIES: Entry = ['dependencies', 'Зависимости']
 const LOCK: Entry[] = [
   ['lock', 'Закрепить'],
   ['unlock', 'Открепить'],
@@ -282,7 +296,18 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     ],
     [['commentHere', 'Комментировать здесь']],
   ],
-  shape: [[EDIT_LABEL], COPYING, STYLE, ORDER, LOCK, STATUS, PLAN, [...LINK, PROPERTIES, ...SHARED], COMMENT, [DELETE, DELETE_EVERYWHERE]],
+  shape: [
+    [EDIT_LABEL],
+    COPYING,
+    STYLE,
+    ORDER,
+    LOCK,
+    STATUS,
+    PLAN,
+    [...LINK, DETAIL, PROPERTIES, DEPENDENCIES, ...SHARED],
+    COMMENT,
+    [DELETE, DELETE_EVERYWHERE],
+  ],
   table: [
     [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
     COPYING,
@@ -291,7 +316,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     LOCK,
     STATUS,
     PLAN,
-    LINK,
+    [...LINK, DEPENDENCIES],
     COMMENT,
     [DELETE],
   ],
@@ -320,6 +345,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     [
       ['group', 'Сгруппировать', 'Mod+G'],
       ['mergeElements', 'Объединить в один элемент…'],
+      ['pathBetween', 'Путь между'],
     ],
     COPYING,
     [PASTE_STYLE],
@@ -404,9 +430,12 @@ export function menuItems(
     sharedElement = false,
     canDeleteElementEverywhere = false,
     canMergeElements = false,
+    canDetail = false,
     status = null,
     plan = null,
     canBranch = false,
+    canShowDependencies = false,
+    canShowPath = false,
     canSaveToLibrary = false,
   }: MenuAvailability,
 ): MenuItem[] {
@@ -432,6 +461,9 @@ export function menuItems(
     detachElement: sharedElement,
     deleteElementEverywhere: canDeleteElementEverywhere,
     mergeElements: canMergeElements,
+    detail: canDetail,
+    dependencies: canShowDependencies,
+    pathBetween: canShowPath,
     saveToLibrary: canSaveToLibrary,
     ...Object.fromEntries(Object.keys(STATUS_COMMANDS).map((command) => [command, status !== null])),
     ...Object.fromEntries(Object.keys(PLAN_COMMANDS).map((command) => [command, plan !== null])),

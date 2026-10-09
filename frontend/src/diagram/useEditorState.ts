@@ -42,6 +42,8 @@ const NO_EDITOR: EditorState = {
   plan: { view: 'diff', added: 0, removed: 0 },
   properties: null,
   sequence: null,
+  impact: null,
+  filter: null,
   canPasteAsSameElement: false,
   canMergeElements: false,
   layers: [],

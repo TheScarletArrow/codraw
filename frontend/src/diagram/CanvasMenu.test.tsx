@@ -42,6 +42,18 @@ describe('CanvasMenu', () => {
     expect(within(screen.getByRole('menu')).getAllByRole('separator')).toHaveLength(4)
   })
 
+  it('shows the dependencies of an element and the path between two selected ones', async () => {
+    vi.mocked(editor.canAnalyze).mockReturnValue(true)
+    rightClick('shape')
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Зависимости' }))
+    expect(editor.showDependencies).toHaveBeenCalledWith('cell-1')
+
+    vi.mocked(editor.canShowPath).mockReturnValue(true)
+    rightClick('selection')
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Путь между' }))
+    expect(editor.showPathBetween).toHaveBeenCalled()
+  })
+
   it('wraps a message of a sequence diagram into a frame and copies the diagram as Mermaid', async () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -531,6 +543,29 @@ describe('CanvasMenu', () => {
     await userEvent.click(screen.getByRole('menuitemradio', { name: 'Появится' }))
     expect(editor.setPlan).toHaveBeenCalledWith('added')
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  describe('detail of an element', () => {
+    it('opens the page of detail that the editor finds or makes, for a viewer too', async () => {
+      document.body.innerHTML = ''
+      editor = createFakeEditor({ readOnly: true })
+      const onDetail = vi.fn()
+      render(<CanvasMenu editor={editor} onDetail={onDetail} />)
+      rightClick('shape')
+      // A viewer may not make a page of detail.
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать', 'Копировать стиль'])
+      await userEvent.keyboard('{Escape}')
+
+      vi.mocked(editor.detailOffer).mockReturnValue('open')
+      vi.mocked(editor.detailElement).mockReturnValue('page-2')
+      rightClick('shape')
+      expect(items().map((item) => item.getAttribute('aria-label'))).toEqual(['Копировать', 'Копировать стиль', 'Детализировать'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Детализировать' }))
+
+      expect(editor.detailElement).toHaveBeenCalledWith('cell-1')
+      expect(onDetail).toHaveBeenCalledWith('page-2')
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
   })
 
   describe('one element on several pages', () => {

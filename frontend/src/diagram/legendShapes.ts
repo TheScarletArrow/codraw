@@ -138,9 +138,19 @@ export function legendsForChanges(graph: Graph, changes: readonly unknown[]): Ce
   return [...own]
 }
 
-/** A record-like state of a cell for a sample: its style as the canvas draws it, without turning and shadow. */
+/**
+ * A record-like state of a cell for a sample: its style as the canvas draws it, without turning and shadow, and with its
+ * own opacity: a cell that the filter of the page draws pale is a full sample all the same.
+ */
 function sampleState(graph: Graph, cell: Cell): CellState {
-  const style: CellStyle = { ...graph.getCellStyle(cell), rotation: 0, shadow: false }
+  const own = cell.getStyle()
+  const style: CellStyle = {
+    ...graph.getCellStyle(cell),
+    rotation: 0,
+    shadow: false,
+    opacity: own.opacity ?? 100,
+    textOpacity: own.textOpacity ?? 100,
+  }
   return { cell, style, view: graph.getView() } as unknown as CellState
 }
 

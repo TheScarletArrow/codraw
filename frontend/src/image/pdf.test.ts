@@ -6,6 +6,7 @@ import { addPage } from '../diagram/pages.ts'
 import type { ExportedImage, SvgOptions } from '../diagram/svgExport.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
+import { NO_FILTER } from '../diagram/pageFilter.ts'
 import { boardImages, imagesToPdf, MAX_PDF_SIDE, pdfPages, pdfPageSize } from './pdf.ts'
 import { pdfFontFile } from './pdfFonts.ts'
 import sansRegular from './pdfFonts/LiberationSans-Regular.ttf?inline'
@@ -59,7 +60,20 @@ describe('PDF pages', () => {
     expect(images[0]!.svg).toContain('Сервис')
     expect(images[0]!.svg).toMatch(/<svg[^>]*><g>/)
     expect(images[1]).toBe(drawn)
-    expect(editor.exportSvg).toHaveBeenCalledWith({ transparent: true })
+    expect(editor.exportSvg).toHaveBeenCalledWith({ transparent: true, onlyVisible: false })
+  })
+
+  it('draws only what matches the filter of the canvas on every page with only the visible', async () => {
+    const { doc, ids } = board({ name: 'Контейнеры', labels: ['Сервис', 'Склад'] }, { name: 'Данные', labels: ['База'] })
+    const editor = createFakeEditor({ pageId: ids[1] })
+    vi.mocked(editor.exportSvg).mockReturnValue({ svg: '<svg/>', width: 10, height: 10, cellIds: null })
+    vi.mocked(editor.currentFilter).mockReturnValue({ ...NO_FILTER, kinds: ['service'] })
+
+    const images = await boardImages(doc, editor, { onlyVisible: true })
+
+    expect(editor.exportSvg).toHaveBeenCalledWith({ onlyVisible: true })
+    // The other page shows its shapes of the kind chosen: none of the plain rectangles of this board.
+    expect(images).toHaveLength(1)
   })
 })
 
