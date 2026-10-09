@@ -442,6 +442,21 @@ describe('shortcutLabel', () => {
     expect(labels('edge', viewing)).toEqual(['Копировать стиль', 'Комментировать'])
   })
 
+  it('offers saving into a library after copying, also to viewers, but not for an edge, a field or the canvas', () => {
+    const library = { ...all, canSaveToLibrary: true }
+    expect(labels('shape', library).slice(1, 5)).toEqual(['Вырезать', 'Копировать', 'Дублировать', 'Сохранить в библиотеку…'])
+    for (const target of ['table', 'group', 'selection', 'sequence'] as const) {
+      expect(labels(target, library)).toContain('Сохранить в библиотеку…')
+    }
+    for (const target of ['edge', 'field', 'index', 'canvas', 'message'] as const) {
+      expect(labels(target, library)).not.toContain('Сохранить в библиотеку…')
+    }
+    expect(labels('shape', { ...library, readOnly: true })).toEqual(['Копировать', 'Сохранить в библиотеку…', 'Копировать стиль'])
+    expect(labels('shape')).not.toContain('Сохранить в библиотеку…')
+    // Saving changes nothing of a locked element.
+    expect(menuItems('shape', { ...library, locked: true }).find((item) => item.command === 'saveToLibrary')?.disabled).toBe(false)
+  })
+
   it('offers new participants and messages and the copy as Mermaid for a sequence diagram', () => {
     expect(labels('sequence')).toEqual([
       'Изменить подпись',

@@ -6,7 +6,9 @@ import * as Y from 'yjs'
  *
  * - `meta`: `{ schemaVersion }`
  * - `pages`: pageId → Y.Map with the fields of {@link PageData}
- * - `cells:<pageId>`: cellId → Y.Map with the fields of {@link CellData}; `style` is a nested Y.Map
+ * - `cells:<pageId>`: cellId → Y.Map with the fields of {@link CellData}; `style` is a nested Y.Map. The root `0` holds
+ *   the layers of the page (`kind: 'layer'`: the main layer `1`, which every page has, and those added since), and they
+ *   hold the elements; a layer keeps its name as its value and its lock and visibility as keys of its style
  * - `elements`: elementId → Y.Map with the fields of {@link ElementData}: the properties of an element of the
  *   architecture, which the cell that shows it names with {@link ELEMENT_KEY}
  *
@@ -239,6 +241,40 @@ export function dropUnusedElements(doc: Y.Doc, ids: Iterable<string | null>) {
     }
   }
   unused.forEach((id) => elements.delete(id))
+}
+
+/**
+ * Style key of a layer hidden for everybody by default: `visible="0"` of the layer in a file of draw.io. A participant
+ * may still show it on their own canvas (see `layerViews.ts`).
+ */
+export const HIDDEN_LAYER_KEY = 'codrawHidden'
+
+/** The name of the main layer of a page, the layer `1`, while it has no name of its own. */
+export const MAIN_LAYER_NAME = 'Основной слой'
+
+/** The name of another layer without a name of its own, e.g. of a file of draw.io. */
+export const UNNAMED_LAYER_NAME = 'Слой без имени'
+
+/** The style hides its layer for everybody: CoDraw keeps `true`. */
+export function isHiddenLayerStyle(style: Record<string, unknown> | null | undefined): boolean {
+  const value = style?.[HIDDEN_LAYER_KEY]
+  return value === true || value === 1 || value === '1'
+}
+
+/** The name a layer goes by: its own, or that of the main layer or of a layer without a name. */
+export function layerName(id: string, value: unknown): string {
+  const own = typeof value === 'string' ? value.trim() : ''
+  return own || (id === LAYER_CELL_ID ? MAIN_LAYER_NAME : UNNAMED_LAYER_NAME)
+}
+
+/**
+ * The ids of the layers among `cells`, and always the main layer: a cell whose parent is one of them is an element of
+ * the page itself, not of a table, a group or another element.
+ */
+export function layerIds(cells: Iterable<Pick<CellData, 'id' | 'kind'>>): Set<string> {
+  const ids = new Set([LAYER_CELL_ID])
+  for (const cell of cells) if (cell.kind === 'layer') ids.add(cell.id)
+  return ids
 }
 
 export function readPage(entry: PageEntry): PageData {

@@ -41,6 +41,7 @@ type PageCommand =
   | 'deleteElementEverywhere'
   | 'mergeElements'
   | 'detail'
+  | 'saveToLibrary'
 
 const COMMANDS: Record<
   Exclude<MenuCommand, PageCommand | StatusCommand>,
@@ -93,9 +94,11 @@ const COMMANDS: Record<
  * link at the point of the click. With `onEdgeApi`, a single edge gets «Описание API…», which asks the page to open the
  * description of its call for editing. With `onProperties`, a single shape or edge that has properties gets «Свойства…»,
  * for viewers too, which asks the page to show them. With `onDetail`, a software system or a container that has a page
- * of detail, or may get one, gets «Детализировать», which opens that page, made first when there is none. The menu of
- * locked elements says who locked them. The items of the status set it, and `onStatusChange` hears of the elements whose
- * status they changed.
+ * of detail, or may get one, gets «Детализировать», which opens that page, made first when there is none. With
+ * `onSaveToLibrary`, shapes, tables, groups, sequence diagrams and several elements get «Сохранить в библиотеку…», for
+ * viewers too, which asks the page to open the window of saving at the point of the click. The menu of locked elements
+ * says who locked them. The items of the status set it, and `onStatusChange` hears of the elements whose status they
+ * changed.
  */
 export function CanvasMenu({
   editor,
@@ -108,6 +111,7 @@ export function CanvasMenu({
   onMergeElements,
   onDetail,
   onStatusChange,
+  onSaveToLibrary,
 }: {
   editor: DiagramEditor | null
   onComment?: (target: CommentTarget) => void
@@ -123,6 +127,8 @@ export function CanvasMenu({
   /** Opens the page of detail of the shape of the menu, which «Детализировать» found or made. */
   onDetail?: (pageId: string) => void
   onStatusChange?: (status: ElementStatus | null, cellIds: string[]) => void
+  /** Opens the window that saves the selection into a library of the user, at the point of the click. */
+  onSaveToLibrary?: (request: ContextMenuRequest) => void
 }) {
   const canComment = onComment !== undefined
   const [request, setRequest] = useState<ContextMenuRequest | null>(null)
@@ -169,6 +175,7 @@ export function CanvasMenu({
             canShowProperties,
             canShowWhereUsed,
             canDetail,
+            canSaveToLibrary: onSaveToLibrary !== undefined,
           }).length === 0
         ) {
           return
@@ -176,7 +183,7 @@ export function CanvasMenu({
         openRequest.current = next
         setRequest(next)
       }),
-    [editor, canComment, onProperties, onWhereUsed, onDetail],
+    [editor, canComment, onProperties, onWhereUsed, onDetail, onSaveToLibrary],
   )
 
   if (!editor || !request) return null
@@ -214,6 +221,12 @@ export function CanvasMenu({
       // The page of detail takes the canvas.
       const page = request.cellId ? editor.detailElement(request.cellId) : null
       if (page) onDetail?.(page)
+      return
+    }
+    if (command === 'saveToLibrary') {
+      // The window of saving takes the keyboard.
+      focusTaken.current = true
+      onSaveToLibrary?.(request)
       return
     }
     if (command === 'deleteElementEverywhere' || command === 'mergeElements') {
@@ -299,6 +312,7 @@ export function CanvasMenu({
             canDetail: onDetail !== undefined && request.cellId !== null && editor.detailOffer(request.cellId) !== null,
             status,
             canBranch: canBranch(sequence?.part ?? null),
+            canSaveToLibrary: onSaveToLibrary !== undefined,
           }).map((item) => {
             const choice = isStatusCommand(item.command) ? STATUS_COMMANDS[item.command] : undefined
             return (

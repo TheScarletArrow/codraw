@@ -119,8 +119,9 @@ function isRouted(edge: Cell): boolean {
 }
 
 /**
- * The shapes of a page that edges go around and its edges that are routed automatically, in the order of their ids, so
- * that every participant routes the same. Shapes are the tables as a whole and the other shapes; frames, which let
+ * The shapes of a page (the root of its model, or a layer) that edges go around and its edges that are routed
+ * automatically, in the order of their ids, so that every participant routes the same; a layer hidden on the canvas has
+ * neither. Shapes are the tables as a whole and the other shapes; frames, which let
  * clicks through, and containers of shapes, e.g. groups, are not in the way, their shapes are. An end at a field of
  * a table may leave the table on its left or right border at the middle of the field; an end that the participant
  * fixed to a point of a shape leaves it there; another end leaves its shape at the middle of a side. A turned shape is
@@ -132,7 +133,10 @@ export function routingInput(page: Cell): RoutingInput {
   const edges: Cell[] = []
   const visit = (parent: Cell) => {
     for (const cell of parent.getChildren()) {
-      if (cell.isEdge()) {
+      if (!cell.isVertex() && !cell.isEdge()) {
+        // A layer of the root: the shapes of a layer hidden on the canvas are not in the way, and its edges are not drawn.
+        if (cell.isVisible()) visit(cell)
+      } else if (cell.isEdge()) {
         edges.push(cell)
       } else if (cell.isVertex()) {
         const style = cell.getStyle() as ShapeStyle

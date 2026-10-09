@@ -160,13 +160,34 @@ describe('parseDrawio', () => {
     expect(label.style).toMatchObject({ connectable: false, labelBackgroundColor: '#ffffff', fontSize: 11 })
   })
 
-  it('puts the cells of all layers on the page in drawing order and gives taken ids new ones', async () => {
-    const cells = (await parseDrawio(SAMPLE_DRAWIO))[1]!.cells
+  it('reads the layers of the file in drawing order, the first one as the main layer, and gives taken ids new ones', async () => {
+    const { cells, layers } = (await parseDrawio(SAMPLE_DRAWIO))[1]!
 
-    expect(cells.map((cell) => cell.value)).toEqual(['На первом слое', 'На втором слое'])
-    expect(cells.every((cell) => cell.parent === LAYER_CELL_ID)).toBe(true)
+    expect(layers!.map((layer) => [layer.id, layer.kind, layer.parent, layer.value])).toEqual([
+      [LAYER_CELL_ID, 'layer', '0', ''],
+      ['layer-2', 'layer', '0', 'Слой 2'],
+    ])
+    expect(layers![0]!.order < layers![1]!.order).toBe(true)
+    expect(cells.map((cell) => [cell.value, cell.parent])).toEqual([
+      ['На первом слое', LAYER_CELL_ID],
+      ['На втором слое', 'layer-2'],
+    ])
     expect(cells[0]!.id).not.toBe('1')
-    expect(cells[0]!.order < cells[1]!.order).toBe(true)
+  })
+
+  it('reads a hidden layer as hidden for everybody and a locked one as locked', async () => {
+    const [page] = await parseDrawio(
+      '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" value="Фон" parent="0"/>' +
+        '<mxCell id="net" value="Network" style="locked=1;" parent="0" visible="0"/>' +
+        '<mxCell id="a" value="Один" vertex="1" parent="net"><mxGeometry width="3" height="4" as="geometry"/></mxCell>' +
+        '</root></mxGraphModel>',
+    )
+
+    expect(page!.layers).toEqual([
+      expect.objectContaining({ id: '1', value: 'Фон', style: {} }),
+      expect.objectContaining({ id: 'net', value: 'Network', style: { locked: true, codrawHidden: true } }),
+    ])
+    expect(page!.cells[0]!.parent).toBe('net')
   })
 
   it('reads compressed diagrams like plain ones', async () => {

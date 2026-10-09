@@ -23,6 +23,16 @@ describe('labelLines', () => {
 })
 
 describe('architectureModel', () => {
+  it('reads the elements of every layer of the page', () => {
+    const page = c4Page()
+    const layer: CellData = { id: 'infra', kind: 'layer', parent: '0', order: 'a5', value: 'Инфраструктура', geometry: null, source: null, target: null, style: {} }
+    const moved = page.map((cell) => (cell.parent === LAYER_CELL_ID ? { ...cell, parent: layer.id } : cell))
+
+    expect(architectureSummary(architectureModel([layer, ...moved], 'Магазин'))).toBe(
+      architectureSummary(architectureModel(page, 'Магазин')),
+    )
+  })
+
   it('reads the template «C4: контейнеры»: a system with its containers, a person, an external system and relations', () => {
     const model = architectureModel(c4Page(), 'Магазин')
 
