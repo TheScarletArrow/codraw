@@ -89,6 +89,9 @@ import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
+import { IssueBadges } from '../issues/IssueBadges.tsx'
+import { IssuesPanel, type IssuesRequest } from '../issues/IssuesPanel.tsx'
+import { BoardIssuesContext, useIssueLinks, type BoardIssues } from '../issues/useIssues.ts'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
 import { ElementsButton, ElementsPanel, type ElementsRequest } from '../elements/ElementsPanel.tsx'
 import { ChecksButton, ChecksPanel } from '../checks/ChecksPanel.tsx'
@@ -154,6 +157,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     notifyBoardChanged,
     notifyCommentsChanged,
     notifyDecisionsChanged,
+    notifyIssuesChanged,
     notifyProposalsChanged,
   } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
@@ -198,6 +202,21 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // Architecture decisions of the board, which every participant reads and discusses and whoever edits writes down, in
   // a panel in place of the comments.
   const decisions = useDecisions(board.id)
+  // Issues of the tracker linked to elements and threads, which every participant sees: whoever edits the board links
+  // them to elements, everybody who comments to threads. Elements show them by their badges and in a panel of their own.
+  const issueLinks = useIssueLinks(board.id)
+  const [issuesRequest, setIssuesRequest] = useState<IssuesRequest | null>(null)
+  const boardIssues = useMemo<BoardIssues>(
+    () => ({
+      boardId: board.id,
+      links: issueLinks.data ?? [],
+      userId: user.id,
+      guest: user.guest,
+      canEdit: !viewer,
+      onChanged: notifyIssuesChanged,
+    }),
+    [board.id, issueLinks.data, user.id, user.guest, viewer, notifyIssuesChanged],
+  )
   const [decisionsOpen, setDecisionsOpen] = useState(false)
   const [decisionFocus, setDecisionFocus] = useState<DecisionFocus | null>(null)
   const closeDecisions = useCallback(() => {
@@ -551,7 +570,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const savedLocally = status === 'offline' && connection.cached && !readOnly
   const unsent = connection.unsent && status !== 'synced'
 
-  return (
+  const workspace = (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* One line: the tools that appear with a selection must not move the canvas down. */}
       <div className="flex items-center gap-x-3 border-b px-3 py-2">
@@ -828,6 +847,11 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
                   <CommentBadges editor={editor} threads={boardThreads} onOpen={showThreadsOf} />
                   <DecisionBadges editor={editor} decisions={decisions.data} onOpen={showDecisionsOf} />
+                  <IssueBadges
+                    editor={editor}
+                    links={issueLinks.data}
+                    onOpen={(cellId) => setIssuesRequest({ pageId: currentPage.id, cellId })}
+                  />
                   <CommentPins
                     editor={editor}
                     boardId={board.id}
@@ -850,6 +874,21 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <SidePanels>
                     <ImpactPanel editor={editor} document={document} onShow={showCell} />
                     <EdgeApiPanel editor={editor} request={apiRequest} />
+                    {issuesRequest && issuesRequest.pageId === currentPage.id && (
+                      <IssuesPanel
+                        boardId={board.id}
+                        request={issuesRequest}
+                        document={document}
+                        links={issueLinks.data ?? []}
+                        guest={user.guest}
+                        canEdit={!viewer}
+                        onChanged={notifyIssuesChanged}
+                        onClose={() => {
+                          setIssuesRequest(null)
+                          editor?.focus()
+                        }}
+                      />
+                    )}
                     {layersOpen && (
                       <LayersPanel
                         editor={editor}
@@ -919,6 +958,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     onStatusChange={statusChanged}
                     onLink={readOnly || !editor ? undefined : (request) => setLinking({ editor, request })}
                     onSaveToLibrary={editor ? (request) => setSavingToLibrary({ editor, request }) : undefined}
+                    onIssues={(cellId) => setIssuesRequest({ pageId: currentPage.id, cellId })}
                   />
                   {viewWindow && (
                     <ViewRuleDialog
@@ -1096,6 +1136,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
       </div>
     </div>
   )
+  // Threads of comments show the issues linked to them, in the panels of the comments and of the decisions alike.
+  return <BoardIssuesContext value={boardIssues}>{workspace}</BoardIssuesContext>
 }
 
 /** Selects the element of the thread and brings it into view, or brings its point to the middle of the canvas. */

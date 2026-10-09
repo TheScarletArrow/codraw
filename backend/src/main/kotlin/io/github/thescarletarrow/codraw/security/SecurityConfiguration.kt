@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.security
 import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
 import io.github.thescarletarrow.codraw.embed.EmbedController
+import io.github.thescarletarrow.codraw.issue.GitHubWebhookController
 import io.github.thescarletarrow.codraw.legal.LegalController
 import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -62,6 +63,8 @@ class SecurityConfiguration {
                 authorize(HttpMethod.GET, LegalController.PATH, permitAll)
                 // Live images of boards are embedded into documents that their readers open without a sign-in.
                 authorize(HttpMethod.GET, "${EmbedController.PATH}/**", permitAll)
+                // GitHub posts events of issues without a session; they carry the signature of the secret of the webhook.
+                authorize(HttpMethod.POST, GitHubWebhookController.PATH, permitAll)
                 authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)
             }
@@ -79,6 +82,8 @@ class SecurityConfiguration {
                 logoutSuccessHandler = HttpStatusReturningLogoutSuccessHandler(HttpStatus.NO_CONTENT)
             }
             csrf {
+                // Events of GitHub come from GitHub, not from a browser with a session to misuse.
+                ignoringRequestMatchers(GitHubWebhookController.PATH)
                 // The SPA reads the XSRF-TOKEN cookie and sends it back in the X-XSRF-TOKEN header.
                 csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
                 // Load the token on every request, so that the cookie is there before the first change.

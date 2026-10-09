@@ -497,6 +497,20 @@ describe('shortcutLabel', () => {
     expect(menuItems('shape', { ...library, locked: true }).find((item) => item.command === 'saveToLibrary')?.disabled).toBe(false)
   })
 
+  it('offers the issues of an element after commenting, also to viewers and for locked elements', () => {
+    const issues = { ...all, canComment: true, canShowIssues: true }
+    for (const target of ['shape', 'table', 'edge', 'group'] as const) {
+      const items = labels(target, issues)
+      expect(items[items.indexOf('Комментировать') + 1]).toBe('Задачи…')
+    }
+    for (const target of ['field', 'index', 'selection', 'canvas', 'sequence', 'message'] as const) {
+      expect(labels(target, issues)).not.toContain('Задачи…')
+    }
+    expect(labels('shape', { ...issues, readOnly: true })).toEqual(['Копировать', 'Копировать стиль', 'Комментировать', 'Задачи…'])
+    expect(menuItems('edge', { ...issues, locked: true }).find((item) => item.command === 'issues')?.disabled).toBe(false)
+    expect(labels('shape', { ...all, canComment: true })).not.toContain('Задачи…')
+  })
+
   it('offers new participants and messages and the copy as Mermaid for a sequence diagram', () => {
     expect(labels('sequence')).toEqual([
       'Изменить подпись',

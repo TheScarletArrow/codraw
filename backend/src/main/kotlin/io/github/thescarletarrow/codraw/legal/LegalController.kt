@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.legal
 
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.BoardVersionService
+import io.github.thescarletarrow.codraw.issue.IssueProperties
 import io.github.thescarletarrow.codraw.notification.NotificationProperties
 import io.github.thescarletarrow.codraw.schemaimport.SchemaImportProperties
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -43,6 +44,8 @@ data class LegalResponse(
     val closedProposalsPerBoard: Int,
     /** Whether users may read schemas of databases through the server, with the user and the password of a database. */
     val schemaImport: Boolean,
+    /** Whether users may connect GitHub with a token of theirs and link its issues to elements and threads of boards. */
+    val issues: Boolean,
 )
 
 @RestController
@@ -52,6 +55,7 @@ class LegalController(
     private val notifications: NotificationProperties,
     private val limits: LimitProperties,
     private val schemaImport: SchemaImportProperties,
+    private val issues: IssueProperties,
 ) {
 
     /** Open without a sign-in: the privacy policy and the terms of use are read before signing in. */
@@ -66,6 +70,7 @@ class LegalController(
         notificationsPerUser = limits.notificationsPerUser,
         closedProposalsPerBoard = limits.closedProposalsPerBoard,
         schemaImport = schemaImport.enabled,
+        issues = issues.github.apiUrl.isNotBlank(),
     )
 
     companion object {

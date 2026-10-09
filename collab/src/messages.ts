@@ -7,6 +7,9 @@ export const COMMENTS_CHANGED = JSON.stringify({ type: "comments-changed" });
 /** Stateless message: the architecture decisions of the board changed, so participants fetch them again. */
 export const DECISIONS_CHANGED = JSON.stringify({ type: "decisions-changed" });
 
+/** Stateless message: the issues of the tracker linked to the board changed, so participants fetch them again. */
+export const ISSUES_CHANGED = JSON.stringify({ type: "issues-changed" });
+
 /**
  * Stateless message: a proposal of changes was made, accepted, declined or withdrawn, so the participants of the board
  * fetch its proposals again, and those of a draft the proposal.
@@ -14,12 +17,13 @@ export const DECISIONS_CHANGED = JSON.stringify({ type: "decisions-changed" });
 export const PROPOSALS_CHANGED = JSON.stringify({ type: "proposals-changed" });
 
 /** A change that a client reports in a stateless message. */
-export type Change = "board-changed" | "comments-changed" | "decisions-changed" | "proposals-changed";
+export type Change = "board-changed" | "comments-changed" | "decisions-changed" | "issues-changed" | "proposals-changed";
 
 const CHANGES: ReadonlySet<unknown> = new Set<Change>([
   "board-changed",
   "comments-changed",
   "decisions-changed",
+  "issues-changed",
   "proposals-changed",
 ]);
 
