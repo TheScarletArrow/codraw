@@ -106,6 +106,7 @@ export function createFakeEditor({
   const listeners = new Set<() => void>()
   const pointerListeners = new Set<(point: Point | null) => void>()
   const selectionListeners = new Set<(ids: string[]) => void>()
+  let selection: string[] = []
   const menuListeners = new Set<(request: ContextMenuRequest) => void>()
   const viewListeners = new Set<() => void>()
   const editingListeners = new Set<(editing: LabelEditing | null) => void>()
@@ -283,6 +284,7 @@ export function createFakeEditor({
       state = { ...state, pencilLine: { ...state.pencilLine, ...Object.fromEntries(defined) } }
       listeners.forEach((listener) => listener())
     }),
+    selectedCellIds: () => selection,
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
     getViewVersion: () => viewVersion,
@@ -305,6 +307,7 @@ export function createFakeEditor({
       pointerListeners.forEach((listener) => listener(point))
     },
     select(ids) {
+      selection = ids
       selectionListeners.forEach((listener) => listener(ids))
     },
     rightClick(request) {

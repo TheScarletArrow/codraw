@@ -12,6 +12,8 @@ export interface Problem {
   used?: number
   /** Why an import of the schema of a database failed, e.g. `authentication-failed`. */
   reason?: string
+  /** The number of a decision that the board has already. */
+  number?: number
 }
 
 export class HttpError extends Error {

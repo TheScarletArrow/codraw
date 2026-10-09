@@ -20,6 +20,7 @@ const thread = (id: string, changes: Partial<CommentThread> = {}): CommentThread
   pageId: 'page-1',
   cellId: null,
   point: { x: 100, y: 80 },
+  decisionId: null,
   createdAt: '2026-10-05T10:00:00Z',
   resolvedAt: null,
   resolvedBy: null,

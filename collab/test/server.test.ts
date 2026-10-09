@@ -218,6 +218,20 @@ describe("collab server", () => {
       expect(backend.accessRequestsFor(board)).toBe(before);
     });
 
+    it("relays decisions-changed to the others", async () => {
+      await startServer();
+      const sender = await connect(board);
+      const toReceiver = statelessOf(await connect(board));
+      const toSender = statelessOf(sender);
+
+      sender.provider.sendStateless(JSON.stringify({ type: "decisions-changed", decision: "<script>" }));
+
+      await waitFor(() => toReceiver.length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(toReceiver).toEqual(['{"type":"decisions-changed"}']);
+      expect(toSender).toEqual([]);
+    });
+
     it("does not relay other stateless messages", async () => {
       await startServer();
       const sender = await connect(board);

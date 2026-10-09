@@ -44,6 +44,11 @@ import { CommentsButton } from '../comments/CommentsButton.tsx'
 import { CommentsPanel, type ThreadDraft } from '../comments/CommentsPanel.tsx'
 import type { ThreadFilter, ThreadFocus } from '../comments/threads.ts'
 import { useThreads } from '../comments/useComments.ts'
+import { DecisionBadges } from '../decisions/DecisionBadges.tsx'
+import { DecisionsButton } from '../decisions/DecisionsButton.tsx'
+import { DecisionsPanel } from '../decisions/DecisionsPanel.tsx'
+import type { DecisionFocus } from '../decisions/decisions.ts'
+import { useDecisions } from '../decisions/useDecisions.ts'
 import { fetchEmbed } from '../api/embed.ts'
 import { embedKey } from '../embed/links.ts'
 import { useEmbedPublisher } from '../embed/useEmbedPublisher.ts'
@@ -130,8 +135,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const author = useMemo<Author>(() => ({ id: user.id, name: user.name }), [user.id, user.name])
   const viewer = !canEdit(board)
   const connection = useBoardConnection({ id: board.id, title: board.title, viewer }, user.id, identity)
-  const { status, participants, document, awareness, notifyBoardChanged, notifyCommentsChanged, notifyProposalsChanged } =
-    connection
+  const {
+    status,
+    participants,
+    document,
+    awareness,
+    notifyBoardChanged,
+    notifyCommentsChanged,
+    notifyDecisionsChanged,
+    notifyProposalsChanged,
+  } = connection
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
   usePresencePublisher(editor, awareness)
   // The trail of the laser pointer and the message at the cursor go with the connection.
@@ -163,12 +176,23 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const visitChanges = showingVisit && changedSince && document && !preview ? changedSince : null
   // Comments of the board, which every participant reads and writes, in a panel in place of the history of versions.
   const threads = useThreads(board.id)
+  // The threads that discuss decisions are in the panel of the decisions.
+  const boardThreads = useMemo(() => threads.data?.filter((thread) => !thread.decisionId), [threads.data])
   const isOwner = board.role === 'owner'
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState<ThreadDraft | null>(null)
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
   // The threads the panel shows: with the resolved ones, the canvas marks the resolved threads at points too.
   const [commentFilter, setCommentFilter] = useState<ThreadFilter>('open')
+  // Architecture decisions of the board, which every participant reads and discusses and whoever edits writes down, in
+  // a panel in place of the comments.
+  const decisions = useDecisions(board.id)
+  const [decisionsOpen, setDecisionsOpen] = useState(false)
+  const [decisionFocus, setDecisionFocus] = useState<DecisionFocus | null>(null)
+  const closeDecisions = useCallback(() => {
+    setDecisionsOpen(false)
+    setDecisionFocus(null)
+  }, [])
   // Proposals of changes, which every participant makes and the owner and the editors review; a reviewed proposal shows
   // in place of the board.
   const navigate = useNavigate()
@@ -194,8 +218,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setCommentsOpen(true)
     closeHistory()
     closeProposals()
+    closeDecisions()
     setShowingVisit(false)
-  }, [closeHistory, closeProposals])
+  }, [closeHistory, closeProposals, closeDecisions])
   const closeComments = () => {
     setCommentsOpen(false)
     setCommentDraft(null)
@@ -206,6 +231,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setProposalsOpen(true)
     closeHistory()
     closeComments()
+    closeDecisions()
+    setShowingVisit(false)
+  }
+  const openDecisions = () => {
+    setDecisionsOpen(true)
+    closeHistory()
+    closeComments()
+    closeProposals()
     setShowingVisit(false)
   }
   const proposalCreated = (proposal: Proposal) => {
@@ -401,10 +434,16 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     openComments()
     setCommentFocus({ threadId: thread.id })
   }
+  const showDecisionsOf = (cellId: string) => {
+    if (!editor) return
+    openDecisions()
+    setDecisionFocus({ pageId: editor.pageId, cellId })
+  }
   // A link, e.g. from a notification, asks the page once to open something: the page opens it as soon as it can and
   // takes the request out of the address, so that a reload does not open it again.
   // `?thread=` opens the comments on that thread, once the threads are there and the board is synced, and goes to its
-  // page and its element or its point; a thread that is gone opens the comments only. A local copy shown before the
+  // page and its element or its point; a thread that is gone opens the comments only. A thread about a decision opens
+  // the decisions on it. A local copy shown before the
   // board is synced may lack the element or the page, e.g. one added since the user was here last.
   const linkedThread = searchParams.get('thread')
   const linkable = status === 'synced' && pages.length > 0
@@ -414,15 +453,20 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
     setOpenedLink(readyLink)
     if (readyLink) {
       const thread = threads.data?.find((candidate) => candidate.id === readyLink)
-      openComments()
-      setCommentDraft(null)
-      setCommentFocus(thread ? { threadId: thread.id } : null)
+      if (thread?.decisionId) {
+        openDecisions()
+        setDecisionFocus({ decisionId: thread.decisionId, threadId: thread.id })
+      } else {
+        openComments()
+        setCommentDraft(null)
+        setCommentFocus(thread ? { threadId: thread.id } : null)
+      }
     }
   }
   useEffect(() => {
     if (!linkedThread || !threads.data || !linkable) return
     const thread = threads.data.find((candidate) => candidate.id === linkedThread)
-    const shown = thread && pages.some((page) => page.id === thread.pageId) ? thread : null
+    const shown = thread && !thread.decisionId && pages.some((page) => page.id === thread.pageId) ? thread : null
     if (shown) revealThread(shown)
     changeParams((params) => {
       params.delete('thread')
@@ -493,6 +537,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             setHistoryOpen(true)
             closeComments()
             closeProposals()
+            closeDecisions()
             setShowingVisit(false)
           }}
         />
@@ -556,9 +601,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
           <CommentsButton
-            threads={threads.data}
+            threads={boardThreads}
             open={commentsOpen}
             onToggle={() => (commentsOpen ? closeComments() : openComments())}
+          />
+          <DecisionsButton
+            decisions={decisions.data}
+            open={decisionsOpen}
+            onToggle={() => (decisionsOpen ? closeDecisions() : openDecisions())}
           />
           <ProposalsButton
             proposals={proposals.data}
@@ -635,6 +685,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   closeHistory()
                   closeComments()
                   closeProposals()
+                  closeDecisions()
                 }
               : null
           }
@@ -714,11 +765,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <StickySignatures editor={editor} />
                   <PresenceLayer editor={editor} awareness={awareness} identity={identity} />
                   <CursorChat editor={editor} awareness={awareness} online={online} color={identity.color} />
-                  <CommentBadges editor={editor} threads={threads.data} onOpen={showThreadsOf} />
+                  <CommentBadges editor={editor} threads={boardThreads} onOpen={showThreadsOf} />
+                  <DecisionBadges editor={editor} decisions={decisions.data} onOpen={showDecisionsOf} />
                   <CommentPins
                     editor={editor}
                     boardId={board.id}
-                    threads={threads.data}
+                    threads={boardThreads}
                     draft={commentDraft}
                     showResolved={commentsOpen && commentFilter === 'resolved'}
                     focusedThreadId={commentFocus && 'threadId' in commentFocus ? commentFocus.threadId : null}
@@ -870,7 +922,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             boardId={board.id}
             userId={user.id}
             isOwner={isOwner}
-            threads={threads.data}
+            threads={boardThreads}
             failed={threads.isError}
             pages={pages}
             currentPageId={currentPage?.id ?? null}
@@ -882,6 +934,29 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onShow={showThread}
             onChanged={notifyCommentsChanged}
             onClose={closeComments}
+          />
+        )}
+        {decisionsOpen && (
+          <DecisionsPanel
+            boardId={board.id}
+            boardTitle={board.title}
+            userId={user.id}
+            isOwner={isOwner}
+            // Decisions are kept by the backend, not in the board document: the role decides.
+            canEdit={!viewer}
+            decisions={decisions.data}
+            failed={decisions.isError}
+            threads={threads.data}
+            pages={pages}
+            currentPageId={currentPage?.id ?? null}
+            document={document}
+            editor={editor}
+            focus={decisionFocus}
+            onFocusChange={setDecisionFocus}
+            onShowElement={showCell}
+            onChanged={notifyDecisionsChanged}
+            onCommentsChanged={notifyCommentsChanged}
+            onClose={closeDecisions}
           />
         )}
         {proposalsOpen && (
