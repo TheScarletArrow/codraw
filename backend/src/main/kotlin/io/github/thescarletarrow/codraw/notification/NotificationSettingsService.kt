@@ -52,7 +52,7 @@ class NotificationSettingsService(
             email = EmailSettings(emailAvailable, own[ChannelKind.EMAIL]?.let(::emailView)),
             webhook = WebhookSettings(webhookAvailable, webhooks.hosts, own[ChannelKind.WEBHOOK]?.let(::webhookView)),
             mutedBoards = channels.mutedBoards(userId).map { muted ->
-                val access = muted.board.roleOf(userId, muted.memberRole) != null
+                val access = muted.board.roleOf(userId, muted.memberRole, muted.workspaceRole) != null
                 MutedBoardView(muted.board.id!!, muted.board.title.takeIf { access }, muted.mutedAt)
             },
         )

@@ -8,10 +8,13 @@ import java.util.UUID
 fun BoardService.existing(id: String): Board =
     BoardIds.parse(id)?.let(::find) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
 
-/** The board, which only its owner may change, delete, share with members or give away; 403 for anybody else. */
+/**
+ * The board, which only those with the role [BoardRole.OWNER] on it may change, delete, share with members or give
+ * away: its owner, and on a board of a workspace those who manage the workspace too; 403 for anybody else.
+ */
 fun BoardService.ownedBy(id: String, userId: UUID): Board {
     val board = existing(id)
-    if (board.ownerId != userId) {
+    if (board.ownerId != userId && roleOf(board, userId) != BoardRole.OWNER) {
         throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change the board")
     }
     return board

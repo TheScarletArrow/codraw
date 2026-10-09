@@ -32,6 +32,11 @@ enum class Limit(val tag: String) {
     LIBRARY_COMPONENT("library-component"),
     LIBRARIES_SIZE("libraries-size"),
     CONFIRMATION_EMAILS("confirmation-emails"),
+    WORKSPACES("workspaces"),
+    WORKSPACE_MEMBERS("workspace-members"),
+    WORKSPACE_INVITES("workspace-invites"),
+    WORKSPACE_PROJECTS("workspace-projects"),
+    WORKSPACE_BOARDS("workspace-boards"),
 }
 
 /** How an attempt to send a message of a notification to a channel ended; the tag of [CodrawMetrics.notificationDelivery]. */

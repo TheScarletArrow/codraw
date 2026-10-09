@@ -29,8 +29,8 @@ data class TextWindow(
 class BoardSearch(private val jdbc: JdbcClient) {
 
     /**
-     * Boards that the user [userId] can open — their own, those they are a member of and those they opened through links
-     * that still give them a role — whose text has the [key] of a query, see [BoardSearchService.searchKey]: at most
+     * Boards that the user [userId] can open — their own, those they are a member of, those they opened through links
+     * that still give them a role and those that their workspaces give them a role on — whose text has the [key] of a query, see [BoardSearchService.searchKey]: at most
      * [limit] of them, each with a window of its text from [before] characters before the first match to [after]
      * characters after its end, and one more on each side to tell whether the line goes on.
      */
@@ -43,6 +43,9 @@ class BoardSearch(private val jdbc: JdbcClient) {
             UNION
             SELECT v.board_id FROM board_visits v JOIN boards b ON b.id = v.board_id
             WHERE v.user_id = :userId AND b.link_access <> 'NONE'
+            UNION
+            SELECT b.id FROM boards b JOIN workspace_members w ON w.workspace_id = b.workspace_id
+            WHERE w.user_id = :userId AND (w.role IN ('OWNER', 'ADMIN') OR b.workspace_access <> 'NONE')
         ),
         matches AS (
             SELECT d.board_id, d.search_text, strpos(translate(lower(d.search_text), 'ё', 'е'), :key) AS position

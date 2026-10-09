@@ -68,7 +68,7 @@ class BoardMemberController(
         @AuthenticationPrincipal principal: OAuth2User,
     ): BoardResponse {
         val board = boards.transferOwnership(boards.ownedBy(id, principal.userId), request.userId)
-        return board.toResponse(users.ownerOf(board), checkNotNull(boards.roleOf(board, principal.userId)))
+        return board.toResponse(users.ownerOf(board), checkNotNull(boards.roleOf(board, principal.userId)), boards.workspaceOf(board))
     }
 
     /** The invitation links of the board, oldest first. */
@@ -102,7 +102,7 @@ class BoardMemberController(
     @PostMapping("$INVITES/{token:[A-Za-z0-9_-]{22}}/accept")
     fun accept(@PathVariable token: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse {
         val board = members.accept(token, principal.userId)
-        return board.toResponse(users.ownerOf(board), checkNotNull(boards.roleOf(board, principal.userId)))
+        return board.toResponse(users.ownerOf(board), checkNotNull(boards.roleOf(board, principal.userId)), boards.workspaceOf(board))
     }
 
     @ExceptionHandler

@@ -72,13 +72,20 @@ class BoardMembers(private val jdbc: JdbcClient) {
         }
         .list()
 
-    /** Users other than the owner [ownerId] who opened the board through its link and are not members, recent first. */
+    /**
+     * Users other than the owner [ownerId] who opened the board through its link and are neither its members nor members
+     * of its workspace, recent first.
+     */
     fun visitors(boardId: UUID, ownerId: UUID, limit: Int): List<Visitor> = jdbc.sql(
         """
         SELECT u.id, u.name, u.avatar_url, v.visited_at
         FROM board_visits v JOIN users u ON u.id = v.user_id
         WHERE v.board_id = :boardId AND v.user_id <> :ownerId
           AND NOT EXISTS (SELECT 1 FROM board_members m WHERE m.board_id = v.board_id AND m.user_id = v.user_id)
+          AND NOT EXISTS (
+              SELECT 1 FROM boards b JOIN workspace_members w ON w.workspace_id = b.workspace_id
+              WHERE b.id = v.board_id AND w.user_id = v.user_id
+          )
         ORDER BY v.visited_at DESC, u.id
         LIMIT :limit
         """,

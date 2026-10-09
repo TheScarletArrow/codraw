@@ -8,17 +8,38 @@ import java.util.UUID
 
 interface BoardRepository : ListCrudRepository<Board, UUID> {
 
-    @Query("SELECT * FROM boards WHERE owner_id = :ownerId AND deleted_at IS NULL ORDER BY updated_at DESC")
+    /** The personal boards of the user [ownerId]: those of workspaces are in their workspaces. */
+    @Query("SELECT * FROM boards WHERE owner_id = :ownerId AND workspace_id IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC")
     fun findAllByOwnerIdOrderByUpdatedAtDesc(ownerId: UUID): List<Board>
 
-    @Query("SELECT count(*) FROM boards WHERE owner_id = :ownerId AND deleted_at IS NULL")
+    /** How many personal boards the user [ownerId] owns, as the limit counts them. */
+    @Query("SELECT count(*) FROM boards WHERE owner_id = :ownerId AND workspace_id IS NULL AND deleted_at IS NULL")
     fun countByOwnerId(ownerId: UUID): Int
+
+    /** How many boards the workspace [workspaceId] has, as the limit counts them. */
+    @Query("SELECT count(*) FROM boards WHERE workspace_id = :workspaceId AND deleted_at IS NULL")
+    fun countInWorkspace(workspaceId: UUID): Int
 
     @Query("SELECT EXISTS (SELECT 1 FROM boards WHERE id = :id AND deleted_at IS NULL)")
     fun existsActive(id: UUID): Boolean
 
-    @Query("SELECT * FROM boards WHERE owner_id = :ownerId AND deleted_at > :after ORDER BY deleted_at DESC")
-    fun trashOf(ownerId: UUID, after: Instant): List<Board>
+    /**
+     * The boards in the trash since [after] that the user [userId] may restore: their personal boards, and boards of
+     * workspaces that they are responsible for or whose workspace they manage.
+     */
+    @Query(
+        """
+        SELECT * FROM boards b
+        WHERE b.deleted_at > :after AND (
+            b.owner_id = :userId OR EXISTS (
+                SELECT 1 FROM workspace_members m
+                WHERE m.workspace_id = b.workspace_id AND m.user_id = :userId AND m.role IN ('OWNER', 'ADMIN')
+            )
+        )
+        ORDER BY b.deleted_at DESC
+        """,
+    )
+    fun trashOf(userId: UUID, after: Instant): List<Board>
 
     @Modifying
     @Query("UPDATE boards SET deleted_at = :at WHERE id = :id AND owner_id = :ownerId AND deleted_at IS NULL")
@@ -49,6 +70,11 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Modifying
     @Query("UPDATE boards SET title = :title, updated_at = :updatedAt WHERE id = :id AND deleted_at IS NULL")
     fun rename(id: UUID, title: String, updatedAt: Instant): Boolean
+
+    /** Changes only what the workspace gives its members on the board, which is not a change of the board either. */
+    @Modifying
+    @Query("UPDATE boards SET workspace_access = :workspaceAccess WHERE id = :id AND workspace_id IS NOT NULL AND deleted_at IS NULL")
+    fun updateWorkspaceAccess(id: UUID, workspaceAccess: String): Boolean
 
     /** Changes only the link access, so that a concurrent change of the title or of the document keeps its time. */
     @Modifying

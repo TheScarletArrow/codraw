@@ -9,9 +9,27 @@ import org.springframework.validation.annotation.Validated
 @Validated
 @ConfigurationProperties("codraw.limits")
 data class LimitProperties(
-    /** The most boards a user owns; boards that pass from a guest at sign-in are not limited. */
+    /**
+     * The most personal boards a user owns; boards that pass from a guest at sign-in are not limited, and boards of
+     * workspaces count against [boardsPerWorkspace] instead.
+     */
     @field:Positive
     val boardsPerUser: Int = 100,
+    /** The most workspaces a user is a member of, those they created too. */
+    @field:Positive
+    val workspacesPerUser: Int = 20,
+    /** The most members of a workspace. */
+    @field:Positive
+    val membersPerWorkspace: Int = 200,
+    /** The most invitation links of a workspace that are not revoked. */
+    @field:Positive
+    val invitesPerWorkspace: Int = 20,
+    /** The most projects of a workspace. */
+    @field:Positive
+    val projectsPerWorkspace: Int = 50,
+    /** The most boards of a workspace, without those in the trash. */
+    @field:Positive
+    val boardsPerWorkspace: Int = 500,
     /** The most guests created from one network address in an hour. */
     @field:Positive
     val guestsPerAddressPerHour: Int = 20,

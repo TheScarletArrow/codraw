@@ -45,7 +45,9 @@ class BoardAccessApiTest(
         mockMvc.get(accessUrl(board)) { header(InternalTokenInterceptor.HEADER, IntegrationTest.INTERNAL_TOKEN) }
             .andExpect {
                 status { isOk() }
-                content { json("""{"ownerId": "${owner.id}", "linkAccess": "edit", "members": {}}""", strict = true) }
+                content {
+                    json("""{"ownerId": "${owner.id}", "linkAccess": "edit", "members": {}, "workspace": null}""", strict = true)
+                }
             }
 
         mockMvc.patch("/api/boards/$board") {

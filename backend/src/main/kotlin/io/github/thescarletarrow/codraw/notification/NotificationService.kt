@@ -183,7 +183,7 @@ class NotificationService(
      * happened and when.
      */
     fun view(stored: StoredNotification): Notification = with(stored) {
-        val access = board.roleOf(userId, memberRole) != null
+        val access = board.roleOf(userId, memberRole, workspaceRole) != null
         Notification(
             id = id,
             kind = kind,

@@ -6,10 +6,11 @@ import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardVersionService
-import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.board.LinkAccess
 import io.github.thescarletarrow.codraw.board.Participation
 import io.github.thescarletarrow.codraw.board.VersionReason
 import io.github.thescarletarrow.codraw.notification.NotificationService
+import io.github.thescarletarrow.codraw.workspace.Workspaces
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -29,6 +30,7 @@ import java.util.UUID
 class ProposalService(
     private val proposals: Proposals,
     private val members: BoardMembers,
+    private val workspaces: Workspaces,
     private val versions: BoardVersionService,
     private val notifications: NotificationService,
     private val limits: LimitProperties,
@@ -144,11 +146,18 @@ class ProposalService(
     }
 
     /**
-     * Who reviews the proposals of the [board]: its owner and its members who edit it. Those who edit it through its
-     * link are not known by name.
+     * Who reviews the proposals of the [board]: its owner, its members and the members of its workspace who edit or
+     * manage it. Those who edit it through its link are not known by name.
      */
-    private fun reviewers(board: Board): Set<UUID> =
-        members.roles(board.boardId).filterValues { it == MemberRole.EDITOR }.keys + board.ownerId
+    private fun reviewers(board: Board): Set<UUID> {
+        val memberRoles = members.roles(board.boardId)
+        val workspaceRoles = board.workspaceId?.let(workspaces::roles).orEmpty()
+        // Without what the link gives: roles of their own and from the workspace only.
+        val named = board.copy(linkAccess = LinkAccess.NONE)
+        return (memberRoles.keys + workspaceRoles.keys).filterTo(mutableSetOf(board.ownerId)) { userId ->
+            named.roleOf(userId, memberRoles[userId], workspaceRoles[userId])?.managesVersions == true
+        }
+    }
 
     /** Reviewers see every proposal of the board, anybody else their own. */
     private fun Participation.sees(proposal: Proposal, userId: UUID) = role.managesVersions || proposal.author.id == userId
