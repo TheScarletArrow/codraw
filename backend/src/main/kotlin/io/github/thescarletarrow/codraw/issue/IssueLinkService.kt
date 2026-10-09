@@ -175,7 +175,14 @@ class IssueLinkService(
     }
 
     /** Links within the limit of the board; linking an issue linked to the target already only brings it up to date. */
-    private fun save(board: Board, target: IssueTarget, issue: TrackerIssue, private: Boolean, userId: UUID, createdHere: Boolean): Pair<UUID, Boolean> =
+    private fun save(
+        board: Board,
+        target: IssueTarget,
+        issue: TrackerIssue,
+        private: Boolean,
+        userId: UUID,
+        createdHere: Boolean,
+    ): Pair<UUID, Boolean> =
         transactions.execute {
             links.lockBoard(board.boardId)
             val linked = links.exists(board.boardId, target, Tracker.GITHUB, issue.externalId)

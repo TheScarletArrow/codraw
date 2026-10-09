@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Comment, CommentText, CommentThread, Person, Reaction } from '../api/comments.ts'
 import { Avatar } from '../board/Participants.tsx'
+import { ThreadIssues } from '../issues/ThreadIssues.tsx'
 import { CommentComposer } from './CommentComposer.tsx'
 import { CommentReactions } from './CommentReactions.tsx'
 import { AssignButton, ThreadAssignee } from './ThreadAssignee.tsx'
@@ -35,7 +36,10 @@ interface ThreadCardProps {
   onShow?: (thread: CommentThread) => void
 }
 
-/** A thread: what it is about, its assignee, its comments with their reactions, an answer and the «Решено» mark. */
+/**
+ * A thread: what it is about, its assignee, the issues linked to it, its comments with their reactions, an answer and the
+ * «Решено» mark.
+ */
 export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted, actions, onShow }: ThreadCardProps) {
   const target = threadTarget(thread, cell)
   const resolved = thread.resolvedAt !== null
@@ -101,6 +105,7 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
           Решено{thread.resolvedBy && `: ${thread.resolvedBy.name}`}, {commentTimeFormat.format(new Date(thread.resolvedAt!))}
         </p>
       )}
+      <ThreadIssues thread={thread} />
       <ol className="flex flex-col gap-2">
         {thread.comments.map((comment, index) => (
           <CommentItem

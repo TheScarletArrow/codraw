@@ -50,7 +50,8 @@ class IssueLinkController(
         val (board, role) = boards.participated(id, principal.userId)
         val repository = repository(request.repository)
         if (request.number < 1) badRequest("An issue has a positive number")
-        val (link, created) = links.link(board, role, principal.userId, target(request.pageId, request.cellId, request.threadId), repository, request.number)
+        val target = target(request.pageId, request.cellId, request.threadId)
+        val (link, created) = links.link(board, role, principal.userId, target, repository, request.number)
         return answer(board.id!!, link, created)
     }
 
