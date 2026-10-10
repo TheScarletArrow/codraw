@@ -94,9 +94,13 @@ test('the metrics of backend and collab are not given through the app address', 
 })
 
 test('the OAuth callback URL is the app address, with its port', async ({ request, baseURL }) => {
-  const response = await request.get('/api/oauth2/authorization/github', { maxRedirects: 0 })
+  // The login page offers only the providers that the stack set up; the first one will do.
+  const { providers } = (await (await request.get('/api/auth/providers')).json()) as { providers: { id: string }[] }
+  test.skip(providers.length === 0, 'The stack sets up no sign-in provider')
+  const provider = providers[0]!.id
+  const response = await request.get(`/api/oauth2/authorization/${provider}`, { maxRedirects: 0 })
 
   expect(response.status()).toBe(302)
   const location = new URL(response.headers()['location']!)
-  expect(location.searchParams.get('redirect_uri')).toBe(`${baseURL}/api/login/oauth2/code/github`)
+  expect(location.searchParams.get('redirect_uri')).toBe(`${baseURL}/api/login/oauth2/code/${provider}`)
 })
