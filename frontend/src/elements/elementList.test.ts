@@ -3,6 +3,7 @@ import * as Y from 'yjs'
 import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, initializeDocument, writeCell, type CellData } from '../diagram/model.ts'
 import { addPage } from '../diagram/pages.ts'
 import { shapeData } from '../diagram/testing.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { elementsStore, ELEMENTS_INTERVAL_MS, listElements, onPagesLabel, searchElements, sharedLabel } from './elementList.ts'
 
 const PAYMENTS = {
@@ -93,6 +94,9 @@ describe('elements of a board', () => {
       'на 11 страницах',
       'на 21 странице',
     ])
+    setLocale('en')
+    expect(sharedLabel(payments!, second)).toBe('Also on 1 page: Страница 1')
+    expect([1, 2].map(onPagesLabel)).toEqual(['on 1 page', 'on 2 pages'])
   })
 
   it('keeps the list until the board changes, takes it again at most every 150 ms, and takes changes made before listening', () => {

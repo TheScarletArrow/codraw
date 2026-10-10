@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.Tokens
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.participated
+import io.github.thescarletarrow.codraw.user.Language
 import io.github.thescarletarrow.codraw.user.UserRepository
 import io.github.thescarletarrow.codraw.user.guest
 import jakarta.mail.internet.AddressException
@@ -119,7 +120,7 @@ class NotificationSettingsService(
         if (!webhookAvailable) throw ChannelUnavailableException(ChannelKind.WEBHOOK)
         val channel = channels.find(userId, ChannelKind.WEBHOOK) ?: throw ChannelNotFoundException()
         try {
-            webhooks.send(channel.address, messages.chatTest())
+            webhooks.send(channel.address, messages.chatTest(language(userId)))
         } catch (exception: DeliveryException) {
             channels.failed(channel.id, exception.error, now())
             throw exception
@@ -146,9 +147,11 @@ class NotificationSettingsService(
         channels.unmute(userId, boardId)
     }
 
+    private fun language(userId: UUID): Language = users.findById(userId)?.language ?: Language.RU
+
     private fun sendConfirmation(channel: NotificationChannel, token: String): NotificationChannel {
         try {
-            email.send(messages.confirmation(channel.address, token))
+            email.send(messages.confirmation(channel.address, token, language(channel.userId)))
         } catch (exception: DeliveryException) {
             channels.failed(channel.id, exception.error, now())
             return checkNotNull(channels.findById(channel.id))

@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { addTag, sameLabel, TAG_MAX_LENGTH, tagSuggestions } from './boardList.ts'
+import { boardListMessages as m } from './messages.ts'
 
 interface TagEditorProps {
   /** The title of the board, which names the editor. */
@@ -29,9 +30,9 @@ export function TagEditor({ title, tags, known, onChange, error }: TagEditorProp
   }
 
   return (
-    <div role="group" aria-label={`Теги доски «${title}»`} className="flex flex-col gap-2 p-2">
+    <div role="group" aria-label={m.boardTags(title)} className="flex flex-col gap-2 p-2">
       {tags.length > 0 ? (
-        <ul aria-label="Теги" className="flex flex-wrap gap-1">
+        <ul aria-label={m.tags} className="flex flex-wrap gap-1">
           {tags.map((tag) => (
             <li key={tag} className="flex items-center gap-0.5 rounded bg-muted py-0.5 pr-0.5 pl-2 text-sm">
               {tag}
@@ -39,7 +40,7 @@ export function TagEditor({ title, tags, known, onChange, error }: TagEditorProp
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label={`Убрать тег «${tag}»`}
+                aria-label={m.removeTag(tag)}
                 onClick={() => onChange(tags.filter((other) => !sameLabel(other, tag)))}
               >
                 <X />
@@ -48,14 +49,14 @@ export function TagEditor({ title, tags, known, onChange, error }: TagEditorProp
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">Тегов нет. Их видите только вы.</p>
+        <p className="text-sm text-muted-foreground">{m.noTags}</p>
       )}
       <input
-        aria-label="Новый тег"
+        aria-label={m.newTag}
         autoFocus
         value={input}
         maxLength={TAG_MAX_LENGTH}
-        placeholder="Добавить тег"
+        placeholder={m.addTag}
         className="rounded border bg-background px-2 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         onChange={(event) => setInput(event.target.value)}
         onKeyDown={(event) => {
@@ -65,7 +66,7 @@ export function TagEditor({ title, tags, known, onChange, error }: TagEditorProp
         }}
       />
       {suggestions.length > 0 && (
-        <div role="group" aria-label="Подсказки тегов" className="flex flex-wrap gap-1">
+        <div role="group" aria-label={m.tagSuggestions} className="flex flex-wrap gap-1">
           {suggestions.map((tag) => (
             <Button key={tag} type="button" variant="outline" size="xs" onClick={() => add(tag)}>
               {tag}

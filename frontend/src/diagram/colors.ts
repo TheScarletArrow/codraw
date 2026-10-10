@@ -1,27 +1,37 @@
+import { colorMessages } from './colors.messages.ts'
+
 /** The fill of shapes without one of their own, as the default style of the editor sets it. */
 export const DEFAULT_FILL_COLOR = '#ffffff'
 
 /** The color of lines and text without one of their own, as the default style of the editor sets it. */
 export const DEFAULT_LINE_COLOR = '#1f2328'
 
+/** A color of the palette, named in the language of the interface. */
+const color = <V extends string>(value: V, name: keyof typeof colorMessages) => ({
+  value,
+  get name(): string {
+    return colorMessages[name]
+  },
+})
+
 /** The standard draw.io palette: light colors for fills, dark ones for lines and text. */
 export const PALETTE = [
-  { value: '#ffffff', name: 'Белый' },
-  { value: '#f5f5f5', name: 'Светло-серый' },
-  { value: '#dae8fc', name: 'Голубой' },
-  { value: '#d5e8d4', name: 'Светло-зелёный' },
-  { value: '#fff2cc', name: 'Светло-жёлтый' },
-  { value: '#ffe6cc', name: 'Персиковый' },
-  { value: '#f8cecc', name: 'Розовый' },
-  { value: '#e1d5e7', name: 'Сиреневый' },
-  { value: '#1f2328', name: 'Чёрный' },
-  { value: '#666666', name: 'Серый' },
-  { value: '#6c8ebf', name: 'Синий' },
-  { value: '#82b366', name: 'Зелёный' },
-  { value: '#d6b656', name: 'Жёлтый' },
-  { value: '#d79b00', name: 'Оранжевый' },
-  { value: '#b85450', name: 'Красный' },
-  { value: '#9673a6', name: 'Фиолетовый' },
+  color('#ffffff', 'white'),
+  color('#f5f5f5', 'lightGray'),
+  color('#dae8fc', 'lightBlue'),
+  color('#d5e8d4', 'lightGreen'),
+  color('#fff2cc', 'lightYellow'),
+  color('#ffe6cc', 'peach'),
+  color('#f8cecc', 'pink'),
+  color('#e1d5e7', 'lilac'),
+  color('#1f2328', 'black'),
+  color('#666666', 'gray'),
+  color('#6c8ebf', 'blue'),
+  color('#82b366', 'green'),
+  color('#d6b656', 'yellow'),
+  color('#d79b00', 'orange'),
+  color('#b85450', 'red'),
+  color('#9673a6', 'purple'),
 ] as const
 
 /**
@@ -29,9 +39,9 @@ export const PALETTE = [
  * first one is the color of new stickies until another is chosen.
  */
 export const STICKY_COLORS = [
-  { value: '#fff2cc', name: 'Жёлтый' },
-  { value: '#f8cecc', name: 'Розовый' },
-  { value: '#d5e8d4', name: 'Зелёный' },
-  { value: '#dae8fc', name: 'Голубой' },
-  { value: '#e1d5e7', name: 'Сиреневый' },
+  color('#fff2cc', 'yellow'),
+  color('#f8cecc', 'pink'),
+  color('#d5e8d4', 'green'),
+  color('#dae8fc', 'lightBlue'),
+  color('#e1d5e7', 'lilac'),
 ] as const

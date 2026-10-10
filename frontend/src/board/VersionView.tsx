@@ -12,6 +12,7 @@ import { PageTabs } from './PageTabs.tsx'
 import { StatusBadges } from './StatusBadges.tsx'
 import { useBoardDiff } from './useBoardDiff.ts'
 import { usePages } from './usePages.ts'
+import { versionMessages as m } from './versions.messages.ts'
 
 interface VersionViewProps {
   /** An earlier state of the board, e.g. a version. */
@@ -137,7 +138,7 @@ export function VersionView({
               )}
             </>
           ) : (
-            <p className="p-6 text-muted-foreground">В версии нет страниц</p>
+            <p className="p-6 text-muted-foreground">{m.noPages}</p>
           )}
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { shortcutMessages as m } from './shortcuts.messages.ts'
+
 /**
  * A line of the help on shortcuts: keys in the notation of shortcuts (`Mod` is Ctrl, or Cmd on macOS), any of which
  * does the action. Besides keys of {@link KEY_BINDINGS}, keys may be `Arrows` (the four arrows), `?`, `/`, `Mod+F` of
@@ -18,68 +20,89 @@ export interface ShortcutGroup {
   collaboration?: boolean
 }
 
+type Action = keyof typeof m.actions
+
+/** A line of the help, its action named in the language of the interface. */
+const entry = (action: Action, keys: string[], editing?: true): ShortcutEntry => ({
+  keys,
+  get action() {
+    return m.actions[action]
+  },
+  ...(editing && { editing }),
+})
+
 /** The shortcuts of the editor, as the help shows them; a test keeps them in step with the keys of the editor. */
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
-    title: 'Правка',
+    get title() {
+      return m.groups.editing
+    },
     entries: [
-      { keys: ['Mod+Z'], action: 'Отменить', editing: true },
-      { keys: ['Mod+Shift+Z', 'Mod+Y'], action: 'Повторить', editing: true },
-      { keys: ['Mod+C'], action: 'Копировать' },
-      { keys: ['Mod+X'], action: 'Вырезать', editing: true },
-      { keys: ['Mod+V'], action: 'Вставить, в том числе изображение', editing: true },
-      { keys: ['Mod+Shift+V'], action: 'Вставить как тот же элемент', editing: true },
-      { keys: ['Mod+D'], action: 'Дублировать', editing: true },
-      { keys: ['Mod+Alt+C'], action: 'Копировать стиль' },
-      { keys: ['Mod+Alt+V'], action: 'Вставить стиль', editing: true },
-      { keys: ['Delete', 'Backspace'], action: 'Удалить', editing: true },
-      { keys: ['F2'], action: 'Изменить подпись', editing: true },
-      { keys: ['N', 'Mod+DoubleClick'], action: 'Добавить стикер', editing: true },
-      { keys: ['Mod+G'], action: 'Сгруппировать', editing: true },
-      { keys: ['Mod+Shift+G'], action: 'Разгруппировать', editing: true },
-      { keys: ['P'], action: 'Карандаш', editing: true },
-      { keys: ['Enter'], action: 'Следующее сообщение последовательности при вводе сообщения', editing: true },
+      entry('undo', ['Mod+Z'], true),
+      entry('redo', ['Mod+Shift+Z', 'Mod+Y'], true),
+      entry('copy', ['Mod+C']),
+      entry('cut', ['Mod+X'], true),
+      entry('paste', ['Mod+V'], true),
+      entry('pasteAsSameElement', ['Mod+Shift+V'], true),
+      entry('duplicate', ['Mod+D'], true),
+      entry('copyStyle', ['Mod+Alt+C']),
+      entry('pasteStyle', ['Mod+Alt+V'], true),
+      entry('delete', ['Delete', 'Backspace'], true),
+      entry('editLabel', ['F2'], true),
+      entry('addSticky', ['N', 'Mod+DoubleClick'], true),
+      entry('group', ['Mod+G'], true),
+      entry('ungroup', ['Mod+Shift+G'], true),
+      entry('pencil', ['P'], true),
+      entry('nextMessage', ['Enter'], true),
     ],
   },
   {
-    title: 'Выделение и перемещение',
+    get title() {
+      return m.groups.selection
+    },
     entries: [
-      { keys: ['Mod+A'], action: 'Выделить всё' },
-      { keys: ['Mod+Click', 'Mod+Drag'], action: 'Добавить к выделению или убрать из него' },
-      { keys: ['Arrows'], action: 'Сдвинуть на 1 пиксель', editing: true },
-      { keys: ['Shift+Arrows'], action: 'Сдвинуть на шаг сетки', editing: true },
-      { keys: ['Alt+Drag'], action: 'Перетащить без сетки и направляющих, повернуть по 1°', editing: true },
-      { keys: ['Shift+Drag'], action: 'Изменить размер с сохранением пропорций, изображения — без', editing: true },
-      { keys: ['Mod+Shift+L'], action: 'Автораскладка слева направо', editing: true },
+      entry('selectAll', ['Mod+A']),
+      entry('toggleSelection', ['Mod+Click', 'Mod+Drag']),
+      entry('nudge', ['Arrows'], true),
+      entry('nudgeGrid', ['Shift+Arrows'], true),
+      entry('dragFree', ['Alt+Drag'], true),
+      entry('resizeProportional', ['Shift+Drag'], true),
+      entry('autoLayout', ['Mod+Shift+L'], true),
     ],
   },
   {
-    title: 'Текст',
+    get title() {
+      return m.groups.text
+    },
     entries: [
-      { keys: ['Mod+B'], action: 'Жирный', editing: true },
-      { keys: ['Mod+I'], action: 'Курсив', editing: true },
-      { keys: ['Mod+U'], action: 'Подчёркнутый', editing: true },
+      entry('bold', ['Mod+B'], true),
+      entry('italic', ['Mod+I'], true),
+      entry('underline', ['Mod+U'], true),
     ],
   },
   {
-    title: 'Вид',
+    get title() {
+      return m.groups.view
+    },
     entries: [
-      { keys: ['Mod+Wheel'], action: 'Изменить масштаб' },
-      { keys: ['Mod+Shift+H'], action: 'Показать всё' },
-      { keys: ['RightDrag'], action: 'Прокрутить холст' },
-      { keys: ['Mod+F'], action: 'Найти на доске' },
-      { keys: ['Mod+Click'], action: 'Перейти по ссылке элемента' },
-      { keys: ['M'], action: 'Мини-карта' },
-      { keys: ['?'], action: 'Горячие клавиши' },
+      entry('zoom', ['Mod+Wheel']),
+      entry('fitAll', ['Mod+Shift+H']),
+      entry('pan', ['RightDrag']),
+      entry('find', ['Mod+F']),
+      entry('followLink', ['Mod+Click']),
+      entry('minimap', ['M']),
+      entry('shortcuts', ['?']),
     ],
   },
   {
-    title: 'Совместная работа',
+    get title() {
+      return m.groups.collaboration
+    },
     collaboration: true,
     entries: [
-      { keys: ['K'], action: 'Указка' },
-      { keys: ['C'], action: 'Комментарий' },
-      { keys: ['/'], action: 'Сообщение у курсора' },
+      entry('laser', ['K']),
+      entry('comment', ['C']),
+      entry('cursorMessage', ['/']),
     ],
   },
 ]
@@ -97,18 +120,19 @@ export function shortcutGroups(readOnly: boolean, collaboration = true): Shortcu
     .filter((group) => group.entries.length > 0)
 }
 
-const WORDS: Record<string, string> = {
+/** Keys written as they are: the arrows. */
+const SYMBOLS: Record<string, string> = {
   Arrows: '←↑→↓',
   ArrowLeft: '←',
   ArrowUp: '↑',
   ArrowRight: '→',
   ArrowDown: '↓',
-  Click: 'щелчок',
-  DoubleClick: 'двойной щелчок',
-  Drag: 'перетаскивание',
-  RightDrag: 'протягивание правой кнопкой',
-  Wheel: 'колесо',
 }
+
+const isMouse = (key: string): key is keyof typeof m.mouse => Object.hasOwn(m.mouse, key)
+
+/** A key or the mouse as written in the language of the interface. */
+const wordOf = (key: string): string | undefined => (isMouse(key) ? m.mouse[key] : SYMBOLS[key])
 
 /**
  * How keys are written on this system: `Ctrl+Shift+Z` on Windows and Linux; on macOS with the symbols of its modifiers
@@ -120,10 +144,10 @@ export function formatKeys(keys: string, isMac: boolean): string {
   const mod = parts.includes('Mod')
   const shift = parts.includes('Shift')
   const alt = parts.includes('Alt')
-  const name = key === 'Delete' && isMac ? '⌫' : (WORDS[key] ?? key)
+  const name = key === 'Delete' && isMac ? '⌫' : (wordOf(key) ?? key)
   if (!isMac) return [mod && 'Ctrl', alt && 'Alt', shift && 'Shift', name].filter(Boolean).join('+')
   const modifiers = `${alt ? '⌥' : ''}${shift ? '⇧' : ''}${mod ? '⌘' : ''}`
   if (!modifiers) return name
   // A word after the symbols reads better with a plus.
-  return key in WORDS && key !== 'Arrows' && !key.startsWith('Arrow') ? `${modifiers}+${name}` : `${modifiers}${name}`
+  return isMouse(key) ? `${modifiers}+${name}` : `${modifiers}${name}`
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { takesText } from '../lib/keyboard.ts'
+import { shortcutMessages as m } from './shortcuts.messages.ts'
 import { formatKeys, shortcutGroups } from './shortcuts.ts'
 
 interface ShortcutsHelpProps {
@@ -30,16 +31,16 @@ export function ShortcutsHelp({ readOnly = false, collaboration = true, isMac = 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Горячие клавиши" title="Горячие клавиши (?)">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.help} title={m.helpButton}>
           <Keyboard />
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Горячие клавиши"
+        aria-label={m.help}
         className="max-h-[70vh] w-[30rem] overflow-y-auto"
       >
-        <h2 className="mb-2 text-sm font-semibold">Горячие клавиши</h2>
+        <h2 className="mb-2 text-sm font-semibold">{m.help}</h2>
         {shortcutGroups(readOnly, collaboration).map((group) => (
           <section key={group.title} aria-label={group.title} className="mb-3 last:mb-0">
             <h3 className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{group.title}</h3>

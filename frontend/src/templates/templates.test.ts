@@ -5,6 +5,7 @@ import { elementProperties } from '../diagram/elementProps.ts'
 import { ELEMENT_KEY, getElements, initializeDocument, LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
 import { TABLE_HEADER_HEIGHT } from '../diagram/shapes.ts'
 import { relationOf } from '../diagram/useCase.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { DiagramBuilder } from './builder.ts'
 import { BOARD_TEMPLATES, templatePage, type TemplateId } from './templates.ts'
 
@@ -179,5 +180,17 @@ describe('inserting a template', () => {
     ])
     const include = cells.find((cell) => cell.kind === 'edge' && cell.value === '«include»')!
     expect(include.style).toMatchObject({ dashed: true, endArrow: 'open', edgeStyle: 'none' })
+  })
+
+  it('names the template and labels its shapes in the language of the interface when the board is made', () => {
+    setLocale('en')
+    const page = templatePage(template('use-cases'))
+
+    expect(page.name).toBe('Use cases')
+    expect(template('er').description).toBe('Tables with fields and foreign key relationships')
+    expect(page.cells.map((cell) => cell.value)).toEqual(expect.arrayContaining(['Online store', 'Customer', 'Place an order']))
+    const oauth = templatePage(template('oauth-login')).cells
+    expect(oauth.some((cell) => cell.value === 'Sign-in with OAuth')).toBe(true)
+    expect(oauth.some((cell) => cell.value === 'Authorization server')).toBe(true)
   })
 })

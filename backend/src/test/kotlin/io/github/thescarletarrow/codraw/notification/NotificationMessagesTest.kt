@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.notification
 
 import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.user.Language
 import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.Instant
@@ -84,6 +85,27 @@ class NotificationMessagesTest {
 
         assertTrue(letter.text.contains("https://codraw.example.com/settings/notifications?confirm=abc_DEF-123"), letter.text)
         assertTrue(letter.text.contains("Ссылка действует 48 часов."), letter.text)
+    }
+
+    @Test
+    fun `speaks English to a user of the English interface`() {
+        assertEquals(
+            NotificationMessage("Аня: access request to “Схема БД”", "Asks to edit", "https://codraw.example.com/boards/$board?share=requests"),
+            messages.of(notification(NotificationKind.ACCESS_REQUEST, role = MemberRole.EDITOR), Language.EN),
+        )
+        assertEquals(
+            "Deleted user: ownership transfer of “Схема БД”",
+            messages.of(notification(NotificationKind.OWNERSHIP).copy(actor = null), Language.EN).title,
+        )
+
+        val letter = messages.email("bob@example.com", NotificationMessage("Аня: mention", null, "https://x"), NotificationEvent.MENTIONS, Language.EN)
+        assertTrue(letter.text.contains("letters about “Mentions” are on"), letter.text)
+        assertTrue(letter.text.contains("Open in CoDraw: https://x"), letter.text)
+
+        val confirmation = messages.confirmation("bob@example.com", "abc", Language.EN)
+        assertEquals("Confirm the address for CoDraw notifications", confirmation.subject)
+        assertTrue(confirmation.text.contains("The link is valid for 48 hours."), confirmation.text)
+        assertTrue(messages.chatTest(Language.EN).startsWith("CoDraw: notifications will come here."))
     }
 
     @Test

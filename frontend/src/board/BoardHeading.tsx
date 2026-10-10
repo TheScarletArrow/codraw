@@ -7,6 +7,7 @@ import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { BoardActions } from './BoardActions.tsx'
 import { useCopyBoard } from './copyBoard.ts'
 import { TitleInput } from './TitleInput.tsx'
+import { boardMessages as m } from './board.messages.ts'
 
 interface BoardHeadingProps {
   board: Board
@@ -79,7 +80,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
       {renaming ? (
         <TitleInput
           title={board.title}
-          label="Название доски"
+          label={m.boardTitle}
           className="w-64 font-semibold"
           onDone={(next) => {
             setRenaming(false)
@@ -90,7 +91,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
         <h2 className="min-w-24 font-semibold">
           <button
             type="button"
-            title="Переименовать доску"
+            title={m.renameBoard}
             className="max-w-full truncate rounded px-1 text-left hover:bg-accent"
             onClick={() => setRenaming(true)}
           >
@@ -100,7 +101,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
       )}
       <BoardActions
         title={board.title}
-        deleteLabel="Удалить доску"
+        deleteLabel={m.deleteBoard}
         disabled={remove.isPending || copy.pending}
         onRename={() => setRenaming(true)}
         onCopy={copy.copy}
@@ -110,7 +111,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
       />
       {(rename.isError || remove.isError || copy.error) && (
         <span role="alert" className="text-sm whitespace-nowrap text-destructive">
-          {rename.isError ? 'Не удалось переименовать' : remove.isError ? 'Не удалось удалить' : copy.error}
+          {rename.isError ? m.renameFailed : remove.isError ? m.deleteFailed : copy.error}
         </span>
       )}
     </div>

@@ -12,7 +12,8 @@ import {
   type Proposal,
 } from '../api/proposals.ts'
 import { timeAgo } from '../notifications/notifications.ts'
-import { isOpen, STATUS_LABELS } from './proposals.ts'
+import { proposalMessages as m } from './messages.ts'
+import { isOpen } from './proposals.ts'
 
 interface ProposalsPanelProps {
   boardId: string
@@ -36,11 +37,11 @@ export function ProposalsPanel({ boardId, proposals, failed, selectedId, onSelec
   const closed = proposals?.filter((proposal) => !isOpen(proposal)) ?? []
 
   return (
-    <aside aria-label="Предложения" className={cn(SIDE_PANEL_CLASS, 'w-72')}>
+    <aside aria-label={m.proposals} className={cn(SIDE_PANEL_CLASS, 'w-72')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <GitPullRequestArrow className="size-4 text-muted-foreground" />
-        <h3 className="flex-1 text-sm font-semibold">Предложения</h3>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть предложения" onClick={onClose}>
+        <h3 className="flex-1 text-sm font-semibold">{m.proposals}</h3>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.closeProposals} onClick={onClose}>
           <X />
         </Button>
       </div>
@@ -56,25 +57,24 @@ export function ProposalsPanel({ boardId, proposals, failed, selectedId, onSelec
           />
         ) : (
           <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setComposing(true)}>
-            Предложить изменения
+            {m.propose}
           </Button>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
-        {!proposals && !failed && <p className="p-2 text-sm text-muted-foreground">Загрузка…</p>}
+        {!proposals && !failed && <p className="p-2 text-sm text-muted-foreground">{m.loading}</p>}
         {failed && (
           <p role="alert" className="p-2 text-sm text-destructive">
-            Не удалось загрузить предложения
+            {m.loadFailed}
           </p>
         )}
         {proposals?.length === 0 && (
           <p className="p-2 text-sm text-muted-foreground">
-            Предложений пока нет. Правки предложения делаются в черновике и попадают на доску, когда их примут владелец
-            или редактор.
+            {m.empty}
           </p>
         )}
-        {open.length > 0 && <ProposalList name="Открытые" proposals={open} selectedId={selectedId} onSelect={onSelect} />}
-        {closed.length > 0 && <ProposalList name="Закрытые" proposals={closed} selectedId={selectedId} onSelect={onSelect} />}
+        {open.length > 0 && <ProposalList name={m.open} proposals={open} selectedId={selectedId} onSelect={onSelect} />}
+        {closed.length > 0 && <ProposalList name={m.closed} proposals={closed} selectedId={selectedId} onSelect={onSelect} />}
       </div>
     </aside>
   )
@@ -109,7 +109,7 @@ function ProposalList({
               <span className="truncate text-sm font-medium">{proposal.title}</span>{' '}
               <span className="text-xs text-muted-foreground">
                 {proposal.author.name} · <time dateTime={proposal.createdAt}>{timeAgo(proposal.createdAt)}</time>
-                {!isOpen(proposal) && ` · ${STATUS_LABELS[proposal.status]}`}
+                {!isOpen(proposal) && ` · ${m.statuses[proposal.status]}`}
               </span>
             </button>
           </li>
@@ -139,7 +139,7 @@ function ProposalForm({
 
   return (
     <form
-      aria-label="Новое предложение"
+      aria-label={m.newProposal}
       className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault()
@@ -147,8 +147,8 @@ function ProposalForm({
       }}
     >
       <input
-        aria-label="Название предложения"
-        placeholder="Что вы предлагаете"
+        aria-label={m.proposalTitle}
+        placeholder={m.titlePlaceholder}
         value={title}
         maxLength={PROPOSAL_TITLE_MAX_LENGTH}
         autoFocus
@@ -156,8 +156,8 @@ function ProposalForm({
         onChange={(event) => setTitle(event.target.value)}
       />
       <textarea
-        aria-label="Описание предложения"
-        placeholder="Зачем, если нужно"
+        aria-label={m.proposalDescription}
+        placeholder={m.descriptionPlaceholder}
         value={description}
         maxLength={PROPOSAL_TEXT_MAX_LENGTH}
         rows={3}
@@ -165,23 +165,23 @@ function ProposalForm({
         onChange={(event) => setDescription(event.target.value)}
       />
       <p className="text-xs text-muted-foreground">
-        Правки в черновике не попадают на доску, пока их не примут владелец или редактор.
+        {m.draftHint}
       </p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          Отмена
+          {m.cancel}
         </Button>
         <Button type="submit" size="sm" disabled={!title.trim() || create.isPending}>
-          Создать
+          {m.create}
         </Button>
       </div>
       {create.isError && (
         <p role="alert" className="text-sm text-destructive">
           {limit?.scope === 'author'
-            ? `Больше открытых предложений на этой доске нельзя: у вас их уже ${limit.limit}`
+            ? m.authorLimit(limit.limit)
             : limit
-              ? `Больше открытых предложений на доске нельзя: их уже ${limit.limit}`
-              : 'Не удалось создать предложение'}
+              ? m.boardLimit(limit.limit)
+              : m.createFailed}
         </p>
       )}
     </form>

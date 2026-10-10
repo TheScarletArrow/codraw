@@ -1,25 +1,23 @@
 import type { Decision, DecisionContent, DecisionElement, DecisionStatus } from '../api/decisions.ts'
 import type { StatusItem } from '../board/statusList.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 export const decisionsKey = (boardId: string) => ['decisions', boardId] as const
 
 /** The statuses in the order of the life of a decision. */
 export const DECISION_STATUSES: DecisionStatus[] = ['proposed', 'accepted', 'rejected', 'superseded']
 
-export const STATUS_LABELS: Record<DecisionStatus, string> = {
-  proposed: 'Предложено',
-  accepted: 'Принято',
-  rejected: 'Отклонено',
-  superseded: 'Заменено',
-}
+/** What the panel calls a status, in the language of the interface. */
+export const statusLabel = (status: DecisionStatus): string => m.statuses[status]
 
-/** The sections of a decision in the order of MADR, with what the panel calls them. */
-export const SECTIONS: [keyof Pick<DecisionContent, 'context' | 'options' | 'outcome' | 'consequences'>, string][] = [
-  ['context', 'Контекст'],
-  ['options', 'Рассмотренные варианты'],
-  ['outcome', 'Решение'],
-  ['consequences', 'Последствия'],
-]
+export type DecisionSection = keyof Pick<DecisionContent, 'context' | 'options' | 'outcome' | 'consequences'>
+
+/** The sections of a decision in the order of MADR. */
+export const SECTIONS: DecisionSection[] = ['context', 'options', 'outcome', 'consequences']
+
+/** What the panel calls a section, in the language of the interface. */
+export const sectionTitle = (section: DecisionSection): string => m.sections[section]
 
 /** The number of a decision as its file and the list name it: `ADR-0008`. */
 export const decisionCode = (number: number) => `ADR-${String(number).padStart(4, '0')}`
@@ -27,7 +25,7 @@ export const decisionCode = (number: number) => `ADR-${String(number).padStart(4
 /** The status as the list says it: a superseded decision names the decision that superseded it, while it is there. */
 export function statusText(decision: Pick<Decision, 'status' | 'supersededBy'>, decisions: readonly Decision[]): string {
   const successor = decision.supersededBy && decisions.find((other) => other.id === decision.supersededBy)
-  return successor ? `Заменено решением ${decisionCode(successor.number)}` : STATUS_LABELS[decision.status]
+  return successor ? m.supersededBy(decisionCode(successor.number)) : statusLabel(decision.status)
 }
 
 /** Which decisions the panel shows: all of them or those of one status. */
@@ -121,7 +119,7 @@ export function today(now = new Date()): string {
   return `${now.getFullYear()}-${month}-${day}`
 }
 
-export const decisionDateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeZone: 'UTC' })
+export const decisionDateFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeZone: 'UTC' }))
 
 /** A day `YYYY-MM-DD` as the list shows it: «9 окт. 2026 г.». */
-export const formatDay = (day: string) => decisionDateFormat.format(new Date(`${day}T00:00:00Z`))
+export const formatDay = (day: string) => decisionDateFormat().format(new Date(`${day}T00:00:00Z`))

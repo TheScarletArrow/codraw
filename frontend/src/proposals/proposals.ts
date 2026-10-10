@@ -1,4 +1,4 @@
-import type { Proposal, ProposalStatus } from '../api/proposals.ts'
+import type { Proposal } from '../api/proposals.ts'
 
 /** Query key of the proposals of a board that the user sees. */
 export const proposalsKey = (boardId: string) => ['boards', boardId, 'proposals'] as const
@@ -13,14 +13,6 @@ export const proposalBaseKey = (boardId: string, id: string) => ['boards', board
 export const PROPOSALS_POLL_INTERVAL = 30_000
 
 export const isOpen = (proposal: Proposal) => proposal.status === 'open'
-
-/** What became of a proposal, as the list and the review say it. */
-export const STATUS_LABELS: Record<ProposalStatus, string> = {
-  open: 'Открыто',
-  accepted: 'Принято',
-  declined: 'Отклонено',
-  withdrawn: 'Отозвано',
-}
 
 /** The address of the draft of a proposal. */
 export const draftPath = (boardId: string, id: string) =>

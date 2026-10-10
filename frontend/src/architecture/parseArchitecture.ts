@@ -1,7 +1,9 @@
 import type { ApiSource } from '../apiSpec/loadDocument.ts'
+import { documentMessages } from '../apiSpec/messages.ts'
 import { ArchitectureBuilder, ArchitectureSyntaxError, type ImportedArchitecture } from './importModel.ts'
 import { parseC4Macros } from './parseC4Macros.ts'
 import { parseStructurizr } from './parseStructurizr.ts'
+import { architectureMessages as m } from './messages.ts'
 
 /** The largest file read: architecture as code is text, a larger file is no description of architecture. */
 export const MAX_ARCHITECTURE_SIZE = 1024 * 1024
@@ -38,9 +40,7 @@ export function detectFormat({ name, text }: ApiSource): ArchitectureFormat {
   if (/^workspace\b/i.test(first)) return 'structurizr'
   if (/^@start/i.test(first)) return 'plantuml'
   if (C4_MERMAID.test(first)) return 'mermaid'
-  const notC4 = new ArchitectureFormatError(
-    'это Mermaid, но не C4 — блок-схемы, ER-диаграммы и диаграммы последовательности импортирует «Импорт Mermaid…»',
-  )
+  const notC4 = new ArchitectureFormatError(m.notC4Mermaid)
   if (OTHER_MERMAID.test(first)) throw notC4
   const type = extension(name)
   if (type === 'dsl') return 'structurizr'
@@ -50,9 +50,7 @@ export function detectFormat({ name, text }: ApiSource): ArchitectureFormat {
     return 'plantuml'
   }
   if (/^\s*(?:[\w.-]+\s*=\s*)?(person|softwareSystem|container|component)\s+\S/im.test(text) || /^\s*model\s*\{/im.test(text)) return 'structurizr'
-  throw new ArchitectureFormatError(
-    'не удалось узнать формат — ожидается workspace Structurizr DSL, @startuml с макросами C4-PlantUML или C4Context Mermaid C4',
-  )
+  throw new ArchitectureFormatError(m.unknownFormat)
 }
 
 /**
@@ -64,14 +62,14 @@ export function parseArchitectureFiles(sources: ApiSource[]): { model: ImportedA
   const errors: string[] = []
   for (const source of sources) {
     if ((source.size ?? source.text.length) > MAX_ARCHITECTURE_SIZE) {
-      errors.push(`${source.name}: файл больше ${MAX_ARCHITECTURE_SIZE / 1024 / 1024} МБ`)
+      errors.push(documentMessages.tooLarge(source.name, MAX_ARCHITECTURE_SIZE / 1024 / 1024))
       continue
     }
     try {
       const format = detectFormat(source)
       if (format === 'structurizr') parseStructurizr(source, builder)
       else parseC4Macros(source, builder)
-      if (builder.declarations(source.name) === 0) errors.push(`${source.name}: нет элементов C4`)
+      if (builder.declarations(source.name) === 0) errors.push(m.noElements(source.name))
     } catch (error) {
       if (!(error instanceof ArchitectureSyntaxError || error instanceof ArchitectureFormatError)) throw error
       errors.push(`${source.name}: ${error.message}`)

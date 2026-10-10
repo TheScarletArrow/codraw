@@ -3,6 +3,8 @@ package io.github.thescarletarrow.codraw.notification
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.DeliveryResult
 import io.github.thescarletarrow.codraw.board.BoardRepository
+import io.github.thescarletarrow.codraw.user.Language
+import io.github.thescarletarrow.codraw.user.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -26,6 +28,7 @@ class NotificationDelivery(
     private val channels: NotificationChannels,
     private val service: NotificationService,
     private val messages: NotificationMessages,
+    private val users: UserRepository,
     private val email: EmailTransport,
     private val webhooks: WebhookSender,
     private val properties: NotificationProperties,
@@ -92,10 +95,12 @@ class NotificationDelivery(
             metrics.notificationDelivery(tag, DeliveryResult.SKIPPED)
             return
         }
-        val message = messages.of(notification)
+        // In the language the recipient uses CoDraw in now, not in the one of the moment of the notification.
+        val language = users.findById(stored.userId)?.language ?: Language.RU
+        val message = messages.of(notification, language)
         try {
             when (channel.kind) {
-                ChannelKind.EMAIL -> email.send(messages.email(channel.address, message, event))
+                ChannelKind.EMAIL -> email.send(messages.email(channel.address, message, event, language))
                 ChannelKind.WEBHOOK -> webhooks.send(channel.address, messages.chat(message))
             }
         } catch (exception: DeliveryException) {

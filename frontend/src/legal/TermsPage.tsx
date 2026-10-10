@@ -1,79 +1,17 @@
-import { Link } from 'react-router'
-import { LegalPage, Operator } from './LegalPage.tsx'
+import { locale } from '../i18n/i18n.ts'
+import { LegalPage } from './LegalPage.tsx'
+import { legalMessages as m } from './messages.ts'
+import { TermsEn } from './TermsPage.en.tsx'
+import { TermsRu } from './TermsPage.ru.tsx'
 
-/** The rules of using this installation of CoDraw. */
+/** The day the terms were last changed. */
+const TERMS_UPDATED = '2026-10-09'
+
+/** The rules of using this installation of CoDraw, in the language of the interface. */
 export function TermsPage() {
   return (
-    <LegalPage title="Условия использования" other={{ to: '/privacy', title: 'Политика конфиденциальности' }}>
-      {(legal) => (
-        <>
-          <section aria-labelledby="terms-service">
-            <h2 id="terms-service">Сервис</h2>
-            <p className="mt-2">
-              CoDraw — редактор диаграмм, в котором несколько человек работают над одной доской одновременно. Входя через
-              GitHub или Google или продолжая без входа, вы принимаете эти условия и{' '}
-              <Link to="/privacy" className="underline">
-                политику конфиденциальности
-              </Link>
-              .
-            </p>
-            <div className="mt-2">
-              <Operator legal={legal} />
-            </div>
-          </section>
-
-          <section aria-labelledby="terms-account">
-            <h2 id="terms-account">Учётная запись</h2>
-            <p className="mt-2">
-              За доступ к своей учётной записи GitHub или Google отвечаете вы. Гость работает в своём браузере: если
-              очистить cookie, не войдя, его доски станут ему недоступны; войдя, гость переносит доски и комментарии в
-              учётную запись.
-            </p>
-          </section>
-
-          <section aria-labelledby="terms-content">
-            <h2 id="terms-content">Содержимое досок</h2>
-            <p className="mt-2">
-              Содержимое досок принадлежит их авторам. Оператор хранит и показывает его только затем, чтобы сервис
-              работал. Доступ к доске по ссылке получает любой, у кого есть ссылка, — в режиме «Просмотр» или
-              «Редактирование», как выберет владелец; режим «Все, у кого есть ссылка, без входа» открывает доску для
-              просмотра и без входа, в том числе на чужих сайтах, куда её встроили, а режим «Только я» закрывает доску. Правки и комментарии участников
-              доски видят все её участники, комментировать могут и участники в режиме «Просмотр». Владелец может вернуть
-              доску к прежней версии и удалить любой комментарий на ней. «Живая картинка» страницы, которую включает
-              владелец, открыта всем, у кого есть её ссылка, независимо от доступа к доске.
-            </p>
-          </section>
-
-          <section aria-labelledby="terms-rules">
-            <h2 id="terms-rules">Чего делать нельзя</h2>
-            <ul>
-              <li>размещать незаконное содержимое и данные других людей без права на это;</li>
-              <li>загружать вредоносный код и пытаться получить доступ к чужим доскам и учётным записям;</li>
-              <li>обходить пределы сервиса и создавать нагрузку, мешающую другим пользователям.</li>
-            </ul>
-            <p className="mt-2">Оператор может удалить содержимое и учётные записи, нарушающие эти условия.</p>
-          </section>
-
-          <section aria-labelledby="terms-limits">
-            <h2 id="terms-limits">Пределы и гарантии</h2>
-            <p className="mt-2">
-              У сервиса есть пределы: число досок пользователя, размер доски, число комментариев на доске, число новых
-              гостей с одного адреса. Сервис
-              предоставляется «как есть»: оператор старается, чтобы он работал без перерывов и сохранял данные, но не
-              обещает этого. Храните копии важных схем — их можно выгрузить в <code>.drawio</code>, PNG или SVG.
-              Ответственность оператора ограничена тем, что допускает закон.
-            </p>
-          </section>
-
-          <section aria-labelledby="terms-changes">
-            <h2 id="terms-changes">Изменения условий</h2>
-            <p className="mt-2">
-              Условия могут меняться; дата вверху показывает, когда они изменились. Продолжая пользоваться сервисом после
-              изменения, вы принимаете новые условия. Вопросы об условиях — оператору сервиса.
-            </p>
-          </section>
-        </>
-      )}
+    <LegalPage title={m.terms} updated={TERMS_UPDATED} other={{ to: '/privacy', title: m.privacy }}>
+      {(legal) => (locale() === 'en' ? <TermsEn legal={legal} /> : <TermsRu legal={legal} />)}
     </LegalPage>
   )
 }

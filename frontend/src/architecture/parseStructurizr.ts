@@ -1,6 +1,7 @@
 import type { ApiSource } from '../apiSpec/loadDocument.ts'
 import type { C4Kind } from '../diagram/elementKinds.ts'
 import { ArchitectureSyntaxError, readTags, webLink, type ArchitectureBuilder, type Place, type RelationDeclaration } from './importModel.ts'
+import { architectureMessages as m } from './messages.ts'
 
 /**
  * Structurizr DSL as an import of architecture reads it: the model of a workspace — people, software systems,
@@ -17,7 +18,7 @@ interface Token {
 /** A line of the DSL: its words, and whether it opens a block; `}` closes one. */
 type Statement = { line: number; close: true } | { line: number; close?: false; tokens: Token[]; opens: boolean }
 
-const syntaxError = (line: number, message: string) => new ArchitectureSyntaxError(`строка ${line} — ${message}`)
+const syntaxError = (line: number, message: string) => new ArchitectureSyntaxError(m.syntaxAt(line, message))
 
 /** The words of a line: strings in quotes with `\"` and `\\` in them, `"""` text blocks, and words between spaces. */
 function tokenize(text: string, line: number): Token[] {
@@ -29,7 +30,7 @@ function tokenize(text: string, line: number): Token[] {
       at += 1
     } else if (text.startsWith('"""', at)) {
       const end = text.indexOf('"""', at + 3)
-      if (end < 0) throw syntaxError(line, 'не закрыта кавычка')
+      if (end < 0) throw syntaxError(line, m.unclosedQuote)
       tokens.push({ text: dedent(text.slice(at + 3, end)), quoted: true })
       at = end + 3
     } else if (char === '"') {
@@ -48,7 +49,7 @@ function tokenize(text: string, line: number): Token[] {
           value += next
         }
       }
-      if (!closed) throw syntaxError(line, 'не закрыта кавычка')
+      if (!closed) throw syntaxError(line, m.unclosedQuote)
       tokens.push({ text: value, quoted: true })
     } else {
       let end = at
@@ -83,7 +84,7 @@ function statements(text: string): Statement[] {
     if (trimmed.startsWith('/*')) {
       let end = trimmed.indexOf('*/', 2)
       while (end < 0 && index + 1 < lines.length) end = lines[++index]!.indexOf('*/')
-      if (end < 0) throw syntaxError(line, 'не закрыт комментарий')
+      if (end < 0) throw syntaxError(line, m.unclosedComment)
       continue
     }
     if (trimmed === '' || trimmed.startsWith('#') || trimmed.startsWith('//')) continue
@@ -94,17 +95,17 @@ function statements(text: string): Statement[] {
     if (tokens.length === 0) continue
     const braces = tokens.filter((token) => !token.quoted && (token.text === '{' || token.text === '}'))
     if (tokens.length === 1 && braces.length === 1 && tokens[0]!.text === '}') {
-      if (open.pop() === undefined) throw syntaxError(line, 'лишняя }')
+      if (open.pop() === undefined) throw syntaxError(line, m.extraBrace)
       result.push({ line, close: true })
       continue
     }
-    if (braces.some((token) => token.text === '}')) throw syntaxError(line, '} должна быть одна на строке')
+    if (braces.some((token) => token.text === '}')) throw syntaxError(line, m.closingBraceAlone)
     const opens = braces.length > 0
-    if (braces.length > 1 || (opens && tokens.at(-1) !== braces[0])) throw syntaxError(line, '{ должна быть последней на строке')
+    if (braces.length > 1 || (opens && tokens.at(-1) !== braces[0])) throw syntaxError(line, m.openingBraceLast)
     if (opens) open.push(line)
     result.push({ line, tokens: opens ? tokens.slice(0, -1) : tokens, opens })
   }
-  if (open.length > 0) throw new ArchitectureSyntaxError(`не закрыт блок, открытый в строке ${open[0]}`)
+  if (open.length > 0) throw new ArchitectureSyntaxError(m.unclosedBlock(open[0]!))
   return result
 }
 
@@ -193,12 +194,12 @@ export function parseStructurizr({ name: file, text }: ApiSource, builder: Archi
     const target = words[arrow + 1]?.text ?? ''
     const [description = '', technology = ''] = words.slice(arrow + 2).map((token) => token.text)
     if (arrow > 1 || !target) {
-      builder.warn(place(line), 'не поддерживается: отношение без источника или цели')
+      builder.warn(place(line), m.relationWithoutEnds)
       return null
     }
     const self = (name: string) => name.toLowerCase() === 'this'
     if ((self(sourceName) || self(target)) && !area.element) {
-      builder.warn(place(line), 'this вне элемента: отношение пропущено')
+      builder.warn(place(line), m.thisOutside)
       return null
     }
     const own = area.element?.key ?? ''
@@ -229,7 +230,7 @@ export function parseStructurizr({ name: file, text }: ApiSource, builder: Archi
       const relation = area.relation!
       if (keyword === 'description') relation.description = args[0] ?? ''
       else if (keyword === 'technology') relation.technology = args[0] ?? ''
-      else if (!['tags', 'url', 'properties', 'perspectives', 'interactionstyle'].includes(keyword)) warn(`не поддерживается: ${rest[0]?.text ?? ''}`)
+      else if (!['tags', 'url', 'properties', 'perspectives', 'interactionstyle'].includes(keyword)) warn(m.unsupported(rest[0]?.text ?? ''))
       return null
     }
     // Directives and blocks the import leaves out, in every area.
@@ -243,26 +244,26 @@ export function parseStructurizr({ name: file, text }: ApiSource, builder: Archi
     }
     if (keyword === '!impliedrelationships') return null
     if (INCLUDES.has(keyword)) {
-      warn(keyword === '!include' ? `!include ${args[0] ?? ''} не выполняется: откройте этот файл вместе с остальными` : `${keyword} не выполняется`)
+      warn(keyword === '!include' ? m.includeSkipped(`!include ${args[0] ?? ''}`) : m.notRun(keyword))
       return null
     }
     if (keyword === '!docs' || keyword === '!adrs') {
-      warn('документация и решения (!docs, !adrs) не переносятся')
+      warn(m.docs)
       return null
     }
     if (QUIET_BLOCKS.has(keyword) || keyword === 'name' || (area.kind !== 'element' && keyword === 'description')) return null
 
     if (area.kind === 'root') {
       if (keyword === 'workspace') {
-        if (args[0]?.toLowerCase() === 'extends') warn(`базовое пространство ${args[1] ?? ''} не загружается: откройте его вместе с этим файлом`)
+        if (args[0]?.toLowerCase() === 'extends') warn(m.extends(args[1] ?? ''))
         return { kind: 'workspace', parent: null, element: null }
       }
-      warn(`не поддерживается: ${rest[0]?.text ?? ''}`)
+      warn(m.unsupported(rest[0]?.text ?? ''))
       return null
     }
     if (area.kind === 'workspace') {
       if (keyword === 'model') return { kind: 'model', parent: null, element: null }
-      warn(`не поддерживается: ${rest[0]?.text ?? ''}`)
+      warn(m.unsupported(rest[0]?.text ?? ''))
       return null
     }
     if (rest.some((token) => !token.quoted && (token.text === '->' || token.text === '-/>'))) return relationship(area, rest, line)
@@ -292,20 +293,20 @@ export function parseStructurizr({ name: file, text }: ApiSource, builder: Archi
     if (keyword === '!element' || keyword === '!extend' || keyword === '!ref') {
       const key = resolver(enclosing())(args[0] ?? '')
       if (key && builder.node(key)?.type === 'element') return { kind: 'element', parent: key, element: { key, path: (args[0] ?? '').toLowerCase() } }
-      if (key !== undefined) warn(`нет элемента ${args[0] ?? ''}: блок пропущен`)
+      if (key !== undefined) warn(m.blockSkipped(args[0] ?? ''))
       return null
     }
     if (keyword === 'element') {
       if (identifier) skipped.add(identifier.toLowerCase())
-      warn('элементы произвольного вида (element) не переносятся')
+      warn(m.customElements)
       return null
     }
     if (DEPLOYMENT.has(keyword)) {
       if (identifier) skipped.add(identifier.toLowerCase())
-      warn(keyword === 'deploymentenvironment' ? `развёртывание «${args[0] ?? ''}» не переносится` : `развёртывание не переносится: ${rest[0]!.text}`)
+      warn(keyword === 'deploymentenvironment' ? m.deploymentEnvironment(args[0] ?? '') : m.deployment(rest[0]!.text))
       return null
     }
-    warn(`не поддерживается: ${rest[0]?.text ?? ''}`)
+    warn(m.unsupported(rest[0]?.text ?? ''))
     return null
   }
 

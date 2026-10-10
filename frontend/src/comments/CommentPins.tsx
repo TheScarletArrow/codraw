@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { moveThread, type CommentThread, type ThreadPoint } from '../api/comments.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import type { ThreadDraft } from './CommentsPanel.tsx'
+import { commentsMessages as m } from './messages.ts'
 import { isOpen, threadsAtPoints, type ThreadAtPoint } from './threads.ts'
 import { useCommentChange } from './useComments.ts'
 
@@ -139,9 +140,9 @@ export function CommentPins({
             type="button"
             data-testid="comment-pin"
             data-thread={thread.id}
-            aria-label={open ? `Комментарии в точке: ${count}` : `Комментарии в точке (решено): ${count}`}
+            aria-label={open ? m.pinComments(count) : m.pinCommentsResolved(count)}
             aria-current={thread.id === focusedThreadId || undefined}
-            title={first ? `${first.author?.name ?? 'Удалённый пользователь'}: ${excerpt(first.body)}` : undefined}
+            title={first ? `${first.author?.name ?? m.deletedUser}: ${excerpt(first.body)}` : undefined}
             className={cn(
               'pointer-events-auto absolute flex items-center justify-center rounded-full rounded-bl-none px-1 text-xs font-semibold shadow-sm',
               open
@@ -175,7 +176,7 @@ function DraftPin({ at }: { at: { x: number; y: number } }) {
     <span
       role="img"
       data-testid="comment-draft-pin"
-      aria-label="Новая ветка здесь"
+      aria-label={m.newThreadHere}
       className="absolute flex items-center justify-center rounded-full rounded-bl-none bg-primary text-primary-foreground shadow-sm"
       style={{ left: at.x, top: at.y - PIN_SIZE, width: PIN_SIZE, height: PIN_SIZE }}
     >

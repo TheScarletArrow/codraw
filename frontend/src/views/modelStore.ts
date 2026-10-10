@@ -3,6 +3,7 @@ import { buildModel, type BoardModel, type ModelElement } from '../diagram/board
 import { kindLabel } from '../diagram/elementProps.ts'
 import { isEdgeKey, itemElement } from '../diagram/modelViews.ts'
 import { documentStore, type DocumentStore } from '../elements/elementList.ts'
+import { viewMessages as m } from './messages.ts'
 
 const stores = new WeakMap<Y.Doc, DocumentStore<BoardModel>>()
 
@@ -21,12 +22,12 @@ export function modelStore(doc: Y.Doc): DocumentStore<BoardModel> {
 }
 
 /** «Магазин» or «Без имени». */
-export const elementName = (element: ModelElement | undefined) => element?.properties.name || 'Без имени'
+export const elementName = (element: ModelElement | undefined) => element?.properties.name || m.unnamed
 
 /** «Container · Kotlin»: the kind and the technology of an element. */
 export function elementDetails(element: ModelElement): string {
   const { kind, technology } = element.properties
-  const what = element.level === 'node' ? 'Узел развёртывания' : kind ? kindLabel(kind) : ''
+  const what = element.level === 'node' ? m.deploymentNode : kind ? kindLabel(kind) : ''
   return [what, technology].filter(Boolean).join(' · ')
 }
 

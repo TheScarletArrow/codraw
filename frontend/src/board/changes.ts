@@ -34,27 +34,13 @@ import {
   PARTICIPANT_KIND_KEY,
   sequencePartOf,
   TO_KEY,
-  type SequencePart,
 } from '../diagram/sequence.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
 import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
+import { changeMessages as m } from './changes.messages.ts'
 
-/** What a change is, as the list and the marks say it. */
-export const CHANGE_LABELS: Record<ChangeType, string> = {
-  added: 'Добавлено',
-  changed: 'Изменено',
-  removed: 'Удалено',
-}
-
-/** What happened to a page, as its tab says it. */
-export const PAGE_CHANGE_LABELS: Record<ChangeType, string> = {
-  added: 'Страница добавлена',
-  changed: 'Страница изменена',
-  removed: 'Страница удалена',
-}
-
-/** What an item of an element in conflict says: it changed on the board too since the proposal was made. */
-export const CONFLICT_LABEL = 'Изменено на доске после предложения'
+/** A word for what changed in an element. */
+type Word = Exclude<keyof typeof m.words, 'status'>
 
 /** A change of an element as the list shows it. */
 export interface ChangeItem {
@@ -114,16 +100,6 @@ export function countConflicts(diff: BoardDiff, conflicts: MergeConflicts): numb
   )
 }
 
-/** What the parts of a sequence diagram are, as the list says it. */
-const SEQUENCE_PARTS: Record<SequencePart, string> = {
-  participant: 'Участник',
-  message: 'Сообщение',
-  note: 'Заметка',
-  frame: 'Рамка',
-  else: 'Ветка',
-  end: 'Конец рамки',
-}
-
 /** Kinds of the cells of one state of a page; groups are told by their children. */
 class Kinds {
   private readonly cells: Map<string, CellSnapshot>
@@ -145,83 +121,84 @@ class Kinds {
   }
 
   of(cell: CellSnapshot): string {
-    if (cell.kind === 'edge') return isFreehandStyle(cell.style) ? 'Линия от руки' : 'Связь'
-    if (this.isTableRow(cell)) return isTableIndexStyle(cell.style) ? 'Индекс' : 'Поле'
-    if (isTableStyle(cell.style)) return 'Таблица'
-    if (this.isSequencePart(cell)) return SEQUENCE_PARTS[sequencePartOf(cell.style)!]
-    if (isSequenceStyle(cell.style)) return 'Диаграмма последовательности'
+    const kinds = m.kinds
+    if (cell.kind === 'edge') return isFreehandStyle(cell.style) ? kinds.freehand : kinds.connector
+    if (this.isTableRow(cell)) return isTableIndexStyle(cell.style) ? kinds.index : kinds.field
+    if (isTableStyle(cell.style)) return kinds.table
+    if (this.isSequencePart(cell)) return m.sequenceParts[sequencePartOf(cell.style)!]
+    if (isSequenceStyle(cell.style)) return kinds.sequenceDiagram
     // A group of draw.io and CoDraw: a container without a fill and a border.
-    if (this.parents.has(cell.id) && cell.style.fillColor === 'none' && cell.style.strokeColor === 'none') return 'Группа'
-    if (isImageStyle(cell.style)) return 'Изображение'
-    return shapeOf(cell.style)?.label ?? 'Фигура'
+    if (this.parents.has(cell.id) && cell.style.fillColor === 'none' && cell.style.strokeColor === 'none') return kinds.group
+    if (isImageStyle(cell.style)) return kinds.image
+    return shapeOf(cell.style)?.label ?? kinds.shape
   }
 }
 
-/** Words for the style keys that CoDraw sets; other keys are «стиль». */
-const STYLE_WORDS: Record<string, string> = {
-  image: 'изображение',
-  fillColor: 'заливка',
-  gradientColor: 'заливка',
-  swimlaneFillColor: 'заливка',
-  strokeColor: 'цвет линии',
-  fontColor: 'цвет текста',
-  strokeWidth: 'линия',
-  dashed: 'линия',
-  dashPattern: 'линия',
-  edgeStyle: 'форма связи',
-  curved: 'форма связи',
-  startArrow: 'маркеры',
-  endArrow: 'маркеры',
-  startFill: 'маркеры',
-  endFill: 'маркеры',
-  startSize: 'маркеры',
-  endSize: 'маркеры',
-  fontSize: 'размер текста',
-  fontFamily: 'шрифт',
-  fontStyle: 'начертание',
-  align: 'выравнивание текста',
-  verticalAlign: 'выравнивание текста',
-  whiteSpace: 'перенос текста',
-  autosize: 'автоширина',
-  shape: 'форма',
-  codrawShape: 'форма',
-  rounded: 'форма',
-  arcSize: 'форма',
-  dbVendor: 'СУБД',
-  codrawBase: 'базовая таблица',
-  codrawBaseDefault: 'базовая таблица',
-  codrawBaseTable: 'базовая таблица',
-  codrawInherited: 'базовая таблица',
-  codrawIndex: 'индекс',
-  [LOCKED_KEY]: 'закрепление',
-  [LOCKED_BY_KEY]: 'закрепление',
-  [LINK_KEY]: 'ссылка',
-  [EDGE_API_KEY]: 'описание API',
-  [SHOW_TECHNOLOGY_KEY]: 'технология на схеме',
+/** Words for the style keys that CoDraw sets; other keys are the style. */
+const STYLE_WORDS: Record<string, Word> = {
+  image: 'image',
+  fillColor: 'fill',
+  gradientColor: 'fill',
+  swimlaneFillColor: 'fill',
+  strokeColor: 'lineColor',
+  fontColor: 'textColor',
+  strokeWidth: 'line',
+  dashed: 'line',
+  dashPattern: 'line',
+  edgeStyle: 'connectorShape',
+  curved: 'connectorShape',
+  startArrow: 'markers',
+  endArrow: 'markers',
+  startFill: 'markers',
+  endFill: 'markers',
+  startSize: 'markers',
+  endSize: 'markers',
+  fontSize: 'textSize',
+  fontFamily: 'font',
+  fontStyle: 'fontStyle',
+  align: 'textAlignment',
+  verticalAlign: 'textAlignment',
+  whiteSpace: 'textWrapping',
+  autosize: 'autoWidth',
+  shape: 'shape',
+  codrawShape: 'shape',
+  rounded: 'shape',
+  arcSize: 'shape',
+  dbVendor: 'dbms',
+  codrawBase: 'baseTable',
+  codrawBaseDefault: 'baseTable',
+  codrawBaseTable: 'baseTable',
+  codrawInherited: 'baseTable',
+  codrawIndex: 'index',
+  [LOCKED_KEY]: 'lock',
+  [LOCKED_BY_KEY]: 'lock',
+  [LINK_KEY]: 'link',
+  [EDGE_API_KEY]: 'apiDescription',
+  [SHOW_TECHNOLOGY_KEY]: 'technologyShown',
   // The properties of an edge; those of a shape are said by what changed in them (see {@link propertyWords}).
-  [ELEMENT_STYLE_KEYS.technology]: 'технология',
-  [INTERACTION_KEY]: 'вид связи',
-  [PART_KEY]: 'вид',
-  [PARTICIPANT_KEY]: 'участник',
-  [PARTICIPANT_KIND_KEY]: 'вид участника',
-  [FROM_KEY]: 'участники',
-  [TO_KEY]: 'участники',
-  [ARROW_KEY]: 'вид сообщения',
-  [ACTIVATE_KEY]: 'активация',
-  [DEACTIVATE_KEY]: 'активация',
-  [NOTE_KEY]: 'положение заметки',
-  [FRAME_KEY]: 'вид рамки',
-  [NUMBERS_KEY]: 'нумерация',
+  [ELEMENT_STYLE_KEYS.technology]: 'technology',
+  [INTERACTION_KEY]: 'interaction',
+  [PART_KEY]: 'kind',
+  [PARTICIPANT_KEY]: 'participant',
+  [PARTICIPANT_KIND_KEY]: 'participantKind',
+  [FROM_KEY]: 'participants',
+  [TO_KEY]: 'participants',
+  [ARROW_KEY]: 'messageKind',
+  [ACTIVATE_KEY]: 'activation',
+  [DEACTIVATE_KEY]: 'activation',
+  [NOTE_KEY]: 'notePosition',
+  [FRAME_KEY]: 'frameKind',
+  [NUMBERS_KEY]: 'numbering',
 }
 
 /** Words for the properties of an element of a shape. */
-const PROPERTY_WORDS: Readonly<Record<keyof ElementProperties, string>> = {
-  name: 'имя',
-  kind: 'тип',
-  technology: 'технология',
-  description: 'описание',
-  owner: 'владелец',
-  tags: 'теги',
+const PROPERTY_WORDS: Readonly<Record<keyof ElementProperties, Word>> = {
+  name: 'name',
+  kind: 'type',
+  technology: 'technology',
+  description: 'description',
+  owner: 'owner',
+  tags: 'tags',
 }
 
 /**
@@ -233,19 +210,19 @@ function propertyWords(before: CellSnapshot, after: CellSnapshot): string[] {
   const later = elementProperties(after.style, after.value)
   return (Object.keys(PROPERTY_WORDS) as (keyof ElementProperties)[])
     .filter((field) => JSON.stringify(earlier[field]) !== JSON.stringify(later[field]))
-    .map((field) => PROPERTY_WORDS[field])
+    .map((field) => m.words[PROPERTY_WORDS[field]])
 }
 
-const GEOMETRY_WORDS: Record<string, string> = {
-  x: 'положение',
-  y: 'положение',
-  relative: 'положение',
-  width: 'размер',
-  height: 'размер',
-  points: 'изломы',
-  offset: 'положение подписи',
-  sourcePoint: 'начало',
-  targetPoint: 'конец',
+const GEOMETRY_WORDS: Record<string, Word> = {
+  x: 'position',
+  y: 'position',
+  relative: 'position',
+  width: 'size',
+  height: 'size',
+  points: 'bends',
+  offset: 'labelPosition',
+  sourcePoint: 'start',
+  targetPoint: 'end',
 }
 
 /**
@@ -261,34 +238,37 @@ function changeDetails(change: Extract<CellDiff, { type: 'changed' }>, kinds: Ki
   const status = cell.extra[STATUS_KEY]
   const fieldWord = (field: string): string => {
     // The status and the mark of who set it are one change, said by the status the element has now.
-    if (STATUS_KEYS.includes(field)) return isElementStatus(status) ? `статус «${STATUS_LABELS[status]}»` : 'статус снят'
+    if (STATUS_KEYS.includes(field)) return isElementStatus(status) ? m.words.status(STATUS_LABELS[status]) : m.words.statusRemoved
+    return m.words[fieldWordOf(field)]
+  }
+  const fieldWordOf = (field: string): Word => {
     switch (field) {
       case 'value':
-        return row || part ? 'текст' : isTableStyle(cell.style) || isSequenceStyle(cell.style) ? 'название' : 'подпись'
+        return row || part ? 'text' : isTableStyle(cell.style) || isSequenceStyle(cell.style) ? 'title' : 'label'
       case 'parent':
-        return row ? 'таблица' : part ? 'диаграмма' : 'группа'
+        return row ? 'table' : part ? 'diagram' : 'group'
       case 'source':
-        return 'начало'
+        return 'start'
       case 'target':
-        return 'конец'
+        return 'end'
       case 'order':
-        return 'порядок'
+        return 'order'
       case 'kind':
-        return 'вид'
+        return 'kind'
       default:
-        return 'свойства'
+        return 'properties'
     }
   }
   // A line drawn by hand moves with its ends and bends together.
-  const geometryWord = (key: string) => (isFreehandStyle(cell.style) ? 'положение' : (GEOMETRY_WORDS[key] ?? 'положение'))
+  const geometryWord = (key: string) => m.words[isFreehandStyle(cell.style) ? 'position' : (GEOMETRY_WORDS[key] ?? 'position')]
   // The properties of the element of a shape, and the element that keeps them, are said by what changed in them.
   const ofElement = (key: string) => cell.kind === 'vertex' && (key === ELEMENT_KEY || isElementStyleKey(key))
   const words = [
     ...fields.map(fieldWord),
     ...geometry.map(geometryWord),
-    ...style.filter((key) => !ofElement(key)).map((key) => STYLE_WORDS[key] ?? 'стиль'),
+    ...style.filter((key) => !ofElement(key)).map((key) => m.words[STYLE_WORDS[key] ?? 'style']),
     ...(style.some(ofElement) ? propertyWords(change.before, cell) : []),
-    ...attrs.map(() => 'свойства'),
+    ...attrs.map(() => m.words.properties),
   ]
   return [...new Set(words)]
 }

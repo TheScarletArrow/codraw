@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { reportVisit, startVisit, type ChangesSinceVisit } from '../api/visits.ts'
 import type { VersionAuthor } from '../api/versions.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { changeMessages as m } from './changes.messages.ts'
 
 /** How often a page in sight tells that the user is on the board; the backend waits twice as long before it doubts it. */
 export const VISIT_REPORT_INTERVAL_MS = 60_000
@@ -69,14 +71,14 @@ const NAMED_AUTHORS = 3
 export function authorNames(authors: VersionAuthor[]): string {
   const names = authors.map((author) => author.name)
   if (names.length > NAMED_AUTHORS) {
-    return `${names.slice(0, NAMED_AUTHORS).join(', ')} и ещё ${names.length - NAMED_AUTHORS}`
+    return m.andMore(names.slice(0, NAMED_AUTHORS).join(', '), names.length - NAMED_AUTHORS)
   }
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} и ${names.at(-1)}` : (names[0] ?? '')
+  return names.length > 1 ? m.and(names.slice(0, -1).join(', '), names.at(-1)!) : (names[0] ?? '')
 }
 
-const timeFormat = new Intl.DateTimeFormat('ru-RU', { hour: 'numeric', minute: '2-digit' })
-const dayFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
-const dateFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+const timeFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { hour: 'numeric', minute: '2-digit' }))
+const dayFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long' }))
+const dateFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long', year: 'numeric' }))
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -84,10 +86,10 @@ const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(),
 
 /** When a visit ended, by the calendar of the user: «сегодня в 9:15», «вчера в 18:40», «3 октября в 18:40». */
 export function visitTime(at: Date, now = new Date()): string {
-  const time = timeFormat.format(at)
+  const time = timeFormat().format(at)
   // Rounding the difference of two midnights keeps a day a day across a change of the clock.
   const days = Math.round((startOfDay(now) - startOfDay(at)) / DAY_MS)
-  if (days === 0) return `сегодня в ${time}`
-  if (days === 1) return `вчера в ${time}`
-  return `${(at.getFullYear() === now.getFullYear() ? dayFormat : dateFormat).format(at)} в ${time}`
+  if (days === 0) return m.today(time)
+  if (days === 1) return m.yesterday(time)
+  return m.onDay((at.getFullYear() === now.getFullYear() ? dayFormat : dateFormat)().format(at), time)
 }

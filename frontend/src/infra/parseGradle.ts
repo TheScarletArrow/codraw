@@ -1,4 +1,6 @@
 import { ApiSpecError, MAX_DOCUMENT_SIZE, type ApiSource } from '../apiSpec/loadDocument.ts'
+import { documentMessages } from '../apiSpec/messages.ts'
+import { infraMessages } from './messages.tsx'
 
 /** A dependency of a project on another, in a configuration such as `implementation`. */
 export interface GradleDependency {
@@ -47,8 +49,8 @@ const merge = (projects: GradleProject[]): GradleProject[] => {
 
 /** The projects of a graph printed by `codraw.gradle`. Throws {@link ApiSpecError} for anything else. */
 export function parseGradleGraph({ name, text, size }: ApiSource): GradleProject[] {
-  if ((size ?? text.length) > MAX_DOCUMENT_SIZE) throw new ApiSpecError(`${name}: файл больше ${MAX_DOCUMENT_SIZE / 1024 / 1024} МБ`)
-  const refuse = () => new ApiSpecError(`${name}: это не граф модулей из codraw.gradle — выполните ${GRADLE_COMMAND}`)
+  if ((size ?? text.length) > MAX_DOCUMENT_SIZE) throw new ApiSpecError(documentMessages.tooLarge(name, MAX_DOCUMENT_SIZE / 1024 / 1024))
+  const refuse = () => new ApiSpecError(infraMessages.gradle.notGraph(name, GRADLE_COMMAND))
   let value: unknown
   try {
     // Gradle may print a line of its own before the graph, e.g. a warning: the graph is the last line that is JSON.
@@ -260,7 +262,7 @@ export function parseGradleFolder(files: FolderFile[]): GradleBuild {
     .filter((file) => SETTINGS_FILES.includes(nameOf(file.path)))
     .sort((a, b) => a.path.split('/').length - b.path.split('/').length || SETTINGS_FILES.indexOf(nameOf(a.path)) - SETTINGS_FILES.indexOf(nameOf(b.path)))[0]
   if (!settings) {
-    throw new ApiSpecError('В папке нет settings.gradle или settings.gradle.kts — выберите корень сборки или откройте граф из скрипта codraw.gradle')
+    throw new ApiSpecError(infraMessages.gradle.noSettings)
   }
   const root = folderOf(settings.path)
   const text = withoutComments(settings.text)

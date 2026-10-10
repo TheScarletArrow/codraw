@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { refreshIssueLinks, takeOverIssueLink, unlinkIssue, type IssueLink } from '../api/issues.ts'
 import { issueErrorMessage, issueLinksKey, issueReference, isWebUrl, stateLabel, staleLinks, syncProblem } from './issues.ts'
 import { useIssueLinkChange } from './useIssues.ts'
+import { issueMessages as m } from './messages.ts'
 
 /**
  * Issues linked to one element or thread: the state, the number and the title of each, which opens the issue in the
@@ -36,7 +37,7 @@ export function IssueLinkList({
   if (links.length === 0) return null
   return (
     <div className="flex flex-col gap-1.5">
-      <ul aria-label="Задачи" className="flex flex-col gap-1.5">
+      <ul aria-label={m.issues} className="flex flex-col gap-1.5">
         {links.map((link) => {
           const problem = syncProblem(link)
           return (
@@ -52,7 +53,7 @@ export function IssueLinkList({
                     href={link.url}
                     target="_blank"
                     rel="noreferrer noopener"
-                    title="Открыть в GitHub"
+                    title={m.openInGitHub}
                     className="break-words font-medium hover:underline"
                   >
                     {link.title}
@@ -65,8 +66,8 @@ export function IssueLinkList({
                   <span aria-hidden>·</span>
                   <span>{stateLabel(link)}</span>
                   {link.private && (
-                    <span title="Закрытый репозиторий: задачу показал участник, который её привязал" className="inline-flex">
-                      <Lock aria-label="Закрытый репозиторий" className="size-3" />
+                    <span title={m.privateShownBy} className="inline-flex">
+                      <Lock aria-label={m.privateRepository} className="size-3" />
                     </span>
                   )}
                 </span>
@@ -85,7 +86,7 @@ export function IssueLinkList({
                     disabled={takeOver.isPending}
                     onClick={() => takeOver.mutate(link)}
                   >
-                    Обновлять через моё подключение
+                    {m.takeOver}
                   </Button>
                 )}
               </div>
@@ -94,8 +95,8 @@ export function IssueLinkList({
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  aria-label={`Отвязать ${issueReference(link)}`}
-                  title="Отвязать (задача останется в GitHub)"
+                  aria-label={m.unlinkIssue(issueReference(link))}
+                  title={m.unlinkHint}
                   disabled={unlink.isPending}
                   onClick={() => unlink.mutate(link)}
                 >
@@ -108,17 +109,17 @@ export function IssueLinkList({
       </ul>
       {error && (
         <p role="alert" className="text-xs text-destructive">
-          {issueErrorMessage(error, unlink.error ? 'Не удалось отвязать задачу' : 'Не удалось обновить задачу')}
+          {issueErrorMessage(error, unlink.error ? m.unlinkFailed : m.refreshFailed)}
         </p>
       )}
       <p className="flex items-center gap-1 text-xs text-muted-foreground">
-        Статус приходит из GitHub, CoDraw его не меняет.
+        {m.stateFromGitHub}
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label="Обновить из GitHub"
-          title="Обновить из GitHub"
+          aria-label={m.refreshFromGitHub}
+          title={m.refreshFromGitHub}
           disabled={refresh.pending}
           onClick={refresh.now}
         >

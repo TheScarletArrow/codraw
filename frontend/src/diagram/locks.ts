@@ -1,4 +1,5 @@
 import type { Cell, CellStyle } from '@maxgraph/core'
+import { modelMessages } from './model.messages.ts'
 
 /**
  * Style key of draw.io that locks a cell against changes, `locked=1` in a file: it cannot be moved, resized, edited,
@@ -52,7 +53,7 @@ export function lockedByOf(cell: Cell): string | null {
 /** What a lock shows: «Закреплено: Алиса», the names of several participants, or «Закреплено» without them. */
 export function lockLabel(names: readonly (string | null)[]): string {
   const known = [...new Set(names.filter((name): name is string => name !== null))]
-  return known.length > 0 ? `Закреплено: ${known.join(', ')}` : 'Закреплено'
+  return known.length > 0 ? modelMessages.lockedBy(known.join(', ')) : modelMessages.locked
 }
 
 /** Takes the lock off a copy and its descendants, which are not in a model yet: a copy is a new element. */

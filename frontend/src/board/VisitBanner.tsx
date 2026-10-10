@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import type { VersionAuthor } from '../api/versions.ts'
 import { AuthorMark } from './VersionAuthors.tsx'
 import { authorNames, visitTime } from './visit.ts'
+import { changeMessages as m } from './changes.messages.ts'
 
 /** Authors shown with their marks; all of them are named in the text. */
 const MARKED_AUTHORS = 3
@@ -19,11 +20,10 @@ interface VisitBannerProps {
 
 /** «С вашего прошлого визита (вчера в 18:40) доску изменили Аня и Боб» above the canvas, with the way to the changes. */
 export function VisitBanner({ since, authors, onShow, onHide }: VisitBannerProps) {
-  const changed = authors.length === 1 ? 'изменил(а)' : 'изменили'
   return (
     <div
       role="region"
-      aria-label="С прошлого визита"
+      aria-label={m.sinceVisit}
       className="flex items-center gap-3 border-b bg-muted/50 px-3 py-1.5 text-sm"
     >
       <History aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -33,15 +33,15 @@ export function VisitBanner({ since, authors, onShow, onHide }: VisitBannerProps
         ))}
       </span>
       <span className="min-w-0 flex-1">
-        {`С вашего прошлого визита (${visitTime(new Date(since))}) доску ${changed} ${authorNames(authors)}`}
+        {m.changedSinceVisit(visitTime(new Date(since)), authorNames(authors), authors.length)}
       </span>
       {onShow && (
         <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onShow}>
-          Показать изменения
+          {m.showChanges}
         </Button>
       )}
       <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={onHide}>
-        Скрыть
+        {m.hide}
       </Button>
     </div>
   )

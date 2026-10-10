@@ -2,6 +2,7 @@ import type { DbVendorId } from './dbVendors.ts'
 import { quoteName } from './erDiagram.ts'
 import type { SqlIndex } from './parseSql.ts'
 import { mapIndexColumns } from './tableIndex.ts'
+import { sqlMessages as m } from './messages.ts'
 
 /**
  * Databases a migration is written for: each turns the steps of a migration into its own statements, or into a comment
@@ -136,10 +137,9 @@ const literal = (text: string) => `N'${text.replaceAll("'", "''")}'`
 /** How a database writes each step. */
 type Renderers = { [Type in Operation['type']]: (operation: Extract<Operation, { type: Type }>) => Rendered }
 
-const NOT_NULL_WITHOUT_DEFAULT = (table: string, column: string) =>
-  `Столбец ${table}.${column} NOT NULL без DEFAULT не добавится в таблицу со строками: допишите DEFAULT или заполните его отдельно`
+const NOT_NULL_WITHOUT_DEFAULT = (table: string, column: string) => m.notNullWithoutDefault(table, column)
 
-const skippedMethod = (method: string, label: string) => `Метод индекса ${method} пропущен: в ${label} его нет`
+const skippedMethod = (method: string, label: string) => m.skippedMethod(method, label)
 
 /** The statements of the standard SQL with the quotes of `q`: each database overrides what it writes otherwise. */
 function standard(q: (name: string) => string): Renderers {
@@ -308,7 +308,7 @@ const mysql = (() => {
       addColumn: ({ table, column: added }) => statements(`ALTER TABLE ${q(table)} ADD COLUMN ${column(added)};`),
       alterColumn: ({ table, to }) =>
         noted(
-          ['MODIFY COLUMN задаёт столбец заново: допишите DEFAULT, AUTO_INCREMENT и COMMENT, если они у него есть'],
+          [m.mysqlModify],
           `ALTER TABLE ${q(table)} MODIFY COLUMN ${column(to)};`,
         ),
       addPrimaryKey: ({ table, columns }) =>
@@ -402,8 +402,6 @@ const sqlserver = (() => {
   )
 })()
 
-const SQLITE_REBUILD = 'таблицу нужно пересоздать: новая таблица, перенос строк, DROP TABLE и RENAME'
-
 const sqlite = (() => {
   const q = quoter(/^[A-Za-z_][A-Za-z0-9_]*$/, isReserved, '"', '"', '""')
   const base = standard(q)
@@ -421,23 +419,21 @@ const sqlite = (() => {
     {
       ...base,
       dropForeignKey: ({ foreignKey }) =>
-        unsupported(`SQLite не снимает внешний ключ ${foreignKey.name} готовой таблицы ${foreignKey.table}: ${SQLITE_REBUILD}`),
+        unsupported(m.sqliteDropForeignKey(foreignKey.name, foreignKey.table, m.sqliteRebuild)),
       dropUnique: ({ name }) => statements(`DROP INDEX ${q(name)};`),
-      dropPrimaryKey: ({ table }) => unsupported(`SQLite не меняет первичный ключ готовой таблицы ${table}: ${SQLITE_REBUILD}`),
+      dropPrimaryKey: ({ table }) => unsupported(m.sqlitePrimaryKey(table, m.sqliteRebuild)),
       addColumn: ({ table, column: added }) =>
         noted(
-          added.notNull ? [`SQLite добавляет столбец ${table}.${added.name} NOT NULL только с DEFAULT: допишите его`] : [],
+          added.notNull ? [m.sqliteNotNull(`${table}.${added.name}`)] : [],
           `ALTER TABLE ${q(table)} ADD COLUMN ${q(added.name)} ${added.type}${added.notNull ? ' NOT NULL' : ''};`,
         ),
       alterColumn: ({ table, to }) =>
-        unsupported(`SQLite не меняет тип и NOT NULL столбца ${table}.${to.name}: ${SQLITE_REBUILD}`),
-      addPrimaryKey: ({ table }) => unsupported(`SQLite не меняет первичный ключ готовой таблицы ${table}: ${SQLITE_REBUILD}`),
+        unsupported(m.sqliteAlterColumn(`${table}.${to.name}`, m.sqliteRebuild)),
+      addPrimaryKey: ({ table }) => unsupported(m.sqlitePrimaryKey(table, m.sqliteRebuild)),
       addUnique: ({ table, name, column }) => statements(`CREATE UNIQUE INDEX ${q(name)} ON ${q(table)} (${q(column)});`),
       createIndex: withoutMethod(q, 'SQLite'),
       addForeignKey: ({ foreignKey }) =>
-        unsupported(
-          `SQLite не добавляет внешний ключ ${foreignKey.name} в готовую таблицу ${foreignKey.table}: ${SQLITE_REBUILD}`,
-        ),
+        unsupported(m.sqliteAddForeignKey(foreignKey.name, foreignKey.table, m.sqliteRebuild)),
     },
   )
 })()
@@ -447,7 +443,6 @@ const clickhouse = (() => {
   const base = standard(q)
   // Nullability is the type: Nullable(String).
   const column = ({ name, type }: ColumnDefinition) => `${q(name)} ${type}`
-  const noKeys = 'В ClickHouse нет'
   return dialect(
     {
       id: 'clickhouse',
@@ -460,11 +455,11 @@ const clickhouse = (() => {
     },
     {
       ...base,
-      dropForeignKey: ({ foreignKey }) => unsupported(`${noKeys} внешних ключей: ${foreignKey.name} не снимается`),
-      dropIndex: ({ index }) => unsupported(`Индексы ClickHouse задаются иначе: ${index.name} не снимается`),
-      dropUnique: ({ name }) => unsupported(`${noKeys} ограничений UNIQUE: ${name} не снимается`),
+      dropForeignKey: ({ foreignKey }) => unsupported(m.clickhouseDropForeignKey(foreignKey.name)),
+      dropIndex: ({ index }) => unsupported(m.clickhouseDropIndex(index.name)),
+      dropUnique: ({ name }) => unsupported(m.clickhouseDropUnique(name)),
       dropPrimaryKey: ({ table }) =>
-        unsupported(`ClickHouse не меняет первичный ключ (ORDER BY) готовой таблицы ${table}: её нужно пересоздать`),
+        unsupported(m.clickhousePrimaryKey(table)),
       renameTable: ({ from, to }) => statements(`RENAME TABLE ${q(from)} TO ${q(to)};`),
       createTable: ({ table }) => {
         const order = table.primaryKey ? `(${table.primaryKey.columns.map(q).join(', ')})` : 'tuple()'
@@ -475,14 +470,16 @@ const clickhouse = (() => {
       alterColumn: ({ table, to, retyped }) =>
         retyped
           ? statements(`ALTER TABLE ${q(table)} MODIFY COLUMN ${column(to)};`)
-          : unsupported(`ClickHouse задаёт NULL типом Nullable(…), а не NOT NULL: смените тип ${table}.${to.name}`),
+          : unsupported(m.clickhouseNullable(`${table}.${to.name}`)),
       addPrimaryKey: ({ table }) =>
-        unsupported(`ClickHouse не меняет первичный ключ (ORDER BY) готовой таблицы ${table}: её нужно пересоздать`),
-      addUnique: ({ table, column }) => unsupported(`${noKeys} ограничений UNIQUE: ${table}.${column} не станет уникальным`),
-      createIndex: ({ index }) => unsupported(`Индексы ClickHouse задаются иначе (пропуск данных): ${index.name} не создаётся`),
+        unsupported(m.clickhousePrimaryKey(table)),
+      addUnique: ({ table, column }) => unsupported(m.clickhouseAddUnique(`${table}.${column}`)),
+      createIndex: ({ index }) => unsupported(m.clickhouseCreateIndex(index.name)),
       addForeignKey: ({ foreignKey }) =>
         unsupported(
-          `${noKeys} внешних ключей: ${foreignKey.table}.${foreignKey.column} → ${foreignKey.referencedTable}.${foreignKey.referencedColumn} не создаётся`,
+          m.clickhouseAddForeignKey(
+            `${foreignKey.table}.${foreignKey.column} → ${foreignKey.referencedTable}.${foreignKey.referencedColumn}`,
+          ),
         ),
     },
   )

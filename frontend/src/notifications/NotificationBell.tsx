@@ -12,6 +12,7 @@ import {
   markNotificationRead,
   type UserNotification,
 } from '../api/notifications.ts'
+import { notificationMessages as m } from './messages.ts'
 import {
   describeNotification,
   NOTIFICATIONS_POLL_INTERVAL,
@@ -49,8 +50,8 @@ export function NotificationBell({ className }: { className?: string }) {
           type="button"
           variant="ghost"
           size="sm"
-          aria-label={count > 0 ? `Уведомления (${count})` : 'Уведомления'}
-          title="Уведомления"
+          aria-label={count > 0 ? m.notificationsCount(count) : m.notifications}
+          title={m.notifications}
           className={cn('shrink-0', className)}
         >
           <Bell />
@@ -61,7 +62,7 @@ export function NotificationBell({ className }: { className?: string }) {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" aria-label="Уведомления" className="flex max-h-[80vh] w-96 flex-col p-0">
+      <PopoverContent align="end" aria-label={m.notifications} className="flex max-h-[80vh] w-96 flex-col p-0">
         <NotificationList unread={count} onLeave={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
@@ -87,9 +88,9 @@ function NotificationList({ unread, onLeave }: { unread: number; onLeave: () => 
   return (
     <>
       <div className="flex items-center gap-2 border-b px-3 py-2">
-        <h2 className="flex-1 text-sm font-semibold">Уведомления</h2>
-        <Button asChild variant="ghost" size="icon-xs" title="Настройки уведомлений">
-          <Link to="/settings/notifications" aria-label="Настройки уведомлений" onClick={onLeave}>
+        <h2 className="flex-1 text-sm font-semibold">{m.notifications}</h2>
+        <Button asChild variant="ghost" size="icon-xs" title={m.settings}>
+          <Link to="/settings/notifications" aria-label={m.settings} onClick={onLeave}>
             <Settings />
           </Link>
         </Button>
@@ -101,21 +102,21 @@ function NotificationList({ unread, onLeave }: { unread: number; onLeave: () => 
           disabled={!anyUnread || readAll.isPending}
           onClick={() => readAll.mutate()}
         >
-          Прочитать все
+          {m.readAll}
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
-        {list.isPending && <p className="p-2 text-sm text-muted-foreground">Загрузка…</p>}
+        {list.isPending && <p className="p-2 text-sm text-muted-foreground">{m.loading}</p>}
         {list.isError && (
           <p role="alert" className="p-2 text-sm text-destructive">
-            Не удалось загрузить уведомления
+            {m.loadFailed}
           </p>
         )}
         {list.isSuccess && notifications.length === 0 && (
-          <p className="p-2 text-sm text-muted-foreground">Уведомлений пока нет</p>
+          <p className="p-2 text-sm text-muted-foreground">{m.empty}</p>
         )}
         {notifications.length > 0 && (
-          <ul aria-label="Список уведомлений" className="flex flex-col">
+          <ul aria-label={m.list} className="flex flex-col">
             {notifications.map((notification) => (
               <li key={notification.id}>
                 <NotificationItem
@@ -138,7 +139,7 @@ function NotificationList({ unread, onLeave }: { unread: number; onLeave: () => 
             disabled={list.isFetchingNextPage}
             onClick={() => void list.fetchNextPage()}
           >
-            Показать ещё
+            {m.showMore}
           </Button>
         )}
       </div>
@@ -169,7 +170,7 @@ function NotificationItem({ notification, onOpen }: { notification: UserNotifica
       </span>{' '}
       {unread && (
         <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary">
-          <span className="sr-only">Не прочитано</span>
+          <span className="sr-only">{m.unread}</span>
         </span>
       )}
     </Link>

@@ -12,19 +12,22 @@ import {
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Direction, ShapeAlign } from './editor.ts'
+import { pickerMessages } from './pickers.messages.ts'
+
+const m = pickerMessages.arrange
 
 const ALIGNS: { align: ShapeAlign; label: string; icon: LucideIcon }[] = [
-  { align: 'left', label: 'Выровнять по левому краю', icon: AlignStartVertical },
-  { align: 'center', label: 'Выровнять по центру', icon: AlignCenterVertical },
-  { align: 'right', label: 'Выровнять по правому краю', icon: AlignEndVertical },
-  { align: 'top', label: 'Выровнять по верхнему краю', icon: AlignStartHorizontal },
-  { align: 'middle', label: 'Выровнять по середине', icon: AlignCenterHorizontal },
-  { align: 'bottom', label: 'Выровнять по нижнему краю', icon: AlignEndHorizontal },
+  { align: 'left', label: m.alignLeft, icon: AlignStartVertical },
+  { align: 'center', label: m.alignCenter, icon: AlignCenterVertical },
+  { align: 'right', label: m.alignRight, icon: AlignEndVertical },
+  { align: 'top', label: m.alignTop, icon: AlignStartHorizontal },
+  { align: 'middle', label: m.alignMiddle, icon: AlignCenterHorizontal },
+  { align: 'bottom', label: m.alignBottom, icon: AlignEndHorizontal },
 ]
 
 const DISTRIBUTIONS: { direction: Direction; label: string; icon: LucideIcon }[] = [
-  { direction: 'horizontal', label: 'Распределить по горизонтали', icon: AlignHorizontalDistributeCenter },
-  { direction: 'vertical', label: 'Распределить по вертикали', icon: AlignVerticalDistributeCenter },
+  { direction: 'horizontal', label: m.distributeHorizontally, icon: AlignHorizontalDistributeCenter },
+  { direction: 'vertical', label: m.distributeVertically, icon: AlignVerticalDistributeCenter },
 ]
 
 interface ArrangePickerProps {
@@ -39,13 +42,13 @@ export function ArrangePicker({ count, onAlign, onDistribute }: ArrangePickerPro
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" aria-label="Выравнивание" title="Выравнивание фигур">
+        <Button type="button" variant="ghost" size="sm" aria-label={m.name} title={m.title}>
           <AlignStartVertical />
-          Выровнять
+          {m.align}
         </Button>
       </PopoverTrigger>
-      <PopoverContent aria-label="Выравнивание" className="flex w-auto flex-col gap-2">
-        <div role="group" aria-label="Выровнять" className="grid grid-cols-3 gap-1">
+      <PopoverContent aria-label={m.name} className="flex w-auto flex-col gap-2">
+        <div role="group" aria-label={m.align} className="grid grid-cols-3 gap-1">
           {ALIGNS.map(({ align, label, icon: Icon }) => (
             <Button
               key={align}
@@ -60,7 +63,7 @@ export function ArrangePicker({ count, onAlign, onDistribute }: ArrangePickerPro
             </Button>
           ))}
         </div>
-        <div role="group" aria-label="Распределить" className="flex gap-1 border-t pt-2">
+        <div role="group" aria-label={m.distribute} className="flex gap-1 border-t pt-2">
           {DISTRIBUTIONS.map(({ direction, label, icon: Icon }) => (
             <Button
               key={direction}
@@ -68,7 +71,7 @@ export function ArrangePicker({ count, onAlign, onDistribute }: ArrangePickerPro
               variant="ghost"
               size="icon-sm"
               aria-label={label}
-              title={count < 3 ? `${label}: выделите три фигуры или больше` : label}
+              title={count < 3 ? m.needThree(label) : label}
               disabled={count < 3}
               onClick={() => onDistribute(direction)}
             >

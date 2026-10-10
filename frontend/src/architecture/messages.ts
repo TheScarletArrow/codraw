@@ -1,0 +1,153 @@
+import { defineMessages } from '../i18n/i18n.ts'
+
+export const architectureMessages = defineMessages({
+  ru: {
+    exportTitle: 'Архитектура как код',
+    format: 'Формат',
+    exportText: 'Текст выгрузки',
+    exportHint:
+      'Выгружаются фигуры C4 и разделов «Архитектура», «Инфраструктура», «Данные и сообщения», «Клиенты», «Компонент» UML и рамки вокруг них.',
+    copied: 'Скопировано',
+    copyFailed: 'Не удалось скопировать',
+    copy: 'Скопировать',
+    download: (extension: string) => `Скачать .${extension}`,
+    exportSummary: (elements: number, boundaries: number, relations: number, skipped: number) =>
+      `Элементов: ${elements}, границ: ${boundaries}, связей: ${relations}, пропущено фигур: ${skipped}`,
+    importTitle: 'Импорт архитектуры как кода',
+    importSource: 'архитектуры как кода',
+    textLabel: 'Архитектура как код',
+    placeholder:
+      'workspace {\n  model {\n    user = person "Покупатель"\n    shop = softwareSystem "Магазин"\n    user -> shop "Покупает"\n  }\n}',
+    filesLabel: 'Файлы архитектуры',
+    hint: 'Structurizr DSL (workspace), C4-PlantUML (@startuml с макросами C4) или Mermaid C4 (C4Context, C4Container, C4Component); несколько файлов — одна модель',
+    limits: (megabytes: number, nodes: number) => [
+      'Читаются люди, системы, контейнеры и компоненты, их имена, технологии, описания, теги и ссылки, группы и границы, узлы развёртывания C4-PlantUML и отношения с описанием и технологией.',
+      'Система с контейнерами и контейнер с компонентами становятся «Границей системы» C4 с частями внутри; связь с ними не рисуется, если её уже показывают связи частей.',
+      'Элемент, повторённый в нескольких файлах (контекст и контейнеры) или объявлениях, — одна фигура: повтор узнаётся по идентификатору, а в другом файле — по уровню, имени и границе.',
+      'Не переносятся развёртывание Structurizr, представления и стили (страница раскладывается автоматически, представления строит «Новое представление»), element, archetypes, !docs, !adrs и заметки; внешние люди, контейнеры и компоненты становятся обычными.',
+      '!include, !script, !plugin, workspace extends и препроцессор PlantUML не выполняются и ничего не загружают: включённые файлы откройте вместе с остальными. Файлы разбираются в браузере и никуда не отправляются.',
+      `Файл — до ${megabytes} МБ, за раз — до ${nodes} элементов и границ.`,
+    ],
+    importSummary: (elements: number, boundaries: number, relations: number) =>
+      `Элементов: ${elements}, границ: ${boundaries}, связей: ${relations}`,
+    tooMany: (count: number, max: number) =>
+      `Слишком много элементов и границ: ${count}, за раз можно добавить не больше ${max}`,
+    andMore: (listed: string, more: number) => `${listed} и ещё ${more}`,
+    implied: (count: number, relations: string) =>
+      `Связей с раскрытыми элементами не нарисовано: ${count} — их показывают связи частей: ${relations}`,
+    moreWarnings: (more: number) => `…и ещё ${more}`,
+    // What the files are and why they are left out.
+    notC4Mermaid:
+      'это Mermaid, но не C4 — блок-схемы, ER-диаграммы и диаграммы последовательности импортирует «Импорт Mermaid…»',
+    unknownFormat:
+      'не удалось узнать формат — ожидается workspace Structurizr DSL, @startuml с макросами C4-PlantUML или C4Context Mermaid C4',
+    noElements: (name: string) => `${name}: нет элементов C4`,
+    // The warnings of the model, at a line of a file.
+    atLine: (file: string, line: number, message: string) => `${file}: строка ${line} — ${message}`,
+    declaredAsBoundary: (key: string) => `${key} уже объявлен как граница: объявление пропущено`,
+    declaredAs: (key: string, type: string) => `${key} уже объявлен как ${type}: оставлен первый`,
+    declaredAsElement: (key: string) => `${key} уже объявлен как элемент: граница пропущена`,
+    noElement: (key: string) => `связь пропущена: нет элемента ${key}`,
+    withPart: (source: string, target: string) => `связь элемента с его частью не рисуется: ${source} → ${target}`,
+    namedOtherwise: (key: string, file: string) => `${key} в ${file} — другой элемент: здесь он назван иначе`,
+    alreadyIn: (key: string, boundary: string) => `${key} уже лежит в «${boundary}»: оставлен там`,
+    alreadyOutside: (key: string) => `${key} уже лежит вне границ: оставлен там`,
+    // Errors of syntax.
+    syntaxAt: (line: number, message: string) => `строка ${line} — ${message}`,
+    unclosedComment: 'не закрыт комментарий',
+    unclosedQuote: 'не закрыта кавычка',
+    unclosedParenthesis: 'не закрыта скобка',
+    extraBrace: 'лишняя }',
+    openingBraceLast: '{ должна быть последней на строке',
+    closingBraceAlone: '} должна быть одна на строке',
+    unclosedBlock: (line: number) => `не закрыт блок, открытый в строке ${line}`,
+    // What the parsers leave out.
+    includeSkipped: (directive: string) => `${directive} не выполняется: откройте этот файл вместе с остальными`,
+    preprocessor: (directive: string) => `препроцессор PlantUML не выполняется: ${directive}`,
+    notes: 'заметки не переносятся',
+    unparsedLine: (text: string) => `строка не разобрана: ${text}`,
+    unsupported: (what: string) => `не поддерживается: ${what}`,
+    relationWithoutEnds: 'не поддерживается: отношение без источника или цели',
+    thisOutside: 'this вне элемента: отношение пропущено',
+    notRun: (directive: string) => `${directive} не выполняется`,
+    docs: 'документация и решения (!docs, !adrs) не переносятся',
+    extends: (workspace: string) => `базовое пространство ${workspace} не загружается: откройте его вместе с этим файлом`,
+    blockSkipped: (key: string) => `нет элемента ${key}: блок пропущен`,
+    customElements: 'элементы произвольного вида (element) не переносятся',
+    deploymentEnvironment: (name: string) => `развёртывание «${name}» не переносится`,
+    deployment: (keyword: string) => `развёртывание не переносится: ${keyword}`,
+  },
+  en: {
+    exportTitle: 'Architecture as code',
+    format: 'Format',
+    exportText: 'Exported text',
+    exportHint:
+      'Exported are the C4 shapes and the shapes of the “Architecture”, “Infrastructure”, “Data and messaging”, “Clients” sections, the UML “Component” and the frames around them.',
+    copied: 'Copied',
+    copyFailed: 'Could not copy',
+    copy: 'Copy',
+    download: (extension: string) => `Download .${extension}`,
+    exportSummary: (elements: number, boundaries: number, relations: number, skipped: number) =>
+      `Elements: ${elements}, boundaries: ${boundaries}, relationships: ${relations}, shapes skipped: ${skipped}`,
+    importTitle: 'Import architecture as code',
+    importSource: 'architecture as code',
+    textLabel: 'Architecture as code',
+    placeholder:
+      'workspace {\n  model {\n    user = person "Customer"\n    shop = softwareSystem "Shop"\n    user -> shop "Buys"\n  }\n}',
+    filesLabel: 'Architecture files',
+    hint: 'Structurizr DSL (workspace), C4-PlantUML (@startuml with C4 macros) or Mermaid C4 (C4Context, C4Container, C4Component); several files make one model',
+    limits: (megabytes: number, nodes: number) => [
+      'Read are people, systems, containers and components, their names, technologies, descriptions, tags and links, groups and boundaries, C4-PlantUML deployment nodes, and relationships with their description and technology.',
+      'A system with containers and a container with components become a C4 “System boundary” with the parts inside; a relationship with them is not drawn when relationships of the parts already show it.',
+      'An element repeated in several files (context and containers) or declarations is one shape: a repeat is recognized by the identifier, and in another file by the level, name and boundary.',
+      'Not carried over: Structurizr deployment, views and styles (the page is laid out automatically, views are made by “New view”), element, archetypes, !docs, !adrs and notes; external people, containers and components become ordinary ones.',
+      '!include, !script, !plugin, workspace extends and the PlantUML preprocessor are not run and load nothing: open the included files together with the rest. The files are parsed in the browser and are not sent anywhere.',
+      `A file is up to ${megabytes} MB, up to ${nodes} elements and boundaries at once.`,
+    ],
+    importSummary: (elements: number, boundaries: number, relations: number) =>
+      `Elements: ${elements}, boundaries: ${boundaries}, relationships: ${relations}`,
+    tooMany: (count: number, max: number) =>
+      `Too many elements and boundaries: ${count}, at most ${max} can be added at once`,
+    andMore: (listed: string, more: number) => `${listed} and ${more} more`,
+    implied: (count: number, relations: string) =>
+      `Relationships with expanded elements not drawn: ${count} — relationships of the parts show them: ${relations}`,
+    moreWarnings: (more: number) => `…and ${more} more`,
+    notC4Mermaid:
+      'this is Mermaid, but not C4 — flowcharts, ER diagrams and sequence diagrams are imported by “Import Mermaid…”',
+    unknownFormat:
+      'could not recognize the format — expected a Structurizr DSL workspace, @startuml with C4-PlantUML macros or Mermaid C4 C4Context',
+    noElements: (name: string) => `${name}: no C4 elements`,
+    atLine: (file: string, line: number, message: string) => `${file}: line ${line} — ${message}`,
+    declaredAsBoundary: (key: string) => `${key} is already declared as a boundary: the declaration is skipped`,
+    declaredAs: (key: string, type: string) => `${key} is already declared as ${type}: the first is kept`,
+    declaredAsElement: (key: string) => `${key} is already declared as an element: the boundary is skipped`,
+    noElement: (key: string) => `relationship skipped: no element ${key}`,
+    withPart: (source: string, target: string) =>
+      `a relationship of an element with its part is not drawn: ${source} → ${target}`,
+    namedOtherwise: (key: string, file: string) => `${key} in ${file} is another element: it is named differently here`,
+    alreadyIn: (key: string, boundary: string) => `${key} already lies in “${boundary}”: left there`,
+    alreadyOutside: (key: string) => `${key} already lies outside boundaries: left there`,
+    syntaxAt: (line: number, message: string) => `line ${line} — ${message}`,
+    unclosedComment: 'unclosed comment',
+    unclosedQuote: 'unclosed quote',
+    unclosedParenthesis: 'unclosed parenthesis',
+    extraBrace: 'extra }',
+    openingBraceLast: '{ must be the last on the line',
+    closingBraceAlone: '} must be alone on the line',
+    unclosedBlock: (line: number) => `unclosed block opened on line ${line}`,
+    includeSkipped: (directive: string) => `${directive} is not run: open this file together with the rest`,
+    preprocessor: (directive: string) => `the PlantUML preprocessor is not run: ${directive}`,
+    notes: 'notes are not carried over',
+    unparsedLine: (text: string) => `line not parsed: ${text}`,
+    unsupported: (what: string) => `not supported: ${what}`,
+    relationWithoutEnds: 'not supported: a relationship without a source or a destination',
+    thisOutside: 'this outside an element: the relationship is skipped',
+    notRun: (directive: string) => `${directive} is not run`,
+    docs: 'documentation and decisions (!docs, !adrs) are not carried over',
+    extends: (workspace: string) => `the base workspace ${workspace} is not loaded: open it together with this file`,
+    blockSkipped: (key: string) => `no element ${key}: the block is skipped`,
+    customElements: 'elements of a custom kind (element) are not carried over',
+    deploymentEnvironment: (name: string) => `deployment “${name}” is not carried over`,
+    deployment: (keyword: string) => `deployment is not carried over: ${keyword}`,
+  },
+})

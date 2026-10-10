@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils'
 import { countChanges, type BoardDiff, type PageDiff } from '../diagram/diff.ts'
 import type { MergeConflicts } from '../diagram/merge.ts'
 import { ChangeIcon } from './ChangeIcon.tsx'
-import { CHANGE_LABELS, changeItems, CONFLICT_LABEL, countConflicts, type ChangeItem } from './changes.ts'
+import { changeItems, countConflicts, type ChangeItem } from './changes.ts'
+import { changeMessages as m } from './changes.messages.ts'
 
 /** An element of a page that the list points at. */
 export interface ChangeTarget {
@@ -47,7 +48,7 @@ export function ChangeList({
   selected,
   onSelect,
   onRevert,
-  unchanged = 'После этой версии доска не менялась.',
+  unchanged = m.unchanged,
   conflicts,
 }: ChangeListProps) {
   const counts = countChanges(diff)
@@ -61,16 +62,16 @@ export function ChangeList({
   const conflicted = conflicts ? countConflicts(diff, conflicts) : 0
 
   return (
-    <aside aria-label="Изменения" className="flex w-64 shrink-0 flex-col border-r bg-background">
+    <aside aria-label={m.list} className="flex w-64 shrink-0 flex-col border-r bg-background">
       <div className="flex flex-col gap-0.5 border-b px-3 py-2">
-        <h3 className="text-sm font-semibold">Изменения</h3>
+        <h3 className="text-sm font-semibold">{m.list}</h3>
         <p className="text-xs text-muted-foreground">
-          {`Добавлено ${counts.added} · Изменено ${counts.changed} · Удалено ${counts.removed}`}
+          {m.counts(counts.added, counts.changed, counts.removed)}
         </p>
         {conflicted > 0 && (
           <p className="flex items-center gap-1 text-xs text-changed">
             <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
-            {`Изменено и на доске: ${conflicted}`}
+            {m.conflicted(conflicted)}
           </p>
         )}
       </div>
@@ -105,13 +106,13 @@ export function ChangeList({
                         <ChangeIcon type={item.type} className="mt-0.5 size-4" />
                         {/* Spaces between the lines keep the words of the name of the button apart. */}
                         <span className="flex min-w-0 flex-col">
-                          <span className="sr-only">{`${CHANGE_LABELS[item.type]}:`}</span>{' '}
+                          <span className="sr-only">{`${m.change[item.type]}:`}</span>{' '}
                           <span className={cn('truncate text-sm', item.type === 'removed' && 'line-through')}>{item.title}</span>{' '}
                           {about && <span className="text-xs text-muted-foreground">{about}</span>}{' '}
                           {item.previousTitle !== null && (
-                            <span className="truncate text-xs text-muted-foreground">было «{item.previousTitle}»</span>
+                            <span className="truncate text-xs text-muted-foreground">{m.previousTitle(item.previousTitle)}</span>
                           )}{' '}
-                          {item.conflict && <span className="text-xs text-changed">{CONFLICT_LABEL}</span>}
+                          {item.conflict && <span className="text-xs text-changed">{m.conflict}</span>}
                         </span>
                       </button>
                       {revertible && (
@@ -119,13 +120,13 @@ export function ChangeList({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          aria-label={`Вернуть «${item.title}»`}
-                          title="Вернуть, как в версии"
+                          aria-label={m.revertItem(item.title)}
+                          title={m.revertHint}
                           className="mt-0.5 h-7 px-2 text-xs"
                           onClick={() => onRevert({ pageId: changes.id, cellId: item.id })}
                         >
                           <Undo2 className="size-3.5" />
-                          Вернуть
+                          {m.revert}
                         </Button>
                       )}
                     </li>
@@ -142,15 +143,15 @@ export function ChangeList({
 
 /** What happened to the page itself, and whether it changed elsewhere too. */
 function pageNote(page: PageDiff, conflict: boolean): string {
-  const conflictNote = conflict ? 'изменена на доске после предложения' : false
-  if (page.type === 'added') return 'добавлена'
-  if (page.type === 'removed') return ['удалена', conflictNote].filter(Boolean).join(', ')
-  const notes = [page.renamed && `была «${page.before!.name}»`, page.moved && 'перемещена', conflictNote].filter(Boolean)
+  const conflictNote = conflict ? m.pageConflict : false
+  if (page.type === 'added') return m.pageAdded
+  if (page.type === 'removed') return [m.pageRemoved, conflictNote].filter(Boolean).join(', ')
+  const notes = [page.renamed && m.pageRenamed(page.before!.name), page.moved && m.pageMoved, conflictNote].filter(Boolean)
   return notes.join(', ')
 }
 
 /** The kind of the element when its label names it, what it holds, and what changed. */
 function itemNote(item: ChangeItem): string {
-  const kind = [item.title !== item.kind && item.kind, item.nested > 0 && `вложенных: ${item.nested}`].filter(Boolean).join(', ')
+  const kind = [item.title !== item.kind && item.kind, item.nested > 0 && m.nested(item.nested)].filter(Boolean).join(', ')
   return [kind, item.details.join(', ')].filter(Boolean).join(' · ')
 }

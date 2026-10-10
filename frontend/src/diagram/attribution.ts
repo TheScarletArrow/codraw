@@ -1,5 +1,6 @@
 import { relativeTime } from '../lib/relativeTime.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from './locks.ts'
+import { modelMessages } from './model.messages.ts'
 import type { CellMap, CellWrite } from './model.ts'
 
 /**
@@ -63,7 +64,7 @@ export function readAttribution(cell: CellMap | undefined): Attribution | null {
 
 /** «Изменено: Боб, 5 минут назад» at `now`; `mine` adds «(вы)» after the name, as the list of participants does. */
 export function attributionLabel(attribution: Attribution, now: number, mine = false): string {
-  return `Изменено: ${attribution.name}${mine ? ' (вы)' : ''}, ${relativeTime(attribution.at, now)}`
+  return modelMessages.modified(attribution.name, mine, relativeTime(attribution.at, now))
 }
 
 /**

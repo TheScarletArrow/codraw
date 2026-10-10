@@ -6,6 +6,7 @@ import type { ContextMenuRequest, DiagramEditor, MergeCandidate } from '../diagr
 import { kindLabel } from '../diagram/elementProps.ts'
 import { elementPlaces } from '../diagram/sharedElements.ts'
 import { pagesLabel } from './elementList.ts'
+import { elementsMessages as m } from './messages.ts'
 
 /** A window at the point of the click of the menu that asked for it. */
 function MenuWindow({
@@ -71,12 +72,12 @@ export function MergeElementsDialog({
     editor.focus()
   }
   return (
-    <MenuWindow request={request} label="Объединить в один элемент" onClose={onClose}>
+    <MenuWindow request={request} label={m.merge} onClose={onClose}>
       <form className="flex flex-col gap-2" onSubmit={merge}>
-        <h2 className="text-sm font-semibold">Объединить в один элемент</h2>
+        <h2 className="text-sm font-semibold">{m.merge}</h2>
         <fieldset className="flex flex-col gap-1">
           <legend className="mb-1 text-xs text-muted-foreground">
-            Все ячейки этих элементов на всех страницах станут одним элементом. Чьи свойства оставить?
+            {m.mergeHint}
           </legend>
           {candidates.map((candidate) => (
             <label key={candidate.cellId} className="flex items-start gap-2 rounded px-1 py-1 text-sm hover:bg-accent">
@@ -88,7 +89,7 @@ export function MergeElementsDialog({
                 onChange={() => setKept(candidate.cellId)}
               />
               <span className="flex min-w-0 flex-col">
-                <span className="truncate">{candidate.properties.name || 'Без имени'}</span>
+                <span className="truncate">{candidate.properties.name || m.unnamed}</span>
                 <span className="truncate text-xs text-muted-foreground">{candidateDetails(candidate)}</span>
               </span>
             </label>
@@ -96,10 +97,10 @@ export function MergeElementsDialog({
         </fieldset>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Отмена
+            {m.cancel}
           </Button>
           <Button type="submit" size="sm" disabled={candidates.length < 2}>
-            Объединить
+            {m.mergeSubmit}
           </Button>
         </div>
       </form>
@@ -132,11 +133,11 @@ export function DeleteElementDialog({
     editor.focus()
   }
   return (
-    <MenuWindow request={request} label="Удалить со всех страниц" onClose={onClose}>
-      <div role="alertdialog" aria-label="Удалить со всех страниц" className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold">Удалить «{element?.properties.name || 'элемент'}» со всех страниц?</h2>
-        <p className="text-sm text-muted-foreground">Ячейки элемента и их связи пропадут со страниц:</p>
-        <ul aria-label="Страницы" className="flex flex-col text-sm">
+    <MenuWindow request={request} label={m.deleteEverywhere} onClose={onClose}>
+      <div role="alertdialog" aria-label={m.deleteEverywhere} className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">{m.deleteEverywhereQuestion(element?.properties.name || m.elementWord)}</h2>
+        <p className="text-sm text-muted-foreground">{m.deleteEverywhereHint}</p>
+        <ul aria-label={m.pages} className="flex flex-col text-sm">
           {removed.map((place) => (
             <li key={place.pageId}>
               {place.pageName} — {place.cellIds.length - place.locked.length}
@@ -145,12 +146,12 @@ export function DeleteElementDialog({
         </ul>
         {locked.length > 0 && (
           <p className="text-sm text-muted-foreground">
-            Закреплённые останутся: {locked.map((place) => place.pageName).join(', ')}
+            {m.lockedStay(locked.map((place) => place.pageName).join(', '))}
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Отмена
+            {m.cancel}
           </Button>
           <Button
             type="button"
@@ -159,7 +160,7 @@ export function DeleteElementDialog({
             disabled={removed.length === 0}
             onClick={remove}
           >
-            Удалить
+            {m.delete}
           </Button>
         </div>
       </div>

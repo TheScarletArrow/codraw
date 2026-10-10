@@ -3,6 +3,7 @@ import { elementProperties, hasElement, labelFormat, labelLines as textLines, pa
 import { isLegendStyle } from '../diagram/legendKeys.ts'
 import { layerIds, type CellData } from '../diagram/model.ts'
 import type { ShapeId } from '../diagram/shapes.ts'
+import { architectureMessages } from './messages.ts'
 
 /** What an element of C4 is. */
 export type ElementKind = C4Kind
@@ -221,8 +222,10 @@ export function modelBoundaries(model: ArchModel): ArchBoundary[] {
 
 /** What the export takes from the page, for the summary of the window. */
 export function architectureSummary(model: ArchModel): string {
-  return (
-    `Элементов: ${modelElements(model).length}, границ: ${modelBoundaries(model).length}, связей: ${model.relations.length}, ` +
-    `пропущено фигур: ${model.skipped}`
+  return architectureMessages.exportSummary(
+    modelElements(model).length,
+    modelBoundaries(model).length,
+    model.relations.length,
+    model.skipped,
   )
 }

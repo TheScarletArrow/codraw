@@ -7,7 +7,7 @@ import type { PageInfo } from '../diagram/pages.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { mockFetch, renderRoutes } from '../test/render.tsx'
 import { LinkDialog } from './LinkDialog.tsx'
-import { LINK_ERRORS } from './linkTexts.ts'
+import { linkMessages } from './messages.ts'
 
 const PAGES: PageInfo[] = [
   { id: 'context', name: 'Контекст', order: 'a0' },
@@ -92,7 +92,7 @@ describe('LinkDialog', () => {
       'Склад — Боб',
     ])
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
-    expect(screen.getByRole('alert')).toHaveTextContent(LINK_ERRORS.board)
+    expect(screen.getByRole('alert')).toHaveTextContent(linkMessages.errors.board)
     expect(editor.setLink).not.toHaveBeenCalled()
 
     await userEvent.selectOptions(boards, 'Склад — Боб')
@@ -117,13 +117,13 @@ describe('LinkDialog', () => {
     const address = screen.getByRole('textbox', { name: 'Адрес' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
-    expect(screen.getByRole('alert')).toHaveTextContent(LINK_ERRORS.empty)
+    expect(screen.getByRole('alert')).toHaveTextContent(linkMessages.errors.empty)
 
     for (const text of ['javascript:alert(1)', 'data:text/html,<b>hi</b>', 'file:///etc/passwd']) {
       await userEvent.clear(address)
       await userEvent.type(address, `${text}{Enter}`)
-      expect(screen.getByRole('alert')).toHaveTextContent(LINK_ERRORS.address)
-      expect(address).toHaveAccessibleDescription(LINK_ERRORS.address)
+      expect(screen.getByRole('alert')).toHaveTextContent(linkMessages.errors.address)
+      expect(address).toHaveAccessibleDescription(linkMessages.errors.address)
     }
 
     expect(editor.setLink).not.toHaveBeenCalled()

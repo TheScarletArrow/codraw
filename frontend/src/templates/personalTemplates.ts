@@ -10,13 +10,14 @@ import { LINK_KEY, movedPageLink, parseLink } from '../diagram/links.ts'
 import { parseDrawio, type DrawioPage } from '../drawio/parse.ts'
 import { exportDrawio } from '../drawio/serialize.ts'
 import { embeddedImages } from '../image/inlineImages.ts'
+import { templatesMessages as m } from './messages.ts'
 
 /** A portable snapshot: diagram cells only, without comments, history, attribution or review marks. */
 export async function templateSnapshot(source: Y.Doc, selection?: { pageId: string; ids: string[] }): Promise<string> {
   const snapshot = new Y.Doc()
   initializeDocument(snapshot)
   const pages = listPages(source).filter((page) => selection === undefined || page.id === selection.pageId)
-  if (pages.length === 0) throw new Error('Страница недоступна')
+  if (pages.length === 0) throw new Error(m.pageUnavailable)
   try {
     for (const page of pages) {
       writePage(snapshot, page.id, { name: page.name, order: page.order })
@@ -55,7 +56,7 @@ export async function templateSnapshot(source: Y.Doc, selection?: { pageId: stri
         writeCell(getCells(snapshot, page.id), copy)
         writeAttrs(getCells(snapshot, page.id).get(cell.id)!, cell.attrs)
       }
-      if (selection && count === 0) throw new Error('Выделите элементы для шаблона')
+      if (selection && count === 0) throw new Error(m.selectForTemplate)
     }
     // Initialization's empty page is not part of a multi-page source whose ids differ from the default.
     const names = new Set(pages.map((page) => page.id))
@@ -63,7 +64,7 @@ export async function templateSnapshot(source: Y.Doc, selection?: { pageId: stri
     const images = await embeddedImages(snapshot)
     for (const page of pages) for (const [id, entry] of getCells(snapshot, page.id)) {
       const image = readCell(id, entry).style.image
-      if (typeof image === 'string' && boardImageOf(image) && !images.has(image)) throw new Error('Не удалось скопировать изображение. Повторите сохранение при наличии связи.')
+      if (typeof image === 'string' && boardImageOf(image) && !images.has(image)) throw new Error(m.imageFailed)
     }
     return exportDrawio(snapshot, images)
   } finally { snapshot.destroy() }

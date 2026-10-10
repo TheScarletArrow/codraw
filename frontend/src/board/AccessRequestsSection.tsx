@@ -5,23 +5,19 @@ import type { Board } from '../api/boards.ts'
 import { isNotFound } from '../api/http.ts'
 import { limitOf, type MemberRole } from '../api/members.ts'
 import { accessRequestsKey } from './accessRequests.ts'
-import { counted, membersKey, visitorsKey } from './members.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { membersKey, visitorsKey } from './members.ts'
 import { Avatar } from './MembersSection.tsx'
+import { shareMessages as m } from './share.messages.ts'
 
-const timeFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
-
-/** What the user asks for, in the words of the roles. */
-const WISHES: Record<MemberRole, string> = {
-  editor: 'Просит редактирование',
-  viewer: 'Просит просмотр',
-}
+const timeFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 
 /** Why an answer failed. */
 function failureOf(error: unknown): string {
-  if (isNotFound(error)) return 'Запрос уже отменён или изменён — посмотрите его ещё раз'
+  if (isNotFound(error)) return m.requestGone
   const members = limitOf(error)
-  if (members === null) return 'Не удалось ответить на запрос'
-  return `На доске уже ${counted(members, ['участник', 'участника', 'участников'])} — больше добавить нельзя`
+  if (members === null) return m.answerFailed
+  return m.memberLimit(members)
 }
 
 interface AccessRequestsSectionProps {
@@ -65,20 +61,20 @@ export function AccessRequestsSection({ board, requests, onChanged }: AccessRequ
   return (
     <section aria-labelledby="board-access-requests" className="flex flex-col gap-1.5 border-t pt-3">
       <h3 id="board-access-requests" className="text-sm font-medium">
-        Запросы доступа
+        {m.requests}
       </h3>
       {requests && requests.length > 0 && (
-        <ul aria-label="Запросы доступа к доске" className="flex flex-col gap-2">
+        <ul aria-label={m.boardRequests} className="flex flex-col gap-2">
           {requests.map((request) => (
             <li key={request.id} aria-label={request.name} className="flex flex-col gap-1.5 rounded-md border p-2">
               <div className="flex items-center gap-2">
                 <Avatar person={request} />
                 <span className="min-w-0 flex-1 truncate text-sm">{request.name}</span>
                 <time dateTime={request.createdAt} className="text-xs whitespace-nowrap text-muted-foreground">
-                  {timeFormat.format(new Date(request.createdAt))}
+                  {timeFormat().format(new Date(request.createdAt))}
                 </time>
               </div>
-              <span className="text-xs text-muted-foreground">{WISHES[request.role]}</span>
+              <span className="text-xs text-muted-foreground">{m.wishes[request.role]}</span>
               {request.message && <p className="text-sm break-words whitespace-pre-wrap">{request.message}</p>}
               <div className="flex flex-wrap gap-1.5">
                 <Button
@@ -87,7 +83,7 @@ export function AccessRequestsSection({ board, requests, onChanged }: AccessRequ
                   disabled={answer.isPending}
                   onClick={() => answer.mutate({ request, role: 'editor' })}
                 >
-                  Дать редактирование
+                  {m.grantEdit}
                 </Button>
                 <Button
                   type="button"
@@ -96,7 +92,7 @@ export function AccessRequestsSection({ board, requests, onChanged }: AccessRequ
                   disabled={answer.isPending}
                   onClick={() => answer.mutate({ request, role: 'viewer' })}
                 >
-                  Дать просмотр
+                  {m.grantView}
                 </Button>
                 <Button
                   type="button"
@@ -106,7 +102,7 @@ export function AccessRequestsSection({ board, requests, onChanged }: AccessRequ
                   disabled={answer.isPending}
                   onClick={() => answer.mutate({ request, role: null })}
                 >
-                  Отклонить
+                  {m.decline}
                 </Button>
               </div>
             </li>

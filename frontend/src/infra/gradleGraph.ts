@@ -1,5 +1,6 @@
 import { InfraEdges, type InfraGraph, type InfraNode } from './infraGraph.ts'
 import type { GradleBuild, GradleProject } from './parseGradle.ts'
+import { infraMessages } from './messages.tsx'
 
 /** Modules one import adds at most: more would not fit a page that people read. */
 export const MAX_MODULES = 300
@@ -91,10 +92,10 @@ export function gradleGraph(build: GradleBuild, { tests, c4 }: GradleOptions): I
 
 /** What the import adds, for the summary before it. */
 export function gradleSummary(build: GradleBuild, graph: InfraGraph): string {
-  return `Модулей: ${graph.nodes.length}, связей: ${graph.edges.length}, групп: ${graph.frames.length}, пропущено: ${build.skipped}`
+  return infraMessages.gradle.summary(graph.nodes.length, graph.edges.length, graph.frames.length, build.skipped)
 }
 
 /** Why the graph is too large to add, or `null`. */
 export function gradleGraphError(graph: InfraGraph): string | null {
-  return graph.nodes.length > MAX_MODULES ? `Слишком много модулей: ${graph.nodes.length}, за раз можно добавить не больше ${MAX_MODULES}` : null
+  return graph.nodes.length > MAX_MODULES ? infraMessages.gradle.tooMany(graph.nodes.length, MAX_MODULES) : null
 }

@@ -1,4 +1,5 @@
 import { ELEMENT_STYLE_KEYS, type StyleValue } from './model.ts'
+import { elementKindMessages as m } from './elementKinds.messages.ts'
 import type { ShapeId } from './shapes.ts'
 
 /**
@@ -88,7 +89,15 @@ export const TECHNOLOGY_KEY = ELEMENT_STYLE_KEYS.technology
 
 export type Interaction = 'sync' | 'async'
 
-export const INTERACTION_LABELS: Readonly<Record<Interaction, string>> = { sync: 'Синхронная', async: 'Асинхронная' }
+/** The names of the interactions in the language of the interface. */
+export const INTERACTION_LABELS: Readonly<Record<Interaction, string>> = {
+  get sync() {
+    return m.interactions.sync
+  },
+  get async() {
+    return m.interactions.async
+  },
+}
 
 export const isInteraction = (value: unknown): value is Interaction => value === 'sync' || value === 'async'
 

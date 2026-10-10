@@ -8,6 +8,7 @@ import { ThreadIssues } from '../issues/ThreadIssues.tsx'
 import { CommentComposer } from './CommentComposer.tsx'
 import { CommentReactions } from './CommentReactions.tsx'
 import { AssignButton, ThreadAssignee } from './ThreadAssignee.tsx'
+import { commentsMessages as m } from './messages.ts'
 import { commentTimeFormat, mentionSegments, threadTarget, type CellInfo } from './threads.ts'
 
 export interface ThreadActions {
@@ -55,7 +56,7 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
 
   return (
     <article
-      aria-label={`Ветка: ${target.label}`}
+      aria-label={m.thread(target.label)}
       data-thread={thread.id}
       aria-current={highlighted || undefined}
       className={cn('flex flex-col gap-2 rounded-md border p-2', highlighted && 'ring-2 ring-primary', resolved && 'opacity-80')}
@@ -64,7 +65,7 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
         {onShow ? (
           <button
             type="button"
-            title="Показать на холсте"
+            title={m.showOnCanvas}
             className={cn(
               'min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-medium hover:bg-accent',
               target.deleted && 'text-muted-foreground italic',
@@ -79,7 +80,7 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
         {!thread.assignee && (
           <AssignButton
             people={people}
-            onAssign={(person) => attempt(() => actions.assign(thread, person), 'Не удалось назначить ответственного')}
+            onAssign={(person) => attempt(() => actions.assign(thread, person), m.assignFailed)}
           />
         )}
         <Button
@@ -87,22 +88,22 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
           variant="ghost"
           size="sm"
           className="h-6 px-1.5 text-xs"
-          onClick={() => void attempt(() => actions.resolve(thread, !resolved), 'Не удалось изменить ветку').catch(() => {})}
+          onClick={() => void attempt(() => actions.resolve(thread, !resolved), m.threadChangeFailed).catch(() => {})}
         >
           {resolved ? <RotateCcw /> : <Check />}
-          {resolved ? 'Открыть снова' : 'Решено'}
+          {resolved ? m.reopen : m.resolve}
         </Button>
       </div>
       {thread.assignee && (
         <ThreadAssignee
           assignee={thread.assignee}
           people={people}
-          onAssign={(person) => attempt(() => actions.assign(thread, person), 'Не удалось назначить ответственного')}
+          onAssign={(person) => attempt(() => actions.assign(thread, person), m.assignFailed)}
         />
       )}
       {resolved && (
         <p className="px-1 text-xs text-muted-foreground">
-          Решено{thread.resolvedBy && `: ${thread.resolvedBy.name}`}, {commentTimeFormat.format(new Date(thread.resolvedAt!))}
+          {m.resolvedBy(thread.resolvedBy?.name ?? null, commentTimeFormat().format(new Date(thread.resolvedAt!)))}
         </p>
       )}
       <ThreadIssues thread={thread} />
@@ -116,9 +117,9 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
             canDelete={comment.author?.id === userId || isOwner}
             userId={userId}
             people={people}
-            onEdit={(text) => attempt(() => actions.edit(thread, comment, text), 'Не удалось изменить комментарий')}
-            onDelete={() => attempt(() => actions.remove(thread, comment), 'Не удалось удалить комментарий')}
-            onReact={(reaction, on) => attempt(() => actions.react(thread, comment, reaction, on), 'Не удалось изменить реакцию')}
+            onEdit={(text) => attempt(() => actions.edit(thread, comment, text), m.editFailed)}
+            onDelete={() => attempt(() => actions.remove(thread, comment), m.deleteFailed)}
+            onReact={(reaction, on) => attempt(() => actions.react(thread, comment, reaction, on), m.reactFailed)}
           />
         ))}
       </ol>
@@ -129,10 +130,10 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
       )}
       <CommentComposer
         people={people}
-        label="Ответ"
-        placeholder="Ответить… @ — упомянуть"
-        submitLabel="Ответить"
-        onSubmit={(text) => attempt(() => actions.reply(thread, text), 'Не удалось отправить ответ')}
+        label={m.reply}
+        placeholder={m.replyPlaceholder}
+        submitLabel={m.replySubmit}
+        onSubmit={(text) => attempt(() => actions.reply(thread, text), m.replyFailed)}
       />
     </article>
   )
@@ -157,23 +158,23 @@ function CommentItem({ comment, first, mine, canDelete, userId, people, onEdit, 
   const [confirming, setConfirming] = useState(false)
 
   return (
-    <li aria-label={`Комментарий: ${comment.author?.name ?? 'Удалённый пользователь'}`} className="flex flex-col gap-1">
+    <li aria-label={m.comment(comment.author?.name ?? m.deletedUser)} className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5 text-xs">
         <Avatar url={comment.author?.avatarUrl} className="size-5" />
         <span className={cn('font-medium', !comment.author && 'text-muted-foreground italic')}>
-          {comment.author?.name ?? 'Удалённый пользователь'}
+          {comment.author?.name ?? m.deletedUser}
         </span>
         <time dateTime={comment.createdAt} className="text-muted-foreground">
-          {commentTimeFormat.format(new Date(comment.createdAt))}
+          {commentTimeFormat().format(new Date(comment.createdAt))}
         </time>
-        {comment.editedAt && <span className="text-muted-foreground">(изменено)</span>}
+        {comment.editedAt && <span className="text-muted-foreground">{m.edited}</span>}
       </div>
       {editing ? (
         <CommentComposer
           people={people}
-          label="Текст комментария"
-          placeholder="Комментарий"
-          submitLabel="Сохранить"
+          label={m.commentText}
+          placeholder={m.commentShort}
+          submitLabel={m.save}
           initialText={comment.body}
           initialMentions={comment.mentions}
           autoFocus
@@ -195,10 +196,10 @@ function CommentItem({ comment, first, mine, canDelete, userId, people, onEdit, 
       )}
       {!editing && <CommentReactions reactions={comment.reactions} userId={userId} onToggle={onReact} />}
       {confirming ? (
-        <div role="alertdialog" aria-label="Удаление комментария" className="flex items-center gap-2 text-xs">
-          <span className="flex-1">{first ? 'Удалить ветку со всеми ответами?' : 'Удалить комментарий?'}</span>
+        <div role="alertdialog" aria-label={m.deletingComment} className="flex items-center gap-2 text-xs">
+          <span className="flex-1">{first ? m.deleteThreadQuestion : m.deleteCommentQuestion}</span>
           <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(false)}>
-            Отмена
+            {m.cancel}
           </Button>
           <Button
             type="button"
@@ -206,7 +207,7 @@ function CommentItem({ comment, first, mine, canDelete, userId, people, onEdit, 
             className="h-6 bg-destructive px-2 text-xs text-white hover:bg-destructive/90"
             onClick={() => void onDelete().then(() => setConfirming(false), () => setConfirming(false))}
           >
-            Удалить
+            {m.delete}
           </Button>
         </div>
       ) : (
@@ -215,7 +216,7 @@ function CommentItem({ comment, first, mine, canDelete, userId, people, onEdit, 
           <div className="flex gap-1">
             {mine && (
               <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={() => setEditing(true)}>
-                Изменить
+                {m.edit}
               </Button>
             )}
             {canDelete && (
@@ -226,7 +227,7 @@ function CommentItem({ comment, first, mine, canDelete, userId, people, onEdit, 
                 className="h-6 px-1.5 text-xs text-destructive hover:text-destructive"
                 onClick={() => setConfirming(true)}
               >
-                Удалить
+                {m.delete}
               </Button>
             )}
           </div>

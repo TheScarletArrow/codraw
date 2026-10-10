@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.issue
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import io.github.thescarletarrow.codraw.user.Language
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.json.JsonMapper
@@ -132,6 +133,10 @@ class GitHubClientTest {
             body,
         )
         assertEquals("Создано в CoDraw: [обсуждение](https://x)", IssueLinkService.issueBody(" ", BackLink("обсуждение", "https://x")))
+        assertEquals(
+            "Created in CoDraw: [thread](https://x)",
+            IssueLinkService.issueBody(" ", BackLink("thread", "https://x", Language.EN)),
+        )
     }
 
     private fun server(vararg answers: (HttpExchange) -> Unit) = Server(*answers).also { servers += it }

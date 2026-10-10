@@ -67,13 +67,33 @@ class UserService(
         return user
     }
 
-    /** Creates a guest named «Гость N» for working without a sign-in provider. */
+    /**
+     * Creates a guest for working without a sign-in provider, who speaks [language]: named «Гость N» in Russian, «Guest N»
+     * in English.
+     */
     @Transactional
-    fun createGuest(): User =
-        signIn(ProviderProfile(ProviderProfile.GUEST, UUID.randomUUID().toString(), "Гость ${Random.nextInt(1, 1000)}", null))
-            .also { metrics.guestCreated() }
+    fun createGuest(language: Language = Language.RU): User {
+        val name = "${GUEST_NAMES.getValue(language)} ${Random.nextInt(1, 1000)}"
+        val guest = signIn(ProviderProfile(ProviderProfile.GUEST, UUID.randomUUID().toString(), name, null))
+        if (language != guest.language) users.updateLanguage(guest.id, language.name)
+        metrics.guestCreated()
+        return guest.copy(language = language)
+    }
+
+    /** Remembers the language of the interface of the user, in which their letters and messages of notifications go. */
+    @Transactional
+    fun setLanguage(id: UUID, language: Language) {
+        users.updateLanguage(id, language.name)
+    }
 
     fun find(id: UUID): User? = users.findById(id)
+
+    /** The language of the user, Russian for a user that is gone. */
+    fun language(id: UUID): Language = users.findById(id)?.language ?: Language.RU
+
+    private companion object {
+        val GUEST_NAMES = mapOf(Language.RU to "Гость", Language.EN to "Guest")
+    }
 }
 
 /** An administrator of the installation blocked the user [userId], who does not sign in. */

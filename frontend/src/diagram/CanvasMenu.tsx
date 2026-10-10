@@ -16,6 +16,7 @@ import {
   type PlanCommand,
   type StatusCommand,
 } from './canvasMenu.ts'
+import { canvasMenuMessages } from './canvasMenu.messages.ts'
 import { readSystemClipboard, writeSystemClipboard } from './clipboard.ts'
 import type { ContextMenuRequest, DiagramEditor, Point, SequencePartState } from './editor.ts'
 import { lockLabel } from './locks.ts'
@@ -314,7 +315,7 @@ export function CanvasMenu({
             {lockLabel(lock!.locks.map((holder) => holder.lockedBy))}
           </p>
         )}
-        <div role="menu" aria-label="Действия" aria-describedby={locked ? lockId : undefined} className="flex flex-col">
+        <div role="menu" aria-label={canvasMenuMessages.actions} aria-describedby={locked ? lockId : undefined} className="flex flex-col">
           {menuItems(request.target, {
             canPaste,
             canUndo,

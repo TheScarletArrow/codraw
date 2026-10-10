@@ -1,0 +1,41 @@
+import { defineMessages } from '../i18n/i18n.ts'
+
+/** The names of the colors of the palette. */
+export const colorMessages = defineMessages({
+  ru: {
+    white: 'Белый',
+    lightGray: 'Светло-серый',
+    lightBlue: 'Голубой',
+    lightGreen: 'Светло-зелёный',
+    lightYellow: 'Светло-жёлтый',
+    peach: 'Персиковый',
+    pink: 'Розовый',
+    lilac: 'Сиреневый',
+    black: 'Чёрный',
+    gray: 'Серый',
+    blue: 'Синий',
+    green: 'Зелёный',
+    yellow: 'Жёлтый',
+    orange: 'Оранжевый',
+    red: 'Красный',
+    purple: 'Фиолетовый',
+  },
+  en: {
+    white: 'White',
+    lightGray: 'Light gray',
+    lightBlue: 'Light blue',
+    lightGreen: 'Light green',
+    lightYellow: 'Light yellow',
+    peach: 'Peach',
+    pink: 'Pink',
+    lilac: 'Lilac',
+    black: 'Black',
+    gray: 'Gray',
+    blue: 'Blue',
+    green: 'Green',
+    yellow: 'Yellow',
+    orange: 'Orange',
+    red: 'Red',
+    purple: 'Purple',
+  },
+})

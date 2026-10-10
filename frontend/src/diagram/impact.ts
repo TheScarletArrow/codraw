@@ -2,6 +2,7 @@ import * as Y from 'yjs'
 import { ELEMENT_KINDS } from './elementKinds.ts'
 import { elementProperties, labelLines } from './elementProps.ts'
 import { isFreehandStyle } from './freehand.ts'
+import { modelMessages } from './model.messages.ts'
 import { elementIdOf, getCells, LAYER_CELL_ID, readCell, ROOT_CELL_ID } from './model.ts'
 import { listPages } from './pages.ts'
 import { isSequenceStyle, sequencePartOf } from './sequence.ts'
@@ -246,7 +247,7 @@ export function documentRecords(doc: Y.Doc, pageId: string): ImpactRecord[] {
 
 /** The name of a node: of its element, else the first line of its label. */
 function nodeName(record: ImpactRecord): string {
-  return elementProperties(record.style, record.value).name || labelLines(record.value, record.style)[0] || 'Без имени'
+  return elementProperties(record.style, record.value).name || labelLines(record.value, record.style)[0] || modelMessages.unnamed
 }
 
 /** The name of the node of the cell `cellId` of a page: of its element, else the first line of its label. */
@@ -254,7 +255,7 @@ export function cellName(doc: Y.Doc, pageId: string, cellId: string): string {
   const records = documentRecords(doc, pageId)
   const byId = new Map(records.map((record) => [record.id, record]))
   const node = nodeOf(cellId, byId)
-  return node === null ? 'Без имени' : nodeName(byId.get(node)!)
+  return node === null ? modelMessages.unnamed : nodeName(byId.get(node)!)
 }
 
 /**
@@ -303,9 +304,9 @@ export function boardImpact(doc: Y.Doc, pageId: string, cellId: string, depth: I
           places.push({ pageId: link.pageId, pageName: pages.find((page) => page.id === link.pageId)?.name ?? '', cellId: cell })
         }
         places.sort((a, b) => pages.findIndex((page) => page.id === a.pageId) - pages.findIndex((page) => page.id === b.pageId))
-        return { key, name: names.get(key) ?? 'Без имени', depth: distance, places }
+        return { key, name: names.get(key) ?? modelMessages.unnamed, depth: distance, places }
       })
       .sort((a, b) => a.depth - b.depth || a.name.localeCompare(b.name, 'ru') || (a.key < b.key ? -1 : 1))
   }
-  return { name: names.get(focus) ?? 'Без имени', dependencies: items(true), dependents: items(false), places: cellsOf.get(focus) ?? [] }
+  return { name: names.get(focus) ?? modelMessages.unnamed, dependencies: items(true), dependents: items(false), places: cellsOf.get(focus) ?? [] }
 }

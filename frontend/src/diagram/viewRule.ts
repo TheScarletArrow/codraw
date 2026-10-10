@@ -5,19 +5,15 @@
  * reads and names it, without the document.
  */
 
+import { sliceLabels, viewKindLabels, viewMessages as m } from './model.messages.ts'
+
 /** What a view shows. */
 export type ViewKind = 'landscape' | 'context' | 'containers' | 'components' | 'deployment'
 
 export const VIEW_KINDS: readonly ViewKind[] = ['landscape', 'context', 'containers', 'components', 'deployment']
 
 /** The names of the kinds of views, as the window of the rule offers them. */
-export const VIEW_KIND_LABELS: Readonly<Record<ViewKind, string>> = {
-  landscape: 'Ландшафт',
-  context: 'Система и её окружение',
-  containers: 'Контейнеры системы',
-  components: 'Компоненты контейнера',
-  deployment: 'Развёртывание окружения',
-}
+export const VIEW_KIND_LABELS: Readonly<Record<ViewKind, string>> = viewKindLabels
 
 /** The values of the slice of a view: an element is in it when it has one of the values of each facet with values. */
 export interface ViewSlice {
@@ -31,7 +27,7 @@ export type SliceFacet = keyof ViewSlice
 
 export const SLICE_FACETS: readonly SliceFacet[] = ['owners', 'tags', 'technologies']
 
-export const SLICE_LABELS: Readonly<Record<SliceFacet, string>> = { owners: 'Команды', tags: 'Теги', technologies: 'Технологии' }
+export const SLICE_LABELS: Readonly<Record<SliceFacet, string>> = sliceLabels
 
 export interface ViewRule extends ViewSlice {
   kind: ViewKind
@@ -84,42 +80,42 @@ export const sameViewRule = (a: ViewRule, b: ViewRule) => JSON.stringify(viewRul
 export const isSliced = (slice: ViewSlice) => SLICE_FACETS.some((facet) => slice[facet].length > 0)
 
 /** What is written about an environment: its name, or «без окружения». */
-export const environmentLabel = (environment: string) => environment || 'без окружения'
+export const environmentLabel = (environment: string) => environment || m.noEnvironment
 
 /**
  * The name of a new page of the view: «Ландшафт», «Магазин: окружение», «Магазин: контейнеры», «API: компоненты»,
  * «Развёртывание: prod»; `scopeName` is the name of the element it is about.
  */
 export function viewPageName(rule: ViewRule, scopeName: string): string {
-  const name = scopeName.trim() || 'Без имени'
+  const name = scopeName.trim() || m.unnamed
   switch (rule.kind) {
     case 'landscape':
-      return 'Ландшафт'
+      return m.landscape
     case 'context':
-      return `${name}: окружение`
+      return m.contextPage(name)
     case 'containers':
-      return `${name}: контейнеры`
+      return m.containersPage(name)
     case 'components':
-      return `${name}: компоненты`
+      return m.componentsPage(name)
     case 'deployment':
-      return `Развёртывание: ${environmentLabel(rule.environment ?? '')}`
+      return m.deploymentPage(environmentLabel(rule.environment ?? ''))
   }
 }
 
 /** What the view shows, for its bar: «Контейнеры системы Магазин», «Развёртывание окружения prod». */
 export function viewTitle(rule: ViewRule, scopeName: string): string {
-  const name = scopeName.trim() || 'без имени'
+  const name = scopeName.trim() || m.unnamedLower
   switch (rule.kind) {
     case 'landscape':
-      return 'Ландшафт'
+      return m.landscape
     case 'context':
-      return `Система ${name} и её окружение`
+      return m.contextTitle(name)
     case 'containers':
-      return `Контейнеры системы ${name}`
+      return m.containersTitle(name)
     case 'components':
-      return `Компоненты контейнера ${name}`
+      return m.componentsTitle(name)
     case 'deployment':
-      return rule.environment ? `Развёртывание окружения ${rule.environment}` : 'Развёртывание узлов без окружения'
+      return rule.environment ? m.deploymentTitle(rule.environment) : m.deploymentWithoutEnvironment
   }
 }
 

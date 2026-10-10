@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { createProposal, proposalLimitOf, type Proposal } from '../api/proposals.ts'
 import { fetchSchemaImport } from '../api/schemaImport.ts'
 import { ApiSpecImport } from '../apiSpec/ApiSpecImport.tsx'
+import { documentMessages as d } from '../apiSpec/messages.ts'
 import { ArchitectureExport } from '../architecture/ArchitectureExport.tsx'
 import { ARCHITECTURE } from '../architecture/importFormat.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
@@ -21,6 +22,7 @@ import { setPendingSchemaImportUpdate, summarizeSchemaUpdate } from '../proposal
 import { DatabaseConnection } from './DatabaseConnection.tsx'
 import { diagramSchema, placeBeside, schemaCells, schemaMermaid, schemaSql } from './erDiagram.ts'
 import { parseSql, parseSqlFiles, type SqlFile, type SqlSchema } from './parseSql.ts'
+import { sqlMenuMessages as m } from './SqlMenu.messages.tsx'
 
 interface SqlMenuProps {
   editor: DiagramEditor | null
@@ -39,14 +41,14 @@ interface SqlMenuProps {
 
 type Message = 'sql-copied' | 'mermaid-copied' | 'copy-failed' | 'import-failed' | 'proposal-failed' | 'proposal-limit-author' | 'proposal-limit-board'
 
-const MESSAGES: Record<Message, string> = {
-  'sql-copied': 'SQL скопирован',
-  'mermaid-copied': 'Mermaid скопирован',
-  'copy-failed': 'Не удалось скопировать',
-  'import-failed': 'Не удалось добавить схему',
-  'proposal-failed': 'Не удалось создать предложение',
-  'proposal-limit-author': 'У вас уже предельное число открытых предложений на этой доске',
-  'proposal-limit-board': 'На доске уже предельное число открытых предложений',
+const MESSAGES: Record<Message, () => string> = {
+  'sql-copied': () => m.sqlCopied,
+  'mermaid-copied': () => m.mermaidCopied,
+  'copy-failed': () => m.copyFailed,
+  'import-failed': () => m.importFailed,
+  'proposal-failed': () => m.proposalFailed,
+  'proposal-limit-author': () => m.proposalLimitAuthor,
+  'proposal-limit-board': () => m.proposalLimitBoard,
 }
 
 /** The cells of a page, as its document has them. */
@@ -70,7 +72,7 @@ function importedDiagram(text: string): { diagram: MermaidDiagram | null; error:
         : diagram.kind === 'er'
           ? diagram.tables.length === 0
           : diagram.diagram.participants.length === 0
-    return { diagram: empty ? null : diagram, error: empty ? 'В тексте нет ни одного узла, таблицы или участника' : null }
+    return { diagram: empty ? null : diagram, error: empty ? m.mermaidEmpty : null }
   } catch (error) {
     if (error instanceof MermaidError) return { diagram: null, error: error.message }
     throw error
@@ -86,10 +88,10 @@ const countIndexes = (schema: SqlSchema) =>
 /** What an import of SQL finds: tables, views when it has them, references and indexes. */
 const importSummary = (schema: SqlSchema) =>
   [
-    `Таблиц: ${schema.tables.length}`,
-    schema.views.length > 0 && `представлений: ${schema.views.length}`,
-    `связей: ${countReferences(schema)}`,
-    `индексов: ${countIndexes(schema)}`,
+    m.tables(schema.tables.length),
+    schema.views.length > 0 && m.views(schema.views.length),
+    m.references(countReferences(schema)),
+    m.indexes(countIndexes(schema)),
   ]
     .filter(Boolean)
     .join(', ')
@@ -97,15 +99,15 @@ const importSummary = (schema: SqlSchema) =>
 type CellFactory = (origin: { x: number; y: number }) => Promise<CellData[]>
 
 const sourceTitle = (files: { name: string }[], fallback: string) =>
-  files.length === 1 ? files[0]!.name : files.length > 1 ? `${files.length} файлов` : fallback
+  files.length === 1 ? files[0]!.name : files.length > 1 ? m.sourceFiles(files.length) : fallback
 
 function proposalDescription(pageName: string, summary: string, existing: CellData[], imported: CellData[]): string {
   const update = summarizeSchemaUpdate(existing, imported)
   const lines = [
-    `Страница: ${pageName}`,
+    m.proposalPage(pageName),
     summary,
-    `Совпало: ${update.changed}, новых элементов: ${update.added}, к удалению: ${update.removed}.`,
-    update.matchedByName.length > 0 && `Без метки источника сопоставлено по имени: ${update.matchedByName.join(', ')}.`,
+    m.proposalMatched(update.changed, update.added, update.removed),
+    update.matchedByName.length > 0 && m.proposalByName(update.matchedByName.join(', ')),
   ].filter(Boolean)
   return lines.join('\n').slice(0, 2000)
 }
@@ -151,7 +153,7 @@ export function SqlMenu({
   const mermaid = importing === 'mermaid' ? importedDiagram(text) : null
   // Whether the server reads schemas of databases for this user; asked when «Импорт SQL» opens.
   const schemaImport = useQuery({ queryKey: ['schema-import'], queryFn: fetchSchemaImport, enabled: importing === 'sql', staleTime: 5 * 60_000 })
-  const importError = message && message !== 'sql-copied' && message !== 'mermaid-copied' ? MESSAGES[message] : null
+  const importError = message && message !== 'sql-copied' && message !== 'mermaid-copied' ? MESSAGES[message]() : null
 
   const reset = () => {
     setImporting(null)
@@ -198,7 +200,7 @@ export function SqlMenu({
     try {
       const existing = pageCells(doc, pageId)
       const imported = await cells(placeBeside(existing))
-      const proposal = await createProposal(boardId, `Обновление из ${source}`, proposalDescription(pageName, summary, existing, imported))
+      const proposal = await createProposal(boardId, m.proposalTitle(source), proposalDescription(pageName, summary, existing, imported))
       setPendingSchemaImportUpdate(proposal.id, { pageId, cells: imported })
       setOpen(false)
       reset()
@@ -251,8 +253,8 @@ export function SqlMenu({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="SQL и Mermaid"
-          title="SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes, Gradle и Terraform, импорт и выгрузка архитектуры как кода"
+          aria-label={m.menu}
+          title={m.menuTitle}
           disabled={!doc || !pageId}
         >
           <Database />
@@ -260,7 +262,7 @@ export function SqlMenu({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="SQL и Mermaid"
+        aria-label={m.menu}
         className={importing || exporting ? 'flex w-[28rem] flex-col gap-2' : 'flex w-64 flex-col gap-1 p-2'}
       >
         {exporting && doc && pageId ? (
@@ -274,26 +276,26 @@ export function SqlMenu({
             onUpdate={boardId && onProposalCreated ? (source, summary, cells) => void proposeUpdate(source, summary, cells) : undefined}
           />
         ) : importing === 'compose' ? (
-          <InfraImport format={COMPOSE} {...infraProps('compose', 'docker-compose')} />
+          <InfraImport format={COMPOSE} {...infraProps('compose', COMPOSE.source)} />
         ) : importing === 'kubernetes' ? (
-          <InfraImport format={KUBERNETES} {...infraProps('kubernetes', 'Kubernetes')} />
+          <InfraImport format={KUBERNETES} {...infraProps('kubernetes', KUBERNETES.source)} />
         ) : importing === 'gradle' ? (
           <GradleImport {...infraProps('gradle', 'Gradle')} />
         ) : importing === 'terraform' ? (
-          <InfraImport format={TERRAFORM} {...infraProps('terraform', 'Terraform')} />
+          <InfraImport format={TERRAFORM} {...infraProps('terraform', TERRAFORM.source)} />
         ) : importing === 'architecture' ? (
-          <InfraImport format={ARCHITECTURE} {...infraProps('architecture', 'архитектуры как кода')} />
+          <InfraImport format={ARCHITECTURE} {...infraProps('architecture', ARCHITECTURE.source)} />
         ) : importing === 'mermaid' && mermaid ? (
           <>
             <div className="flex items-center gap-1">
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={reset}>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={d.back} onClick={reset}>
                 <ArrowLeft />
               </Button>
-              <h2 className="text-sm font-semibold">Импорт Mermaid</h2>
+              <h2 className="text-sm font-semibold">{m.mermaidTitle}</h2>
             </div>
             <textarea
               aria-label="Mermaid"
-              placeholder={'flowchart LR\n  client[Клиент] -->|HTTPS| api(API)\n  api --> db[(PostgreSQL)]'}
+              placeholder={m.mermaidPlaceholder}
               rows={8}
               spellCheck={false}
               className="w-full resize-y rounded-md border bg-background px-2 py-1.5 font-mono text-xs"
@@ -308,21 +310,21 @@ export function SqlMenu({
               <p role="status" className="text-xs text-muted-foreground">
                 {mermaid.diagram
                   ? mermaidSummary(mermaid.diagram)
-                  : 'Блок-схема (flowchart, graph), ER-диаграмма (erDiagram) или диаграмма последовательности (sequenceDiagram)'}
+                  : m.mermaidHint}
               </p>
             )}
             {message && (
               <p role="alert" className="text-xs text-destructive">
-                {MESSAGES[message]}
+                {MESSAGES[message]()}
               </p>
             )}
             <div className="flex gap-2">
               <Button type="button" size="sm" disabled={busy || !mermaid.diagram} onClick={addTables}>
-                Добавить на страницу
+                {d.addToPage}
               </Button>
               {boardId && onProposalCreated && (
                 <Button type="button" variant="outline" size="sm" disabled={busy || !mermaid.diagram} onClick={updateTables}>
-                  Обновить через предложение
+                  {d.updateViaProposal}
                 </Button>
               )}
             </div>
@@ -340,10 +342,10 @@ export function SqlMenu({
         ) : importing === 'sql' && imported ? (
           <>
             <div className="flex items-center gap-1">
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={reset}>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={d.back} onClick={reset}>
                 <ArrowLeft />
               </Button>
-              <h2 className="text-sm font-semibold">Импорт SQL</h2>
+              <h2 className="text-sm font-semibold">{m.sqlTitle}</h2>
             </div>
             <textarea
               aria-label="DDL"
@@ -356,7 +358,7 @@ export function SqlMenu({
             />
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => input.current?.click()}>
-                Открыть файлы .sql
+                {m.openSqlFiles}
               </Button>
               <input
                 ref={input}
@@ -364,40 +366,40 @@ export function SqlMenu({
                 accept=".sql,text/plain"
                 multiple
                 hidden
-                aria-label="Файлы SQL"
+                aria-label={m.sqlFiles}
                 onChange={(event) => void openFiles(event.target.files)}
               />
               {files.length > 0 && (
                 <span className="truncate text-xs text-muted-foreground" title={files.map((file) => file.name).join(', ')}>
-                  Файлов: {files.length}
+                  {d.fileCount} {files.length}
                 </span>
               )}
               {schemaImport.data?.kind === 'available' && (
                 <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setConnecting(true)}>
-                  Подключиться к базе…
+                  {m.connect}
                 </Button>
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Схему готовой базы снимает <code>pg_dump --schema-only</code> или <code>mysqldump --no-data</code>: откройте
-              полученный файл.
-              {schemaImport.data?.kind === 'sign-in' && ' Подключиться к базе можно после входа через GitHub или Google.'}
+              {m.dumpHint(<code>pg_dump --schema-only</code>, <code>mysqldump --no-data</code>)}
+              {schemaImport.data?.kind === 'sign-in' && m.signInHint}
             </p>
             <p role="status" className="text-xs text-muted-foreground">
-              {importSummary(imported)}, пропущено операторов: {imported.skipped}
+              {importSummary(imported)}
+              {m.skippedStatements(imported.skipped)}
             </p>
             {message && (
               <p role="alert" className="text-xs text-destructive">
-                {MESSAGES[message]}
+                {MESSAGES[message]()}
               </p>
             )}
             <div className="flex gap-2">
               <Button type="button" size="sm" disabled={busy || !importable} onClick={addTables}>
-                Добавить на страницу
+                {d.addToPage}
               </Button>
               {boardId && onProposalCreated && (
                 <Button type="button" variant="outline" size="sm" disabled={busy || !importable} onClick={updateTables}>
-                  Обновить через предложение
+                  {d.updateViaProposal}
                 </Button>
               )}
             </div>
@@ -405,13 +407,13 @@ export function SqlMenu({
         ) : (
           <>
             <p className="px-2 pb-1 text-xs text-muted-foreground">
-              Таблиц на странице: {tables}
-              {views > 0 && `, представлений: ${views}`}
+              {m.pageTables(tables)}
+              {views > 0 && m.pageViews(views)}
             </p>
             {!readOnly && (
               <>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('sql')}>
-                  Импорт SQL…
+                  {m.importSql}
                 </Button>
                 <Button
                   type="button"
@@ -420,13 +422,13 @@ export function SqlMenu({
                   className="justify-start font-normal"
                   onClick={() => setImporting('mermaid')}
                 >
-                  Импорт Mermaid…
+                  {m.importMermaid}
                 </Button>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('api')}>
-                  Импорт OpenAPI / AsyncAPI…
+                  {m.importApi}
                 </Button>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('compose')}>
-                  Импорт docker-compose…
+                  {m.importCompose}
                 </Button>
                 <Button
                   type="button"
@@ -435,10 +437,10 @@ export function SqlMenu({
                   className="justify-start font-normal"
                   onClick={() => setImporting('kubernetes')}
                 >
-                  Импорт Kubernetes…
+                  {m.importKubernetes}
                 </Button>
                 <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setImporting('gradle')}>
-                  Импорт Gradle…
+                  {m.importGradle}
                 </Button>
                 <Button
                   type="button"
@@ -447,7 +449,7 @@ export function SqlMenu({
                   className="justify-start font-normal"
                   onClick={() => setImporting('terraform')}
                 >
-                  Импорт Terraform…
+                  {m.importTerraform}
                 </Button>
                 <Button
                   type="button"
@@ -456,7 +458,7 @@ export function SqlMenu({
                   className="justify-start font-normal"
                   onClick={() => setImporting('architecture')}
                 >
-                  Импорт архитектуры как кода…
+                  {m.importArchitecture}
                 </Button>
               </>
             )}
@@ -468,7 +470,7 @@ export function SqlMenu({
               disabled={!exportable}
               onClick={() => schema && void copy(schemaSql(schema), 'sql-copied')}
             >
-              Скопировать SQL
+              {m.copySql}
             </Button>
             <Button
               type="button"
@@ -484,7 +486,7 @@ export function SqlMenu({
                 )
               }
             >
-              Скачать .sql
+              {m.downloadSql}
             </Button>
             <Button
               type="button"
@@ -494,14 +496,14 @@ export function SqlMenu({
               disabled={tables === 0}
               onClick={() => schema && void copy(schemaMermaid(schema), 'mermaid-copied')}
             >
-              Скопировать Mermaid
+              {m.copyMermaid}
             </Button>
             <Button type="button" variant="ghost" size="sm" className="justify-start font-normal" onClick={() => setExporting(true)}>
-              Архитектура как код…
+              {m.architecture}
             </Button>
             {message && (
               <p role={message === 'copy-failed' ? 'alert' : 'status'} className="px-2 text-xs text-muted-foreground">
-                {MESSAGES[message]}
+                {MESSAGES[message]()}
               </p>
             )}
           </>

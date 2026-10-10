@@ -21,6 +21,7 @@ import {
 import { boardImages, imagesToPdf, pdfPages } from './pdf.ts'
 import { embeddedImages, PDF_IMAGE_TYPES, withInlinedImages } from './inlineImages.ts'
 import { canCopyImages, copyPng, svgToPng } from './png.ts'
+import { imageMessages as m } from './messages.ts'
 
 interface ImageExportMenuProps {
   editor: DiagramEditor | null
@@ -35,12 +36,12 @@ interface ImageExportMenuProps {
 
 type Message = 'copied' | 'save-failed' | 'copy-failed' | 'pdf-busy' | 'pdf-failed'
 
-const MESSAGES: Record<Message, string> = {
-  copied: 'Изображение скопировано',
-  'save-failed': 'Не удалось сохранить изображение',
-  'copy-failed': 'Не удалось скопировать изображение',
-  'pdf-busy': 'PDF готовится…',
-  'pdf-failed': 'Не удалось сохранить PDF',
+const MESSAGES: Record<Message, () => string> = {
+  copied: () => m.copied,
+  'save-failed': () => m.saveFailed,
+  'copy-failed': () => m.copyFailed,
+  'pdf-busy': () => m.pdfBusy,
+  'pdf-failed': () => m.pdfFailed,
 }
 
 /** Messages that tell how things go rather than what went wrong. */
@@ -167,15 +168,15 @@ export function ImageExportMenu({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Экспорт в изображение"
-          title="Экспорт в изображение: страница в PNG, SVG или PDF"
+          aria-label={m.exportLabel}
+          title={m.exportTitle}
           disabled={!editor}
         >
           <ImageDown />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="flex w-80 flex-col gap-3" aria-label="Экспорт в изображение">
-        {!hasCells && <p className="text-sm text-muted-foreground">На странице нет объектов</p>}
+      <PopoverContent align="start" className="flex w-80 flex-col gap-3" aria-label={m.exportLabel}>
+        {!hasCells && <p className="text-sm text-muted-foreground">{m.empty}</p>}
         <div className="flex flex-col gap-1.5">
           <label className="flex items-center gap-2 text-sm has-disabled:text-muted-foreground">
             <input
@@ -184,22 +185,22 @@ export function ImageExportMenu({
               disabled={!canCopy}
               onChange={(event) => setSelectionOnly(event.target.checked)}
             />
-            Только выделенное
+            {m.onlySelected}
           </label>
           {filter && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={visibleOnly} onChange={(event) => setVisibleOnly(event.target.checked)} />
-              Только видимое
+              {m.onlyVisible}
             </label>
           )}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={transparent} onChange={(event) => setTransparent(event.target.checked)} />
-            Прозрачный фон
+            {m.transparent}
           </label>
           <label className="flex items-center gap-2 text-sm">
-            Масштаб PNG
+            {m.pngScale}
             <select
-              aria-label="Масштаб PNG"
+              aria-label={m.pngScale}
               className="h-8 rounded-md border bg-background px-2 text-foreground"
               value={scale}
               onChange={(event) => setScale(Number(event.target.value) as PngScale)}
@@ -212,38 +213,38 @@ export function ImageExportMenu({
             </select>
           </label>
           <label className="flex items-center gap-2 text-sm has-disabled:text-muted-foreground">
-            Страницы PDF
+            {m.pdfPages}
             <select
-              aria-label="Страницы PDF"
+              aria-label={m.pdfPages}
               className="h-8 rounded-md border bg-background px-2 text-foreground disabled:text-muted-foreground"
               value={allPages ? 'all' : 'current'}
               disabled={pageCount <= 1 || onlySelected}
               onChange={(event) => setPages(event.target.value as PdfPages)}
             >
-              <option value="current">Текущая страница</option>
-              <option value="all">Все страницы</option>
+              <option value="current">{m.currentPage}</option>
+              <option value="all">{m.allPages}</option>
             </select>
           </label>
         </div>
         <div className="flex flex-col gap-2">
           <Button type="button" size="sm" disabled={!hasCells || busy} onClick={() => void save('png')}>
-            Сохранить PNG
+            {m.savePng}
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={!hasCells || busy} onClick={() => void save('svg')}>
-            Сохранить SVG
+            {m.saveSvg}
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={!canSavePdf || busy} onClick={() => void savePdf()}>
-            Сохранить PDF
+            {m.savePdf}
           </Button>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            title={clipboardSupported ? undefined : 'Браузер не умеет копировать изображения'}
+            title={clipboardSupported ? undefined : m.noClipboard}
             disabled={!hasCells || busy || !clipboardSupported}
             onClick={copy}
           >
-            Копировать PNG
+            {m.copyPng}
           </Button>
         </div>
         {message && (
@@ -253,7 +254,7 @@ export function ImageExportMenu({
             aria-live="polite"
             className={NEWS.has(message) ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}
           >
-            {MESSAGES[message]}
+            {MESSAGES[message]()}
           </p>
         )}
       </PopoverContent>

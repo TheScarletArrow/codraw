@@ -5,6 +5,7 @@ import { continueAsGuest } from '../api/auth.ts'
 import { isTooManyRequests } from '../api/http.ts'
 import { ME_QUERY_KEY, useLoginOptions } from '../auth/session.ts'
 import { SignInButtons } from '../auth/SignInButtons.tsx'
+import { loginMessages as m } from './LoginPage.messages.tsx'
 
 /** The page of the app that sent the visitor to sign in, e.g. an invitation, or the list of boards. */
 function returnPathOf(state: unknown): string {
@@ -31,10 +32,10 @@ export function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center p-4">
       <section className="flex w-full max-w-sm flex-col gap-4 rounded-lg border p-6">
         <h1 className="text-2xl font-bold">CoDraw</h1>
-        <p className="text-muted-foreground">Войдите, чтобы работать со своими досками.</p>
+        <p className="text-muted-foreground">{m.intro}</p>
         {(location.state as { accountDeleted?: unknown } | null)?.accountDeleted === true && (
           <p role="status" className="text-sm">
-            Учётная запись удалена. Новый вход создаст новую пустую учётную запись.
+            {m.accountDeleted}
           </p>
         )}
         {/*
@@ -43,47 +44,42 @@ export function LoginPage() {
         */}
         {params.has('error') && (
           <p role="alert" className="text-destructive">
-            {params.get('error') === 'denied'
-              ? 'Вход в эту установку CoDraw вам не разрешён. Обратитесь к администратору.'
-              : 'Вход не выполнен. Попробуйте ещё раз.'}
+            {params.get('error') === 'denied' ? m.denied : m.failed}
           </p>
         )}
         <SignInButtons />
         {options.data?.guests && (
           <Button type="button" variant="ghost" onClick={() => guest.mutate()} disabled={guest.isPending}>
-            Продолжить без входа
+            {m.asGuest}
           </Button>
         )}
         {options.data && options.data.providers.length === 0 && !options.data.guests && (
-          <p className="text-muted-foreground">Вход не настроен. Обратитесь к администратору.</p>
+          <p className="text-muted-foreground">{m.notConfigured}</p>
         )}
         {options.isError && (
           <p role="alert" className="text-destructive">
-            Не удалось загрузить способы входа. Обновите страницу.
+            {m.optionsFailed}
           </p>
         )}
         {/* With `?blocked` when an administrator of the installation blocked the user. */}
         {params.has('blocked') && (
           <p role="alert" className="text-destructive">
-            Учётная запись заблокирована администратором установки.
+            {m.blocked}
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Входя или продолжая без входа, вы принимаете{' '}
-          <Link to="/terms" className="underline">
-            условия использования
-          </Link>{' '}
-          и{' '}
-          <Link to="/privacy" className="underline">
-            политику конфиденциальности
-          </Link>
-          .
+          {m.consent(
+            <Link to="/terms" className="underline">
+              {m.terms}
+            </Link>,
+            <Link to="/privacy" className="underline">
+              {m.privacy}
+            </Link>,
+          )}
         </p>
         {guest.isError && (
           <p role="alert" className="text-destructive">
-            {isTooManyRequests(guest.error)
-              ? 'Слишком много новых гостей с вашего адреса. Попробуйте позже или войдите.'
-              : 'Не удалось продолжить без входа. Попробуйте ещё раз.'}
+            {isTooManyRequests(guest.error) ? m.tooManyGuests : m.guestFailed}
           </p>
         )}
       </section>

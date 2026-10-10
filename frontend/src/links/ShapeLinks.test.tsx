@@ -5,7 +5,8 @@ import { boardLink } from '../diagram/links.ts'
 import type { PageInfo } from '../diagram/pages.ts'
 import { createFakeEditor, type FakeEditor } from '../test/fakeEditor.ts'
 import { mockFetch, renderRoutes } from '../test/render.tsx'
-import { LINK_MESSAGE_DURATION, LINK_MESSAGES } from './linkTexts.ts'
+import { LINK_MESSAGE_DURATION } from './linkTexts.ts'
+import { linkMessages } from './messages.ts'
 import { ShapeLinks } from './ShapeLinks.tsx'
 
 const PAGES: PageInfo[] = [
@@ -129,13 +130,13 @@ describe('ShapeLinks', () => {
     const { router } = show()
 
     act(() => editor.clickLink({ cellId: 'api', link: 'data:page/id,deleted' }))
-    expect(screen.getByRole('alert')).toHaveTextContent(LINK_MESSAGES.page)
+    expect(screen.getByRole('alert')).toHaveTextContent(linkMessages.followFailed.page)
     expect(onSelectPage).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
     expect(screen.queryByRole('alert')).toBeNull()
 
     act(() => editor.clickLink({ cellId: 'db', link: boardLink('b-2') }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(LINK_MESSAGES.board)
+    expect(await screen.findByRole('alert')).toHaveTextContent(linkMessages.followFailed.board)
     expect(router.state.location.pathname).toBe('/boards/current')
 
     vi.useFakeTimers()
@@ -154,7 +155,7 @@ describe('ShapeLinks', () => {
     act(() => editor.clickLink({ cellId: 'bad', link: 'javascript:alert(1)' }))
 
     expect(screen.queryByTestId('link-badge')).toBeNull()
-    expect(screen.getByRole('alert')).toHaveTextContent(LINK_MESSAGES.unsafe)
+    expect(screen.getByRole('alert')).toHaveTextContent(linkMessages.followFailed.unsafe)
     expect(open).not.toHaveBeenCalled()
   })
 })

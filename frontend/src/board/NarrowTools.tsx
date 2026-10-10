@@ -1,5 +1,6 @@
 import { Shapes, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { boardMessages as m } from './board.messages.ts'
 
 /**
  * On a narrow screen the line of the board keeps its title, «Поделиться» and «Комментарии»; this button shows and hides
@@ -11,9 +12,9 @@ export function ToolsButton({ open, onToggle }: { open: boolean; onToggle: () =>
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Инструменты"
+      aria-label={m.tools}
       aria-expanded={open}
-      title="Инструменты"
+      title={m.tools}
       className="shrink-0 aria-expanded:bg-accent lg:hidden"
       onClick={onToggle}
     >
@@ -29,9 +30,9 @@ export function PaletteButton({ open, onToggle }: { open: boolean; onToggle: () 
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Фигуры"
+      aria-label={m.shapes}
       aria-expanded={open}
-      title="Фигуры"
+      title={m.shapes}
       className="shrink-0 aria-expanded:bg-accent md:hidden"
       onClick={onToggle}
     >

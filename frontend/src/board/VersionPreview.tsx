@@ -11,6 +11,7 @@ import { ConfirmedAction } from './ConfirmedAction.tsx'
 import { usePages } from './usePages.ts'
 import { VersionView } from './VersionView.tsx'
 import { versionsKey, versionTimeFormat } from './versions.ts'
+import { versionMessages as m } from './versions.messages.ts'
 
 /** Cells of a page of a version to bring back into the page of the board, see `DiagramEditor.restoreCells`. */
 export interface CellsRestore {
@@ -107,16 +108,16 @@ export function VersionPreview({
     if (cells && ids.length > 0) onRestoreCells({ pageId, cells, ids })
   }
 
-  const time = versionTimeFormat.format(new Date(version.createdAt))
+  const time = versionTimeFormat().format(new Date(version.createdAt))
   return (
-    <section aria-label={`Версия от ${time}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <section aria-label={m.version(time)} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/50 px-3 py-2 text-sm">
-        <span className="font-medium">{comparing ? `Изменения после версии от ${time}` : `Версия от ${time}`}</span>
-        <span className="text-muted-foreground">только просмотр</span>
+        <span className="font-medium">{comparing ? m.changesAfter(time) : m.version(time)}</span>
+        <span className="text-muted-foreground">{m.viewOnly}</span>
         <span className="flex-1" />
         {restore.isError && (
           <span role="alert" className="text-destructive">
-            {restore.variables?.pageId ? 'Не удалось восстановить страницу' : 'Не удалось восстановить версию'}
+            {restore.variables?.pageId ? m.restorePageFailed : m.restoreFailed}
           </span>
         )}
         <Button
@@ -128,12 +129,12 @@ export function VersionPreview({
           onClick={() => onCompareChange(!comparing)}
         >
           <GitCompareArrows />
-          Сравнить с текущей
+          {m.compare}
         </Button>
         {comparing && versionDocument && (
           <SchemaMigrationMenu
             read={() => ({ from: snapshotDocument(versionDocument), to: snapshotDocument(document) })}
-            states={{ from: `версия от ${time}`, to: 'текущая доска' }}
+            states={{ from: m.versionState(time), to: m.boardState }}
             boardTitle={boardTitle}
           />
         )}
@@ -142,7 +143,7 @@ export function VersionPreview({
           <>
             {!onBoard && (
               <span id={offBoardHint} className="text-muted-foreground">
-                Страницы нет на доске
+                {m.pageOffBoard}
               </span>
             )}
             <Button
@@ -153,48 +154,48 @@ export function VersionPreview({
               aria-describedby={onBoard ? undefined : offBoardHint}
               onClick={() => restoreCells(page.id, selection)}
             >
-              Восстановить выделенное
+              {m.restoreSelection}
             </Button>
           </>
         )}
         {!synced && (
           <span id={unsyncedHint} className="text-muted-foreground">
-            Версию и страницу можно восстановить после синхронизации
+            {m.unsynced}
           </span>
         )}
         {versionDocument && page && (
           <ConfirmedAction
-            label="Восстановить страницу"
-            title="Восстановление страницы"
-            confirmLabel="Восстановить"
+            label={m.restorePage}
+            title={m.restoringPage}
+            confirmLabel={m.restore}
             variant="outline"
             disabled={!synced || restore.isPending}
             describedBy={synced ? undefined : unsyncedHint}
             onConfirm={() => restore.mutate({ target: versionDocument, pageId: page.id })}
           >
             {onBoard
-              ? `Страница «${page.name}» станет такой, как в версии от ${time}, у всех участников.`
-              : `Страница «${page.name}» вернётся на доску такой, как в версии от ${time}, у всех участников.`}{' '}
-            Текущее состояние сохранится в истории.
+              ? m.pageRestored(page.name, time)
+              : m.pageReturned(page.name, time)}{' '}
+            {m.stateKept}
           </ConfirmedAction>
         )}
         <ConfirmedAction
-          label="Восстановить эту версию"
-          title="Восстановление версии"
-          confirmLabel="Восстановить"
+          label={m.restoreVersion}
+          title={m.restoringVersion}
+          confirmLabel={m.restore}
           disabled={!versionDocument || !synced || restore.isPending}
           describedBy={synced ? undefined : unsyncedHint}
           onConfirm={() => versionDocument && restore.mutate({ target: versionDocument })}
         >
-          Доска станет такой, как в версии от {time}, у всех участников. Текущее состояние сохранится в истории.
+          {m.boardRestored(time)}
         </ConfirmedAction>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Закрыть
+          {m.close}
         </Button>
       </div>
       {state.isError ? (
         <p role="alert" className="p-6 text-destructive">
-          Не удалось загрузить версию
+          {m.versionFailed}
         </p>
       ) : versionDocument ? (
         <VersionView
@@ -206,7 +207,7 @@ export function VersionPreview({
           onRevert={({ pageId, cellId }) => restoreCells(pageId, [cellId])}
         />
       ) : (
-        <p className="p-6 text-muted-foreground">Загрузка версии…</p>
+        <p className="p-6 text-muted-foreground">{m.loadingVersion}</p>
       )}
     </section>
   )

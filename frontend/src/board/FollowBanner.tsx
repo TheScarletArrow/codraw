@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { Following } from './following.ts'
 import { Avatar } from './Participants.tsx'
 import type { RemotePresence } from './presence.ts'
+import { boardMessages as m } from './board.messages.ts'
 
 /** Finds the banners over the canvas: pressing on a banner is not moving the canvas. */
 export const BANNER_SELECTOR = '[data-following-banner]'
@@ -45,10 +46,10 @@ function Banner({
 /** «Вы следуете за …» over the canvas, in the colour of the participant followed, with a way out. */
 export function FollowBanner({ leader, onStop }: { leader: RemotePresence; onStop: () => void }) {
   return (
-    <Banner label="Следование" color={leader.color} action="Остановить" onAction={onStop}>
+    <Banner label={m.following} color={leader.color} action={m.stop} onAction={onStop}>
       <Eye aria-hidden className="size-4" />
       <Avatar url={leader.avatarUrl} className="size-5" />
-      <span className="whitespace-nowrap">Вы следуете за {leader.name}</span>
+      <span className="whitespace-nowrap">{m.youFollow(leader.name)}</span>
     </Banner>
   )
 }
@@ -67,14 +68,14 @@ export function PresenterBanner({
 }) {
   return (
     <Banner
-      label="Показ всем"
+      label={m.presenting}
       color={presenter.color}
-      action={following ? 'Не следовать' : 'Следовать'}
+      action={following ? m.unfollow : m.follow}
       onAction={following ? onStop : onFollow}
     >
       <Presentation aria-hidden className="size-4" />
       <Avatar url={presenter.avatarUrl} className="size-5" />
-      <span className="whitespace-nowrap">{presenter.name} показывает всем</span>
+      <span className="whitespace-nowrap">{m.presents(presenter.name)}</span>
     </Banner>
   )
 }
@@ -82,9 +83,9 @@ export function PresenterBanner({
 /** «Вы показываете всем» in the participant's own colour, with how many participants follow them. */
 export function PresentingBanner({ color, followers, onEnd }: { color: string; followers: number; onEnd: () => void }) {
   return (
-    <Banner label="Показ всем" color={color} action="Закончить показ" onAction={onEnd}>
+    <Banner label={m.presenting} color={color} action={m.endPresenting} onAction={onEnd}>
       <Presentation aria-hidden className="size-4" />
-      <span className="whitespace-nowrap">Вы показываете всем · следуют {followers}</span>
+      <span className="whitespace-nowrap">{m.youPresent(followers)}</span>
     </Banner>
   )
 }

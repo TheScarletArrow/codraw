@@ -3,9 +3,11 @@ import { ArrowLeft } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { HttpError, isUnauthorized } from '../api/http.ts'
+import { documentMessages } from '../apiSpec/messages.ts'
 import { importSchema, type SslMode } from '../api/schemaImport.ts'
 import { recheckSession } from '../auth/session.ts'
 import { parseConnectionString } from './connectionString.ts'
+import { databaseConnectionMessages as m } from './DatabaseConnection.messages.ts'
 
 interface DatabaseConnectionProps {
   /** The most tables of a schema that the server reads. */
@@ -27,33 +29,33 @@ interface Fields {
 
 const EMPTY: Fields = { host: '', port: '5432', database: '', schema: 'public', user: '', password: '', sslMode: 'prefer' }
 
-const SSL_MODES: { value: SslMode; label: string }[] = [
-  { value: 'disable', label: 'Не использовать' },
-  { value: 'prefer', label: 'Если есть' },
-  { value: 'require', label: 'Обязательно' },
-  { value: 'verify-full', label: 'С проверкой сертификата' },
+const SSL_MODES: { value: SslMode; label: keyof typeof m.sslModes }[] = [
+  { value: 'disable', label: 'disable' },
+  { value: 'prefer', label: 'prefer' },
+  { value: 'require', label: 'require' },
+  { value: 'verify-full', label: 'verifyFull' },
 ]
 
 /** What the user reads for a reason of a failed import, as the server names it. */
-const REASONS: Record<string, string> = {
-  'host-not-allowed': 'Администратор CoDraw не разрешил подключаться к этому адресу',
-  'connection-failed': 'Не удалось подключиться к PostgreSQL: проверьте хост, порт и SSL',
-  'authentication-failed': 'Неверная база, пользователь или пароль',
-  'schema-not-found': 'В базе нет такой схемы',
-  timeout: 'База не ответила вовремя',
-  'unsupported-server': 'Нужен PostgreSQL 12 или новее',
-  'sign-in-required': 'Подключаться к базе можно после входа через GitHub или Google',
+const REASONS: Record<string, keyof typeof m.reasons> = {
+  'host-not-allowed': 'hostNotAllowed',
+  'connection-failed': 'connectionFailed',
+  'authentication-failed': 'authenticationFailed',
+  'schema-not-found': 'schemaNotFound',
+  timeout: 'timeout',
+  'unsupported-server': 'unsupportedServer',
+  'sign-in-required': 'signInRequired',
 }
 
 function failure(error: unknown): string {
-  if (!(error instanceof HttpError)) return 'Не удалось загрузить схему'
+  if (!(error instanceof HttpError)) return m.loadFailed
   const { reason, limit } = error.problem ?? {}
-  if (reason === 'too-large') return limit ? `В схеме больше ${limit} таблиц — столько за раз не загрузить` : 'Схема слишком большая для загрузки'
-  if (reason && REASONS[reason]) return REASONS[reason]
-  if (error.status === 429) return 'Слишком много попыток подключения, попробуйте позже'
-  if (error.status === 400) return 'Проверьте хост, порт и остальные поля'
-  if (error.status === 404) return 'Подключение к базе выключено'
-  return 'Не удалось загрузить схему'
+  if (reason === 'too-large') return limit ? m.tooManyTables(limit) : m.tooLarge
+  if (reason && Object.hasOwn(REASONS, reason)) return m.reasons[REASONS[reason]!]
+  if (error.status === 429) return m.tooManyAttempts
+  if (error.status === 400) return m.badRequest
+  if (error.status === 404) return m.disabled
+  return m.loadFailed
 }
 
 const inputClass =
@@ -125,12 +127,12 @@ export function DatabaseConnection({ maxTables, onLoaded, onBack }: DatabaseConn
   return (
     <>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={onBack}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={documentMessages.back} onClick={onBack}>
           <ArrowLeft />
         </Button>
-        <h2 className="text-sm font-semibold">Подключение к базе</h2>
+        <h2 className="text-sm font-semibold">{m.title}</h2>
       </div>
-      <Field label="Строка подключения">
+      <Field label={m.connectionString}>
         <input
           className={inputClass}
           placeholder="postgresql://user@host:5432/database"
@@ -141,24 +143,24 @@ export function DatabaseConnection({ maxTables, onLoaded, onBack }: DatabaseConn
         />
       </Field>
       <div className="grid grid-cols-[1fr_6rem] gap-2">
-        <Field label="Хост">
+        <Field label={m.host}>
           <input className={inputClass} autoComplete="off" spellCheck={false} value={fields.host} onChange={(event) => set({ host: event.target.value })} />
         </Field>
-        <Field label="Порт">
+        <Field label={m.port}>
           <input className={inputClass} inputMode="numeric" value={fields.port} onChange={(event) => set({ port: event.target.value })} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="База">
+        <Field label={m.database}>
           <input className={inputClass} autoComplete="off" spellCheck={false} value={fields.database} onChange={(event) => set({ database: event.target.value })} />
         </Field>
-        <Field label="Схема">
+        <Field label={m.schema}>
           <input className={inputClass} autoComplete="off" spellCheck={false} value={fields.schema} onChange={(event) => set({ schema: event.target.value })} />
         </Field>
-        <Field label="Пользователь">
+        <Field label={m.user}>
           <input className={inputClass} autoComplete="off" spellCheck={false} value={fields.user} onChange={(event) => set({ user: event.target.value })} />
         </Field>
-        <Field label="Пароль">
+        <Field label={m.password}>
           <input
             className={inputClass}
             type="password"
@@ -172,14 +174,13 @@ export function DatabaseConnection({ maxTables, onLoaded, onBack }: DatabaseConn
         <select className={inputClass} value={fields.sslMode} onChange={(event) => set({ sslMode: event.target.value as SslMode })}>
           {SSL_MODES.map(({ value, label }) => (
             <option key={value} value={value}>
-              {label}
+              {m.sslModes[label]}
             </option>
           ))}
         </select>
       </Field>
       <p className="text-xs text-muted-foreground">
-        Только PostgreSQL, не больше {maxTables} таблиц схемы. Сервер CoDraw подключается к базе один раз, только для
-        чтения, и не сохраняет пароль.
+        {m.note(maxTables)}
       </p>
       {error && (
         <p role="alert" className="text-xs text-destructive">
@@ -187,7 +188,7 @@ export function DatabaseConnection({ maxTables, onLoaded, onBack }: DatabaseConn
         </p>
       )}
       <Button type="button" size="sm" disabled={busy || !complete} onClick={() => void load()}>
-        {busy ? 'Загрузка…' : 'Загрузить схему'}
+        {busy ? m.loading : m.load}
       </Button>
     </>
   )

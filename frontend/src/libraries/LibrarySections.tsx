@@ -9,6 +9,7 @@ import type { DiagramEditor } from '../diagram/editor.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
 import { LIBRARY_FILE_TYPES } from './component.ts'
 import { COMPONENT_DRAG_TYPE, componentDragData } from './drag.ts'
+import { libraryMessages as m } from './messages.ts'
 import type { LibraryShelf } from './useLibraries.ts'
 
 /** What the selection of the canvas lets the menus do; read once for the whole panel. */
@@ -18,10 +19,6 @@ interface Selection {
   /** Something is selected that can take a look. */
   canTakeStyle: boolean
 }
-
-/** «с 1 компонентом», «с 3 компонентами». */
-const withComponents = (count: number) =>
-  `с ${count} ${count % 10 === 1 && count % 100 !== 11 ? 'компонентом' : 'компонентами'}`
 
 /** The small picture of a component on a white tile: the component has the colors of the diagram in both themes. */
 function ComponentPreview({ preview }: { preview: string | null }) {
@@ -81,15 +78,15 @@ export function LibrarySections({ shelf, editor }: { shelf: LibraryShelf; editor
   const selection = { canCopy: editor !== null && canCopy, canTakeStyle: editor !== null && canTakeStyle }
 
   return (
-    <section aria-label="Мои библиотеки" className="flex flex-col gap-1">
+    <section aria-label={m.myLibraries} className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-1 pl-2">
-        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Мои библиотеки</h2>
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{m.myLibraries}</h2>
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label="Новая библиотека"
-          title="Новая библиотека"
+          aria-label={m.newLibrary}
+          title={m.newLibrary}
           disabled={libraries === undefined}
           onClick={() => setCreating(true)}
         >
@@ -99,8 +96,8 @@ export function LibrarySections({ shelf, editor }: { shelf: LibraryShelf; editor
       {creating && (
         <TitleInput
           title=""
-          label="Название новой библиотеки"
-          placeholder="Название библиотеки"
+          label={m.newLibraryName}
+          placeholder={m.libraryName}
           maxLength={LIBRARY_NAME_MAX_LENGTH}
           className="h-8 px-2 text-sm"
           onDone={(name) => {
@@ -118,16 +115,16 @@ export function LibrarySections({ shelf, editor }: { shelf: LibraryShelf; editor
         <div role="alert" className="flex flex-col items-start gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
           {error}
           <Button type="button" variant="ghost" size="xs" className="h-6 px-1" onClick={shelf.dismissError}>
-            Понятно
+            {m.gotIt}
           </Button>
         </div>
       )}
       {libraries === undefined ? (
-        unavailable && <p className="px-2 text-xs text-muted-foreground">Библиотеки сейчас недоступны</p>
+        unavailable && <p className="px-2 text-xs text-muted-foreground">{m.unavailable}</p>
       ) : libraries.length === 0 ? (
         !creating && (
           <p className="px-2 text-xs text-muted-foreground">
-            Выделите фигуры на холсте и выберите «Сохранить в библиотеку…» в меню правого щелчка
+            {m.emptyShelf}
           </p>
         )
       ) : (
@@ -156,7 +153,7 @@ function LibrarySection({
       {renaming ? (
         <TitleInput
           title={library.name}
-          label="Название библиотеки"
+          label={m.libraryName}
           maxLength={LIBRARY_NAME_MAX_LENGTH}
           className="h-7 w-full px-2 text-sm"
           onDone={(name) => {
@@ -179,7 +176,7 @@ function LibrarySection({
         </summary>
         <div className="mt-1 flex flex-col gap-1">
           {library.components.length === 0 ? (
-            <p className="px-2 text-xs text-muted-foreground">Пусто: добавьте выделенное или изображения в меню библиотеки</p>
+            <p className="px-2 text-xs text-muted-foreground">{m.emptyLibrary}</p>
           ) : (
             library.components.map((component) => (
               <ComponentRow
@@ -216,7 +213,7 @@ function ComponentRow({
     return (
       <TitleInput
         title={component.name}
-        label="Название компонента"
+        label={m.componentName}
         maxLength={COMPONENT_NAME_MAX_LENGTH}
         className="h-8 px-2 text-sm"
         onDone={(name) => {
@@ -273,7 +270,7 @@ function Menu({
             <p className="text-sm">{confirming.question}</p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(null)}>
-                Отмена
+                {m.cancel}
               </Button>
               <Button
                 type="button"
@@ -284,7 +281,7 @@ function Menu({
                   confirming.run()
                 }}
               >
-                Удалить
+                {m.delete}
               </Button>
             </div>
           </div>
@@ -346,7 +343,7 @@ function LibraryMenu({
         type="file"
         accept={[...LIBRARY_FILE_TYPES, '.svg'].join(',')}
         multiple
-        aria-label={`Изображения для библиотеки «${library.name}»`}
+        aria-label={m.imagesFor(library.name)}
         className="hidden"
         onChange={(event) => {
           const chosen = Array.from(event.target.files ?? [])
@@ -354,7 +351,7 @@ function LibraryMenu({
           if (chosen.length > 0) void shelf.addFiles(library.id, chosen)
         }}
       />
-      <Menu label={`Меню библиотеки «${library.name}»`} title={`Библиотека «${library.name}»`}>
+      <Menu label={m.libraryMenu(library.name)} title={m.libraryNamed(library.name)}>
         {(close, confirm) => (
           <>
             <MenuItem
@@ -364,7 +361,7 @@ function LibraryMenu({
                 if (editor) void shelf.addSelection(editor, library.id)
               }}
             >
-              Добавить выделенное
+              {m.addSelection}
             </MenuItem>
             <MenuItem
               onSelect={() => {
@@ -372,7 +369,7 @@ function LibraryMenu({
                 files.current?.click()
               }}
             >
-              Добавить изображения или SVG…
+              {m.addImages}
             </MenuItem>
             <MenuItem
               onSelect={() => {
@@ -380,20 +377,18 @@ function LibraryMenu({
                 onRename()
               }}
             >
-              Переименовать библиотеку
+              {m.renameLibrary}
             </MenuItem>
             <MenuItem
               destructive
               onSelect={() =>
                 confirm(
-                  count === 0
-                    ? `Удалить пустую библиотеку «${library.name}»?`
-                    : `Удалить библиотеку «${library.name}» ${withComponents(count)}? Вставленные на доски копии останутся.`,
+                  count === 0 ? m.deleteEmptyLibrary(library.name) : m.deleteLibraryOf(library.name, count),
                   () => void shelf.deleteLibrary(library.id),
                 )
               }
             >
-              Удалить библиотеку…
+              {m.deleteLibrary}
             </MenuItem>
           </>
         )}
@@ -418,7 +413,7 @@ function ComponentMenu({
   onRename: () => void
 }) {
   return (
-    <Menu label={`Меню компонента «${component.name}»`} title={`Компонент «${component.name}»`}>
+    <Menu label={m.componentMenu(component.name)} title={m.componentNamed(component.name)}>
       {(close, confirm) => (
         <>
           <MenuItem
@@ -427,7 +422,7 @@ function ComponentMenu({
               onRename()
             }}
           >
-            Переименовать
+            {m.rename}
           </MenuItem>
           <MenuItem
             disabled={!selection.canCopy}
@@ -436,7 +431,7 @@ function ComponentMenu({
               if (editor) void shelf.replaceWithSelection(editor, library.id, component.id)
             }}
           >
-            Заменить выделенным
+            {m.replaceWithSelection}
           </MenuItem>
           <MenuItem
             disabled={!selection.canTakeStyle}
@@ -445,17 +440,17 @@ function ComponentMenu({
               if (editor) void shelf.applyStyle(editor, library.id, component)
             }}
           >
-            Применить стиль к выделенному
+            {m.applyStyle}
           </MenuItem>
           <MenuItem
             destructive
             onSelect={() =>
-              confirm(`Удалить компонент «${component.name}»? Вставленные на доски копии останутся.`, () =>
+              confirm(m.deleteComponent(component.name), () =>
                 void shelf.deleteComponent(library.id, component.id),
               )
             }
           >
-            Удалить
+            {m.delete}
           </MenuItem>
         </>
       )}

@@ -108,14 +108,7 @@ import { ProposalReview } from '../proposals/ProposalReview.tsx'
 import { ProposalsButton } from '../proposals/ProposalsButton.tsx'
 import { ProposalsPanel } from '../proposals/ProposalsPanel.tsx'
 import { workspacePath } from '../workspaces/workspaces.ts'
-
-const STATUS_LABELS: Record<ConnectionStatus, string> = {
-  connecting: 'Подключение',
-  synced: 'Синхронизировано',
-  offline: 'Нет связи',
-  'not-found': 'Доска не найдена',
-  forbidden: 'Нет доступа',
-}
+import { boardPageMessages as m } from './BoardPage.messages.ts'
 
 const STATUS_COLORS: Record<ConnectionStatus, string> = {
   connecting: 'bg-muted-foreground',
@@ -135,11 +128,11 @@ export function BoardPage() {
   })
   const user = useCurrentUser()
 
-  if (board.isPending || user.isPending) return <Message>Загрузка…</Message>
-  if (user.isError) return <Message alert>Не удалось загрузить доску</Message>
+  if (board.isPending || user.isPending) return <Message>{m.loading}</Message>
+  if (user.isError) return <Message alert>{m.loadFailed}</Message>
   if (isNotFound(board.error)) return <BoardNotFound userId={user.data.id} boardId={boardId} />
   if (isForbidden(board.error)) return <BoardNoAccess userId={user.data.id} boardId={boardId} />
-  if (board.isError) return <Message alert>Не удалось загрузить доску</Message>
+  if (board.isError) return <Message alert>{m.loadFailed}</Message>
   // Another board, or another user, is another connection and another local copy, with nothing of the previous one.
   return <BoardWorkspace key={`${user.data.id}:${board.data.id}`} board={board.data} user={user.data} />
 }
@@ -594,7 +587,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         {board.workspace && (
           <Link
             to={workspacePath(board.workspace.id)}
-            title={`Пространство «${board.workspace.name}»`}
+            title={m.workspace(board.workspace.name)}
             className={cn('max-w-32 shrink truncate text-sm text-muted-foreground hover:underline', narrowTool)}
           >
             {board.workspace.name}
@@ -614,15 +607,15 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         {/* The text of the status shows on wide screens; the tools of the line need the room on the others. */}
         <span
           role="status"
-          title={STATUS_LABELS[status]}
+          title={m.status[status]}
           className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground"
         >
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
-          <span className="sr-only 2xl:not-sr-only">{STATUS_LABELS[status]}</span>
+          <span className="sr-only 2xl:not-sr-only">{m.status[status]}</span>
         </span>
         {readOnly && (
           <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-sm whitespace-nowrap text-muted-foreground">
-            Только просмотр
+            {m.readOnly}
           </span>
         )}
         {viewer && <EditRequestButton boardId={board.id} />}
@@ -736,9 +729,9 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
       <div aria-live="polite">
         {(savedLocally || unsent) && (
           <p role="note" className="border-b bg-muted px-3 py-1 text-sm text-muted-foreground">
-            {savedLocally && 'Нет связи — правки сохраняются на этом устройстве'}
+            {savedLocally && m.savedLocally}
             {savedLocally && unsent && ' · '}
-            {unsent && <span className="font-medium text-foreground">Не отправлено: есть правки</span>}
+            {unsent && <span className="font-medium text-foreground">{m.unsent}</span>}
           </p>
         )}
         <ImageUploadProgress state={imageUploads.state} />
@@ -750,10 +743,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
         >
           <span className="flex-1">
-            Доска достигла предельного размера, последнее изменение не сохранено. Удалите лишнее, чтобы продолжить
+            {m.tooLarge}
           </span>
           <Button type="button" variant="ghost" size="sm" onClick={connection.dismissTooLarge}>
-            Понятно
+            {m.gotIt}
           </Button>
           {connection.setAside === 'too-large' && (
             <UnsentCopy
@@ -1079,7 +1072,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                   <Minimap editor={editor} awareness={awareness} onNavigate={following.stop} />
                 </>
               ) : (
-                <Message>{document && readOnly ? 'Доска пока пуста' : 'Загрузка доски…'}</Message>
+                <Message>{document && readOnly ? m.empty : m.loadingBoard}</Message>
               )}
             </div>
             {/* Over the canvas but not on it: pressing on the search does not end following, going to a match does. */}
@@ -1210,7 +1203,7 @@ interface LostBoardProps {
 function BoardNotFound({ userId, boardId, title }: LostBoardProps) {
   return (
     <div>
-      <Message alert>{STATUS_LABELS['not-found']}</Message>
+      <Message alert>{m.status['not-found']}</Message>
       <UnsentCopy userId={userId} boardId={boardId} title={title} reason="kept" dropSent className="px-6" />
     </div>
   )

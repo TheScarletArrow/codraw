@@ -1,5 +1,6 @@
 import type { VersionAuthor } from '../api/versions.ts'
 import { participantColor } from './identity.ts'
+import { versionMessages as m } from './versions.messages.ts'
 
 /** Authors shown with their marks and names; the others are counted. */
 const SHOWN_AUTHORS = 3
@@ -12,7 +13,7 @@ const SHOWN_AUTHORS = 3
 export function VersionAuthors({ authors }: { authors: VersionAuthor[] }) {
   const shown = authors.slice(0, SHOWN_AUTHORS)
   const rest = authors.length - shown.length
-  const label = `Изменили: ${authors.map((author) => author.name).join(', ')}`
+  const label = m.changedBy(authors.map((author) => author.name).join(', '))
   return (
     <span title={label} className="flex min-w-0 text-xs text-muted-foreground">
       <span className="sr-only">{label}</span>

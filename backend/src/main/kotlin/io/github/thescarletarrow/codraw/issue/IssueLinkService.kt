@@ -6,6 +6,7 @@ import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.BoardRole
 import io.github.thescarletarrow.codraw.comment.Comments
+import io.github.thescarletarrow.codraw.user.Language
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
@@ -230,7 +231,8 @@ class IssueLinkService(
         fun issueBody(description: String, backLink: BackLink): String = buildString {
             val text = description.trim()
             if (text.isNotEmpty()) append(text).append("\n\n---\n")
-            append("Создано в CoDraw: [").append(markdownText(backLink.text)).append("](").append(backLink.url).append(')')
+            append(if (backLink.language == Language.EN) "Created in CoDraw: [" else "Создано в CoDraw: [")
+            append(markdownText(backLink.text)).append("](").append(backLink.url).append(')')
         }
 
         /**
@@ -257,19 +259,28 @@ data class BackLink(
     /** What the link says, e.g. «элемент «API» на доске «Платежи»». */
     val text: String,
     val url: String,
+    /** The language of the author of the issue, in which the issue names CoDraw. */
+    val language: Language = Language.RU,
 ) {
     companion object {
-        /** The link to the [target] of the [board] in the app at [appUrl]. */
-        fun of(appUrl: String, board: Board, target: IssueTarget, elementLabel: String?): BackLink {
+        /** The link to the [target] of the [board] in the app at [appUrl], in the [language] of the author. */
+        fun of(appUrl: String, board: Board, target: IssueTarget, elementLabel: String?, language: Language = Language.RU): BackLink {
             val boardPath = "${appUrl.trimEnd('/')}/boards/${board.id}"
             val title = board.title
+            val english = language == Language.EN
             val threadId = target.threadId
             return if (threadId != null) {
-                BackLink("обсуждение на доске «$title»", "$boardPath?thread=$threadId")
+                val text = if (english) "thread on the board “$title”" else "обсуждение на доске «$title»"
+                BackLink(text, "$boardPath?thread=$threadId", language)
             } else {
                 val label = elementLabel?.trim()?.takeIf { it.isNotEmpty() }
-                val what = if (label != null) "элемент «$label»" else "элемент"
-                BackLink("$what на доске «$title»", "$boardPath?page=${encode(target.pageId!!)}&cell=${encode(target.cellId!!)}")
+                val text = when {
+                    english && label != null -> "element “$label” on the board “$title”"
+                    english -> "element on the board “$title”"
+                    label != null -> "элемент «$label» на доске «$title»"
+                    else -> "элемент на доске «$title»"
+                }
+                BackLink(text, "$boardPath?page=${encode(target.pageId!!)}&cell=${encode(target.cellId!!)}", language)
             }
         }
 

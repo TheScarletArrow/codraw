@@ -1,6 +1,7 @@
 import type { ApiSource } from '../apiSpec/loadDocument.ts'
 import type { C4Kind, C4Variant } from '../diagram/elementKinds.ts'
 import { ArchitectureSyntaxError, readTags, webLink, type ArchitectureBuilder, type Place } from './importModel.ts'
+import { architectureMessages as m } from './messages.ts'
 
 /**
  * The macros of C4-PlantUML and of Mermaid C4, which are the same: elements, boundaries, nodes of deployment and
@@ -21,7 +22,7 @@ type Statement =
   | { line: number; type: 'directive'; directive: string; argument: string }
   | { line: number; type: 'other'; text: string; opens: boolean }
 
-const syntaxError = (line: number, message: string) => new ArchitectureSyntaxError(`строка ${line} — ${message}`)
+const syntaxError = (line: number, message: string) => new ArchitectureSyntaxError(m.syntaxAt(line, message))
 
 /** How deep the parentheses of a text are, outside its strings; `null` when a string is not closed. */
 function depth(text: string): number | null {
@@ -88,7 +89,7 @@ function statements(text: string): Statement[] {
       if (end >= 0) rest = content.slice(end + 2)
       else {
         while (end < 0 && index + 1 < lines.length) end = lines[++index]!.indexOf("'/")
-        if (end < 0) throw syntaxError(line, 'не закрыт комментарий')
+        if (end < 0) throw syntaxError(line, m.unclosedComment)
         rest = lines[index]!.slice(end + 2)
       }
       content = content.slice(0, comment) + rest
@@ -101,11 +102,11 @@ function statements(text: string): Statement[] {
       trimmed += ` ${lines[++index]!.trim()}`
       level = depth(trimmed)
     }
-    if (level === null) throw syntaxError(line, 'не закрыта кавычка')
-    if (level > 0) throw syntaxError(line, 'не закрыта скобка')
+    if (level === null) throw syntaxError(line, m.unclosedQuote)
+    if (level > 0) throw syntaxError(line, m.unclosedParenthesis)
 
     if (trimmed === '}') {
-      if (open.pop() === undefined) throw syntaxError(line, 'лишняя }')
+      if (open.pop() === undefined) throw syntaxError(line, m.extraBrace)
       result.push({ line, type: 'close' })
       continue
     }
@@ -117,7 +118,7 @@ function statements(text: string): Statement[] {
         open.push(line)
         continue
       }
-      throw syntaxError(line, '{ должна быть последней на строке')
+      throw syntaxError(line, m.openingBraceLast)
     }
     const directive = /^(!\$?[\w]+)\s*(.*)$/.exec(trimmed)
     if (directive) {
@@ -144,12 +145,12 @@ function statements(text: string): Statement[] {
       continue
     }
     // A block of a line that is no macro, as `skinparam rectangle {` or `package "Ядро" {`; braces inside a line are text.
-    if (trimmed.startsWith('}')) throw syntaxError(line, '} должна быть одна на строке')
+    if (trimmed.startsWith('}')) throw syntaxError(line, m.closingBraceAlone)
     const opens = trimmed.endsWith('{')
     if (opens) open.push(line)
     result.push({ line, type: 'other', text: opens ? trimmed.slice(0, -1).trim() : trimmed, opens })
   }
-  if (open.length > 0) throw new ArchitectureSyntaxError(`не закрыт блок, открытый в строке ${open[0]}`)
+  if (open.length > 0) throw new ArchitectureSyntaxError(m.unclosedBlock(open[0]!))
   return result
 }
 
@@ -215,16 +216,16 @@ export function parseC4Macros({ name: file, text }: ApiSource, builder: Architec
       const name = statement.directive.toLowerCase()
       if (['!include', '!includeurl', '!include_many', '!include_once', '!import'].includes(name)) {
         if (!isC4Library(statement.argument)) {
-          builder.warn(at, `${statement.directive} ${statement.argument} не выполняется: откройте этот файл вместе с остальными`)
+          builder.warn(at, m.includeSkipped(`${statement.directive} ${statement.argument}`))
         }
       } else if (name !== '!theme' && name !== '!pragma') {
-        builder.warn(at, `препроцессор PlantUML не выполняется: ${statement.directive}`)
+        builder.warn(at, m.preprocessor(statement.directive))
       }
       continue
     }
     if (statement.type === 'other') {
       const known = QUIET_LINE.test(statement.text) || /^legend\b/i.test(statement.text)
-      if (!known) builder.warn(at, /^note\b/i.test(statement.text) ? 'заметки не переносятся' : `строка не разобрана: ${statement.text.slice(0, 40)}`)
+      if (!known) builder.warn(at, /^note\b/i.test(statement.text) ? m.notes : m.unparsedLine(statement.text.slice(0, 40)))
       // The parameters of the look in a block of `skinparam` are left out with it; macros in other blocks are read.
       if (statement.opens) stack.push({ parent, quiet: /^skinparam\b/i.test(statement.text) })
       continue
@@ -293,7 +294,7 @@ export function parseC4Macros({ name: file, text }: ApiSource, builder: Architec
       builder.relation({ source, target, description, technology, resolve, place: at })
       if (relation[1]) builder.relation({ source: target, target: source, description, technology, resolve, place: at })
     } else if (!STYLE.test(name)) {
-      builder.warn(at, `не поддерживается: ${name}(…)`)
+      builder.warn(at, m.unsupported(`${name}(…)`))
     }
     if (statement.opens) stack.push({ parent: opened, quiet: false })
   }

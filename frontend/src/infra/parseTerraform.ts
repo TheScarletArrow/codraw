@@ -1,4 +1,5 @@
 import { ApiSpecError, loadDocument, MAX_DOCUMENT_SIZE, type ApiSource } from '../apiSpec/loadDocument.ts'
+import { infraMessages } from './messages.tsx'
 
 /** The largest file read: a plan holds every resource four times — before, after, in the state and in the configuration. */
 export const MAX_TERRAFORM_SIZE = 4 * MAX_DOCUMENT_SIZE
@@ -343,17 +344,17 @@ function fail(source: ApiSource, message: string): never {
 export async function parseTerraform(source: ApiSource): Promise<TerraformStack> {
   const content = source.text.replace(/^﻿/, '')
   const json = /^\s*[{[]/.test(content)
-  if (content.startsWith('PK')) fail(source, 'это двоичный файл плана — выполните terraform show -json для него и откройте результат')
+  if (content.startsWith('PK')) fail(source, infraMessages.terraform.binaryPlan)
   if (!json && (/\.tf$/i.test(source.name) || HCL.test(content))) {
-    fail(source, 'это конфигурация Terraform — сохраните план или состояние командой terraform show -json')
+    fail(source, infraMessages.terraform.configuration)
   }
   const document = record(await loadDocument(source, MAX_TERRAFORM_SIZE))
   if (typeof document.format_version !== 'string') {
     if (typeof document.version === 'number' && Array.isArray(document.resources)) {
-      fail(source, 'это файл состояния — выполните terraform show -json и откройте результат')
+      fail(source, infraMessages.terraform.stateFile)
     }
-    if (CONFIG_KEYS.some((key) => key in document)) fail(source, 'это конфигурация Terraform — сохраните план или состояние командой terraform show -json')
-    fail(source, 'это не вывод terraform show -json — нет format_version')
+    if (CONFIG_KEYS.some((key) => key in document)) fail(source, infraMessages.terraform.configuration)
+    fail(source, infraMessages.terraform.notShowJson)
   }
 
   const plan = 'planned_values' in document || 'resource_changes' in document || 'configuration' in document
@@ -369,7 +370,7 @@ export async function parseTerraform(source: ApiSource): Promise<TerraformStack>
     if (instance.data) continue
     managed.set(instance.address, [...(managed.get(instance.address) ?? []), instance])
   }
-  if (managed.size === 0) fail(source, 'в файле нет ресурсов')
+  if (managed.size === 0) fail(source, infraMessages.terraform.noResources)
 
   const known = new Set([...current, ...prior].map((instance) => instance.address))
   const direct = new Map<string, Set<string>>()

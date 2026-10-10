@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { isTooManyRequests } from '../api/http.ts'
 import { reportBoard, type ReportReason } from '../api/publicBoards.ts'
+import { reportMessages as m } from './messages.ts'
 import { REPORT_REASONS } from './reports.ts'
 
 /** The longest text of a report, as the backend takes it. */
@@ -22,16 +23,16 @@ export function ReportButton({ boardId }: { boardId: string }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" size="sm" variant="ghost" aria-label="Пожаловаться" title="Пожаловаться">
+        <Button type="button" size="sm" variant="ghost" aria-label={m.report} title={m.report}>
           <Flag />
           {/* A phone keeps the line of the header for the title of the board. */}
-          <span className="max-sm:hidden">Пожаловаться</span>
+          <span className="max-sm:hidden">{m.report}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex w-80 flex-col gap-3" aria-label="Жалоба на доску">
+      <PopoverContent align="end" className="flex w-80 flex-col gap-3" aria-label={m.reportBoard}>
         {send.isSuccess ? (
           <p role="status" className="text-sm">
-            Жалоба отправлена. Спасибо!
+            {m.sent}
           </p>
         ) : (
           <form
@@ -42,10 +43,10 @@ export function ReportButton({ boardId }: { boardId: string }) {
             }}
           >
             <p className="text-sm text-muted-foreground">
-              Жалобу получат администраторы этой установки CoDraw. Ваш адрес с ней не сохраняется.
+              {m.intro}
             </p>
             <fieldset className="flex flex-col gap-1" disabled={send.isPending}>
-              <legend className="mb-1 text-sm font-medium">Причина</legend>
+              <legend className="mb-1 text-sm font-medium">{m.reason}</legend>
               {REPORT_REASONS.map((option) => (
                 <label key={option.value} className="flex items-center gap-2 text-sm">
                   <input
@@ -60,7 +61,7 @@ export function ReportButton({ boardId }: { boardId: string }) {
               ))}
             </fieldset>
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Что не так
+              {m.message}
               <textarea
                 value={message}
                 maxLength={MESSAGE_MAX_LENGTH}
@@ -71,13 +72,11 @@ export function ReportButton({ boardId }: { boardId: string }) {
               />
             </label>
             <Button type="submit" size="sm" disabled={send.isPending}>
-              Отправить
+              {m.send}
             </Button>
             {send.isError && (
               <p role="alert" className="text-sm text-destructive">
-                {isTooManyRequests(send.error)
-                  ? 'Слишком много жалоб с вашего адреса. Попробуйте позже.'
-                  : 'Не удалось отправить жалобу. Попробуйте ещё раз.'}
+                {isTooManyRequests(send.error) ? m.tooMany : m.failed}
               </p>
             )}
           </form>

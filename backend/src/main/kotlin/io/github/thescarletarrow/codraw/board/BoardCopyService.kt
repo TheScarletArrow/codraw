@@ -9,6 +9,7 @@ import io.github.thescarletarrow.codraw.image.ImageQuotaReachedException
 import io.github.thescarletarrow.codraw.image.ImageStorage
 import io.github.thescarletarrow.codraw.image.ImageStorageException
 import io.github.thescarletarrow.codraw.image.storageKey
+import io.github.thescarletarrow.codraw.user.Language
 import io.github.thescarletarrow.codraw.user.UserRepository
 import io.github.thescarletarrow.codraw.workspace.Workspaces
 import org.springframework.stereotype.Service
@@ -43,11 +44,11 @@ class BoardCopyService(
      * Copies the [original] for the user [userId], who has a role on it. The copy stays in the workspace and the project
      * of the original when the user creates boards there, and is their personal board otherwise; it is in their folder
      * and has their tags of the original. Throws [BoardLimitReachedException], [ImageQuotaReachedException] and
-     * [ImageStorageException], after which there is no copy.
+     * [ImageStorageException], after which there is no copy. The title of the copy says «копия» in the [language] of the user.
      */
-    fun copy(original: Board, userId: UUID): Board {
+    fun copy(original: Board, userId: UUID, language: Language = Language.RU): Board {
         val originalId = checkNotNull(original.id)
-        val copied = checkNotNull(transactions.execute { copyRows(original, originalId, userId) })
+        val copied = checkNotNull(transactions.execute { copyRows(original, originalId, userId, language) })
         val copyId = checkNotNull(copied.board.id)
         try {
             // Like a new image, the bytes go to the storage after the rows: till then the image of the copy is not found.
@@ -64,7 +65,7 @@ class BoardCopyService(
         return copied.board
     }
 
-    private fun copyRows(original: Board, originalId: UUID, userId: UUID): CopiedRows {
+    private fun copyRows(original: Board, originalId: UUID, userId: UUID, language: Language): CopiedRows {
         val now = now()
         val workspaceId = original.workspaceId?.takeIf { workspaces.roleOf(it, userId)?.createsBoards == true }
         // Creating, restoring and copying boards serialize on the owner, or on the workspace, as they count its boards.
@@ -85,7 +86,7 @@ class BoardCopyService(
             throw ImageQuotaReachedException(quota, used)
         }
         val copy = Board(
-            title = copyTitle(original.title),
+            title = copyTitle(original.title, language),
             ownerId = userId,
             createdAt = now,
             updatedAt = now,
@@ -114,7 +115,12 @@ class BoardCopyService(
     companion object {
         const val COPY_SUFFIX = " (копия)"
 
-        /** «<title> (копия)», with the title shortened to fit the longest title of a board. */
-        fun copyTitle(title: String): String = title.take(TITLE_MAX_LENGTH - COPY_SUFFIX.length).trimEnd() + COPY_SUFFIX
+        private val COPY_SUFFIXES = mapOf(Language.RU to COPY_SUFFIX, Language.EN to " (copy)")
+
+        /** «<title> (копия)» or «<title> (copy)», with the title shortened to fit the longest title of a board. */
+        fun copyTitle(title: String, language: Language = Language.RU): String {
+            val suffix = COPY_SUFFIXES.getValue(language)
+            return title.take(TITLE_MAX_LENGTH - suffix.length).trimEnd() + suffix
+        }
     }
 }

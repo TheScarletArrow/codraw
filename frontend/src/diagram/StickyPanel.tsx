@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { STICKY_COLORS } from './colors.ts'
 import type { Box, DiagramEditor } from './editor.ts'
 import { lockLabel } from './locks.ts'
+import { pickerMessages } from './pickers.messages.ts'
 import { useEditorState } from './useEditorState.ts'
 
 /** Room between the stickies and the panel. */
@@ -43,7 +44,7 @@ export function StickyPanel({ editor }: { editor: DiagramEditor | null }) {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div
         role="toolbar"
-        aria-label="Стикеры"
+        aria-label={pickerMessages.sticky.name}
         data-side={below ? 'bottom' : 'top'}
         className="pointer-events-auto absolute flex items-center gap-1 rounded-md border bg-background p-1 text-foreground shadow-md"
         style={{
@@ -81,9 +82,9 @@ export function StickyPanel({ editor }: { editor: DiagramEditor | null }) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Подгонять текст"
+            aria-label={pickerMessages.sticky.fit}
             aria-pressed={stickies.textFit}
-            title="Подгонять текст: размер текста уменьшается, чтобы текст поместился в стикер"
+            title={pickerMessages.sticky.fitTitle}
             className={cn(stickies.textFit && 'bg-accent text-accent-foreground')}
             onClick={(event) => {
               editor.setTextFit(!stickies.textFit)

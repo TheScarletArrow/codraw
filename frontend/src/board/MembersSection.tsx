@@ -15,18 +15,19 @@ import {
   type Participant,
 } from '../api/members.ts'
 import { fetchWorkspaceMembers, workspaceMembersKey } from '../api/workspaces.ts'
-import { counted, membersKey, ROLE_LABELS, visitorsKey } from './members.ts'
+import { membersKey, visitorsKey } from './members.ts'
+import { shareMessages as m } from './share.messages.ts'
 
 /** Why a change of the members failed, when it ran into a limit. */
 function failureOf(error: unknown, transferring: boolean): string {
   if (transferring) {
     const boards = boardLimitOf(error)
-    if (boards === null) return 'Не удалось передать владение'
-    return `Новый владелец уже владеет ${counted(boards, ['доской', 'досками', 'досками'])} — больше нельзя`
+    if (boards === null) return m.transferFailed
+    return m.ownerLimit(boards)
   }
   const members = limitOf(error)
-  if (members === null) return 'Не удалось изменить участников'
-  return `На доске уже ${counted(members, ['участник', 'участника', 'участников'])} — больше добавить нельзя`
+  if (members === null) return m.membersFailed
+  return m.memberLimit(members)
 }
 
 interface MembersSectionProps {
@@ -88,16 +89,16 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
   return (
     <section aria-labelledby="board-members" className="flex flex-col gap-1.5 border-t pt-3">
       <h3 id="board-members" className="text-sm font-medium">
-        Участники
+        {m.members}
       </h3>
-      {members.isPending && <p className="text-sm text-muted-foreground">Загрузка…</p>}
+      {members.isPending && <p className="text-sm text-muted-foreground">{m.loading}</p>}
       {members.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось загрузить участников
+          {m.membersLoadFailed}
         </p>
       )}
       {members.data && (
-        <ul aria-label="Участники доски" className="flex flex-col">
+        <ul aria-label={m.boardMembers} className="flex flex-col">
           {members.data.map((participant) => (
             <li key={participant.id} aria-label={participant.name} className="flex items-center gap-2 py-0.5">
               <Avatar person={participant} />
@@ -105,7 +106,7 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
               {isOwner && participant.role !== 'owner' ? (
                 <>
                   <select
-                    aria-label={`Роль: ${participant.name}`}
+                    aria-label={m.roleOf(participant.name)}
                     className="h-8 rounded-md border bg-background px-1 text-sm"
                     value={participant.role}
                     disabled={pending}
@@ -113,15 +114,15 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
                       change.mutate({ userId: participant.id, role: event.target.value as MemberRole })
                     }
                   >
-                    <option value="editor">{ROLE_LABELS.editor}</option>
-                    <option value="viewer">{ROLE_LABELS.viewer}</option>
+                    <option value="editor">{m.roles.editor}</option>
+                    <option value="viewer">{m.roles.viewer}</option>
                   </select>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Сделать владельцем"
-                    title="Сделать владельцем"
+                    aria-label={m.makeOwner}
+                    title={m.makeOwner}
                     disabled={pending}
                     onClick={() => setConfirming(participant)}
                   >
@@ -131,8 +132,8 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Убрать"
-                    title="Убрать"
+                    aria-label={m.remove}
+                    title={m.remove}
                     disabled={pending}
                     onClick={() => change.mutate({ userId: participant.id, role: null })}
                   >
@@ -140,23 +141,23 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
                   </Button>
                 </>
               ) : (
-                <span className="text-xs whitespace-nowrap text-muted-foreground">{ROLE_LABELS[participant.role]}</span>
+                <span className="text-xs whitespace-nowrap text-muted-foreground">{m.roles[participant.role]}</span>
               )}
             </li>
           ))}
         </ul>
       )}
       {confirming && (
-        <div role="alertdialog" aria-label="Передача владения" className="flex flex-col gap-2 rounded-md border p-2">
+        <div role="alertdialog" aria-label={m.transferring} className="flex flex-col gap-2 rounded-md border p-2">
           <p className="text-sm">
-            {confirming.name} станет владельцем доски, а вы останетесь на ней с ролью «{ROLE_LABELS.editor}».
+            {m.transferConfirm(confirming.name, m.roles.editor)}
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(null)}>
-              Отмена
+              {m.cancel}
             </Button>
             <Button type="button" size="sm" disabled={transfer.isPending} onClick={() => transfer.mutate(confirming.id)}>
-              Сделать владельцем
+              {m.makeOwner}
             </Button>
           </div>
         </div>
@@ -183,7 +184,7 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
       {isOwner && visitors.data && visitors.data.length > 0 && (
         <section aria-labelledby="board-visitors" className="mt-1 flex flex-col gap-1">
           <h4 id="board-visitors" className="text-xs font-medium text-muted-foreground">
-            Открывали по ссылке
+            {m.visitors}
           </h4>
           <ul className="flex flex-col">
             {visitors.data.map((visitor) => (
@@ -197,7 +198,7 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
                   disabled={pending}
                   onClick={() => change.mutate({ userId: visitor.id, role: 'editor' })}
                 >
-                  Добавить
+                  {m.add}
                 </Button>
               </li>
             ))}
@@ -225,16 +226,16 @@ function WorkspaceMemberAdder({ candidates, value, onChange, disabled, onAdd }: 
   return (
     <section aria-labelledby="board-workspace-members" className="mt-1 flex flex-col gap-1">
       <h4 id="board-workspace-members" className="text-xs font-medium text-muted-foreground">
-        Добавить участника пространства
+        {m.addWorkspaceMember}
       </h4>
       <div className="flex gap-2">
         <select
-          aria-label="Участник пространства"
+          aria-label={m.workspaceMember}
           className="h-8 min-w-0 flex-1 rounded-md border bg-background px-1 text-sm"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         >
-          <option value="">Выберите участника</option>
+          <option value="">{m.chooseMember}</option>
           {candidates.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
               {candidate.name}
@@ -242,16 +243,16 @@ function WorkspaceMemberAdder({ candidates, value, onChange, disabled, onAdd }: 
           ))}
         </select>
         <select
-          aria-label="Роль на доске"
+          aria-label={m.boardRole}
           className="h-8 rounded-md border bg-background px-1 text-sm"
           value={role}
           onChange={(event) => setRole(event.target.value as MemberRole)}
         >
-          <option value="editor">{ROLE_LABELS.editor}</option>
-          <option value="viewer">{ROLE_LABELS.viewer}</option>
+          <option value="editor">{m.roles.editor}</option>
+          <option value="viewer">{m.roles.viewer}</option>
         </select>
         <Button type="button" variant="outline" size="sm" disabled={disabled || value === ''} onClick={() => onAdd(value, role)}>
-          Добавить
+          {m.add}
         </Button>
       </div>
     </section>

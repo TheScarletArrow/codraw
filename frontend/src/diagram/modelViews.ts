@@ -6,6 +6,7 @@ import { composeLabel, isC4Boundary } from './elementProps.ts'
 import { newId } from './ids.ts'
 import { LINK_KEY } from './links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from './locks.ts'
+import { modelMessages } from './model.messages.ts'
 import {
   cellElementId,
   dropUnusedElements,
@@ -105,7 +106,7 @@ export function inSlice(element: ModelElement, slice: ViewSlice): boolean {
 export function summaryLabel(relations: readonly ModelRelation[]): string {
   const labels = [...new Set(relations.map((relation) => relation.label.trim()).filter(Boolean))]
   if (labels.length <= 3) return labels.join('; ')
-  return `${labels.slice(0, 3).join('; ')}; и ещё ${labels.length - 3}`
+  return modelMessages.andMore(labels.slice(0, 3).join('; '), labels.length - 3)
 }
 
 /** «HTTPS, gRPC»: the different technologies of relations. */

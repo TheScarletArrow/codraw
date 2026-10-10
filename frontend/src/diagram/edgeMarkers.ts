@@ -1,3 +1,4 @@
+import { edgeMarkerMessages as m } from './edgeMarkers.messages.ts'
 import type { StyleValue } from './model.ts'
 
 /**
@@ -20,18 +21,27 @@ export interface EdgeMarker {
 /** The hollow triangle of a generalization of UML: `block` without a fill, as draw.io writes it. */
 export const HOLLOW_TRIANGLE = 'blockHollow'
 
+/** A choice of a marker named in the language of the interface. */
+const marker = (value: keyof typeof m, choice: Omit<EdgeMarker, 'value' | 'label'>): EdgeMarker => ({
+  value,
+  get label() {
+    return m[value]
+  },
+  ...choice,
+})
+
 /** The markers the toolbar offers for either end. */
 export const EDGE_MARKERS: readonly EdgeMarker[] = [
-  { value: 'classic', label: 'Стрелка', arrow: 'classic' },
-  { value: 'none', label: 'Без маркера', arrow: 'none' },
-  { value: 'ERone', label: 'Один', arrow: 'ERone' },
-  { value: 'ERmandOne', label: 'Обязательно один', arrow: 'ERmandOne' },
-  { value: 'ERmany', label: 'Много', arrow: 'ERmany' },
-  { value: 'ERoneToMany', label: 'Один или много', arrow: 'ERoneToMany' },
-  { value: 'ERzeroToOne', label: 'Ноль или один', arrow: 'ERzeroToOne' },
-  { value: 'ERzeroToMany', label: 'Ноль или много', arrow: 'ERzeroToMany' },
-  { value: 'open', label: 'Открытая стрелка', arrow: 'open' },
-  { value: HOLLOW_TRIANGLE, label: 'Полый треугольник', arrow: 'block', fill: false },
+  marker('classic', { arrow: 'classic' }),
+  marker('none', { arrow: 'none' }),
+  marker('ERone', { arrow: 'ERone' }),
+  marker('ERmandOne', { arrow: 'ERmandOne' }),
+  marker('ERmany', { arrow: 'ERmany' }),
+  marker('ERoneToMany', { arrow: 'ERoneToMany' }),
+  marker('ERzeroToOne', { arrow: 'ERzeroToOne' }),
+  marker('ERzeroToMany', { arrow: 'ERzeroToMany' }),
+  marker('open', { arrow: 'open' }),
+  marker(HOLLOW_TRIANGLE, { arrow: 'block', fill: false }),
 ]
 
 /** The end marker of edges without one of their own, as the default style of the editor sets it. */

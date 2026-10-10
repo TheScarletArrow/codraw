@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { DiagramEditor, LayerState } from './editor.ts'
+import { layersMessages as m } from './LayersPanel.messages.ts'
+import { modelMessages } from './model.messages.ts'
 import { useEditorState } from './useEditorState.ts'
 
 /** The button of the header of the board that shows and hides the panel of layers. */
@@ -13,9 +15,9 @@ export function LayersButton({ open, onToggle }: { open: boolean; onToggle: () =
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Слои"
+      aria-label={m.layers}
       aria-pressed={open}
-      title="Слои страницы"
+      title={m.pageLayers}
       className="shrink-0"
       onClick={onToggle}
     >
@@ -26,9 +28,9 @@ export function LayersButton({ open, onToggle }: { open: boolean; onToggle: () =
 
 /** Which visibility a layer has on this canvas, as the panel tells it; `null` when it simply shows. */
 function visibilityNote(layer: LayerState): string | null {
-  if (layer.ownVisibility === false) return 'скрыт только у вас'
-  if (layer.ownVisibility === true && layer.hiddenForAll) return 'показан только у вас'
-  if (layer.hiddenForAll) return 'скрыт для всех'
+  if (layer.ownVisibility === false) return m.hiddenForMe
+  if (layer.ownVisibility === true && layer.hiddenForAll) return m.shownForMe
+  if (layer.hiddenForAll) return m.hiddenForAll
   return null
 }
 
@@ -45,18 +47,18 @@ export function LayersPanel({ editor, onClose }: { editor: DiagramEditor | null;
 
   return (
     <aside
-      aria-label="Слои"
+      aria-label={m.layers}
       className="pointer-events-auto flex min-h-0 w-[320px] max-w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg outline-none"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
-        <h2 className="mr-auto text-sm font-semibold">Слои</h2>
+        <h2 className="mr-auto text-sm font-semibold">{m.layers}</h2>
         {!readOnly && (
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Новый слой"
-            title="Новый слой"
+            aria-label={m.newLayer}
+            title={m.newLayer}
             onClick={() => {
               const id = editor?.addLayer()
               if (id) setRenaming(id)
@@ -65,14 +67,14 @@ export function LayersPanel({ editor, onClose }: { editor: DiagramEditor | null;
             <Plus />
           </Button>
         )}
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} title={m.close} onClick={onClose}>
           <X />
         </Button>
       </header>
       <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
-        Глаз скрывает слой только у вас. «Скрыть для всех» и замок действуют у всех участников.
+        {m.hint}
       </p>
-      <ul aria-label="Слои страницы" className="flex flex-col overflow-y-auto p-1">
+      <ul aria-label={m.pageLayers} className="flex flex-col overflow-y-auto p-1">
         {layers.map((layer, index) => (
           <LayerRow
             key={layer.id}
@@ -107,10 +109,10 @@ function LayerRow({ editor, layer, readOnly, isTop, isBottom, neighbour, renamin
   const [menuOpen, setMenuOpen] = useState(false)
   const note = visibilityNote(layer)
   const notes = [
-    layer.active ? 'новые элементы здесь' : null,
+    layer.active ? m.activeNote : null,
     note,
-    layer.locked ? (layer.lockedBy ? `заблокировал ${layer.lockedBy}` : 'заблокирован') : null,
-    layer.selected > 0 ? `выделено: ${layer.selected}` : null,
+    layer.locked ? (layer.lockedBy ? m.lockedBy(layer.lockedBy) : m.locked) : null,
+    layer.selected > 0 ? m.selected(layer.selected) : null,
   ].filter((text): text is string => text !== null)
   const iconButton = 'size-7 shrink-0 text-muted-foreground hover:text-foreground'
 
@@ -129,9 +131,9 @@ function LayerRow({ editor, layer, readOnly, isTop, isBottom, neighbour, renamin
               variant="ghost"
               size="icon-sm"
               className={iconButton}
-              aria-label={layer.visible ? `Скрыть у себя «${layer.name}»` : `Показать у себя «${layer.name}»`}
+              aria-label={layer.visible ? m.hideForMe(layer.name) : m.showForMe(layer.name)}
               aria-pressed={!layer.visible}
-              title={layer.visible ? 'Скрыть только у себя' : 'Показать только у себя'}
+              title={layer.visible ? m.hideForMeTitle : m.showForMeTitle}
               onClick={() => editor?.setLayerVisible(layer.id, !layer.visible)}
             >
               {layer.visible ? <Eye /> : <EyeOff />}
@@ -148,8 +150,8 @@ function LayerRow({ editor, layer, readOnly, isTop, isBottom, neighbour, renamin
               <button
                 type="button"
                 className="flex min-w-0 flex-1 flex-col rounded px-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                aria-label={`Сделать активным «${layer.name}»`}
-                title={readOnly ? layer.name : 'Новые элементы попадут в этот слой; двойной щелчок — переименовать'}
+                aria-label={m.activate(layer.name)}
+                title={readOnly ? layer.name : m.activateTitle}
                 disabled={readOnly}
                 onClick={() => editor?.setActiveLayer(layer.id)}
                 onDoubleClick={() => !readOnly && onRename(true)}
@@ -163,7 +165,7 @@ function LayerRow({ editor, layer, readOnly, isTop, isBottom, neighbour, renamin
                 {notes.length > 0 && <span className="truncate text-xs text-muted-foreground">{notes.join(' · ')}</span>}
               </button>
             )}
-            <span className="shrink-0 px-1 text-xs text-muted-foreground tabular-nums" title="Элементов в слое">
+            <span className="shrink-0 px-1 text-xs text-muted-foreground tabular-nums" title={m.elements}>
               {layer.elements}
             </span>
             <Button
@@ -171,12 +173,10 @@ function LayerRow({ editor, layer, readOnly, isTop, isBottom, neighbour, renamin
               variant="ghost"
               size="icon-sm"
               className={cn(iconButton, layer.locked && 'text-foreground')}
-              aria-label={layer.locked ? `Разблокировать «${layer.name}»` : `Заблокировать «${layer.name}»`}
+              aria-label={layer.locked ? m.unlockLayer(layer.name) : m.lockLayer(layer.name)}
               aria-pressed={layer.locked}
               title={
-                layer.locked
-                  ? `Заблокирован для всех${layer.lockedBy ? `: ${layer.lockedBy}` : ''}`
-                  : 'Заблокировать для всех: элементы слоя нельзя выделить и изменить'
+                layer.locked ? m.lockedForAll(layer.lockedBy) : m.lockTitle
               }
               disabled={readOnly}
               onClick={() => editor?.setLayerLocked(layer.id, !layer.locked)}
@@ -189,8 +189,8 @@ function LayerRow({ editor, layer, readOnly, isTop, isBottom, neighbour, renamin
                 variant="ghost"
                 size="icon-sm"
                 className={iconButton}
-                aria-label={`Действия со слоем «${layer.name}»`}
-                title="Действия со слоем"
+                aria-label={m.actionsOf(layer.name)}
+                title={m.actions}
                 onClick={() => setMenuOpen((open) => !open)}
               >
                 <MoreHorizontal />
@@ -227,11 +227,11 @@ function LayerNameInput({ layer, onDone }: { layer: LayerState; onDone: (name: s
   }
   return (
     <input
-      aria-label="Имя слоя"
+      aria-label={m.layerName}
       autoFocus
       value={value}
       maxLength={100}
-      placeholder={layer.main ? 'Основной слой' : 'Слой без имени'}
+      placeholder={layer.main ? modelMessages.mainLayer : modelMessages.unnamedLayer}
       className="h-7 min-w-0 flex-1 rounded border bg-background px-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       onChange={(event) => setValue(event.target.value)}
       onFocus={(event) => event.target.select()}
@@ -264,11 +264,7 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
     action()
     onDone()
   }
-  const deleteHint = layer.main
-    ? 'Основной слой страницы нельзя удалить'
-    : layer.locked
-      ? 'Заблокированный слой нельзя удалить'
-      : undefined
+  const deleteHint = layer.main ? m.mainUndeletable : layer.locked ? m.lockedUndeletable : undefined
   const canMoveOut = neighbour !== null && !neighbour.locked
 
   return (
@@ -280,22 +276,22 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
       onOpenAutoFocus={() => setConfirming(false)}
     >
       {confirming ? (
-        <div role="alertdialog" aria-label="Удаление слоя" className="flex flex-col gap-2 p-2">
+        <div role="alertdialog" aria-label={m.deleting} className="flex flex-col gap-2 p-2">
           <p className="text-sm">
-            В слое «{layer.name}» элементов: {layer.elements}. Что сделать с ними у всех участников?
+            {m.deleteQuestion(layer.name, layer.elements)}
           </p>
           {layer.holdsLocked && (
-            <p className="text-xs text-muted-foreground">В слое есть закреплённые элементы: их можно только перенести.</p>
+            <p className="text-xs text-muted-foreground">{m.holdsLocked}</p>
           )}
           <div className="flex flex-col gap-1">
             <Button
               type="button"
               size="sm"
               disabled={!canMoveOut}
-              title={canMoveOut ? undefined : 'Соседний слой заблокирован'}
+              title={canMoveOut ? undefined : m.neighbourLocked}
               onClick={run(() => editor?.deleteLayer(layer.id, neighbour!.id))}
             >
-              Перенести в «{neighbour?.name}» и удалить слой
+              {m.moveAndDelete(neighbour?.name ?? '')}
             </Button>
             <Button
               type="button"
@@ -304,17 +300,17 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
               disabled={layer.holdsLocked}
               onClick={run(() => editor?.deleteLayer(layer.id, null))}
             >
-              Удалить вместе с элементами
+              {m.deleteWithElements}
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Отмена
+              {m.cancel}
             </Button>
           </div>
         </div>
       ) : (
-        <div role="menu" aria-label={`Слой «${layer.name}»`} className="flex flex-col">
+        <div role="menu" aria-label={m.layer(layer.name)} className="flex flex-col">
           <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={onRename}>
-            Переименовать
+            {m.rename}
           </Button>
           <Button
             type="button"
@@ -325,7 +321,7 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
             disabled={isTop}
             onClick={run(() => editor?.moveLayer(layer.id, 'up'))}
           >
-            <ArrowUp /> Выше
+            <ArrowUp /> {m.up}
           </Button>
           <Button
             type="button"
@@ -336,7 +332,7 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
             disabled={isBottom}
             onClick={run(() => editor?.moveLayer(layer.id, 'down'))}
           >
-            <ArrowDown /> Ниже
+            <ArrowDown /> {m.down}
           </Button>
           <Button
             type="button"
@@ -345,10 +341,10 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
             size="sm"
             className={item}
             disabled={!layer.canMoveSelection}
-            title={layer.locked ? 'Слой заблокирован' : 'Выделенные элементы перейдут в этот слой на своих местах'}
+            title={layer.locked ? m.layerLocked : m.moveSelectionTitle}
             onClick={run(() => editor?.moveSelectionToLayer(layer.id))}
           >
-            Перенести выделенное сюда
+            {m.moveSelection}
           </Button>
           <Button
             type="button"
@@ -356,10 +352,10 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
             variant="ghost"
             size="sm"
             className={item}
-            title="Видимость для всех участников, живой картинки и .drawio"
+            title={m.forAllTitle}
             onClick={run(() => editor?.setLayerHidden(layer.id, !layer.hiddenForAll))}
           >
-            {layer.hiddenForAll ? 'Показать для всех' : 'Скрыть для всех'}
+            {layer.hiddenForAll ? m.showForAll : m.hideForAll}
           </Button>
           <Button
             type="button"
@@ -371,7 +367,7 @@ function LayerMenu({ editor, layer, isTop, isBottom, neighbour, onRename, onDone
             aria-describedby={deleteHint ? hintId : undefined}
             onClick={() => (layer.elements > 0 ? setConfirming(true) : run(() => editor?.deleteLayer(layer.id, null))())}
           >
-            Удалить слой
+            {m.deleteLayer}
           </Button>
           {deleteHint && (
             <p id={hintId} className="px-3 pb-1 text-xs text-muted-foreground">

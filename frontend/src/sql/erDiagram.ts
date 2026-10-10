@@ -20,6 +20,7 @@ import { vendorOf } from './dbVendors.ts'
 import { FIELD_WORDS, plainText, sourceRefers, splitField } from './tableField.ts'
 import { indexText, splitIndex } from './tableIndex.ts'
 import { readViewQuery } from './viewQuery.ts'
+import { sqlMessages } from './messages.ts'
 
 /** A plain identifier needs no quotes: lower case letters, digits and `_`, not starting with a digit. */
 const PLAIN = /^[a-z_][a-z0-9_$]*$/
@@ -461,7 +462,7 @@ function viewSql(view: SqlView): string {
   const columns = view.columns.map((column) => `${column.type ? `NULL::${column.type}` : 'NULL'} AS ${quoteName(column.name)}`)
   const create = view.query
     ? `${head} ${view.query};`
-    : `-- Запрос представления ${view.name.replace(/\s+/g, ' ')} не задан: столбцы без строк\n${head} SELECT ${columns.join(', ')};`
+    : `-- ${sqlMessages.viewWithoutQuery(view.name.replace(/\s+/g, ' '))}\n${head} SELECT ${columns.join(', ')};`
   return [create, ...(view.materialized ? view.indexes.map((index) => indexSql(view.name, index)) : [])].join('\n')
 }
 

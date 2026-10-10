@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { mermaidCells, mermaidSummary } from './mermaidCells.ts'
 import { parseMermaid } from './parseMermaid.ts'
 
@@ -96,5 +97,12 @@ describe('cells of an ER diagram', () => {
       'Узлов: 2, связей: 1, рамок: 0, пропущено строк: 1',
     )
     expect(mermaidSummary(parseMermaid('erDiagram\n  A ||--o{ B : x'))).toBe('Таблиц: 2, связей: 1, пропущено строк: 0')
+  })
+
+  it('sums up a diagram in English', () => {
+    setLocale('en')
+    expect(mermaidSummary(parseMermaid('flowchart LR\n  a --> b\n  style a fill:#fff'))).toBe(
+      'Nodes: 2, connectors: 1, frames: 0, lines skipped: 1',
+    )
   })
 })

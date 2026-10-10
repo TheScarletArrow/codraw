@@ -51,18 +51,12 @@ import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
 import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
-import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
+import { proposalKey, proposalsKey, reviewPath } from '../proposals/proposals.ts'
+import { proposalMessages } from '../proposals/messages.ts'
 import { applySchemaUpdate, takePendingSchemaImportUpdate } from '../proposals/schemaImportUpdate.ts'
 import { useDraftConnection } from '../proposals/useDraftConnection.ts'
 import { SqlMenu } from '../sql/SqlMenu.tsx'
-
-const STATUS_LABELS_OF_DRAFT: Record<ConnectionStatus, string> = {
-  connecting: 'Подключение',
-  synced: 'Синхронизировано',
-  offline: 'Нет связи',
-  'not-found': 'Предложение не найдено',
-  forbidden: 'Нет доступа',
-}
+import { proposalPageMessages as m } from './ProposalPage.messages.ts'
 
 const STATUS_COLORS: Record<ConnectionStatus, string> = {
   connecting: 'bg-muted-foreground',
@@ -82,12 +76,12 @@ export function ProposalPage() {
   const proposal = useQuery({ queryKey: proposalKey(boardId, proposalId), queryFn: () => fetchProposal(boardId, proposalId) })
   const user = useCurrentUser()
 
-  if (board.isPending || user.isPending || proposal.isPending) return <Message>Загрузка…</Message>
-  if (user.isError) return <Message alert>Не удалось загрузить предложение</Message>
-  if (isNotFound(board.error)) return <Message alert>Доска не найдена</Message>
-  if (isForbidden(board.error) || isForbidden(proposal.error)) return <Message alert>Нет доступа</Message>
-  if (isNotFound(proposal.error)) return <Message alert>Предложение не найдено</Message>
-  if (board.isError || proposal.isError) return <Message alert>Не удалось загрузить предложение</Message>
+  if (board.isPending || user.isPending || proposal.isPending) return <Message>{m.loading}</Message>
+  if (user.isError) return <Message alert>{m.loadFailed}</Message>
+  if (isNotFound(board.error)) return <Message alert>{m.boardNotFound}</Message>
+  if (isForbidden(board.error) || isForbidden(proposal.error)) return <Message alert>{m.status.forbidden}</Message>
+  if (isNotFound(proposal.error)) return <Message alert>{m.status['not-found']}</Message>
+  if (board.isError || proposal.isError) return <Message alert>{m.loadFailed}</Message>
   return <DraftWorkspace key={`${user.data.id}:${proposal.data.id}`} board={board.data} proposal={proposal.data} user={user.data} />
 }
 
@@ -178,8 +172,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   })
   const boardLink = mine ? `/boards/${encodeURIComponent(board.id)}` : reviewPath(board.id, proposal.id)
 
-  if (status === 'not-found') return <Message alert>Предложение не найдено</Message>
-  if (status === 'forbidden') return <Message alert>Нет доступа</Message>
+  if (status === 'not-found') return <Message alert>{m.status['not-found']}</Message>
+  if (status === 'forbidden') return <Message alert>{m.status.forbidden}</Message>
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -188,11 +182,11 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         <h1 className="min-w-0 truncate font-semibold">{proposal.title}</h1>
         <span role="status" className="flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
           <span aria-hidden className={cn('size-2 rounded-full', STATUS_COLORS[status])} />
-          {STATUS_LABELS_OF_DRAFT[status]}
+          {m.status[status]}
         </span>
         {readOnly && (
           <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-sm whitespace-nowrap text-muted-foreground">
-            Только просмотр
+            {m.readOnly}
           </span>
         )}
         <DrawioActions
@@ -245,22 +239,22 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
         <span className="flex-1">{banner(proposal, board, mine)}</span>
         {withdraw.isError && (
           <span role="alert" className="text-destructive">
-            Не удалось отозвать предложение
+            {m.withdrawFailed}
           </span>
         )}
         <Button asChild variant="outline" size="sm">
-          <Link to={boardLink}>К доске</Link>
+          <Link to={boardLink}>{m.toBoard}</Link>
         </Button>
         {mine && open && (
           <ConfirmedAction
-            label="Отозвать"
-            title="Отзыв предложения"
-            confirmLabel="Отозвать"
+            label={m.withdraw}
+            title={m.withdrawing}
+            confirmLabel={m.withdraw}
             variant="outline"
             disabled={withdraw.isPending}
             onConfirm={() => withdraw.mutate()}
           >
-            Предложение закроется, а его черновик останется только для просмотра.
+            {m.withdrawWarning}
           </ConfirmedAction>
         )}
       </div>
@@ -274,10 +268,10 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
           className="flex items-center gap-x-3 border-b bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
         >
           <span className="flex-1">
-            Черновик достиг предельного размера, последнее изменение не сохранено. Удалите лишнее, чтобы продолжить
+            {m.tooLarge}
           </span>
           <Button type="button" variant="ghost" size="sm" onClick={connection.dismissTooLarge}>
-            Понятно
+            {m.gotIt}
           </Button>
         </div>
       )}
@@ -406,7 +400,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
                 <Minimap editor={editor} />
               </>
             ) : (
-              <Message>{document && readOnly ? 'Черновик пока пуст' : 'Загрузка черновика…'}</Message>
+              <Message>{document && readOnly ? m.empty : m.loadingDraft}</Message>
             )}
           </div>
           {document && currentPage && (
@@ -439,10 +433,10 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
 /** What the page of a draft is, as the line under its header says it. */
 function banner(proposal: Proposal, board: Board, mine: boolean): string {
   if (proposal.status !== 'open') {
-    return `Предложение «${proposal.title}» — ${STATUS_LABELS[proposal.status].toLowerCase()}: черновик только для просмотра`
+    return m.closed(proposal.title, proposalMessages.statuses[proposal.status].toLowerCase())
   }
-  if (mine) return `Предложение «${proposal.title}»: правки не попадают на доску, пока их не примут`
-  return `Черновик предложения «${proposal.title}» к доске «${board.title}» от ${proposal.author.name} — только для просмотра`
+  if (mine) return m.mine(proposal.title)
+  return m.others(proposal.title, board.title, proposal.author.name)
 }
 
 function Message({ children, alert = false }: { children: string; alert?: boolean }) {

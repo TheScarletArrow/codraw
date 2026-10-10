@@ -1,4 +1,6 @@
 import type { NotificationKind, UserNotification } from '../api/notifications.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { notificationMessages as m } from './messages.ts'
 
 /** Query keys of the notifications: all of them, the unread count, the pages of the list. */
 export const notificationsKey = ['notifications'] as const
@@ -7,21 +9,6 @@ export const notificationListKey = ['notifications', 'list'] as const
 
 /** How often the header asks for the unread count, and the open list for its pages, in milliseconds. */
 export const NOTIFICATIONS_POLL_INTERVAL = 30_000
-
-/** What happened, as a notification about a board the user can no longer open says it. */
-const KIND_LABELS: Record<NotificationKind, string> = {
-  mention: 'Упоминание',
-  reply: 'Ответ в ветке',
-  assigned: 'Назначение ветки',
-  'access-request': 'Запрос доступа',
-  'access-granted': 'Доступ к доске',
-  'access-declined': 'Отказ в доступе',
-  ownership: 'Передача владения',
-  'proposal-created': 'Предложение изменений',
-  'proposal-accepted': 'Предложение принято',
-  'proposal-declined': 'Предложение отклонено',
-  'review-request': 'Запрос ревью',
-}
 
 /**
  * A notification in words: who, what on which board, and a line more. The words do not depend on the gender of the
@@ -41,40 +28,36 @@ export interface NotificationText {
  * the tab stayed open, is told in general words rather than breaking the list.
  */
 export function describeNotification(notification: UserNotification): NotificationText {
-  const label = KIND_LABELS[notification.kind] ?? 'Уведомление'
-  if (!notification.access) return { actor: null, action: label, detail: 'Доска недоступна' }
-  const actor = notification.actor?.name ?? 'Удалённый пользователь'
-  const board = `«${notification.boardTitle}»`
+  const label = (m.kinds as Partial<Record<NotificationKind, string>>)[notification.kind] ?? m.notification
+  if (!notification.access) return { actor: null, action: label, detail: m.boardUnavailable }
+  const actor = notification.actor?.name ?? m.deletedUser
+  const board = notification.boardTitle ?? ''
   const editing = notification.role === 'editor'
   switch (notification.kind) {
     case 'mention':
-      return { actor, action: `упоминание в ${board}`, detail: notification.snippet }
+      return { actor, action: m.mention(board), detail: notification.snippet }
     case 'reply':
-      return { actor, action: `ответ в ветке на ${board}`, detail: notification.snippet }
+      return { actor, action: m.reply(board), detail: notification.snippet }
     case 'assigned':
-      return { actor, action: `вам назначена ветка в ${board}`, detail: notification.snippet }
+      return { actor, action: m.assigned(board), detail: notification.snippet }
     case 'access-request':
-      return { actor, action: `запрос доступа к ${board}`, detail: editing ? 'Просит редактирование' : 'Просит просмотр' }
+      return { actor, action: m.accessRequest(board), detail: editing ? m.asksEdit : m.asksView }
     case 'access-granted':
-      return { actor, action: `доступ к ${board}`, detail: editing ? 'Теперь можно редактировать' : 'Теперь можно смотреть' }
+      return { actor, action: m.accessGranted(board), detail: editing ? m.canEdit : m.canView }
     case 'access-declined':
-      return {
-        actor,
-        action: `отказ в доступе к ${board}`,
-        detail: editing ? 'Вы просили редактирование' : 'Вы просили просмотр',
-      }
+      return { actor, action: m.accessDeclined(board), detail: editing ? m.askedEdit : m.askedView }
     case 'ownership':
-      return { actor, action: `передача владения ${board}`, detail: 'Теперь вы владелец доски' }
+      return { actor, action: m.ownership(board), detail: m.nowOwner }
     case 'proposal-created':
-      return { actor, action: `предложение изменений к ${board}`, detail: notification.snippet }
+      return { actor, action: m.proposalCreated(board), detail: notification.snippet }
     case 'proposal-accepted':
-      return { actor, action: `ваше предложение к ${board} принято`, detail: notification.snippet }
+      return { actor, action: m.proposalAccepted(board), detail: notification.snippet }
     case 'proposal-declined':
-      return { actor, action: `ваше предложение к ${board} отклонено`, detail: notification.snippet }
+      return { actor, action: m.proposalDeclined(board), detail: notification.snippet }
     case 'review-request':
-      return { actor, action: `запрос ревью на ${board}`, detail: 'Элемент отмечен «Нужно ревью»' }
+      return { actor, action: m.reviewRequest(board), detail: m.markedForReview }
     default:
-      return { actor, action: `событие на ${board}`, detail: notification.snippet }
+      return { actor, action: m.event(board), detail: notification.snippet }
   }
 }
 
@@ -108,17 +91,20 @@ export function notificationLink(notification: UserNotification): string {
   return board
 }
 
-const relativeFormat = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' })
-const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium' })
+const relativeFormat = perLocale((tag) => new Intl.RelativeTimeFormat(tag, { numeric: 'auto' }))
+const dateFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium' }))
 
-/** How long ago: «только что», «5 минут назад», «3 часа назад», «вчера», and the date after a week. */
+/**
+ * How long ago, in the language of the interface: «только что», «5 минут назад», «3 часа назад», «вчера», and the date
+ * after a week.
+ */
 export function timeAgo(time: string, now = Date.now()): string {
   const minutes = Math.floor((now - Date.parse(time)) / 60_000)
-  if (minutes < 1) return 'только что'
-  if (minutes < 60) return relativeFormat.format(-minutes, 'minute')
+  if (minutes < 1) return m.justNow
+  if (minutes < 60) return relativeFormat().format(-minutes, 'minute')
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return relativeFormat.format(-hours, 'hour')
+  if (hours < 24) return relativeFormat().format(-hours, 'hour')
   const days = Math.floor(hours / 24)
-  if (days < 7) return relativeFormat.format(-days, 'day')
-  return dateFormat.format(new Date(time))
+  if (days < 7) return relativeFormat().format(-days, 'day')
+  return dateFormat().format(new Date(time))
 }

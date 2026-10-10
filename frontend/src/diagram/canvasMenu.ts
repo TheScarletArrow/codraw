@@ -1,6 +1,7 @@
 import type { Plan, SelectionPlan } from './plan.ts'
 import { FRAME_KINDS, type FrameKind } from './sequence.ts'
 import type { ElementStatus, SelectionStatus } from './status.ts'
+import { canvasMenuMessages as m } from './canvasMenu.messages.ts'
 
 /**
  * What a right click on the canvas is about: nothing selected, one element of a kind, or several elements. A sequence
@@ -236,73 +237,78 @@ const CHANGING_COMMANDS = new Set<MenuCommand>([
   ...(Object.keys(PLAN_COMMANDS) as PlanCommand[]),
 ])
 
-type Entry = [MenuCommand, string, Shortcut?]
+/** The name of an item: a text of the dictionary, or a text of its own, e.g. of a kind of frame. */
+type Label = keyof typeof m.items | (() => string)
+
+type Entry = [MenuCommand, Label, Shortcut?]
+
+const labelOf = (label: Label): string => (typeof label === 'function' ? label() : m.items[label])
 
 const CLIPBOARD: Entry[] = [
-  ['cut', 'Вырезать', 'Mod+X'],
-  ['copy', 'Копировать', 'Mod+C'],
-  ['duplicate', 'Дублировать', 'Mod+D'],
+  ['cut', 'cut', 'Mod+X'],
+  ['copy', 'copy', 'Mod+C'],
+  ['duplicate', 'duplicate', 'Mod+D'],
 ]
 /** Copying, then saving into a library, which takes what copying takes. */
-const COPYING: Entry[] = [...CLIPBOARD, ['saveToLibrary', 'Сохранить в библиотеку…']]
-const COPY_STYLE: Entry = ['copyStyle', 'Копировать стиль', 'Mod+Alt+C']
-const PASTE_STYLE: Entry = ['pasteStyle', 'Вставить стиль', 'Mod+Alt+V']
+const COPYING: Entry[] = [...CLIPBOARD, ['saveToLibrary', 'saveToLibrary']]
+const COPY_STYLE: Entry = ['copyStyle', 'copyStyle', 'Mod+Alt+C']
+const PASTE_STYLE: Entry = ['pasteStyle', 'pasteStyle', 'Mod+Alt+V']
 const STYLE: Entry[] = [COPY_STYLE, PASTE_STYLE]
 const ORDER: Entry[] = [
-  ['bringToFront', 'На передний план'],
-  ['sendToBack', 'На задний план'],
+  ['bringToFront', 'bringToFront'],
+  ['sendToBack', 'sendToBack'],
 ]
-const DELETE: Entry = ['delete', 'Удалить', 'Delete']
-const EDIT_LABEL: Entry = ['editLabel', 'Изменить подпись', 'F2']
-const COMMENT: Entry[] = [['comment', 'Комментировать']]
+const DELETE: Entry = ['delete', 'delete', 'Delete']
+const EDIT_LABEL: Entry = ['editLabel', 'editLabel', 'F2']
+const COMMENT: Entry[] = [['comment', 'comment']]
 /** Commenting on an element, and its issues of the tracker. */
-const DISCUSSION: Entry[] = [...COMMENT, ['issues', 'Задачи…']]
-const LINK: Entry[] = [['link', 'Ссылка…']]
-const EDGE_API: Entry = ['edgeApi', 'Описание API…']
-const PROPERTIES: Entry = ['properties', 'Свойства…']
-const DETAIL: Entry = ['detail', 'Детализировать']
+const DISCUSSION: Entry[] = [...COMMENT, ['issues', 'issues']]
+const LINK: Entry[] = [['link', 'link']]
+const EDGE_API: Entry = ['edgeApi', 'edgeApi']
+const PROPERTIES: Entry = ['properties', 'properties']
+const DETAIL: Entry = ['detail', 'detail']
 const SHARED: Entry[] = [
-  ['whereUsed', 'Где используется…'],
-  ['detachElement', 'Отделить от элемента'],
+  ['whereUsed', 'whereUsed'],
+  ['detachElement', 'detachElement'],
 ]
-const DELETE_EVERYWHERE: Entry = ['deleteElementEverywhere', 'Удалить со всех страниц…']
-const DEPENDENCIES: Entry = ['dependencies', 'Зависимости']
+const DELETE_EVERYWHERE: Entry = ['deleteElementEverywhere', 'deleteEverywhere']
+const DEPENDENCIES: Entry = ['dependencies', 'dependencies']
 const LOCK: Entry[] = [
-  ['lock', 'Закрепить'],
-  ['unlock', 'Открепить'],
+  ['lock', 'lock'],
+  ['unlock', 'unlock'],
 ]
-const COPY_MERMAID: Entry[] = [['copyMermaid', 'Скопировать Mermaid']]
+const COPY_MERMAID: Entry[] = [['copyMermaid', 'copyMermaid']]
 const FRAMES: Entry[] = (Object.entries(FRAME_COMMANDS) as [FrameCommand, FrameKind][]).map(([command, kind]) => [
   command,
-  FRAME_KINDS.find((frame) => frame.value === kind)!.label,
+  () => FRAME_KINDS.find((frame) => frame.value === kind)!.label,
 ])
-const BRANCH: Entry = ['addBranch', 'Добавить ветку']
+const BRANCH: Entry = ['addBranch', 'addBranch']
 const STATUS: Entry[] = [
-  ['statusDraft', 'Черновик'],
-  ['statusReview', 'Нужно ревью'],
-  ['statusDone', 'Готово'],
-  ['statusNone', 'Без статуса'],
+  ['statusDraft', 'statusDraft'],
+  ['statusReview', 'statusReview'],
+  ['statusDone', 'statusDone'],
+  ['statusNone', 'statusNone'],
 ]
 const PLAN: Entry[] = [
-  ['planNone', 'Есть'],
-  ['planAdded', 'Появится'],
-  ['planRemoved', 'Уйдёт'],
+  ['planNone', 'planNone'],
+  ['planAdded', 'planAdded'],
+  ['planRemoved', 'planRemoved'],
 ]
 
 /** Groups of the menu of each target, in the order of the menu. */
 const MENUS: Record<MenuTarget, Entry[][]> = {
   canvas: [
     [
-      ['paste', 'Вставить', 'Mod+V'],
-      ['pasteAsSameElement', 'Вставить как тот же элемент', 'Mod+Shift+V'],
-      ['selectAll', 'Выделить всё', 'Mod+A'],
-      ['addSticky', 'Добавить стикер', 'N'],
+      ['paste', 'paste', 'Mod+V'],
+      ['pasteAsSameElement', 'pasteAsSameElement', 'Mod+Shift+V'],
+      ['selectAll', 'selectAll', 'Mod+A'],
+      ['addSticky', 'addSticky', 'N'],
     ],
     [
-      ['undo', 'Отменить', 'Mod+Z'],
-      ['redo', 'Повторить', 'Mod+Shift+Z'],
+      ['undo', 'undo', 'Mod+Z'],
+      ['redo', 'redo', 'Mod+Shift+Z'],
     ],
-    [['commentHere', 'Комментировать здесь']],
+    [['commentHere', 'commentHere']],
   ],
   shape: [
     [EDIT_LABEL],
@@ -317,7 +323,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     [DELETE, DELETE_EVERYWHERE],
   ],
   table: [
-    [EDIT_LABEL, ['addField', 'Добавить поле'], ['addIndex', 'Добавить индекс']],
+    [EDIT_LABEL, ['addField', 'addField'], ['addIndex', 'addIndex']],
     COPYING,
     STYLE,
     ORDER,
@@ -330,30 +336,30 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   ],
   field: [
     [
-      ['editLabel', 'Изменить', 'F2'],
-      ['addField', 'Добавить поле ниже'],
+      ['editLabel', 'edit', 'F2'],
+      ['addField', 'addFieldBelow'],
     ],
     STYLE,
     COMMENT,
-    [['delete', 'Удалить поле', 'Delete']],
+    [['delete', 'deleteField', 'Delete']],
   ],
   index: [
     [
-      ['editLabel', 'Изменить', 'F2'],
-      ['addIndex', 'Добавить индекс ниже'],
+      ['editLabel', 'edit', 'F2'],
+      ['addIndex', 'addIndexBelow'],
     ],
     STYLE,
     COMMENT,
-    [['delete', 'Удалить индекс', 'Delete']],
+    [['delete', 'deleteIndex', 'Delete']],
   ],
-  edge: [[EDIT_LABEL, ['reverseEdge', 'Развернуть направление']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], DISCUSSION, [DELETE]],
+  edge: [[EDIT_LABEL, ['reverseEdge', 'reverseEdge']], STYLE, LOCK, PLAN, [...LINK, EDGE_API, PROPERTIES], DISCUSSION, [DELETE]],
   // A group and several elements have no look of their own to copy.
-  group: [[['ungroup', 'Разгруппировать', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, DISCUSSION, [DELETE]],
+  group: [[['ungroup', 'ungroup', 'Mod+Shift+G']], COPYING, [PASTE_STYLE], ORDER, LOCK, STATUS, PLAN, LINK, DISCUSSION, [DELETE]],
   selection: [
     [
-      ['group', 'Сгруппировать', 'Mod+G'],
-      ['mergeElements', 'Объединить в один элемент…'],
-      ['pathBetween', 'Путь между'],
+      ['group', 'group', 'Mod+G'],
+      ['mergeElements', 'mergeElements'],
+      ['pathBetween', 'pathBetween'],
     ],
     COPYING,
     [PASTE_STYLE],
@@ -364,7 +370,7 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
     [DELETE],
   ],
   sequence: [
-    [EDIT_LABEL, ['addParticipant', 'Добавить участника'], ['addMessage', 'Добавить сообщение']],
+    [EDIT_LABEL, ['addParticipant', 'addParticipant'], ['addMessage', 'addMessage']],
     COPY_MERMAID,
     COPYING,
     STYLE,
@@ -377,36 +383,36 @@ const MENUS: Record<MenuTarget, Entry[][]> = {
   ],
   participant: [
     [
-      ['editLabel', 'Изменить', 'F2'],
-      ['addParticipant', 'Добавить участника справа'],
-      ['addMessage', 'Добавить сообщение'],
+      ['editLabel', 'edit', 'F2'],
+      ['addParticipant', 'addParticipantRight'],
+      ['addMessage', 'addMessage'],
     ],
     COPY_MERMAID,
     COMMENT,
-    [['delete', 'Удалить участника', 'Delete']],
+    [['delete', 'deleteParticipant', 'Delete']],
   ],
   message: [
     [
-      ['editLabel', 'Изменить', 'F2'],
-      ['addMessage', 'Добавить сообщение ниже'],
-      ['addNote', 'Добавить заметку ниже'],
+      ['editLabel', 'edit', 'F2'],
+      ['addMessage', 'addMessageBelow'],
+      ['addNote', 'addNoteBelow'],
     ],
     FRAMES,
     COPY_MERMAID,
     COMMENT,
-    [['delete', 'Удалить сообщение', 'Delete']],
+    [['delete', 'deleteMessage', 'Delete']],
   ],
   note: [
     [
-      ['editLabel', 'Изменить', 'F2'],
-      ['addMessage', 'Добавить сообщение ниже'],
+      ['editLabel', 'edit', 'F2'],
+      ['addMessage', 'addMessageBelow'],
     ],
     COPY_MERMAID,
     COMMENT,
-    [['delete', 'Удалить заметку', 'Delete']],
+    [['delete', 'deleteNote', 'Delete']],
   ],
-  frame: [[['editLabel', 'Изменить условие', 'F2'], BRANCH], COPY_MERMAID, COMMENT, [['delete', 'Удалить рамку', 'Delete']]],
-  branch: [[['editLabel', 'Изменить условие', 'F2'], BRANCH], COPY_MERMAID, COMMENT, [['delete', 'Удалить ветку', 'Delete']]],
+  frame: [[['editLabel', 'editCondition', 'F2'], BRANCH], COPY_MERMAID, COMMENT, [['delete', 'deleteFrame', 'Delete']]],
+  branch: [[['editLabel', 'editCondition', 'F2'], BRANCH], COPY_MERMAID, COMMENT, [['delete', 'deleteBranch', 'Delete']]],
 }
 
 /**
@@ -489,18 +495,18 @@ export function menuItems(
     group.map(([command, label, shortcut], index) => {
       const item: MenuItem = {
         command,
-        label,
+        label: labelOf(label),
         shortcut,
         disabled: (unavailable[command] ?? false) || (locked && CHANGING_COMMANDS.has(command)),
         separatorBefore: groupIndex > 0 && index === 0,
       }
       // The frames a message goes into are a group of their own.
-      if (isFrameCommand(command)) return index === 0 ? { ...item, heading: 'Рамка' } : item
+      if (isFrameCommand(command)) return index === 0 ? { ...item, heading: m.frame } : item
       // What will appear and what will go are a choice too; nothing chosen is what is.
       if (isPlanCommand(command)) {
         return {
           ...item,
-          ...(index === 0 && { heading: 'Изменение' }),
+          ...(index === 0 && { heading: m.plan }),
           checked: plan !== null && !plan.mixed && PLAN_COMMANDS[command] === plan.value,
         }
       }
@@ -508,7 +514,7 @@ export function menuItems(
       // Different statuses choose none of them.
       return {
         ...item,
-        ...(index === 0 && { heading: 'Статус' }),
+        ...(index === 0 && { heading: m.status }),
         checked: status !== null && !status.mixed && STATUS_COMMANDS[command] === status.value,
       }
     }),

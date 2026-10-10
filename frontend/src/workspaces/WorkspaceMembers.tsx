@@ -20,19 +20,20 @@ import {
   type WorkspaceRole,
 } from '../api/workspaces.ts'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
-import { counted, inviteUrl } from '../board/members.ts'
+import { inviteUrl } from '../board/members.ts'
 import { Avatar } from '../board/MembersSection.tsx'
-import { managesWorkspace, mayGive, rolesGivenBy, WORKSPACE_ROLE_LABELS } from './workspaces.ts'
+import { workspacesMessages as m } from './messages.tsx'
+import { managesWorkspace, mayGive, rolesGivenBy, workspaceRoleLabel } from './workspaces.ts'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
 const COPIED_DURATION = 2_000
 
 /** Why a change of the members failed. */
 function failureOf(error: unknown): string {
-  if (isLastOwner(error)) return 'В пространстве должен остаться владелец: сначала сделайте владельцем другого участника'
+  if (isLastOwner(error)) return m.lastOwner
   const limit = workspaceLimitOf(error)
-  if (limit !== null) return `В пространстве уже ${counted(limit.limit, ['участник', 'участника', 'участников'])}`
-  return 'Не удалось изменить участников'
+  if (limit !== null) return m.membersLimit(limit.limit)
+  return m.membersChangeFailed
 }
 
 interface WorkspaceMembersProps {
@@ -77,27 +78,27 @@ export function WorkspaceMembers({ workspace, userId }: WorkspaceMembersProps) {
     <section aria-labelledby="workspace-members" className="mt-8 flex flex-col gap-2 border-t pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="workspace-members" className="text-lg font-semibold">
-          Участники
+          {m.members}
         </h3>
         <ConfirmedAction
-          label="Покинуть пространство"
-          title="Уход из пространства"
-          confirmLabel="Покинуть"
+          label={m.leaveWorkspace}
+          title={m.leavingWorkspace}
+          confirmLabel={m.leave}
           variant="outline"
           disabled={leave.isPending}
           onConfirm={() => leave.mutate()}
         >
-          Вы потеряете доступ к доскам пространства, а доски, за которые вы отвечаете, перейдут его владельцу.
+          {m.leaveWarning}
         </ConfirmedAction>
       </div>
-      {members.isPending && <p className="text-sm text-muted-foreground">Загрузка…</p>}
+      {members.isPending && <p className="text-sm text-muted-foreground">{m.loading}</p>}
       {members.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось загрузить участников
+          {m.membersFailed}
         </p>
       )}
       {members.data && (
-        <ul aria-label="Участники пространства" className="flex flex-col">
+        <ul aria-label={m.workspaceMembers} className="flex flex-col">
           {members.data.map((member) => {
             const manageable = member.id !== userId && mayGive(workspace.role, member.role)
             return (
@@ -105,12 +106,12 @@ export function WorkspaceMembers({ workspace, userId }: WorkspaceMembersProps) {
                 <Avatar person={member} />
                 <span className="min-w-0 flex-1 truncate text-sm">
                   {member.name}
-                  {member.id === userId && <span className="text-muted-foreground"> (вы)</span>}
+                  {member.id === userId && <span className="text-muted-foreground">{m.you}</span>}
                 </span>
                 {manageable ? (
                   <>
                     <select
-                      aria-label={`Роль: ${member.name}`}
+                      aria-label={m.roleOf(member.name)}
                       className="h-8 rounded-md border bg-background px-1 text-sm"
                       value={member.role}
                       disabled={change.isPending}
@@ -118,7 +119,7 @@ export function WorkspaceMembers({ workspace, userId }: WorkspaceMembersProps) {
                     >
                       {rolesGivenBy(workspace.role).map((role) => (
                         <option key={role} value={role}>
-                          {WORKSPACE_ROLE_LABELS[role]}
+                          {workspaceRoleLabel(role)}
                         </option>
                       ))}
                     </select>
@@ -126,8 +127,8 @@ export function WorkspaceMembers({ workspace, userId }: WorkspaceMembersProps) {
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Убрать: ${member.name}`}
-                      title="Убрать из пространства"
+                      aria-label={m.removeMember(member.name)}
+                      title={m.removeFromWorkspace}
                       disabled={change.isPending}
                       onClick={() => change.mutate({ memberId: member.id, role: null })}
                     >
@@ -135,7 +136,7 @@ export function WorkspaceMembers({ workspace, userId }: WorkspaceMembersProps) {
                     </Button>
                   </>
                 ) : (
-                  <span className="text-xs whitespace-nowrap text-muted-foreground">{WORKSPACE_ROLE_LABELS[member.role]}</span>
+                  <span className="text-xs whitespace-nowrap text-muted-foreground">{workspaceRoleLabel(member.role)}</span>
                 )}
               </li>
             )
@@ -185,56 +186,55 @@ function WorkspaceInvites({ workspace }: { workspace: Workspace }) {
   return (
     <section aria-labelledby="workspace-invites" className="mt-2 flex flex-col gap-1.5">
       <h4 id="workspace-invites" className="text-sm font-medium">
-        Пригласить по ссылке
+        {m.inviteByLink}
       </h4>
       <p className="text-xs text-muted-foreground">
-        Кто откроет ссылку-приглашение и войдёт через GitHub или Google, станет участником пространства с выбранной ролью
-        и получит доступ к его доскам.
+        {m.inviteHint}
       </p>
       <div className="flex gap-2">
         <select
-          aria-label="Роль приглашённых"
+          aria-label={m.inviteRole}
           className="h-8 min-w-0 flex-1 rounded-md border bg-background px-1 text-sm"
           value={role}
           onChange={(event) => setRole(event.target.value as WorkspaceRole)}
         >
           {roles.map((one) => (
             <option key={one} value={one}>
-              {WORKSPACE_ROLE_LABELS[one]}
+              {workspaceRoleLabel(one)}
             </option>
           ))}
         </select>
         <Button type="button" size="sm" disabled={create.isPending} onClick={() => create.mutate(role)}>
-          Создать ссылку
+          {m.createLink}
         </Button>
       </div>
       {create.isError && (
         <p role="alert" className="text-sm text-destructive">
           {limit === null
-            ? 'Не удалось создать приглашение'
-            : `У пространства уже ${counted(limit.limit, ['приглашение', 'приглашения', 'приглашений'])} — отзовите ненужные`}
+            ? m.inviteFailed
+            : m.invitesLimit(limit.limit)}
         </p>
       )}
       {invites.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось загрузить приглашения
+          {m.invitesFailed}
         </p>
       )}
       {invites.data && invites.data.length > 0 && (
-        <ul aria-label="Приглашения в пространство" className="flex flex-col gap-2">
+        <ul aria-label={m.workspaceInvites} className="flex flex-col gap-2">
           {invites.data.map((invite) => (
-            <li key={invite.id} aria-label={`Приглашение: ${WORKSPACE_ROLE_LABELS[invite.role]}`} className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">{WORKSPACE_ROLE_LABELS[invite.role]}</span>
+            <li key={invite.id} aria-label={m.invitation(workspaceRoleLabel(invite.role))} className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">{workspaceRoleLabel(invite.role)}</span>
               <div className="flex gap-2">
                 <input
                   readOnly
-                  aria-label="Ссылка-приглашение"
+                  aria-label={m.inviteLink}
                   value={inviteUrl(invite)}
                   className="h-8 min-w-0 flex-1 rounded-md border bg-muted/50 px-2 text-sm"
                   onFocus={(event) => event.target.select()}
                 />
                 <Button type="button" variant="outline" size="sm" className="w-28" onClick={() => void copy(invite)}>
-                  {copied === invite.id ? 'Скопировано' : 'Копировать'}
+                  {copied === invite.id ? m.copied : m.copy}
                 </Button>
                 {mayGive(workspace.role, invite.role) && (
                   <Button
@@ -244,7 +244,7 @@ function WorkspaceInvites({ workspace }: { workspace: Workspace }) {
                     disabled={revoke.isPending}
                     onClick={() => revoke.mutate(invite)}
                   >
-                    Отозвать
+                    {m.revoke}
                   </Button>
                 )}
               </div>

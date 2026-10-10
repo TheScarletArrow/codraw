@@ -1,5 +1,6 @@
 import type { Migration, MigrationStatement } from './migration.ts'
 import type { SqlFile } from './parseSql.ts'
+import { sqlMessages } from './messages.ts'
 
 /** Files of a migration: plain SQL, a pair of Flyway, or a changeset of Liquibase in formatted SQL. */
 
@@ -29,14 +30,14 @@ export function migrationSummary({ statements }: Migration): MigrationSummary {
   }
 }
 
-const title = ({ from, to }: MigrationStates) => `Миграция схемы CoDraw: ${from} → ${to}`
+const title = ({ from, to }: MigrationStates) => sqlMessages.migrationTitle(from, to)
 
 /** The comment that opens a file: where the migration goes from and to, the database, and tables drawn more than once. */
 function header(migration: Migration, states: MigrationStates): string[] {
   return [
     `-- ${title(states)}`,
-    `-- СУБД: ${migration.dialect.label}`,
-    ...migration.repeated.map((name) => `-- Таблица ${name} нарисована несколько раз: миграция берёт первую`),
+    `-- ${sqlMessages.database(migration.dialect.label)}`,
+    ...migration.repeated.map((name) => `-- ${sqlMessages.repeatedTable(name)}`),
   ]
 }
 
@@ -115,7 +116,7 @@ export function liquibaseChangelog(
     // The author ends at the first colon.
     `--changeset ${changesetPart(author.replaceAll(':', ''), 'codraw')}:${changesetPart(id, '1')}`,
     `--comment: ${title(states)} (${forward.dialect.label})`,
-    ...forward.repeated.map((name) => `-- Таблица ${name} нарисована несколько раз: миграция берёт первую`),
+    ...forward.repeated.map((name) => `-- ${sqlMessages.repeatedTable(name)}`),
     migrationBody(forward),
     ...rollback,
     '',

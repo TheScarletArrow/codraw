@@ -2,11 +2,13 @@ import { ArrowLeft } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { CellData } from '../diagram/model.ts'
+import { documentMessages } from '../apiSpec/messages.ts'
 import { downloadBlob, fileName } from '../lib/download.ts'
 import { mermaidC4 } from './mermaid.ts'
 import { architectureModel, architectureSummary, modelElements, type ArchModel } from './model.ts'
 import { plantUml } from './plantuml.ts'
 import { structurizrDsl } from './structurizr.ts'
+import { architectureMessages as m } from './messages.ts'
 
 interface Format {
   label: string
@@ -55,12 +57,12 @@ export function ArchitectureExport({ cells, title, onBack }: ArchitectureExportP
   return (
     <>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={onBack}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={documentMessages.back} onClick={onBack}>
           <ArrowLeft />
         </Button>
-        <h2 className="text-sm font-semibold">Архитектура как код</h2>
+        <h2 className="text-sm font-semibold">{m.exportTitle}</h2>
       </div>
-      <div role="group" aria-label="Формат" className="flex gap-1">
+      <div role="group" aria-label={m.format} className="flex gap-1">
         {FORMATS.map((item) => (
           <Button
             key={item.extension}
@@ -77,7 +79,7 @@ export function ArchitectureExport({ cells, title, onBack }: ArchitectureExportP
           </Button>
         ))}
       </div>
-      <pre aria-label="Текст выгрузки" tabIndex={0} className="max-h-72 overflow-auto rounded-md border bg-muted/40 px-2 py-1.5 font-mono text-xs">
+      <pre aria-label={m.exportText} tabIndex={0} className="max-h-72 overflow-auto rounded-md border bg-muted/40 px-2 py-1.5 font-mono text-xs">
         {text}
       </pre>
       <p role="status" className="text-xs text-muted-foreground">
@@ -85,18 +87,17 @@ export function ArchitectureExport({ cells, title, onBack }: ArchitectureExportP
       </p>
       {empty && (
         <p className="text-xs text-muted-foreground">
-          Выгружаются фигуры C4 и разделов «Архитектура», «Инфраструктура», «Данные и сообщения», «Клиенты», «Компонент» UML
-          и рамки вокруг них.
+          {m.exportHint}
         </p>
       )}
       {message && (
         <p role={message === 'copy-failed' ? 'alert' : undefined} className="text-xs text-muted-foreground">
-          {message === 'copied' ? 'Скопировано' : 'Не удалось скопировать'}
+          {message === 'copied' ? m.copied : m.copyFailed}
         </p>
       )}
       <div className="flex gap-2">
         <Button type="button" size="sm" disabled={empty} onClick={() => void copy()}>
-          Скопировать
+          {m.copy}
         </Button>
         <Button
           type="button"
@@ -105,7 +106,7 @@ export function ArchitectureExport({ cells, title, onBack }: ArchitectureExportP
           disabled={empty}
           onClick={() => downloadBlob(new Blob([text], { type: format.type }), fileName(title, format.extension))}
         >
-          Скачать .{format.extension}
+          {m.download(format.extension)}
         </Button>
       </div>
     </>

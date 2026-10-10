@@ -3,6 +3,7 @@ import type { DiagramEditor, Point } from '../diagram/editor.ts'
 import { takesText } from '../lib/keyboard.ts'
 import { throttle } from '../lib/throttle.ts'
 import { CHAT_INTERVAL_MS, CHAT_MAX_LENGTH, type Awareness, type ChatMessage } from './presence.ts'
+import { boardMessages } from './board.messages.ts'
 
 /** How long a message stays at the cursor after Enter. */
 export const CHAT_KEEP_MS = 5000
@@ -103,8 +104,8 @@ export function CursorChat({ editor, awareness, online, color }: CursorChatProps
         <input
           // The field opens on a key, to be typed in at once.
           autoFocus
-          aria-label="Сообщение у курсора"
-          placeholder="Сообщение… Esc — убрать"
+          aria-label={boardMessages.cursorChat}
+          placeholder={boardMessages.cursorChatPlaceholder}
           maxLength={CHAT_MAX_LENGTH}
           value={chat.text}
           onChange={(event) => {

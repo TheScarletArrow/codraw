@@ -193,6 +193,7 @@ import {
   type ParticipantKind,
   type SequenceDiagram,
 } from './sequence.ts'
+import { sequenceMessages } from './sequence.messages.ts'
 import {
   configureSequences,
   diagramCell,
@@ -223,6 +224,7 @@ import {
   type ModelField,
   type StyleValue,
 } from './model.ts'
+import { modelMessages } from './model.messages.ts'
 import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FILL_COLOR, DEFAULT_LINE_COLOR } from './colors.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
@@ -4100,7 +4102,7 @@ export function createDiagramEditor(
       const participants = diagram.getChildren().filter((child) => partOf(child) === 'participant')
       const after = selected && partOf(selected) === 'participant' ? selected : (participants.at(-1) ?? null)
       const index = after ? diagram.getIndex(after) + 1 : 0
-      return addPart(diagram, index, `Участник ${participants.length + 1}`, participantStyle(newId(), 'participant'))
+      return addPart(diagram, index, sequenceMessages.newParticipant(participants.length + 1), participantStyle(newId(), 'participant'))
     },
     addSequenceMessage() {
       const diagram = changingSequence()
@@ -4128,7 +4130,7 @@ export function createDiagramEditor(
       let [from, to] = [read.participants[0]!.key, read.participants[0]!.key]
       if (state?.type === 'message' || state?.type === 'note') [from, to] = [state.from, state.to]
       else if (state?.type === 'participant') from = to = read.participants.find((participant) => participant.id === state.cellId)!.key
-      return addPart(diagram, rowIndex(diagram, selected), 'Заметка', noteStyle({ from, to, placement: 'over' }))
+      return addPart(diagram, rowIndex(diagram, selected), sequenceMessages.newNote, noteStyle({ from, to, placement: 'over' }))
     },
     addSequenceFrame(kind) {
       const diagram = changingSequence()
@@ -4338,7 +4340,7 @@ export function createDiagramEditor(
       return {
         cells: clones.filter((clone): clone is Cell => clone !== null),
         image: editor.exportSvg({ selectionOnly: true, transparent: true }),
-        name: label || 'Компонент',
+        name: label || modelMessages.component,
       }
     },
     async insertComponent(content, center) {
@@ -5074,8 +5076,8 @@ export function createDiagramEditor(
       graph.stopEditing(false)
       const names = new Set(layers().map((layer) => layerName(layer.getId()!, layer.getValue())))
       let number = layers().length + 1
-      while (names.has(`Слой ${number}`)) number++
-      const layer = new Cell(`Слой ${number}`)
+      while (names.has(modelMessages.layer(number))) number++
+      const layer = new Cell(modelMessages.layer(number))
       model.batchUpdate(() => model.add(model.getRoot()!, layer))
       const id = layer.getId()!
       view.setActive(id)

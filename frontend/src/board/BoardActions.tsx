@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { boardMessages as m } from './board.messages.ts'
 
 interface BoardActionsProps {
   title: string
@@ -47,7 +48,7 @@ type View = 'items' | 'confirm' | 'tags' | 'folder' | 'workspace'
  */
 export function BoardActions({
   title,
-  deleteLabel = 'Удалить',
+  deleteLabel = m.delete,
   onRename,
   onCopy,
   onHistory,
@@ -75,8 +76,8 @@ export function BoardActions({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label={`Меню доски «${title}»`}
-          title="Действия с доской"
+          aria-label={m.boardMenu(title)}
+          title={m.boardActions}
           disabled={disabled}
         >
           <Ellipsis />
@@ -91,11 +92,11 @@ export function BoardActions({
         {view === 'folder' && folder?.(() => setOpen(false))}
         {view === 'workspace' && workspace?.(() => setOpen(false))}
         {view === 'confirm' && (
-          <div role="alertdialog" aria-label="Удаление доски" className="flex flex-col gap-2 p-2">
-            <p className="text-sm">Переместить доску «{title}» в корзину? Её можно восстановить в течение 30 дней.</p>
+          <div role="alertdialog" aria-label={m.deletingBoard} className="flex flex-col gap-2 p-2">
+            <p className="text-sm">{m.deleteBoardConfirm(title)}</p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setView('items')}>
-                Отмена
+                {m.cancel}
               </Button>
               <Button
                 type="button"
@@ -106,13 +107,13 @@ export function BoardActions({
                   onDelete?.()
                 }}
               >
-                Удалить
+                {m.delete}
               </Button>
             </div>
           </div>
         )}
         {view === 'items' && (
-          <div role="menu" aria-label={`Доска «${title}»`} className="flex flex-col">
+          <div role="menu" aria-label={m.board(title)} className="flex flex-col">
             {onRename && (
               <Button
                 type="button"
@@ -125,7 +126,7 @@ export function BoardActions({
                   onRename()
                 }}
               >
-                Переименовать
+                {m.rename}
               </Button>
             )}
             {onCopy && (
@@ -135,13 +136,13 @@ export function BoardActions({
                 variant="ghost"
                 size="sm"
                 className={item}
-                title="Новая доска с теми же страницами и изображениями, без участников, комментариев и истории"
+                title={m.copyHint}
                 onClick={() => {
                   setOpen(false)
                   onCopy()
                 }}
               >
-                Создать копию
+                {m.copy}
               </Button>
             )}
             {tags && (
@@ -153,7 +154,7 @@ export function BoardActions({
                 className={item}
                 onClick={() => setView('tags')}
               >
-                Теги
+                {m.tags}
               </Button>
             )}
             {folder && (
@@ -165,7 +166,7 @@ export function BoardActions({
                 className={item}
                 onClick={() => setView('folder')}
               >
-                Переместить в папку
+                {m.moveToFolder}
               </Button>
             )}
             {workspace && (
@@ -177,7 +178,7 @@ export function BoardActions({
                 className={item}
                 onClick={() => setView('workspace')}
               >
-                Перенести в пространство
+                {m.moveToWorkspace}
               </Button>
             )}
             {onHistory && (
@@ -192,7 +193,7 @@ export function BoardActions({
                   onHistory()
                 }}
               >
-                История версий
+                {m.versionHistory}
               </Button>
             )}
             {notifications && (
@@ -204,15 +205,15 @@ export function BoardActions({
                 className={item}
                 title={
                   notifications.muted
-                    ? 'События доски снова будут приходить на почту и в чат'
-                    : 'События доски не будут приходить на почту и в чат; колокольчик их покажет'
+                    ? m.unmuteHint
+                    : m.muteHint
                 }
                 onClick={() => {
                   setOpen(false)
                   notifications.onToggle()
                 }}
               >
-                {notifications.muted ? 'Присылать уведомления' : 'Не присылать уведомления'}
+                {notifications.muted ? m.unmute : m.mute}
               </Button>
             )}
             {onDelete && (

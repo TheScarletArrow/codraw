@@ -7,7 +7,7 @@ import { addressLink, boardLink, pageLink, parseLink } from '../diagram/links.ts
 import type { PageInfo } from '../diagram/pages.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
 import { useLinkableBoards } from './boards.ts'
-import { LINK_ERRORS } from './linkTexts.ts'
+import { linkMessages as m } from './messages.ts'
 
 /** Where a link of the window leads. */
 type LinkKind = 'page' | 'board' | 'url'
@@ -83,14 +83,14 @@ export function LinkDialog({ editor, request, pages, currentPageId, boardId, onC
     setError(null)
   }
   const linkOfChoice = (): string | { error: string } => {
-    if (kind === 'page') return pageId ? pageLink(pageId) : { error: LINK_ERRORS.page }
+    if (kind === 'page') return pageId ? pageLink(pageId) : { error: m.errors.page }
     if (kind === 'board') {
-      if (!chosenBoard) return { error: LINK_ERRORS.board }
+      if (!chosenBoard) return { error: m.errors.board }
       // The same board keeps its link, with the page it may lead to.
       return chosenBoard === initial.boardId && current ? current : boardLink(chosenBoard)
     }
-    if (!address.trim()) return { error: LINK_ERRORS.empty }
-    return addressLink(address) ?? { error: LINK_ERRORS.address }
+    if (!address.trim()) return { error: m.errors.empty }
+    return addressLink(address) ?? { error: m.errors.address }
   }
   const save = (event: FormEvent) => {
     event.preventDefault()
@@ -129,7 +129,7 @@ export function LinkDialog({ editor, request, pages, currentPageId, boardId, onC
         side="bottom"
         align="start"
         sideOffset={2}
-        aria-label="Ссылка"
+        aria-label={m.link}
         className="w-80 max-w-[calc(100vw-2rem)]"
         onOpenAutoFocus={(event) => {
           if (!control.current) return
@@ -139,15 +139,15 @@ export function LinkDialog({ editor, request, pages, currentPageId, boardId, onC
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         <form className="flex flex-col gap-2" noValidate onSubmit={save}>
-          <h2 className="text-sm font-semibold">Ссылка</h2>
+          <h2 className="text-sm font-semibold">{m.link}</h2>
           <fieldset className="flex flex-col gap-1">
-            <legend className="sr-only">Куда ведёт ссылка</legend>
+            <legend className="sr-only">{m.whereTo}</legend>
             {choice(
               'page',
-              'Страница этой доски',
+              m.pageOfThisBoard,
               <select
                 ref={kind === 'page' ? control : undefined}
-                aria-label="Страница"
+                aria-label={m.page}
                 aria-describedby={described}
                 className={fieldClass}
                 value={pageId}
@@ -155,32 +155,32 @@ export function LinkDialog({ editor, request, pages, currentPageId, boardId, onC
               >
                 {pages.map((page) => (
                   <option key={page.id} value={page.id}>
-                    {page.id === currentPageId ? `${page.name} (текущая)` : page.name}
+                    {page.id === currentPageId ? m.currentPage(page.name) : page.name}
                   </option>
                 ))}
               </select>,
             )}
             {choice(
               'board',
-              'Другая доска',
+              m.otherBoard,
               failed ? (
-                <p className="text-sm text-muted-foreground">Не удалось загрузить доски — вставьте адрес доски в «Адрес»</p>
+                <p className="text-sm text-muted-foreground">{m.boardsFailed}</p>
               ) : !others ? (
-                <p className="text-sm text-muted-foreground">Загрузка досок…</p>
+                <p className="text-sm text-muted-foreground">{m.loadingBoards}</p>
               ) : others.length === 0 && !chosenBoard ? (
-                <p className="text-sm text-muted-foreground">Других досок нет</p>
+                <p className="text-sm text-muted-foreground">{m.noOtherBoards}</p>
               ) : (
                 <select
                   ref={kind === 'board' ? control : undefined}
-                  aria-label="Доска"
+                  aria-label={m.board}
                   aria-describedby={described}
                   className={fieldClass}
                   value={chosenBoard}
                   onChange={(event) => setChosenBoard(event.target.value)}
                 >
-                  {!chosenBoard && <option value="">Выберите доску</option>}
+                  {!chosenBoard && <option value="">{m.chooseBoard}</option>}
                   {chosenBoard && !others.some((board) => board.id === chosenBoard) && (
-                    <option value={chosenBoard}>Доска по ссылке</option>
+                    <option value={chosenBoard}>{m.linkedBoard}</option>
                   )}
                   {others.map((board) => (
                     <option key={board.id} value={board.id}>
@@ -192,12 +192,12 @@ export function LinkDialog({ editor, request, pages, currentPageId, boardId, onC
             )}
             {choice(
               'url',
-              'Адрес',
+              m.address,
               <input
                 ref={kind === 'url' ? control : undefined}
                 type="text"
                 inputMode="url"
-                aria-label="Адрес"
+                aria-label={m.address}
                 aria-describedby={described}
                 aria-invalid={error !== null && kind === 'url'}
                 placeholder="https://…"
@@ -218,15 +218,15 @@ export function LinkDialog({ editor, request, pages, currentPageId, boardId, onC
           <div className="flex flex-wrap items-center gap-2">
             {current && (
               <Button type="button" variant="ghost" size="sm" onClick={remove}>
-                Убрать ссылку
+                {m.removeLink}
               </Button>
             )}
             <div className="ml-auto flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
-                Отмена
+                {m.cancel}
               </Button>
               <Button type="submit" size="sm">
-                Сохранить
+                {m.save}
               </Button>
             </div>
           </div>

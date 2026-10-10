@@ -9,8 +9,10 @@ import io.github.thescarletarrow.codraw.board.SharingBlockedException
 import io.github.thescarletarrow.codraw.board.ownedBy
 import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.readAtMost
+import io.github.thescarletarrow.codraw.user.Language
 import io.github.thescarletarrow.codraw.user.userId
 import org.springframework.http.CacheControl
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -137,8 +139,11 @@ class EmbedController(
             .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
             .header("Cross-Origin-Resource-Policy", "cross-origin")
             .header("X-Content-Type-Options", "nosniff")
+        // The picture before the first one is published speaks the language of the reader.
+        if (image.svg == null) headers.varyBy(HttpHeaders.ACCEPT_LANGUAGE)
         if (request.checkNotModified(tag)) return headers.build()
-        return headers.contentType(MediaType("image", "svg+xml", Charsets.UTF_8)).body(image.svg ?: PLACEHOLDER)
+        val placeholder = { PLACEHOLDERS.getValue(Language.ofAcceptLanguage(request.getHeader(HttpHeaders.ACCEPT_LANGUAGE))) }
+        return headers.contentType(MediaType("image", "svg+xml", Charsets.UTF_8)).body(image.svg ?: placeholder())
     }
 
     private fun notEnabled() = ResponseStatusException(HttpStatus.NOT_FOUND, "The board has no live image")
@@ -150,11 +155,16 @@ class EmbedController(
         const val SVG_TYPE = "image/svg+xml"
         private const val PAGE_ID_MAX_LENGTH = 100
 
-        /** What the address shows before the first picture is published. */
-        private val PLACEHOLDER = """
+        /** What the address shows before the first picture is published, in each language. */
+        private val PLACEHOLDERS = mapOf(
+            Language.RU to placeholder("Схема ещё не нарисована"),
+            Language.EN to placeholder("The diagram is not drawn yet"),
+        )
+
+        private fun placeholder(text: String) = """
             <svg xmlns="http://www.w3.org/2000/svg" width="320" height="80" viewBox="0 0 320 80">
               <rect width="320" height="80" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
-              <text x="160" y="45" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#57606a">Схема ещё не нарисована</text>
+              <text x="160" y="45" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#57606a">$text</text>
             </svg>
         """.trimIndent().toByteArray()
     }

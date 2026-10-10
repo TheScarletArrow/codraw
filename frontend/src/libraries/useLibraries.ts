@@ -19,15 +19,11 @@ import {
 import type { DiagramEditor, Point } from '../diagram/editor.ts'
 import { fileDraft, MissingPicturesError, OutsidePicturesError, selectionDraft } from './component.ts'
 import { readComponentDrag } from './drag.ts'
-import { COMPONENT_LOAD_FAILED, LIBRARY_CHANGE_FAILED, LIBRARY_SAVE_FAILED, libraryError } from './messages.ts'
+import { libraryError, libraryMessages as m } from './messages.ts'
 
 /** The largest picture of a library when its room cannot be read; the backend checks again anyway. */
 const DEFAULT_IMAGE_LIMIT = 2 * 1024 * 1024
 
-export const MISSING_PICTURES = 'Не удалось взять изображения выделения с доски — проверьте связь'
-export const OUTSIDE_PICTURES =
-  'В выделении есть изображения по ссылкам, которые библиотека не хранит, например значки draw.io, — уберите их из выделения'
-export const NOTHING_SELECTED = 'Выделите фигуры, которые нужно сохранить'
 
 /** Where a component is saved: a library of the user, or a new one of that name. */
 export type SaveTarget = { libraryId: string } | { newLibrary: string }
@@ -77,8 +73,8 @@ export interface LibraryShelf {
 
 /** Why saving failed, in words: the pictures of the selection, or what the backend answered. */
 function messageOf(failure: unknown, fallback: string): string {
-  if (failure instanceof MissingPicturesError) return MISSING_PICTURES
-  if (failure instanceof OutsidePicturesError) return OUTSIDE_PICTURES
+  if (failure instanceof MissingPicturesError) return m.missingPictures
+  if (failure instanceof OutsidePicturesError) return m.outsidePictures
   return libraryError(failure, fallback)
 }
 
@@ -104,7 +100,7 @@ export function useLibraries(): LibraryShelf {
   const actions = useMemo(() => {
     const refresh = () => queryClient.invalidateQueries({ queryKey: LIBRARIES_QUERY_KEY })
     /** Runs a change of the panel: its failure becomes the error, in words, and the list is read again either way. */
-    const change = async (run: () => Promise<unknown>, fallback = LIBRARY_CHANGE_FAILED) => {
+    const change = async (run: () => Promise<unknown>, fallback = m.changeFailed) => {
       setError(null)
       try {
         await run()
@@ -124,20 +120,20 @@ export function useLibraries(): LibraryShelf {
       try {
         await editor.insertComponent(await contentOf(queryClient, libraryId, component), at)
       } catch (failure) {
-        setError(libraryError(failure, COMPONENT_LOAD_FAILED))
+        setError(libraryError(failure, m.componentLoadFailed))
       }
     }
     const saveSelection = async (editor: DiagramEditor, target: SaveTarget, name?: string): Promise<SaveResult> => {
-      setPending('Сохранение в библиотеку…')
+      setPending(m.saving)
       let libraryId = 'libraryId' in target ? target.libraryId : null
       try {
         const draft = await selectionDraft(editor, name)
-        if (!draft) return { error: NOTHING_SELECTED, libraryId }
+        if (!draft) return { error: m.nothingSelected, libraryId }
         if ('newLibrary' in target) libraryId = (await createLibrary(target.newLibrary)).id
         await addComponent(libraryId!, draft)
         return { error: null, libraryId }
       } catch (failure) {
-        return { error: messageOf(failure, LIBRARY_SAVE_FAILED), libraryId }
+        return { error: messageOf(failure, m.saveFailed), libraryId }
       } finally {
         setPending(null)
         await refresh()
@@ -162,16 +158,16 @@ export function useLibraries(): LibraryShelf {
         if (failure) setError(failure)
       },
       async replaceWithSelection(editor: DiagramEditor, libraryId: string, componentId: string) {
-        setPending('Сохранение в библиотеку…')
+        setPending(m.saving)
         try {
           await change(async () => {
             const draft = await selectionDraft(editor)
             if (!draft) {
-              setError(NOTHING_SELECTED)
+              setError(m.nothingSelected)
               return
             }
             await updateComponent(libraryId, componentId, { content: draft.content, preview: draft.preview })
-          }, LIBRARY_SAVE_FAILED)
+          }, m.saveFailed)
         } finally {
           setPending(null)
         }
@@ -181,25 +177,25 @@ export function useLibraries(): LibraryShelf {
       deleteComponent: (libraryId: string, componentId: string) => change(() => deleteComponent(libraryId, componentId)),
       async addFiles(libraryId: string, files: File[]) {
         setError(null)
-        setPending(files.length > 1 ? `Добавление изображений: ${files.length}…` : 'Добавление изображения…')
+        setPending(files.length > 1 ? m.addingImages(files.length) : m.addingImage)
         const refused: string[] = []
         try {
           const limit = await imageLimit()
           for (const file of files) {
             const draft = await fileDraft(file, limit)
             if (typeof draft === 'string') {
-              refused.push(`«${file.name}»: ${draft}`)
+              refused.push(m.fileRefused(file.name, draft))
               continue
             }
             try {
               await addComponent(libraryId, draft)
             } catch (failure) {
-              refused.push(`«${file.name}»: ${libraryError(failure, LIBRARY_SAVE_FAILED)}`)
+              refused.push(m.fileRefused(file.name, libraryError(failure, m.saveFailed)))
             }
           }
         } finally {
           setPending(null)
-          if (refused.length > 0) setError(`Не добавлены ${refused.join('; ')}`)
+          if (refused.length > 0) setError(m.notAdded(refused.join('; ')))
           await refresh()
         }
       },
@@ -217,7 +213,7 @@ export function useLibraries(): LibraryShelf {
         try {
           await editor.applyComponentStyle(await contentOf(queryClient, libraryId, component))
         } catch (failure) {
-          setError(libraryError(failure, COMPONENT_LOAD_FAILED))
+          setError(libraryError(failure, m.componentLoadFailed))
         }
       },
     }

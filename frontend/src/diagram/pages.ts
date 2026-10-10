@@ -1,6 +1,7 @@
 import * as Y from 'yjs'
 import { writeAttribution, type Author } from './attribution.ts'
 import { newId } from './ids.ts'
+import { modelMessages } from './model.messages.ts'
 import {
   cellElementId,
   compareCells,
@@ -35,8 +36,8 @@ export function listPages(doc: Y.Doc): PageInfo[] {
 export function nextPageName(pages: PageInfo[]): string {
   const taken = new Set(pages.map((page) => page.name))
   let number = pages.length + 1
-  while (taken.has(`Страница ${number}`)) number++
-  return `Страница ${number}`
+  while (taken.has(modelMessages.page(number))) number++
+  return modelMessages.page(number)
 }
 
 /** An order key that puts a page between `before` and `after`; equal neighbours put it after `before`. */
@@ -118,7 +119,7 @@ export function duplicatePage(doc: Y.Doc, id: string, author: Author | null = nu
   const at = Date.now()
   doc.transact(() => {
     writePage(doc, copyId, {
-      name: `${pages[index]!.name} (копия)`,
+      name: modelMessages.pageCopy(pages[index]!.name),
       order: orderAfter(pages[index], pages[index + 1]),
       ...(view && { view }),
     })

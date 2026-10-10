@@ -28,6 +28,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ArrangePicker } from './ArrangePicker.tsx'
+import { toolbarMessages as m } from './EditorToolbar.messages.ts'
 import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
 import type { PlanView } from './plan.ts'
 import { PlanViewPicker } from './PlanViewPicker.tsx'
@@ -77,7 +78,7 @@ export function EditorToolbar({
     // line keeps at least the room of the tools up to «Показать всё».
     <div
       role="toolbar"
-      aria-label="Инструменты"
+      aria-label={m.tools}
       className="@container flex min-w-65 flex-1 items-center gap-1 overflow-x-auto"
     >
       {!readOnly && (
@@ -86,8 +87,8 @@ export function EditorToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Отменить"
-            title="Отменить (Ctrl+Z)"
+            aria-label={m.undo}
+            title={m.undoTitle}
             disabled={!editor || !canUndo}
             onClick={() => editor?.undo()}
           >
@@ -97,8 +98,8 @@ export function EditorToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Повторить"
-            title="Повторить (Ctrl+Shift+Z)"
+            aria-label={m.redo}
+            title={m.redoTitle}
             disabled={!editor || !canRedo}
             onClick={() => editor?.redo()}
           >
@@ -111,8 +112,8 @@ export function EditorToolbar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Уменьшить"
-        title="Уменьшить (Ctrl+колесо)"
+        aria-label={m.zoomOut}
+        title={m.zoomOutTitle}
         disabled={!editor}
         onClick={() => editor?.zoomOut()}
       >
@@ -123,8 +124,8 @@ export function EditorToolbar({
         variant="ghost"
         size="sm"
         className="w-16 tabular-nums"
-        aria-label="Масштаб"
-        title="Сбросить масштаб до 100%"
+        aria-label={m.scale}
+        title={m.scaleTitle}
         disabled={!editor}
         onClick={() => editor?.zoomActual()}
       >
@@ -134,8 +135,8 @@ export function EditorToolbar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Увеличить"
-        title="Увеличить (Ctrl+колесо)"
+        aria-label={m.zoomIn}
+        title={m.zoomInTitle}
         disabled={!editor}
         onClick={() => editor?.zoomIn()}
       >
@@ -145,8 +146,8 @@ export function EditorToolbar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Показать всё"
-        title="Показать всё (Ctrl+Shift+H)"
+        aria-label={m.fit}
+        title={m.fitTitle}
         disabled={!editor}
         onClick={() => editor?.zoomToFit()}
       >
@@ -159,9 +160,9 @@ export function EditorToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Указка"
+            aria-label={m.laser}
             aria-pressed={laser}
-            title={laser ? 'Выключить указку (K, Esc)' : 'Указка: показать на схеме, ничего не меняя (K)'}
+            title={laser ? m.laserOff : m.laserOn}
             disabled={!editor}
             className="aria-pressed:bg-accent"
             onClick={() => editor?.setLaser(!laser)}
@@ -172,9 +173,9 @@ export function EditorToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Комментарий"
+            aria-label={m.comment}
             aria-pressed={commentTool}
-            title={commentTool ? 'Закончить комментировать (C, Esc)' : 'Комментарий: щёлкните по месту на холсте (C)'}
+            title={commentTool ? m.commentOff : m.commentOn}
             disabled={!editor}
             className="aria-pressed:bg-accent"
             onClick={() => editor?.setCommentTool(!commentTool)}
@@ -188,9 +189,9 @@ export function EditorToolbar({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Карандаш"
+          aria-label={m.pencil}
           aria-pressed={pencil}
-          title={pencil ? 'Закончить рисовать (P, Esc)' : 'Карандаш: рисовать от руки (P)'}
+          title={pencil ? m.pencilOff : m.pencilOn}
           disabled={!editor}
           className="aria-pressed:bg-accent"
           onClick={() => editor?.setPencil(!pencil)}
@@ -216,8 +217,8 @@ function PencilTools({ editor }: { editor: DiagramEditor | null }) {
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
       <ColorPicker
-        label="Линия"
-        name="Цвет линии"
+        label={m.line}
+        name={m.lineColor}
         value={pencilLine.color}
         onChange={(color) => editor?.setPencilLine({ color })}
       />
@@ -269,13 +270,13 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             {colors.hasShapes && (
               <ColorPicker
-                label="Заливка"
-                name="Цвет заливки"
-                noneLabel="Без заливки"
+                label={m.fill}
+                name={m.fillColor}
+                noneLabel={m.noFill}
                 value={colors.fill}
                 onChange={(color) => editor?.setColor('fill', color)}
                 opacity={colors.fillOpacity}
-                opacityName="Прозрачность заливки"
+                opacityName={m.fillOpacity}
                 onOpacityChange={(opacity) => editor?.setFillOpacity(opacity)}
                 gradient={colors.gradient}
                 gradientDirection={colors.gradientDirection}
@@ -283,15 +284,15 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
               />
             )}
             <ColorPicker
-              label="Линия"
-              name="Цвет линии"
-              noneLabel="Без линии"
+              label={m.line}
+              name={m.lineColor}
+              noneLabel={m.noLine}
               value={colors.stroke}
               onChange={(color) => editor?.setColor('stroke', color)}
             />
             <ColorPicker
-              label="Текст"
-              name="Цвет текста"
+              label={m.text}
+              name={m.textColor}
               value={colors.font}
               onChange={(color) => editor?.setColor('font', color)}
             />
@@ -322,8 +323,8 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
         {edgeMarkers && (
           <>
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-            <MarkerSelect label="Начало" end="start" value={edgeMarkers.start} editor={editor} />
-            <MarkerSelect label="Конец" end="end" value={edgeMarkers.end} editor={editor} />
+            <MarkerSelect label={m.start} end="start" value={edgeMarkers.start} editor={editor} />
+            <MarkerSelect label={m.end} end="end" value={edgeMarkers.end} editor={editor} />
             {edgeRelation && <RelationSelect value={edgeRelation.value} editor={editor} />}
           </>
         )}
@@ -345,8 +346,8 @@ function LockTools({ editor, lock }: { editor: DiagramEditor | null; lock: Selec
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Закрепить"
-          title="Закрепить: выделенное нельзя будет случайно сдвинуть, изменить или удалить"
+          aria-label={m.lock}
+          title={m.lockTitle}
           onClick={() => editor?.setLocked(true)}
         >
           <Lock />
@@ -356,8 +357,8 @@ function LockTools({ editor, lock }: { editor: DiagramEditor | null; lock: Selec
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Открепить"
-          title="Открепить: выделенное снова можно двигать, менять и удалять"
+          aria-label={m.unlock}
+          title={m.unlockTitle}
           onClick={() => editor?.setLocked(false)}
         >
           <LockOpen />
@@ -384,8 +385,8 @@ function StyleTools({ editor, canCopy, canPaste }: { editor: DiagramEditor | nul
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Копировать стиль"
-        title="Копировать стиль: заливку, линию и текст выделенного элемента (Ctrl+Alt+C)"
+        aria-label={m.copyStyle}
+        title={m.copyStyleTitle}
         disabled={!canCopy}
         onClick={() => editor?.copyStyle()}
       >
@@ -395,8 +396,8 @@ function StyleTools({ editor, canCopy, canPaste }: { editor: DiagramEditor | nul
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Вставить стиль"
-        title="Вставить стиль: оформить выделенное как образец (Ctrl+Alt+V)"
+        aria-label={m.pasteStyle}
+        title={m.pasteStyleTitle}
         disabled={!canPaste}
         onClick={() => editor?.pasteStyle()}
       >
@@ -407,15 +408,15 @@ function StyleTools({ editor, canCopy, canPaste }: { editor: DiagramEditor | nul
 }
 
 const FONT_STYLES: { flag: FontStyleFlag; label: string; shortcut: string; icon: LucideIcon }[] = [
-  { flag: 'bold', label: 'Жирный', shortcut: 'Ctrl+B', icon: Bold },
-  { flag: 'italic', label: 'Курсив', shortcut: 'Ctrl+I', icon: Italic },
-  { flag: 'underline', label: 'Подчёркнутый', shortcut: 'Ctrl+U', icon: Underline },
+  { flag: 'bold', label: m.bold, shortcut: 'Ctrl+B', icon: Bold },
+  { flag: 'italic', label: m.italic, shortcut: 'Ctrl+I', icon: Italic },
+  { flag: 'underline', label: m.underline, shortcut: 'Ctrl+U', icon: Underline },
 ]
 
 const TEXT_ALIGNS: { align: TextAlign; label: string; icon: LucideIcon }[] = [
-  { align: 'left', label: 'Текст по левому краю', icon: AlignLeft },
-  { align: 'center', label: 'Текст по центру', icon: AlignCenter },
-  { align: 'right', label: 'Текст по правому краю', icon: AlignRight },
+  { align: 'left', label: m.alignLeft, icon: AlignLeft },
+  { align: 'center', label: m.alignCenter, icon: AlignCenter },
+  { align: 'right', label: m.alignRight, icon: AlignRight },
 ]
 
 /**
@@ -431,14 +432,14 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Уменьшить текст"
-        title="Уменьшить текст"
+        aria-label={m.smallerText}
+        title={m.smallerText}
         onClick={() => editor?.stepFontSize(-1)}
       >
         <AArrowDown />
       </Button>
       <NumberField
-        label="Размер текста"
+        label={m.textSize}
         value={text.fontSize}
         min={MIN_FONT_SIZE}
         max={MAX_FONT_SIZE}
@@ -449,8 +450,8 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Увеличить текст"
-        title="Увеличить текст"
+        aria-label={m.largerText}
+        title={m.largerText}
         onClick={() => editor?.stepFontSize(1)}
       >
         <AArrowUp />
@@ -486,7 +487,7 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
         </Button>
       ))}
       {(['bullet', 'numbered'] as const).map((kind) => {
-        const label = kind === 'bullet' ? 'Маркированный список' : 'Нумерованный список'
+        const label = kind === 'bullet' ? m.bulletList : m.numberedList
         const Icon = kind === 'bullet' ? List : ListOrdered
         return (
           <Button
@@ -510,12 +511,12 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
           variant="ghost"
           size="sm"
           aria-pressed={text.autoWidth}
-          title="Автоширина: ширина фигуры следует за её подписью"
+          title={m.autoWidthTitle}
           className={cn(text.autoWidth && 'bg-accent text-accent-foreground')}
           onClick={() => editor?.setAutoWidth(!text.autoWidth)}
         >
           <UnfoldHorizontal />
-          Автоширина
+          {m.autoWidth}
         </Button>
       )}
       {text.textWrap !== null && (
@@ -524,12 +525,12 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
           variant="ghost"
           size="sm"
           aria-pressed={text.textWrap}
-          title="Перенос: слова подписи переносятся по ширине фигуры"
+          title={m.wrapTitle}
           className={cn(text.textWrap && 'bg-accent text-accent-foreground')}
           onClick={() => editor?.setTextWrap(!text.textWrap)}
         >
           <TextWrap />
-          Перенос
+          {m.wrap}
         </Button>
       )}
     </>
@@ -543,8 +544,8 @@ function TextTools({ text, editor }: { text: SelectionText; editor: DiagramEdito
 function FontSelect({ value, editor }: { value: string | null; editor: DiagramEditor | null }) {
   return (
     <select
-      aria-label="Шрифт"
-      title="Шрифт"
+      aria-label={m.font}
+      title={m.font}
       className="h-8 w-36 shrink-0 rounded-md border bg-background px-2 text-sm text-foreground"
       style={{ fontFamily: value ?? undefined }}
       value={value ?? ''}
@@ -565,9 +566,9 @@ function FontSelect({ value, editor }: { value: string | null; editor: DiagramEd
 function RelationSelect({ value, editor }: { value: UmlRelation | null; editor: DiagramEditor | null }) {
   return (
     <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-      Отношение
+      {m.relation}
       <select
-        aria-label="Отношение связи"
+        aria-label={m.edgeRelation}
         className="h-8 rounded-md border bg-background px-2 text-foreground"
         value={value ?? ''}
         onChange={(event) => editor?.setEdgeRelation(event.target.value as UmlRelation)}
@@ -599,7 +600,7 @@ function MarkerSelect({
     <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
       {label}
       <select
-        aria-label={`${label} связи`}
+        aria-label={m.ofEdge(label)}
         className="h-8 rounded-md border bg-background px-2 text-foreground"
         value={value ?? ''}
         onChange={(event) => editor?.setEdgeMarker(end, event.target.value)}

@@ -1,3 +1,5 @@
+import { locale } from '../i18n/i18n.ts'
+
 /** The body of an error response: the API answers with problem details (RFC 9457). */
 export interface Problem {
   title?: string
@@ -77,7 +79,8 @@ async function send(path: string, init: RequestInit, accept: string): Promise<Re
   const token = SAFE_METHODS.has(init.method ?? 'GET') ? undefined : (csrfToken() ?? (await ensureCsrfToken()))
   const response = await fetch(path, {
     ...init,
-    headers: { Accept: accept, ...(token && { [CSRF_HEADER]: token }), ...init.headers },
+    // The backend speaks the language of the interface, e.g. in the name of a new guest.
+    headers: { Accept: accept, 'Accept-Language': locale(), ...(token && { [CSRF_HEADER]: token }), ...init.headers },
   })
   if (!response.ok) {
     throw new HttpError(response.status, await problemOf(response))

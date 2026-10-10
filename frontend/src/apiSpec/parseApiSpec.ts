@@ -2,6 +2,7 @@ import type { Cardinality } from '../mermaid/parseMermaid.ts'
 import { FIELD_WORDS } from '../sql/tableField.ts'
 import { protocol } from '../infra/addresses.ts'
 import { ApiSpecError, loadDocument, type ApiSource } from './loadDocument.ts'
+import { apiSpecMessages } from './messages.ts'
 
 /** A model that a field refers to, and how many of it the field holds. */
 export interface ApiReference {
@@ -82,8 +83,6 @@ const METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'pat
 const MAX_DEPTH = 32
 /** Schemas described per document, each once: a walk that would go on regardless stops. */
 const MAX_STEPS = 1_000_000
-
-const SUPPORTED = 'CoDraw читает OpenAPI 3, Swagger 2.0 и AsyncAPI 2 и 3'
 
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value)
 const refOf = (value: unknown): string | null => (isObject(value) && typeof value.$ref === 'string' ? value.$ref : null)
@@ -668,21 +667,21 @@ export async function parseApiSpec(source: ApiSource): Promise<ApiSpec> {
     if ('openapi' in root) {
       const version = versionOf(root.openapi)
       if (/^3(\.|$)/.test(version)) return openApi(root, name, false)
-      throw new ApiSpecError(`${name}: OpenAPI ${version} не поддерживается — ${SUPPORTED}`)
+      throw new ApiSpecError(apiSpecMessages.unsupportedVersion(name, 'OpenAPI', version))
     }
     if ('swagger' in root) {
       const version = versionOf(root.swagger)
       if (/^2(\.|$)/.test(version)) return openApi(root, name, true)
-      throw new ApiSpecError(`${name}: Swagger ${version} не поддерживается — ${SUPPORTED}`)
+      throw new ApiSpecError(apiSpecMessages.unsupportedVersion(name, 'Swagger', version))
     }
     if ('asyncapi' in root) {
       const version = versionOf(root.asyncapi)
       if (/^2(\.|$)/.test(version)) return asyncApi2(root, name)
       if (/^3(\.|$)/.test(version)) return asyncApi3(root, name)
-      throw new ApiSpecError(`${name}: AsyncAPI ${version} не поддерживается — ${SUPPORTED}`)
+      throw new ApiSpecError(apiSpecMessages.unsupportedVersion(name, 'AsyncAPI', version))
     }
   }
-  throw new ApiSpecError(`${name}: это не OpenAPI и не AsyncAPI — нет поля openapi, swagger или asyncapi`)
+  throw new ApiSpecError(apiSpecMessages.notApiSpec(name))
 }
 
 /** What the documents describe, in their order, and the errors of those that cannot be imported. */

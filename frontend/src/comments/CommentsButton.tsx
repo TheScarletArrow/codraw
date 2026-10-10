@@ -1,6 +1,7 @@
 import { MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CommentThread } from '../api/comments.ts'
+import { commentsMessages as m } from './messages.ts'
 import { isOpen } from './threads.ts'
 
 /** Opens and closes the comments of the board; shows how many threads are open. */
@@ -19,9 +20,9 @@ export function CommentsButton({
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={count > 0 ? `Комментарии (${count})` : 'Комментарии'}
+      aria-label={count > 0 ? m.commentsCount(count) : m.comments}
       aria-pressed={open}
-      title="Комментарии"
+      title={m.comments}
       className="relative shrink-0"
       onClick={onToggle}
     >

@@ -1,13 +1,14 @@
 import { downloadBlob, fileName } from '../lib/download.ts'
 import type { DrawioPage } from './parse.ts'
 import { DRAWIO_MIME_TYPE } from './serialize.ts'
+import { drawioMessages } from './messages.ts'
 
 /** Files the import accepts. */
 export const DRAWIO_FILE_TYPES = '.drawio,.xml,.svg,application/xml,text/xml,image/svg+xml'
 
 /** Board title from the name of a file: without `.drawio`, `.xml`, `.drawio.svg`. */
 export function titleFromFileName(name: string): string {
-  return name.replace(/(\.drawio)?\.(drawio|xml|svg)$/i, '').trim() || 'Доска из draw.io'
+  return name.replace(/(\.drawio)?\.(drawio|xml|svg)$/i, '').trim() || drawioMessages.boardFromFile
 }
 
 /** Saves the diagram as `<title>.drawio`. */

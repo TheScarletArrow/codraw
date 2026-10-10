@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { Board } from '../api/boards.ts'
 import { createInvite, fetchInvites, limitOf, revokeInvite, type Invite, type MemberRole } from '../api/members.ts'
-import { counted, invitesKey, inviteUrl, ROLE_LABELS } from './members.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { invitesKey, inviteUrl } from './members.ts'
+import { shareMessages as m } from './share.messages.ts'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
 const COPIED_DURATION = 2_000
 
-const timeFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
+const timeFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 
 /** «Пригласить по ссылке» for the owner: invitation links with a role, which they copy and revoke. */
 export function InvitesSection({ board }: { board: Board }) {
@@ -39,55 +41,54 @@ export function InvitesSection({ board }: { board: Board }) {
   return (
     <section aria-labelledby="board-invites" className="flex flex-col gap-1.5 border-t pt-3">
       <h3 id="board-invites" className="text-sm font-medium">
-        Пригласить по ссылке
+        {m.invite}
       </h3>
       <p className="text-xs text-muted-foreground">
-        Кто откроет ссылку-приглашение, станет участником доски с выбранной ролью — даже если доступ по ссылке на доску
-        закрыт.
+        {m.inviteAbout}
       </p>
       <div className="flex gap-2">
         <select
-          aria-label="Роль приглашённых"
+          aria-label={m.inviteRole}
           className="h-8 min-w-0 flex-1 rounded-md border bg-background px-1 text-sm"
           value={role}
           onChange={(event) => setRole(event.target.value as MemberRole)}
         >
-          <option value="editor">{ROLE_LABELS.editor}</option>
-          <option value="viewer">{ROLE_LABELS.viewer}</option>
+          <option value="editor">{m.roles.editor}</option>
+          <option value="viewer">{m.roles.viewer}</option>
         </select>
         <Button type="button" size="sm" disabled={create.isPending} onClick={() => create.mutate(role)}>
-          Создать ссылку
+          {m.createLink}
         </Button>
       </div>
       {create.isError && (
         <p role="alert" className="text-sm text-destructive">
           {limit === null
-            ? 'Не удалось создать приглашение'
-            : `У доски уже ${counted(limit, ['приглашение', 'приглашения', 'приглашений'])} — отзовите ненужные`}
+            ? m.inviteFailed
+            : m.inviteLimit(limit)}
         </p>
       )}
       {invites.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось загрузить приглашения
+          {m.invitesLoadFailed}
         </p>
       )}
       {invites.data && invites.data.length > 0 && (
-        <ul aria-label="Приглашения" className="flex flex-col gap-2">
+        <ul aria-label={m.invites} className="flex flex-col gap-2">
           {invites.data.map((invite) => {
-            const label = `${ROLE_LABELS[invite.role]}, ${timeFormat.format(new Date(invite.createdAt))}`
+            const label = `${m.roles[invite.role]}, ${timeFormat().format(new Date(invite.createdAt))}`
             return (
-              <li key={invite.id} aria-label={`Приглашение: ${label}`} className="flex flex-col gap-1">
+              <li key={invite.id} aria-label={m.inviteItem(label)} className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">{label}</span>
                 <div className="flex gap-2">
                   <input
                     readOnly
-                    aria-label={`Ссылка-приглашение: ${ROLE_LABELS[invite.role]}`}
+                    aria-label={m.inviteLink(m.roles[invite.role])}
                     value={inviteUrl(invite)}
                     className="h-8 min-w-0 flex-1 rounded-md border bg-muted/50 px-2 text-sm"
                     onFocus={(event) => event.target.select()}
                   />
                   <Button type="button" variant="outline" size="sm" onClick={() => void copy(invite)}>
-                    {copied === invite.id ? 'Скопировано' : 'Копировать'}
+                    {copied === invite.id ? m.copied : m.copy}
                   </Button>
                   <Button
                     type="button"
@@ -97,7 +98,7 @@ export function InvitesSection({ board }: { board: Board }) {
                     disabled={revoke.isPending}
                     onClick={() => revoke.mutate(invite)}
                   >
-                    Отозвать
+                    {m.revoke}
                   </Button>
                 </div>
               </li>
@@ -107,7 +108,7 @@ export function InvitesSection({ board }: { board: Board }) {
       )}
       {revoke.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось отозвать приглашение
+          {m.revokeFailed}
         </p>
       )}
     </section>

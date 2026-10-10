@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
+import { setLocale } from '../i18n/i18n.ts'
 import { getCells } from './model.ts'
 import {
   clearStatus,
@@ -97,6 +98,12 @@ describe('statuses of elements', () => {
     expect(statusLabel({ status: 'review', by: 'bob', name: 'Боб', at })).toBe('Нужно ревью — Боб, 7 окт. 2026 г., 14:05')
     expect(statusLabel({ status: 'done', by: null, name: null, at })).toBe('Готово — 7 окт. 2026 г., 14:05')
     expect(statusLabel({ status: 'draft', by: null, name: null, at: null })).toBe('Черновик')
+  })
+
+  it('says the status in English with the date of the English interface', () => {
+    setLocale('en')
+    expect(statusLabel({ status: 'review', by: 'bob', name: 'Bob', at })).toBe('Needs review — Bob, Oct 7, 2026, 2:05 PM')
+    expect(statusLabel({ status: 'draft', by: null, name: null, at: null })).toBe('Draft')
   })
 
   it('tells the common status of several elements', () => {

@@ -7,6 +7,7 @@ import { kindLabel } from '../diagram/elementProps.ts'
 import { ELEMENT_DRAG_TYPE, type ElementDrag } from '../diagram/sharedElements.ts'
 import { ModelTree } from '../views/ModelTree.tsx'
 import { elementsStore, pagesLabel, searchElements, type ElementItem } from './elementList.ts'
+import { elementsMessages as m } from './messages.ts'
 
 /** The button of the header of the board that shows and hides the panel of the elements of the board. */
 export function ElementsButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
@@ -15,9 +16,9 @@ export function ElementsButton({ open, onToggle }: { open: boolean; onToggle: ()
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Элементы доски"
+      aria-label={m.boardElements}
       aria-pressed={open}
-      title="Элементы доски"
+      title={m.boardElements}
       className="shrink-0"
       onClick={onToggle}
     >
@@ -84,16 +85,16 @@ export function ElementsPanel({
     <aside
       ref={panel}
       tabIndex={-1}
-      aria-label="Элементы доски"
+      aria-label={m.boardElements}
       className="pointer-events-auto flex min-h-0 w-[320px] max-w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg outline-none"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
-        <h2 className="mr-auto text-sm font-semibold">Элементы доски</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
+        <h2 className="mr-auto text-sm font-semibold">{m.boardElements}</h2>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} title={m.close} onClick={onClose}>
           <X />
         </Button>
       </header>
-      <div role="tablist" aria-label="Вид панели" className="flex gap-1 border-b px-2 pt-2">
+      <div role="tablist" aria-label={m.panelView} className="flex gap-1 border-b px-2 pt-2">
         {(['list', 'model'] as const).map((value) => (
           <button
             key={value}
@@ -106,7 +107,7 @@ export function ElementsPanel({
             )}
             onClick={() => setTab(value)}
           >
-            {value === 'list' ? 'Список' : 'Модель'}
+            {value === 'list' ? m.list : m.model}
           </button>
         ))}
       </div>
@@ -115,8 +116,8 @@ export function ElementsPanel({
           <Search aria-hidden className="pointer-events-none absolute left-2 size-4 text-muted-foreground" />
           <input
             type="search"
-            aria-label="Поиск элементов"
-            placeholder="Имя, тип, технология, владелец, тег"
+            aria-label={m.searchElements}
+            placeholder={m.searchPlaceholder}
             className="h-8 w-full rounded-md border bg-background pr-2 pl-8 text-sm"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -133,11 +134,11 @@ export function ElementsPanel({
         {tab === 'model' && document ? (
           <ModelTree document={document} query={query} canPlace={canPlace} onShow={onShow} />
         ) : items.length === 0 ? (
-          <p className="p-2 text-sm text-muted-foreground">На доске нет элементов</p>
+          <p className="p-2 text-sm text-muted-foreground">{m.noElements}</p>
         ) : found.length === 0 ? (
-          <p className="p-2 text-sm text-muted-foreground">Ничего не найдено</p>
+          <p className="p-2 text-sm text-muted-foreground">{m.nothingFound}</p>
         ) : (
-          <ul aria-label="Элементы" className="flex flex-col">
+          <ul aria-label={m.elements} className="flex flex-col">
             {found.map((item) => (
               <ElementRow
                 key={item.key}
@@ -185,7 +186,7 @@ function ElementRow({
         aria-expanded={open}
         draggable={canPlace}
         onDragStart={canPlace ? handleDragStart : undefined}
-        title={canPlace ? 'Перетащите на холст, чтобы добавить ещё одну ячейку элемента' : undefined}
+        title={canPlace ? m.dragHint : undefined}
         className={cn(
           'flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent',
           canPlace && 'cursor-grab active:cursor-grabbing',
@@ -194,13 +195,13 @@ function ElementRow({
       >
         <ChevronRight aria-hidden className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className={cn('truncate', !name && 'text-muted-foreground italic')}>{name || 'Без имени'}</span>
+          <span className={cn('truncate', !name && 'text-muted-foreground italic')}>{name || m.unnamed}</span>
           {details && <span className="truncate text-xs text-muted-foreground">{details}</span>}
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">{pagesLabel(item.places.length)}</span>
       </button>
       {open && (
-        <ul aria-label={`Где используется ${name || 'элемент'}`} className="mb-1 ml-7 flex flex-col">
+        <ul aria-label={m.usedWhere(name || m.elementWord)} className="mb-1 ml-7 flex flex-col">
           {item.places.flatMap((place) =>
             place.cellIds.map((cellId, index) => (
               <li key={cellId}>

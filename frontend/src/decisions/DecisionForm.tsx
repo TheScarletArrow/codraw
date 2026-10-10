@@ -2,7 +2,8 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Decision, DecisionContent, DecisionStatus } from '../api/decisions.ts'
-import { DECISION_STATUSES, decisionCode, SECTIONS, STATUS_LABELS } from './decisions.ts'
+import { DECISION_STATUSES, decisionCode, SECTIONS, sectionTitle, statusLabel } from './decisions.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 const fieldClass = 'w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground'
 
@@ -61,7 +62,7 @@ export function DecisionForm({
         }
       }}
     >
-      <Field label="Название" htmlFor={`${id}-title`}>
+      <Field label={m.title} htmlFor={`${id}-title`}>
         <input
           id={`${id}-title`}
           type="text"
@@ -76,7 +77,7 @@ export function DecisionForm({
       </Field>
       {children}
       <div className="flex gap-2">
-        <Field label="Статус" htmlFor={`${id}-status`} className="flex-1">
+        <Field label={m.status} htmlFor={`${id}-status`} className="flex-1">
           <select
             id={`${id}-status`}
             value={content.status}
@@ -85,12 +86,12 @@ export function DecisionForm({
           >
             {DECISION_STATUSES.map((status) => (
               <option key={status} value={status}>
-                {STATUS_LABELS[status]}
+                {statusLabel(status)}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Дата" htmlFor={`${id}-date`} className="flex-1">
+        <Field label={m.date} htmlFor={`${id}-date`} className="flex-1">
           <input
             id={`${id}-date`}
             type="date"
@@ -102,14 +103,14 @@ export function DecisionForm({
         </Field>
       </div>
       {content.status === 'superseded' && (
-        <Field label="Заменено решением" htmlFor={`${id}-successor`}>
+        <Field label={m.supersededByField} htmlFor={`${id}-successor`}>
           <select
             id={`${id}-successor`}
             value={content.supersededBy ?? ''}
             className={cn(fieldClass, 'h-8')}
             onChange={(event) => change({ supersededBy: event.target.value || null })}
           >
-            <option value="">Не указано</option>
+            <option value="">{m.notSpecified}</option>
             {successors.map((decision) => (
               <option key={decision.id} value={decision.id}>
                 {decisionCode(decision.number)} {decision.title}
@@ -118,8 +119,8 @@ export function DecisionForm({
           </select>
         </Field>
       )}
-      {SECTIONS.map(([key, title]) => (
-        <Field key={key} label={title} htmlFor={`${id}-${key}`}>
+      {SECTIONS.map((key) => (
+        <Field key={key} label={sectionTitle(key)} htmlFor={`${id}-${key}`}>
           <textarea
             id={`${id}-${key}`}
             rows={3}
@@ -138,7 +139,7 @@ export function DecisionForm({
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          Отмена
+          {m.cancel}
         </Button>
         <Button type="submit" size="sm" disabled={pending || content.title.trim() === ''}>
           {submitLabel}

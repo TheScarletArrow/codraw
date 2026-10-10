@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { cn } from '@/lib/utils'
 import { changeWorkspaceAccess, type Board, type WorkspaceAccess } from '../api/boards.ts'
-import { WORKSPACE_ACCESS_OF_OTHERS, WORKSPACE_ACCESS_OPTIONS, workspacePath } from './workspaces.ts'
+import { workspacesMessages as m } from './messages.tsx'
+import { WORKSPACE_ACCESS_VALUES, workspaceAccessOfOthers, workspaceAccessOption, workspacePath } from './workspaces.ts'
 
 interface WorkspaceAccessSectionProps {
   /** A board of a workspace. */
@@ -40,17 +41,17 @@ export function WorkspaceAccessSection({ board, onChanged }: WorkspaceAccessSect
   if (board.role !== 'owner') {
     return (
       <p className="border-t pt-3 text-sm text-muted-foreground">
-        Доска пространства «{name}». {WORKSPACE_ACCESS_OF_OTHERS[access]}.
+        {m.workspaceBoard(name)} {workspaceAccessOfOthers(access)}.
       </p>
     )
   }
   return (
     <fieldset className="flex flex-col gap-1 border-t pt-3" disabled={change.isPending}>
-      <legend className="mb-1 text-sm font-medium">Доступ участникам пространства</legend>
+      <legend className="mb-1 text-sm font-medium">{m.accessForMembers}</legend>
       <p className="mb-1 text-xs text-muted-foreground">
-        Доска пространства «{name}». Владельцы и администраторы пространства управляют ею всегда.
+        {m.workspaceBoard(name)} {m.ownersAlwaysManage}
       </p>
-      {WORKSPACE_ACCESS_OPTIONS.map((option) => (
+      {WORKSPACE_ACCESS_VALUES.map((value) => ({ value, ...workspaceAccessOption(value) })).map((option) => (
         <label
           key={option.value}
           className={cn(
@@ -80,7 +81,7 @@ export function WorkspaceAccessSection({ board, onChanged }: WorkspaceAccessSect
       ))}
       {change.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось изменить доступ
+          {m.accessChangeFailed}
         </p>
       )}
     </fieldset>

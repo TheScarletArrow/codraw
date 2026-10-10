@@ -4,16 +4,16 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { isNotFound } from '../api/http.ts'
 import { acceptWorkspaceInvite, isAccountRequired, workspaceKey, workspaceLimitOf, WORKSPACES_QUERY_KEY } from '../api/workspaces.ts'
 import { SignInButtons } from '../auth/SignInButtons.tsx'
-import { counted } from '../board/members.ts'
 import { workspacePath } from '../workspaces/workspaces.ts'
+import { workspaceInviteMessages as m } from './WorkspaceInvitePage.messages.ts'
 
 /** Why the invitation could not be accepted, when the user or the workspace ran into a limit. */
 function limitMessage(error: unknown): string | null {
   const limit = workspaceLimitOf(error)
   if (limit === null) return null
   return limit.scope === 'workspaces'
-    ? `Можно состоять не больше чем в ${counted(limit.limit, ['пространстве', 'пространствах', 'пространствах'])}: покиньте ненужное`
-    : `В пространстве уже ${counted(limit.limit, ['участник', 'участника', 'участников'])}: больше добавить нельзя`
+    ? m.workspacesLimit(limit.limit)
+    : m.membersLimit(limit.limit)
 }
 
 /**
@@ -41,15 +41,14 @@ export function WorkspaceInvitePage() {
     mutate(token)
   }, [token, mutate])
 
-  if (!accept.isError) return <p className="p-6 text-muted-foreground">Принимаем приглашение…</p>
+  if (!accept.isError) return <p className="p-6 text-muted-foreground">{m.accepting}</p>
   return (
     <section className="mx-auto flex w-full max-w-xl flex-col gap-3 px-4 py-6">
       {isAccountRequired(accept.error) ? (
         <>
-          <h2 className="text-2xl font-semibold">Нужен вход</h2>
+          <h2 className="text-2xl font-semibold">{m.signInRequired}</h2>
           <p className="text-muted-foreground">
-            Командные пространства доступны после входа. Войдите и снова откройте
-            ссылку-приглашение — ваши доски гостя останутся с вами.
+            {m.signInHint}
           </p>
           <div className="flex flex-wrap gap-2">
             <SignInButtons />
@@ -57,18 +56,18 @@ export function WorkspaceInvitePage() {
         </>
       ) : isNotFound(accept.error) ? (
         <>
-          <h2 className="text-2xl font-semibold">Приглашение недействительно</h2>
+          <h2 className="text-2xl font-semibold">{m.invalid}</h2>
           <p className="text-muted-foreground">
-            Ссылку-приглашение отозвали, или в ней ошибка. Попросите новую у владельца или администратора пространства.
+            {m.invalidHint}
           </p>
         </>
       ) : (
         <p role="alert" className="text-destructive">
-          {limitMessage(accept.error) ?? 'Не удалось принять приглашение. Попробуйте ещё раз.'}
+          {limitMessage(accept.error) ?? m.failed}
         </p>
       )}
       <Link to="/" className="underline">
-        К списку досок
+        {m.toBoards}
       </Link>
     </section>
   )

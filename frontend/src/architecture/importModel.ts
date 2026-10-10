@@ -2,6 +2,7 @@ import { C4_TYPE_NAMES, normalizeProperties, type C4Kind, type C4Variant, type E
 import { composeLabel } from '../diagram/elementProps.ts'
 import { findShape, markedStyle, type ShapeId } from '../diagram/shapes.ts'
 import type { InfraEdge, InfraFrame, InfraGraph, InfraNode } from '../infra/infraGraph.ts'
+import { architectureMessages as m } from './messages.ts'
 
 /**
  * The model that an import of architecture as code builds from Structurizr DSL, C4-PlantUML and Mermaid C4, before it
@@ -153,7 +154,7 @@ export class ArchitectureBuilder {
 
   /** Notes what was left out at a place. */
   warn(place: Place, message: string) {
-    this.warnings.push(`${place.file}: строка ${place.line} — ${message}`)
+    this.warnings.push(m.atLine(place.file, place.line, message))
   }
 
   /** The node of a key. */
@@ -188,7 +189,7 @@ export class ArchitectureBuilder {
       () => this.sameElement(declaration, place.file),
     )
     if (existing?.type === 'group') {
-      this.warn(place, `${declaration.key} уже объявлен как граница: объявление пропущено`)
+      this.warn(place, m.declaredAsBoundary(declaration.key))
       return null
     }
     this.count(place.file)
@@ -211,7 +212,7 @@ export class ArchitectureBuilder {
     }
     existing.files.add(place.file)
     if (existing.kind !== declaration.kind) {
-      this.warn(place, `${declaration.key} уже объявлен как ${C4_TYPE_NAMES[existing.kind]}: оставлен первый`)
+      this.warn(place, m.declaredAs(declaration.key, C4_TYPE_NAMES[existing.kind]))
       return existing.key
     }
     existing.name ||= declaration.name?.trim() ?? ''
@@ -252,7 +253,7 @@ export class ArchitectureBuilder {
       () => undefined,
     )
     if (existing?.type === 'element') {
-      this.warn(place, `${declaration.key} уже объявлен как элемент: граница пропущена`)
+      this.warn(place, m.declaredAsElement(declaration.key))
       return null
     }
     this.count(place.file)
@@ -290,12 +291,12 @@ export class ArchitectureBuilder {
       const [source, target] = [declaration.resolve(declaration.source), declaration.resolve(declaration.target)]
       if (source === undefined || target === undefined) continue
       if (source === null || target === null) {
-        this.warn(declaration.place, `связь пропущена: нет элемента ${source === null ? declaration.source : declaration.target}`)
+        this.warn(declaration.place, m.noElement(source === null ? declaration.source : declaration.target))
         continue
       }
       if (source === target) continue
       if (this.within(source, target) || this.within(target, source)) {
-        this.warn(declaration.place, `связь элемента с его частью не рисуется: ${declaration.source} → ${declaration.target}`)
+        this.warn(declaration.place, m.withPart(declaration.source, declaration.target))
         continue
       }
       const description = (declaration.description ?? '').replace(/\s+/g, ' ').trim()
@@ -349,7 +350,7 @@ export class ArchitectureBuilder {
     if (existing || !named) return { key: existing?.key ?? declaration.key, existing }
     let key = declaration.key
     for (let index = 2; this.nodes.has(key); index++) key = `${declaration.key}_${index}`
-    this.warn(place, `${declaration.key} в ${[...named.files][0]!} — другой элемент: здесь он назван иначе`)
+    this.warn(place, m.namedOtherwise(declaration.key, [...named.files][0]!))
     return { key, existing: undefined }
   }
 
@@ -361,7 +362,7 @@ export class ArchitectureBuilder {
       return
     }
     const current = node.parent === null ? undefined : this.nodes.get(node.parent)
-    this.warn(place, `${node.key} уже лежит ${current ? `в «${current.name || current.key}»` : 'вне границ'}: оставлен там`)
+    this.warn(place, current ? m.alreadyIn(node.key, current.name || current.key) : m.alreadyOutside(node.key))
   }
 
   /** An element of another file of the same level, name and node as the declaration. */
@@ -522,25 +523,25 @@ export function architectureGraph(model: ImportedArchitecture): InfraGraph {
 
 /** What the import adds, for the summary before it, in the words of the summary of the export. */
 export function architectureImportSummary(graph: InfraGraph): string {
-  return `Элементов: ${graph.nodes.length}, границ: ${graph.frames.length}, связей: ${graph.edges.length}`
+  return m.importSummary(graph.nodes.length, graph.frames.length, graph.edges.length)
 }
 
 /** Why the graph is too large to add, or `null`. */
 export function architectureGraphError(graph: InfraGraph): string | null {
   const count = graph.nodes.length + graph.frames.length
   return count > MAX_ARCHITECTURE_NODES
-    ? `Слишком много элементов и границ: ${count}, за раз можно добавить не больше ${MAX_ARCHITECTURE_NODES}`
+    ? m.tooMany(count, MAX_ARCHITECTURE_NODES)
     : null
 }
 
-const listed = (items: string[]) => (items.length > LISTED ? `${items.slice(0, LISTED).join(', ')} и ещё ${items.length - LISTED}` : items.join(', '))
+const listed = (items: string[]) => (items.length > LISTED ? m.andMore(items.slice(0, LISTED).join(', '), items.length - LISTED) : items.join(', '))
 
 /** What the participant should know before adding: what was left out, and the relations that are not drawn. */
 export function architectureWarnings(model: ImportedArchitecture): string[] {
   const warnings = [...model.warnings]
   if (model.implied.length > 0) {
     const relations = model.implied.map((relation) => `${relation.source} → ${relation.target}`)
-    warnings.push(`Связей с раскрытыми элементами не нарисовано: ${model.implied.length} — их показывают связи частей: ${listed(relations)}`)
+    warnings.push(m.implied(model.implied.length, listed(relations)))
   }
-  return warnings.length > MAX_WARNINGS ? [...warnings.slice(0, MAX_WARNINGS), `…и ещё ${warnings.length - MAX_WARNINGS}`] : warnings
+  return warnings.length > MAX_WARNINGS ? [...warnings.slice(0, MAX_WARNINGS), m.moreWarnings(warnings.length - MAX_WARNINGS)] : warnings
 }

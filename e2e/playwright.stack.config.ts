@@ -11,6 +11,8 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: 'playwright-report-stack' }]] : 'list',
   use: {
     baseURL: process.env.STACK_URL ?? 'http://localhost:8080',
+    // The tests find elements by their Russian names; the app follows the language of the browser.
+    locale: 'ru-RU',
     trace: 'retain-on-failure',
   },
   projects: [

@@ -7,6 +7,7 @@ import { CARDINALITY_MARKERS } from '../mermaid/mermaidCells.ts'
 import { tableWidth } from '../sql/erDiagram.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { fieldName, type ApiModel, type ApiSpec } from './parseApiSpec.ts'
+import { apiSpecMessages } from './messages.ts'
 
 /** Models and topics one import adds at most: more would not fit a page that people read. */
 export const MAX_MODELS = 300
@@ -166,22 +167,23 @@ const endpointCount = (graph: ApiGraph) => graph.services.reduce((sum, service) 
 
 /** What the import adds, for the summary before it. */
 export function apiSummary(graph: ApiGraph): string {
-  return (
-    `Сервисов: ${graph.services.length}, эндпоинтов: ${endpointCount(graph)}, топиков: ${graph.topics.length}, ` +
-    `моделей: ${graph.models.length}, связей: ${graph.links.length}, пропущено ссылок: ${graph.skippedRefs}`
+  return apiSpecMessages.summary(
+    graph.services.length,
+    endpointCount(graph),
+    graph.topics.length,
+    graph.models.length,
+    graph.links.length,
+    graph.skippedRefs,
   )
 }
 
 /** Why the graph is too large to add, or `null`. */
 export function apiGraphError(graph: ApiGraph): string | null {
   if (graph.models.length > MAX_MODELS) {
-    return (
-      `Слишком много моделей: ${graph.models.length}, за раз можно добавить не больше ${MAX_MODELS} — ` +
-      'снимите «Модели таблицами» или откройте меньше файлов'
-    )
+    return apiSpecMessages.tooManyModels(graph.models.length, MAX_MODELS)
   }
   if (graph.topics.length > MAX_TOPICS) {
-    return `Слишком много топиков: ${graph.topics.length}, за раз можно добавить не больше ${MAX_TOPICS} — откройте меньше файлов`
+    return apiSpecMessages.tooManyTopics(graph.topics.length, MAX_TOPICS)
   }
   return null
 }

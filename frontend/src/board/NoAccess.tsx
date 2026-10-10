@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { AccessRequestForm } from './AccessRequestForm.tsx'
 import { useOwnAccessRequest } from './accessRequests.ts'
-import { ROLE_LABELS } from './members.ts'
+import { shareMessages as m } from './share.messages.ts'
 
 /**
  * «Нет доступа» on the page of a board that the user may not open, where they ask its owner for access. The page asks
@@ -15,16 +15,16 @@ export function NoAccess({ boardId, children }: { boardId: string; children?: Re
   return (
     <div className="flex max-w-md flex-col gap-4 p-6">
       <p role="alert" className="text-destructive">
-        Нет доступа: владелец закрыл доступ к доске по ссылке
+        {m.noAccess}
       </p>
       {children}
       {request ? (
         <section aria-labelledby="access-request-sent" className="flex flex-col gap-2">
           <h2 id="access-request-sent" className="font-medium">
-            Запрос отправлен
+            {m.requestSent}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Вы попросили «{ROLE_LABELS[request.role]}». Доска откроется здесь, как только владелец даст доступ.
+            {m.accessAsked(m.roles[request.role])}
           </p>
           {request.message && (
             <blockquote className="border-l-2 pl-2 text-sm break-words whitespace-pre-wrap">{request.message}</blockquote>
@@ -37,11 +37,11 @@ export function NoAccess({ boardId, children }: { boardId: string; children?: Re
             disabled={cancel.isPending}
             onClick={() => cancel.mutate()}
           >
-            Отменить запрос
+            {m.cancelRequest}
           </Button>
           {cancel.isError && (
             <p role="alert" className="text-sm text-destructive">
-              Не удалось отменить запрос
+              {m.cancelFailed}
             </p>
           )}
         </section>
@@ -49,15 +49,15 @@ export function NoAccess({ boardId, children }: { boardId: string; children?: Re
         (request === null || failed) && (
           <section aria-labelledby="access-request" className="flex flex-col gap-3">
             <h2 id="access-request" className="font-medium">
-              {declined ? 'Запрос отклонён' : 'Попросите доступ у владельца'}
+              {declined ? m.requestDeclined : m.askOwner}
             </h2>
             {declined && (
-              <p className="text-sm text-muted-foreground">Владелец не дал доступ. Можно попросить снова.</p>
+              <p className="text-sm text-muted-foreground">{m.accessDeclined}</p>
             )}
             <AccessRequestForm
-              label="Запрос доступа"
+              label={m.accessRequest}
               choice
-              submitLabel="Запросить доступ"
+              submitLabel={m.requestAccess}
               pending={send.isPending}
               error={send.error}
               onSubmit={(wish) => send.mutate(wish)}

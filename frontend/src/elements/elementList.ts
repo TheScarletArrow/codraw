@@ -5,6 +5,7 @@ import { elementProperties, kindLabel } from '../diagram/elementProps.ts'
 import { cellElementId, getCells, readCell } from '../diagram/model.ts'
 import { listPages } from '../diagram/pages.ts'
 import { mayBeElement } from '../diagram/sharedElements.ts'
+import { elementsMessages as m } from './messages.ts'
 
 /** The cells of an element on a page. */
 export interface ElementPlaceOnPage {
@@ -57,18 +58,15 @@ export function listElements(doc: Y.Doc): ElementItem[] {
 }
 
 /** «2 стр.»: the number of pages with the cells of an element. */
-export const pagesLabel = (count: number) => `${count} стр.`
+export const pagesLabel = (count: number) => m.pagesShort(count)
 
 /** «на 1 странице», «на 2 страницах». */
-export function onPagesLabel(count: number): string {
-  const one = count % 10 === 1 && count % 100 !== 11
-  return `на ${count} ${one ? 'странице' : 'страницах'}`
-}
+export const onPagesLabel = (count: number): string => m.onPages(count)
 
 /** «Есть ещё на 2 страницах: Контекст, Деплой»: where else the element of a cell of the page `pageId` is. */
 export function sharedLabel(item: ElementItem, pageId: string): string {
   const others = item.places.filter((place) => place.pageId !== pageId).map((place) => place.pageName)
-  return `Есть ещё ${onPagesLabel(others.length)}: ${others.join(', ')}`
+  return m.alsoOn(onPagesLabel(others.length), others.join(', '))
 }
 
 /** What an item is found by: its name, kind, technology, description, owner and tags. */

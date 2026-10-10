@@ -1,0 +1,108 @@
+import type { ReactNode } from 'react'
+import { defineMessages } from '../i18n/i18n.ts'
+
+export const sqlMenuMessages = defineMessages({
+  ru: {
+    sqlCopied: 'SQL скопирован',
+    mermaidCopied: 'Mermaid скопирован',
+    copyFailed: 'Не удалось скопировать',
+    importFailed: 'Не удалось добавить схему',
+    proposalFailed: 'Не удалось создать предложение',
+    proposalLimitAuthor: 'У вас уже предельное число открытых предложений на этой доске',
+    proposalLimitBoard: 'На доске уже предельное число открытых предложений',
+    mermaidEmpty: 'В тексте нет ни одного узла, таблицы или участника',
+    tables: (count: number) => `Таблиц: ${count}`,
+    views: (count: number) => `представлений: ${count}`,
+    references: (count: number) => `связей: ${count}`,
+    indexes: (count: number) => `индексов: ${count}`,
+    skippedStatements: (count: number) => `, пропущено операторов: ${count}`,
+    sourceFiles: (count: number) => `${count} файлов`,
+    proposalPage: (page: string) => `Страница: ${page}`,
+    proposalMatched: (changed: number, added: number, removed: number) =>
+      `Совпало: ${changed}, новых элементов: ${added}, к удалению: ${removed}.`,
+    proposalByName: (names: string) => `Без метки источника сопоставлено по имени: ${names}.`,
+    proposalTitle: (source: string) => `Обновление из ${source}`,
+    menu: 'SQL и Mermaid',
+    menuTitle:
+      'SQL и Mermaid: импорт и выгрузка схем, импорт OpenAPI, AsyncAPI, docker-compose, Kubernetes, Gradle и Terraform, импорт и выгрузка архитектуры как кода',
+    mermaidTitle: 'Импорт Mermaid',
+    mermaidPlaceholder: 'flowchart LR\n  client[Клиент] -->|HTTPS| api(API)\n  api --> db[(PostgreSQL)]',
+    mermaidHint:
+      'Блок-схема (flowchart, graph), ER-диаграмма (erDiagram) или диаграмма последовательности (sequenceDiagram)',
+    sqlTitle: 'Импорт SQL',
+    openSqlFiles: 'Открыть файлы .sql',
+    sqlFiles: 'Файлы SQL',
+    connect: 'Подключиться к базе…',
+    dumpHint: (pgDump: ReactNode, mysqldump: ReactNode) => (
+      <>
+        Схему готовой базы снимает {pgDump} или {mysqldump}: откройте полученный файл.
+      </>
+    ),
+    signInHint: ' Подключиться к базе можно после входа через GitHub или Google.',
+    pageTables: (count: number) => `Таблиц на странице: ${count}`,
+    pageViews: (count: number) => `, представлений: ${count}`,
+    importSql: 'Импорт SQL…',
+    importMermaid: 'Импорт Mermaid…',
+    importApi: 'Импорт OpenAPI / AsyncAPI…',
+    importCompose: 'Импорт docker-compose…',
+    importKubernetes: 'Импорт Kubernetes…',
+    importGradle: 'Импорт Gradle…',
+    importTerraform: 'Импорт Terraform…',
+    importArchitecture: 'Импорт архитектуры как кода…',
+    copySql: 'Скопировать SQL',
+    downloadSql: 'Скачать .sql',
+    copyMermaid: 'Скопировать Mermaid',
+    architecture: 'Архитектура как код…',
+  },
+  en: {
+    sqlCopied: 'SQL copied',
+    mermaidCopied: 'Mermaid copied',
+    copyFailed: 'Could not copy',
+    importFailed: 'Could not add the schema',
+    proposalFailed: 'Could not create the change proposal',
+    proposalLimitAuthor: 'You already have the maximum number of open change proposals on this board',
+    proposalLimitBoard: 'The board already has the maximum number of open change proposals',
+    mermaidEmpty: 'The text has no nodes, tables or participants',
+    tables: (count: number) => `Tables: ${count}`,
+    views: (count: number) => `views: ${count}`,
+    references: (count: number) => `relationships: ${count}`,
+    indexes: (count: number) => `indexes: ${count}`,
+    skippedStatements: (count: number) => `, statements skipped: ${count}`,
+    sourceFiles: (count: number) => `${count} files`,
+    proposalPage: (page: string) => `Page: ${page}`,
+    proposalMatched: (changed: number, added: number, removed: number) =>
+      `Matched: ${changed}, new elements: ${added}, to delete: ${removed}.`,
+    proposalByName: (names: string) => `Matched by name without a source mark: ${names}.`,
+    proposalTitle: (source: string) => `Update from ${source}`,
+    menu: 'SQL and Mermaid',
+    menuTitle:
+      'SQL and Mermaid: import and export of schemas, import of OpenAPI, AsyncAPI, docker-compose, Kubernetes, Gradle and Terraform, import and export of architecture as code',
+    mermaidTitle: 'Import Mermaid',
+    mermaidPlaceholder: 'flowchart LR\n  client[Client] -->|HTTPS| api(API)\n  api --> db[(PostgreSQL)]',
+    mermaidHint: 'A flowchart (flowchart, graph), an ER diagram (erDiagram) or a sequence diagram (sequenceDiagram)',
+    sqlTitle: 'Import SQL',
+    openSqlFiles: 'Open .sql files',
+    sqlFiles: 'SQL files',
+    connect: 'Connect to database…',
+    dumpHint: (pgDump: ReactNode, mysqldump: ReactNode) => (
+      <>
+        The schema of an existing database is taken by {pgDump} or {mysqldump}: open the resulting file.
+      </>
+    ),
+    signInHint: ' You can connect to a database after signing in with GitHub or Google.',
+    pageTables: (count: number) => `Tables on the page: ${count}`,
+    pageViews: (count: number) => `, views: ${count}`,
+    importSql: 'Import SQL…',
+    importMermaid: 'Import Mermaid…',
+    importApi: 'Import OpenAPI / AsyncAPI…',
+    importCompose: 'Import docker-compose…',
+    importKubernetes: 'Import Kubernetes…',
+    importGradle: 'Import Gradle…',
+    importTerraform: 'Import Terraform…',
+    importArchitecture: 'Import architecture as code…',
+    copySql: 'Copy SQL',
+    downloadSql: 'Download .sql',
+    copyMermaid: 'Copy Mermaid',
+    architecture: 'Architecture as code…',
+  },
+})

@@ -16,6 +16,7 @@ import {
 } from '../diagram/minimap.ts'
 import { takesText } from '../lib/keyboard.ts'
 import { useRemotePresence, type Awareness } from './presence.ts'
+import { boardMessages } from './board.messages.ts'
 
 /** Finds the minimap over the canvas: pressing on it is not moving the canvas, going somewhere with it is. */
 export const MINIMAP_SELECTOR = '[data-minimap]'
@@ -96,11 +97,11 @@ export function Minimap({ editor, awareness = null, onNavigate }: MinimapProps) 
   }, [shown, toggle])
 
   if (!shown) return null
-  const label = open ? 'Свернуть мини-карту' : 'Развернуть мини-карту'
+  const label = open ? boardMessages.collapseMinimap : boardMessages.expandMinimap
   return (
     <div data-minimap="" className="absolute right-6 bottom-6 z-10">
       {open && (
-        <div role="region" aria-label="Мини-карта" className="overflow-hidden rounded-md border shadow-md">
+        <div role="region" aria-label={boardMessages.minimap} className="overflow-hidden rounded-md border shadow-md">
           <MinimapView editor={editor} awareness={awareness} onNavigate={onNavigate} />
         </div>
       )}

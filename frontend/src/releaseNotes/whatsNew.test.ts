@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { version } from '../../package.json'
+import { setLocale } from '../i18n/i18n.ts'
 import { releases, type Release } from './releases.ts'
 import { compareVersions, releaseDate, unseenReleases } from './whatsNew.ts'
 
@@ -20,6 +21,17 @@ describe('release notes', () => {
       expect(version).toMatch(/^\d+\.\d+\.\d+$/)
       expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
       expect(items.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('tell each novelty in Russian and in English', () => {
+    for (const { version, items } of releases) {
+      for (const item of items) {
+        for (const text of [item.ru.title, item.ru.text, item.en.title, item.en.text]) {
+          expect(text.trim(), version).not.toBe('')
+        }
+        expect(`${item.en.title} ${item.en.text}`, version).not.toMatch(/[А-Яа-яЁё]/)
+      }
     }
   })
 })
@@ -50,5 +62,10 @@ describe('unseenReleases', () => {
 describe('releaseDate', () => {
   it('names the day in Russian', () => {
     expect(releaseDate('2026-10-06')).toBe('6 октября 2026')
+  })
+
+  it('names the day in English in the English interface', () => {
+    setLocale('en')
+    expect(releaseDate('2026-10-06')).toBe('October 6, 2026')
   })
 })

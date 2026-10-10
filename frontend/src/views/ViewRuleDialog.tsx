@@ -15,6 +15,7 @@ import {
   type ViewRule,
 } from '../diagram/viewRule.ts'
 import { elementName, elementsOf, modelStore } from './modelStore.ts'
+import { viewMessages as m } from './messages.ts'
 
 /**
  * The elements a view of the kind may be about: systems for their context and containers, containers for components; the
@@ -33,7 +34,8 @@ function firstRule(model: BoardModel): ViewRule {
 }
 
 /** What the scope or the environment of a kind is called in the window. */
-const SCOPE_LABELS: Partial<Record<ViewKind, string>> = { context: 'Система', containers: 'Система', components: 'Контейнер' }
+const scopeLabel = (kind: ViewKind): string | undefined =>
+  kind === 'context' || kind === 'containers' ? m.scopes.system : kind === 'components' ? m.scopes.container : undefined
 
 /**
  * The window of the rule of a view of the model: what it shows, of which system, container or environment, and its slice
@@ -104,7 +106,7 @@ export function ViewRuleDialog({
         ref={dialog}
         role="dialog"
         aria-modal="true"
-        aria-label={current ? 'Правило представления' : 'Новое представление'}
+        aria-label={current ? m.viewRule : m.newView}
         className="flex max-h-[85vh] w-[440px] max-w-full flex-col gap-3 overflow-y-auto rounded-md border bg-background p-4 text-foreground shadow-lg"
         onSubmit={submit}
         onKeyDown={(event) => {
@@ -114,12 +116,12 @@ export function ViewRuleDialog({
           onClose()
         }}
       >
-        <h2 className="text-sm font-semibold">{current ? 'Правило представления' : 'Новое представление'}</h2>
+        <h2 className="text-sm font-semibold">{current ? m.viewRule : m.newView}</h2>
         <p className="text-xs text-muted-foreground">
-          Представление показывает модель доски — то, что нарисовано на всех страницах, — и следует за её изменениями.
+          {m.about}
         </p>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-xs font-medium text-muted-foreground">Что показать</span>
+          <span className="text-xs font-medium text-muted-foreground">{m.whatToShow}</span>
           <select className="h-8 rounded-md border bg-background px-2" value={rule.kind} onChange={(event) => choose(event.target.value as ViewKind)}>
             {VIEW_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -132,16 +134,16 @@ export function ViewRuleDialog({
           (scopes.length === 0 ? (
             <p role="status" className="text-sm text-muted-foreground">
               {rule.kind === 'components'
-                ? 'В модели нет контейнеров: добавьте Container или «Сервис».'
-                : 'В модели нет систем: добавьте Software System или границу системы.'}
+                ? m.noContainers
+                : m.noSystems}
             </p>
           ) : (
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs font-medium text-muted-foreground">{SCOPE_LABELS[rule.kind]}</span>
+              <span className="text-xs font-medium text-muted-foreground">{scopeLabel(rule.kind)}</span>
               <select className="h-8 rounded-md border bg-background px-2" value={rule.scope ?? ''} onChange={(event) => setRule({ ...rule, scope: event.target.value })}>
                 {scopes.map((element) => (
                   <option key={element.id} value={element.id}>
-                    {element.external ? `${elementName(element)} (внешняя)` : elementName(element)}
+                    {element.external ? m.external(elementName(element)) : elementName(element)}
                   </option>
                 ))}
               </select>
@@ -150,11 +152,11 @@ export function ViewRuleDialog({
         {rule.kind === 'deployment' &&
           (envs.length === 0 ? (
             <p role="status" className="text-sm text-muted-foreground">
-              В модели нет узлов развёртывания: добавьте «Узел развёртывания» из раздела C4 и задайте ему окружение.
+              {m.noNodes}
             </p>
           ) : (
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs font-medium text-muted-foreground">Окружение</span>
+              <span className="text-xs font-medium text-muted-foreground">{m.environment}</span>
               <select
                 className="h-8 rounded-md border bg-background px-2"
                 value={rule.environment ?? ''}
@@ -169,9 +171,9 @@ export function ViewRuleDialog({
             </label>
           ))}
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 text-xs font-medium text-muted-foreground">Срез</legend>
+          <legend className="mb-1 text-xs font-medium text-muted-foreground">{m.slice}</legend>
           <p className="text-xs text-muted-foreground">
-            Оставляет элементы с выбранными значениями; {rule.kind === 'deployment' ? 'узлы' : 'то, о чём представление,'} остаются всегда.
+            {rule.kind === 'deployment' ? m.sliceNodes : m.sliceScope}
           </p>
           {SLICE_FACETS.map((facet) => {
             const options = [...new Set([...values[facet], ...rule[facet]])]
@@ -181,7 +183,7 @@ export function ViewRuleDialog({
                   {SLICE_LABELS[facet]}
                 </span>
                 {options.length === 0 ? (
-                  <span className="text-sm text-muted-foreground">Нет в модели</span>
+                  <span className="text-sm text-muted-foreground">{m.notInModel}</span>
                 ) : (
                   <div className="flex max-h-28 flex-col overflow-y-auto">
                     {options.map((value) => (
@@ -203,20 +205,20 @@ export function ViewRuleDialog({
               variant="ghost"
               size="sm"
               className="mr-auto"
-              title="Ячейки останутся ячейками тех же элементов, но больше не будут следовать модели"
+              title={m.detachHint}
               onClick={() => {
                 onDetach()
                 onClose()
               }}
             >
-              Сделать обычной страницей
+              {m.detach}
             </Button>
           )}
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Отмена
+            {m.cancel}
           </Button>
           <Button type="submit" size="sm" disabled={!ready}>
-            {current ? 'Применить' : 'Создать'}
+            {current ? m.apply : m.create}
           </Button>
         </div>
       </form>

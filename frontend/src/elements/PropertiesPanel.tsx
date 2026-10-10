@@ -19,6 +19,7 @@ import { useEditorState } from '../diagram/useEditorState.ts'
 import { environmentLabel } from '../diagram/viewRule.ts'
 import { elementName, modelStore } from '../views/modelStore.ts'
 import { IconField, IconView } from './IconField.tsx'
+import { elementsMessages as m } from './messages.ts'
 
 /** The button of the header of the board that shows and hides the panel of properties. */
 export function PropertiesButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
@@ -27,9 +28,9 @@ export function PropertiesButton({ open, onToggle }: { open: boolean; onToggle: 
       type="button"
       variant="ghost"
       size="sm"
-      aria-label="Свойства"
+      aria-label={m.properties}
       aria-pressed={open}
-      title="Свойства элемента"
+      title={m.elementProperties}
       className="shrink-0"
       onClick={onToggle}
     >
@@ -87,26 +88,26 @@ export function PropertiesPanel({
     <aside
       ref={panel}
       tabIndex={-1}
-      aria-label="Свойства"
+      aria-label={m.properties}
       className="pointer-events-auto flex min-h-0 w-[320px] max-w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg outline-none"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
         <h2 className="mr-auto text-sm font-semibold">
           {properties?.target === 'edge'
             ? properties.relations !== null
-              ? 'Связь представления'
-              : 'Свойства связи'
+              ? m.viewEdge
+              : m.edgeProperties
             : properties?.target === 'legend'
-              ? 'Легенда'
-              : 'Свойства'}
+              ? m.legend
+              : m.properties}
         </h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} title={m.close} onClick={onClose}>
           <X />
         </Button>
       </header>
       <div className="overflow-y-auto p-3">
         {!editor || !properties ? (
-          <p className="text-sm text-muted-foreground">Выделите фигуру или связь</p>
+          <p className="text-sm text-muted-foreground">{m.selectShape}</p>
         ) : properties.target === 'legend' ? (
           <LegendForm key={properties.cellId} editor={editor} selection={properties} />
         ) : properties.target === 'edge' ? (
@@ -235,13 +236,13 @@ function ShapeForm({
   const change = (changes: ElementPropertiesChange) => editor.setElementProperties(cellId, changes)
   return (
     <form className="flex flex-col gap-3" onSubmit={(event) => event.preventDefault()}>
-      <Field label="Имя" htmlFor={`${id}-name`}>
+      <Field label={m.name} htmlFor={`${id}-name`}>
         <TextField id={`${id}-name`} value={properties.name} onCommit={(name) => change({ name })} />
       </Field>
-      <Field label="Тип" htmlFor={`${id}-kind`}>
+      <Field label={m.kind} htmlFor={`${id}-kind`}>
         <KindSelect id={`${id}-kind`} value={properties.kind} defaultKind={defaultKind} onChange={(kind) => change({ kind })} />
       </Field>
-      <Field label="Технология" htmlFor={`${id}-technology`}>
+      <Field label={m.technology} htmlFor={`${id}-technology`}>
         <TextField
           id={`${id}-technology`}
           value={properties.technology}
@@ -252,7 +253,7 @@ function ShapeForm({
         />
         <Suggestions id={`${id}-technologies`} values={technologySuggestions(properties.kind, used.technologies)} />
       </Field>
-      <Field label="Значок" htmlFor={`${id}-icon`}>
+      <Field label={m.icon} htmlFor={`${id}-icon`}>
         <IconField id={`${id}-icon`} icon={selection.icon} technology={properties.technology} onChange={(icon) => change({ icon })} />
       </Field>
       {selection.format === 'plain' && (
@@ -262,28 +263,28 @@ function ShapeForm({
             checked={selection.showTechnology}
             onChange={(event) => change({ showTechnology: event.target.checked })}
           />
-          Технология на схеме
+          {m.technologyOnDiagram}
         </label>
       )}
-      <Field label="Описание" htmlFor={`${id}-description`}>
+      <Field label={m.description} htmlFor={`${id}-description`}>
         <TextField id={`${id}-description`} multiline value={properties.description} onCommit={(description) => change({ description })} />
       </Field>
-      <Field label="Владелец" htmlFor={`${id}-owner`}>
+      <Field label={m.owner} htmlFor={`${id}-owner`}>
         <TextField
           id={`${id}-owner`}
           value={properties.owner}
           list={`${id}-owners`}
-          placeholder="Команда или человек"
+          placeholder={m.ownerPlaceholder}
           onFocus={onUsed}
           onCommit={(owner) => change({ owner })}
         />
         <Suggestions id={`${id}-owners`} values={used.owners} />
       </Field>
-      <Field label="Теги" htmlFor={`${id}-tags`}>
+      <Field label={m.tags} htmlFor={`${id}-tags`}>
         <TextField
           id={`${id}-tags`}
           value={properties.tags.join(' ')}
-          placeholder="Слова через пробел"
+          placeholder={m.tagsPlaceholder}
           onCommit={(tags) => change({ tags: parseTags(tags) })}
         />
       </Field>
@@ -306,11 +307,11 @@ function ModelFields({ editor, document, cellId, canChange }: { editor: DiagramE
   if (!element) return null
   if (element.level === 'container' || element.level === 'component') {
     const drawn = element.drawnParent !== null ? model.elements.get(element.drawnParent) : undefined
-    const byDrawing = `По схеме: ${drawn ? elementName(drawn) : 'никуда'}`
+    const byDrawing = m.byDrawing(drawn ? elementName(drawn) : null)
     const explicit = element.explicitParent !== null ? model.elements.get(element.explicitParent) : undefined
-    if (!canChange) return <Entry term="Входит в">{explicit ? elementName(explicit) : byDrawing}</Entry>
+    if (!canChange) return <Entry term={m.partOf}>{explicit ? elementName(explicit) : byDrawing}</Entry>
     return (
-      <Field label="Входит в" htmlFor={`${id}-parent`}>
+      <Field label={m.partOf} htmlFor={`${id}-parent`}>
         <select
           id={`${id}-parent`}
           value={element.explicitParent ?? ''}
@@ -329,9 +330,9 @@ function ModelFields({ editor, document, cellId, canChange }: { editor: DiagramE
   }
   if (element.level !== 'node') return null
   const above = element.parent !== null ? model.elements.get(element.parent)?.environment : ''
-  if (!canChange) return <Entry term="Окружение">{element.environment ? environmentLabel(element.environment) : '—'}</Entry>
+  if (!canChange) return <Entry term={m.environment}>{element.environment ? environmentLabel(element.environment) : '—'}</Entry>
   return (
-    <Field label="Окружение" htmlFor={`${id}-environment`}>
+    <Field label={m.environment} htmlFor={`${id}-environment`}>
       <TextField
         id={`${id}-environment`}
         value={element.ownEnvironment}
@@ -349,9 +350,9 @@ function ViewEdgeView({ relations, onShow }: { relations: ViewRelation[]; onShow
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-muted-foreground">
-        Связь собрана из связей модели. Подпись и технологию меняют там, где они нарисованы, — представления подхватят.
+        {m.viewEdgeHint}
       </p>
-      <ul aria-label="Связи модели" className="flex flex-col gap-1">
+      <ul aria-label={m.modelRelations} className="flex flex-col gap-1">
         {relations.map((relation) => (
           <li key={`${relation.pageId}/${relation.cellId}`}>
             <button
@@ -360,7 +361,7 @@ function ViewEdgeView({ relations, onShow }: { relations: ViewRelation[]; onShow
               onClick={() => onShow?.(relation.pageId, relation.cellId)}
             >
               <span className="truncate">
-                {relation.source || 'Без имени'} → {relation.target || 'Без имени'}
+                {relation.source || m.unnamed} → {relation.target || m.unnamed}
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {[relation.label, relation.technology, relation.pageName].filter(Boolean).join(' · ')}
@@ -380,20 +381,20 @@ function ViewEdgeView({ relations, onShow }: { relations: ViewRelation[]; onShow
 function LegendForm({ editor, selection }: { editor: DiagramEditor; selection: LegendSelection }) {
   const id = useId()
   const { cellId, items, canChange } = selection
-  if (items.length === 0) return <p className="text-sm text-muted-foreground">На странице нет фигур и связей</p>
+  if (items.length === 0) return <p className="text-sm text-muted-foreground">{m.noLegendItems}</p>
   return (
     <form className="flex flex-col gap-2" onSubmit={(event) => event.preventDefault()}>
-      {canChange && <p className="text-xs text-muted-foreground">Пустое имя — название по умолчанию</p>}
-      <ul aria-label="Пункты легенды" className="flex flex-col gap-1.5">
+      {canChange && <p className="text-xs text-muted-foreground">{m.legendHint}</p>}
+      <ul aria-label={m.legendItems} className="flex flex-col gap-1.5">
         {items.map((item, index) => {
           const shown = item.name || item.defaultName
-          const toggle = item.hidden ? `Показать «${shown}»` : `Скрыть «${shown}»`
+          const toggle = item.hidden ? m.showItem(shown) : m.hideItem(shown)
           return (
             <li key={item.key} className={cn('flex items-center gap-1', item.hidden && 'opacity-60')}>
               {canChange ? (
                 <>
                   <label htmlFor={`${id}-${index}`} className="sr-only">
-                    {`Имя пункта «${item.defaultName}»`}
+                    {m.itemName(item.defaultName)}
                   </label>
                   <TextField
                     id={`${id}-${index}`}
@@ -410,7 +411,7 @@ function LegendForm({ editor, selection }: { editor: DiagramEditor; selection: L
                 variant="ghost"
                 size="icon-sm"
                 aria-label={toggle}
-                title={item.hidden ? 'Показать' : 'Скрыть'}
+                title={item.hidden ? m.show : m.hide}
                 aria-pressed={item.hidden}
                 disabled={!canChange}
                 onClick={() => editor.setLegendItem(cellId, item.key, { hidden: !item.hidden })}
@@ -444,12 +445,12 @@ function KindSelect({
       className={cn(fieldClass, 'h-8')}
       onChange={(event) => onChange((event.target.value || null) as ShapeId | null)}
     >
-      <option value="">Без типа</option>
+      <option value="">{m.noKind}</option>
       {KIND_SECTIONS.map((section) => (
         <optgroup key={section.title} label={section.title}>
           {section.kinds.map((shape) => (
             <option key={shape.id} value={shape.id}>
-              {shape.id === defaultKind ? `${shape.label} (по фигуре)` : shape.label}
+              {shape.id === defaultKind ? m.byShape(shape.label) : shape.label}
             </option>
           ))}
         </optgroup>
@@ -474,13 +475,13 @@ function EdgeForm({
   const id = useId()
   const change = (changes: Partial<EdgeProperties>) => editor.setEdgeProperties(cellId, changes)
   const choices: [Interaction | null, string][] = [
-    [null, 'Не указан'],
+    [null, m.notSpecified],
     ['sync', INTERACTION_LABELS.sync],
     ['async', INTERACTION_LABELS.async],
   ]
   return (
     <form className="flex flex-col gap-3" onSubmit={(event) => event.preventDefault()}>
-      <Field label="Технология / протокол" htmlFor={`${id}-technology`}>
+      <Field label={m.edgeTechnology} htmlFor={`${id}-technology`}>
         <TextField
           id={`${id}-technology`}
           value={properties.technology}
@@ -492,7 +493,7 @@ function EdgeForm({
         <Suggestions id={`${id}-technologies`} values={[...new Set([...EDGE_TECHNOLOGIES, ...used.technologies])]} />
       </Field>
       <fieldset className="flex flex-col gap-1">
-        <legend className="mb-1 text-xs font-medium text-muted-foreground">Вид</legend>
+        <legend className="mb-1 text-xs font-medium text-muted-foreground">{m.interaction}</legend>
         {choices.map(([interaction, label]) => (
           <label key={label} className="flex items-center gap-2 text-sm">
             <input
@@ -524,15 +525,15 @@ function ShapeView({ editor, document, selection }: { editor: DiagramEditor; doc
   const { properties } = selection
   return (
     <dl className="flex flex-col gap-3">
-      <Entry term="Имя">{shown(properties.name)}</Entry>
-      <Entry term="Тип">{properties.kind ? kindLabel(properties.kind) : '—'}</Entry>
-      <Entry term="Технология">{shown(properties.technology)}</Entry>
-      <Entry term="Значок">
+      <Entry term={m.name}>{shown(properties.name)}</Entry>
+      <Entry term={m.kind}>{properties.kind ? kindLabel(properties.kind) : '—'}</Entry>
+      <Entry term={m.technology}>{shown(properties.technology)}</Entry>
+      <Entry term={m.icon}>
         <IconView icon={selection.icon} technology={properties.technology} />
       </Entry>
-      <Entry term="Описание">{shown(properties.description)}</Entry>
-      <Entry term="Владелец">{shown(properties.owner)}</Entry>
-      <Entry term="Теги">
+      <Entry term={m.description}>{shown(properties.description)}</Entry>
+      <Entry term={m.owner}>{shown(properties.owner)}</Entry>
+      <Entry term={m.tags}>
         <Tags tags={properties.tags} />
       </Entry>
       {document && <ModelFields editor={editor} document={document} cellId={selection.cellId} canChange={false} />}
@@ -556,8 +557,8 @@ function Tags({ tags }: { tags: ElementProperties['tags'] }) {
 function EdgeView({ properties }: { properties: EdgeProperties }) {
   return (
     <dl className="flex flex-col gap-3">
-      <Entry term="Технология / протокол">{shown(properties.technology)}</Entry>
-      <Entry term="Вид">{properties.interaction ? INTERACTION_LABELS[properties.interaction] : 'Не указан'}</Entry>
+      <Entry term={m.edgeTechnology}>{shown(properties.technology)}</Entry>
+      <Entry term={m.interaction}>{properties.interaction ? INTERACTION_LABELS[properties.interaction] : m.notSpecified}</Entry>
     </dl>
   )
 }

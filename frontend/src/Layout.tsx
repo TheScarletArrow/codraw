@@ -3,10 +3,13 @@ import { Plug, ShieldCheck, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
-import { logout, type CurrentUser } from './api/auth.ts'
+import { logout, saveLanguage, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 import { HeaderSlotProvider } from './headerSlot.tsx'
+import { locale } from './i18n/i18n.ts'
+import { LanguageMenu } from './i18n/LanguageMenu.tsx'
+import { layoutMessages as m } from './messages.ts'
 import { NotificationBell } from './notifications/NotificationBell.tsx'
 import { deleteLocalCopiesOf, keepLocalCopiesOf } from './offline/localCopies.ts'
 import { WhatsNew } from './releaseNotes/WhatsNew.tsx'
@@ -27,6 +30,11 @@ export function Layout() {
   useEffect(() => {
     if (userId) void keepLocalCopiesOf(userId)
   }, [userId])
+  // Letters and messages of notifications go in the language the user sees CoDraw in.
+  const language = user.data?.language
+  useEffect(() => {
+    if (language && language !== locale()) saveLanguage(locale()).catch(() => {})
+  }, [language])
 
   if (isUnauthorized(user.error)) {
     // A board may be shown to anybody: its page for reading without a session sends to the login page any other.
@@ -53,10 +61,10 @@ export function Layout() {
       </header>
       <main className="flex min-h-0 flex-1 flex-col">
         <HeaderSlotProvider slot={headerSlot}>{user.data && <Outlet />}</HeaderSlotProvider>
-        {user.isPending && <p className="p-6 text-muted-foreground">Загрузка…</p>}
+        {user.isPending && <p className="p-6 text-muted-foreground">{m.loading}</p>}
         {user.isError && (
           <p role="alert" className="p-6 text-destructive">
-            Не удалось загрузить профиль
+            {m.profileFailed}
           </p>
         )}
       </main>
@@ -88,22 +96,23 @@ function UserMenu({ user }: { user: CurrentUser }) {
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
       {/* A phone keeps the room of the line for who is on the board; the avatar tells who is signed in. */}
       <span className="max-sm:sr-only">{user.name}</span>
+      <LanguageMenu />
       <ThemeMenu />
       {user.admin && (
         <Button asChild variant="ghost" size="icon-sm">
-          <Link to="/admin" aria-label="Администрирование" title="Администрирование установки">
+          <Link to="/admin" aria-label={m.admin} title={m.adminHint}>
             <ShieldCheck />
           </Link>
         </Button>
       )}
       <Button asChild variant="ghost" size="icon-sm">
-        <Link to="/settings/account" aria-label="Учётная запись" title="Учётная запись: скачать данные или удалить">
+        <Link to="/settings/account" aria-label={m.account} title={m.accountHint}>
           <UserCog />
         </Link>
       </Button>
       {!user.guest && (
         <Button asChild variant="ghost" size="icon-sm">
-          <Link to="/settings/connections" aria-label="Подключения" title="Подключения: GitHub">
+          <Link to="/settings/connections" aria-label={m.connections} title={m.connectionsHint}>
             <Plug />
           </Link>
         </Button>
@@ -111,11 +120,11 @@ function UserMenu({ user }: { user: CurrentUser }) {
       {/* Signing out would cut a guest off from their boards; signing in through a provider keeps them. */}
       {user.guest ? (
         <Button asChild variant="ghost" size="sm">
-          <Link to="/login">Войти</Link>
+          <Link to="/login">{m.signIn}</Link>
         </Button>
       ) : (
         <Button type="button" variant="ghost" size="sm" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
-          Выйти
+          {m.signOut}
         </Button>
       )}
     </div>

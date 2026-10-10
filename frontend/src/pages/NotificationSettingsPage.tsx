@@ -21,6 +21,7 @@ import {
 } from '../api/notificationSettings.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ago, deliveryErrorText, EVENT_LABELS, settingsErrorMessage, type ChannelKind } from '../notifications/channelSettings.ts'
+import { notificationSettingsMessages as m } from './NotificationSettingsPage.messages.ts'
 
 const inputClass =
   'h-8 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
@@ -43,26 +44,25 @@ export function NotificationSettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 overflow-y-auto p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Уведомления вне CoDraw</h1>
+        <h1 className="text-xl font-semibold">{m.title}</h1>
         <p className="text-sm text-muted-foreground">
-          Упоминания, ответы, назначенные ветки, доступ к доскам и ревью — на почту и в рабочий чат. Колокольчик CoDraw
-          показывает уведомления как прежде; то, что вы прочитали в нём, не приходит.
+          {m.intro}
         </p>
       </div>
       {user.data?.guest ? (
         <p className="text-sm">
-          Уведомления вне CoDraw доступны после входа через GitHub или Google.{' '}
+          {m.guest}{' '}
           <Link to="/login" className="text-primary underline-offset-4 hover:underline">
-            Войти
+            {m.signIn}
           </Link>
         </p>
       ) : (
         <>
           <Confirmation mutation={confirmation.mutation} />
-          {settings.isPending && <p className="text-sm text-muted-foreground">Загрузка…</p>}
+          {settings.isPending && <p className="text-sm text-muted-foreground">{m.loading}</p>}
           {settings.isError && (
             <p role="alert" className="text-sm text-destructive">
-              {isForbidden(settings.error) ? 'Настройки доступны после входа' : 'Не удалось загрузить настройки'}
+              {isForbidden(settings.error) ? m.forbidden : m.loadFailed}
             </p>
           )}
           {settings.data && (
@@ -117,7 +117,7 @@ function Confirmation({ mutation: confirm }: { mutation: ReturnType<typeof useCo
   if (confirm.isSuccess) {
     return (
       <p role="status" className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">
-        Адрес подтверждён: уведомления будут приходить на почту
+        {m.confirmed}
       </p>
     )
   }
@@ -168,7 +168,7 @@ function ChannelOptions({
         {sendLabel}
       </label>
       <fieldset className="flex flex-col gap-1" disabled={disabled || !form.enabled}>
-        <legend className="mb-1 text-sm font-medium">О чём</legend>
+        <legend className="mb-1 text-sm font-medium">{m.about}</legend>
         {NOTIFICATION_EVENTS.map((event) => (
           <label key={event} className="flex items-baseline gap-2 text-sm has-disabled:text-muted-foreground">
             <input
@@ -193,7 +193,7 @@ function DeliveryState({ kind, channel }: { kind: ChannelKind; channel: EmailCha
     <>
       {channel.lastDeliveredAt && (
         <p className="text-sm text-muted-foreground">
-          {kind === 'email' ? 'Последнее письмо' : 'Последнее сообщение'} — {ago(channel.lastDeliveredAt)}
+          {kind === 'email' ? m.lastEmail : m.lastMessage} — {ago(channel.lastDeliveredAt)}
         </p>
       )}
       {channel.lastError && channel.lastErrorAt && (
@@ -212,12 +212,12 @@ function useRefetchSettings() {
 
 function EmailSection({ available, channel }: { available: boolean; channel: EmailChannel | null }) {
   return (
-    <Section title="Почта">
+    <Section title={m.email}>
       {available ? (
         // A new state of the channel from the server starts the form anew.
         <EmailForm key={channel ? `${channel.address}|${channel.enabled}|${channel.events.join()}` : 'none'} channel={channel} />
       ) : (
-        <p className="text-sm text-muted-foreground">Почта на этом сервере не настроена</p>
+        <p className="text-sm text-muted-foreground">{m.emailUnavailable}</p>
       )}
     </Section>
   )
@@ -241,10 +241,10 @@ function EmailForm({ channel }: { channel: EmailChannel | null }) {
   }
 
   return (
-    <form aria-label="Почта" className="flex flex-col gap-3" onSubmit={submit}>
+    <form aria-label={m.email} className="flex flex-col gap-3" onSubmit={submit}>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-address`} className="text-sm font-medium">
-          Адрес
+          {m.address}
         </label>
         <input
           id={`${id}-address`}
@@ -257,10 +257,10 @@ function EmailForm({ channel }: { channel: EmailChannel | null }) {
           onChange={(event) => setAddress(event.target.value)}
         />
         {channel && address.trim().toLowerCase() !== channel.address.toLowerCase() && (
-          <span className="text-xs text-muted-foreground">На новый адрес придёт письмо со ссылкой для подтверждения</span>
+          <span className="text-xs text-muted-foreground">{m.newAddressHint}</span>
         )}
       </div>
-      <ChannelOptions sendLabel="Присылать письма" form={form} disabled={pending} />
+      <ChannelOptions sendLabel={m.sendEmails} form={form} disabled={pending} />
       {channel && <EmailState channel={channel} onResend={() => resend.mutate()} resending={resend.isPending} />}
       {(save.isError || resend.isError || remove.isError) && (
         <p role="alert" className="text-sm text-destructive">
@@ -269,11 +269,11 @@ function EmailForm({ channel }: { channel: EmailChannel | null }) {
       )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          Сохранить
+          {m.save}
         </Button>
         {channel && (
           <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => remove.mutate()}>
-            Удалить
+            {m.delete}
           </Button>
         )}
       </div>
@@ -285,7 +285,7 @@ function EmailState({ channel, onResend, resending }: { channel: EmailChannel; o
   if (channel.verified) {
     return (
       <>
-        <p className="text-sm text-emerald-700 dark:text-emerald-400">Адрес подтверждён</p>
+        <p className="text-sm text-emerald-700 dark:text-emerald-400">{m.addressConfirmed}</p>
         <DeliveryState kind="email" channel={channel} />
       </>
     )
@@ -294,12 +294,12 @@ function EmailState({ channel, onResend, resending }: { channel: EmailChannel; o
     <div className="flex flex-col items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm">
       <p>
         {channel.verificationSentAt
-          ? `Адрес не подтверждён — откройте ссылку из письма, отправленного на ${channel.address} ${ago(channel.verificationSentAt)}`
-          : 'Адрес не подтверждён: письмо со ссылкой не отправилось'}
+          ? m.notConfirmed(channel.address, ago(channel.verificationSentAt))
+          : m.notConfirmedNotSent}
       </p>
       {channel.lastError && <p className="text-destructive">{deliveryErrorText('email', channel.lastError)}</p>}
       <Button type="button" variant="outline" size="xs" disabled={resending} onClick={onResend}>
-        Отправить письмо ещё раз
+        {m.resend}
       </Button>
     </div>
   )
@@ -307,7 +307,7 @@ function EmailState({ channel, onResend, resending }: { channel: EmailChannel; o
 
 function WebhookSection({ available, hosts, channel }: { available: boolean; hosts: string[]; channel: WebhookChannel | null }) {
   return (
-    <Section title="Чат">
+    <Section title={m.chat}>
       {available ? (
         <WebhookForm
           key={channel ? `${channel.addressHint}|${channel.enabled}|${channel.events.join()}` : 'none'}
@@ -315,7 +315,7 @@ function WebhookSection({ available, hosts, channel }: { available: boolean; hos
           channel={channel}
         />
       ) : (
-        <p className="text-sm text-muted-foreground">Чаты на этом сервере не настроены</p>
+        <p className="text-sm text-muted-foreground">{m.chatUnavailable}</p>
       )}
     </Section>
   )
@@ -342,10 +342,10 @@ function WebhookForm({ hosts, channel }: { hosts: string[]; channel: WebhookChan
   }
 
   return (
-    <form aria-label="Чат" className="flex flex-col gap-3" onSubmit={submit}>
+    <form aria-label={m.chat} className="flex flex-col gap-3" onSubmit={submit}>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-url`} className="text-sm font-medium">
-          Адрес входящего вебхука
+          {m.webhookUrl}
         </label>
         <input
           id={`${id}-url`}
@@ -353,23 +353,23 @@ function WebhookForm({ hosts, channel }: { hosts: string[]; channel: WebhookChan
           required={!channel}
           autoComplete="off"
           spellCheck={false}
-          placeholder={channel ? 'Оставьте пустым, чтобы не менять' : `https://${hosts[0] ?? 'hooks.slack.com'}/services/…`}
+          placeholder={channel ? m.keepEmpty : `https://${hosts[0] ?? 'hooks.slack.com'}/services/…`}
           className={inputClass}
           value={url}
           disabled={pending}
           onChange={(event) => setUrl(event.target.value)}
         />
         <span className="text-xs text-muted-foreground">
-          {channel && <>Сейчас: {channel.addressHint}. </>}
-          Slack, Mattermost или Rocket.Chat; адрес — секрет, CoDraw его больше не покажет. Разрешены:{' '}
+          {channel && m.now(channel.addressHint)}
+          {m.webhookHint}{' '}
           {hosts.join(', ')}
         </span>
       </div>
-      <ChannelOptions sendLabel="Присылать сообщения" form={form} disabled={pending} />
+      <ChannelOptions sendLabel={m.sendMessages} form={form} disabled={pending} />
       {channel && <DeliveryState kind="webhook" channel={channel} />}
       {test.isSuccess && (
         <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
-          Пробное сообщение отправлено
+          {m.testSent}
         </p>
       )}
       {(save.isError || test.isError || remove.isError) && (
@@ -379,15 +379,15 @@ function WebhookForm({ hosts, channel }: { hosts: string[]; channel: WebhookChan
       )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          Сохранить
+          {m.save}
         </Button>
         {channel && (
           <>
             <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => test.mutate()}>
-              Проверить
+              {m.test}
             </Button>
             <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => remove.mutate()}>
-              Удалить
+              {m.delete}
             </Button>
           </>
         )}
@@ -401,17 +401,17 @@ function MutedBoardsSection({ boards }: { boards: MutedBoard[] }) {
   const unmute = useMutation({ mutationFn: unmuteBoard, onSuccess: refetch })
 
   return (
-    <Section title="Доски без уведомлений">
+    <Section title={m.mutedBoards}>
       {boards.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Нет. Чтобы не получать письма и сообщения о доске, выберите «Не присылать уведомления» в меню доски.
+          {m.noMutedBoards}
         </p>
       ) : (
-        <ul aria-label="Доски без уведомлений" className="flex flex-col gap-1">
+        <ul aria-label={m.mutedBoards} className="flex flex-col gap-1">
           {boards.map((board) => (
             <li key={board.boardId} className="flex items-center gap-2 text-sm">
               {board.boardTitle === null ? (
-                <span className="flex-1 text-muted-foreground">Доска недоступна</span>
+                <span className="flex-1 text-muted-foreground">{m.boardUnavailable}</span>
               ) : (
                 <Link to={`/boards/${encodeURIComponent(board.boardId)}`} className="flex-1 truncate hover:underline">
                   {board.boardTitle}
@@ -422,10 +422,10 @@ function MutedBoardsSection({ boards }: { boards: MutedBoard[] }) {
                 variant="ghost"
                 size="xs"
                 disabled={unmute.isPending}
-                aria-label={board.boardTitle ? `Присылать снова: ${board.boardTitle}` : 'Присылать снова'}
+                aria-label={board.boardTitle ? m.unmuteBoard(board.boardTitle) : m.unmute}
                 onClick={() => unmute.mutate(board.boardId)}
               >
-                Присылать снова
+                {m.unmute}
               </Button>
             </li>
           ))}
@@ -433,7 +433,7 @@ function MutedBoardsSection({ boards }: { boards: MutedBoard[] }) {
       )}
       {unmute.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось включить уведомления доски
+          {m.unmuteFailed}
         </p>
       )}
     </Section>

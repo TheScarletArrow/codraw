@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { boardMessages } from './board.messages.ts'
 
 interface ConfirmedActionProps {
   label: string
@@ -41,7 +42,7 @@ export function ConfirmedAction({
           <p className="text-sm">{children}</p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Отмена
+              {boardMessages.cancel}
             </Button>
             <Button
               type="button"

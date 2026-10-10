@@ -108,6 +108,20 @@ class BoardCopyApiTest(
     }
 
     @Test
+    fun `the copy names itself in the language of the user`() {
+        val original = boards.create("Payments", alice.id)
+
+        mvc.post("/api/boards/${original.id}/copy") {
+            with(alice.session())
+            with(csrf())
+            header("Accept-Language", "en-US,en;q=0.9")
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.title") { value("Payments (copy)") }
+        }
+    }
+
+    @Test
     fun `without a role on the board, or for a board in the trash, there is no copy`() {
         val original = boards.create("Схема", alice.id)
         boards.changeLinkAccess(original, LinkAccess.NONE)

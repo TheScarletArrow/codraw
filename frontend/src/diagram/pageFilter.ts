@@ -1,6 +1,7 @@
 import { edgeProperties, INTERACTION_LABELS, isElementKind } from './elementKinds.ts'
 import { canBeElement, elementProperties, kindLabel } from './elementProps.ts'
 import { isFreehandStyle } from './freehand.ts'
+import { modelMessages } from './model.messages.ts'
 import { isSequenceStyle, sequencePartOf } from './sequence.ts'
 import { isTableStyle, type ShapeStyle } from './shapes.ts'
 
@@ -43,7 +44,12 @@ export const FILTER_PARAMS: Readonly<Record<FilterFacet, string>> = {
 
 export const HIDE_PARAM = 'hide'
 
-export const INTERACTION_CHOICES: Readonly<Record<FilterInteraction, string>> = { ...INTERACTION_LABELS, none: 'Не указан' }
+export const INTERACTION_CHOICES: Readonly<Record<FilterInteraction, string>> = {
+  ...INTERACTION_LABELS,
+  get none() {
+    return modelMessages.notSpecified
+  },
+}
 
 const isInteractionChoice = (value: string): value is FilterInteraction => Object.hasOwn(INTERACTION_CHOICES, value)
 

@@ -1,7 +1,8 @@
 import { Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { BOARD_SORTS, sameLabel, type BoardSort } from './boardList.ts'
+import { boardSorts, sameLabel, type BoardSort } from './boardList.ts'
+import { boardListMessages as m } from './messages.ts'
 
 interface BoardFiltersProps {
   query: string
@@ -35,9 +36,9 @@ export function BoardFilters({
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
-            aria-label="Поиск досок"
+            aria-label={m.search}
             value={query}
-            placeholder="Название или текст на доске"
+            placeholder={m.searchPlaceholder}
             className="h-9 w-full rounded-md border bg-background pr-2 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={(event) => {
@@ -49,12 +50,12 @@ export function BoardFilters({
           />
         </label>
         <select
-          aria-label="Порядок досок"
+          aria-label={m.order}
           value={sort}
           className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           onChange={(event) => onSortChange(event.target.value as BoardSort)}
         >
-          {BOARD_SORTS.map((option) => (
+          {boardSorts().map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
@@ -62,9 +63,9 @@ export function BoardFilters({
         </select>
       </div>
       {tags.length > 0 && (
-        <div role="group" aria-label="Фильтр по тегам" className="flex flex-wrap items-center gap-1.5">
+        <div role="group" aria-label={m.tagFilter} className="flex flex-wrap items-center gap-1.5">
           <span aria-hidden className="text-sm text-muted-foreground">
-            Теги:
+            {m.tagsLabel}
           </span>
           {tags.map((tag) => {
             const pressed = selectedTags.some((selected) => sameLabel(selected, tag))

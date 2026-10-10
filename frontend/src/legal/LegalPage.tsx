@@ -2,26 +2,29 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { fetchLegal, type LegalInfo } from '../api/legal.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { legalMessages as m } from './messages.ts'
 
-/** When the texts were last changed. */
-export const LEGAL_UPDATED = '10 октября 2026 г.'
+const dayFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long', year: 'numeric' }))
 
-const pluralRules = new Intl.PluralRules('ru')
-
-/** «1 день», «3 дня», «30 дней». */
-export function days(count: number): string {
-  const words: Partial<Record<Intl.LDMLPluralRule, string>> = { one: 'день', few: 'дня', many: 'дней', other: 'дня' }
-  const word = words[pluralRules.select(count)] ?? 'дней'
-  return `${count} ${word}`
+/** `9 октября 2026 г.` or `October 9, 2026` for `2026-10-09`. */
+function formatDay(date: string): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return dayFormat().format(new Date(year, month - 1, day))
 }
 
-/** A page of a legal text, open without a sign-in, with the operator of the installation and the other text. */
+/**
+ * A page of a legal text, open without a sign-in, with the operator of the installation and the other text. `updated` is
+ * the day the text was last changed, `YYYY-MM-DD`.
+ */
 export function LegalPage({
   title,
+  updated,
   other,
   children,
 }: {
   title: string
+  updated: string
   other: { to: string; title: string }
   children: (legal: LegalInfo) => ReactNode
 }) {
@@ -36,11 +39,11 @@ export function LegalPage({
       </header>
       <main className="mx-auto max-w-3xl px-4 py-8">
         <h1 className="text-3xl font-semibold">{title}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Обновлено {LEGAL_UPDATED}</p>
-        {legal.isPending && <p className="mt-6 text-muted-foreground">Загрузка…</p>}
+        <p className="mt-2 text-sm text-muted-foreground">{m.updated(formatDay(updated))}</p>
+        {legal.isPending && <p className="mt-6 text-muted-foreground">{m.loading}</p>}
         {legal.isError && (
           <p role="alert" className="mt-6 text-destructive">
-            Не удалось загрузить данные оператора. Обновите страницу.
+            {m.loadFailed}
           </p>
         )}
         {legal.data && (
@@ -48,12 +51,12 @@ export function LegalPage({
             {children(legal.data)}
           </div>
         )}
-        <nav aria-label="Документы" className="mt-10 flex flex-wrap gap-4 border-t pt-4 text-sm">
+        <nav aria-label={m.documents} className="mt-10 flex flex-wrap gap-4 border-t pt-4 text-sm">
           <Link to={other.to} className="underline">
             {other.title}
           </Link>
           <Link to="/" className="underline">
-            Вернуться в CoDraw
+            {m.backToApp}
           </Link>
         </nav>
       </main>
@@ -64,22 +67,17 @@ export function LegalPage({
 /** The operator of the installation and where to write, or that the operator has not named themselves. */
 export function Operator({ legal }: { legal: LegalInfo }) {
   if (!legal.operator && !legal.contactEmail) {
-    return (
-      <p>
-        Оператор этой установки CoDraw не указал свои данные. Прежде чем пользоваться сервисом, узнайте, кто его
-        предоставляет.
-      </p>
-    )
+    return <p>{m.operatorUnknown}</p>
   }
   return (
     <p>
-      Оператор сервиса — {legal.operator ?? 'не указан'}.{' '}
+      {m.operator(legal.operator ?? m.operatorNotNamed)}{' '}
       {legal.contactEmail ? (
         <>
-          Адрес для обращений: <a href={`mailto:${legal.contactEmail}`} className="underline">{legal.contactEmail}</a>.
+          {m.contact} <a href={`mailto:${legal.contactEmail}`} className="underline">{legal.contactEmail}</a>.
         </>
       ) : (
-        'Адрес для обращений оператор не указал.'
+        m.noContact
       )}
     </p>
   )

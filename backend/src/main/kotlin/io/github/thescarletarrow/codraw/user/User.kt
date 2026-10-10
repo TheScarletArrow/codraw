@@ -16,6 +16,8 @@ data class User(
     val name: String,
     val avatarUrl: String?,
     val createdAt: Instant,
+    /** The language of the interface of the user, in which their letters and messages of notifications go. */
+    val language: Language = Language.RU,
     /** When an administrator of the installation blocked the user; `null` while they are not blocked. */
     val blockedAt: Instant? = null,
 )
@@ -55,6 +57,10 @@ interface UserRepository : Repository<User, UUID> {
     /** Those of the users [ids] who are blocked. */
     @Query("SELECT id FROM users WHERE id IN (:ids) AND blocked_at IS NOT NULL")
     fun blockedAmong(ids: Collection<UUID>): List<UUID>
+
+    @Modifying
+    @Query("UPDATE users SET language = :language WHERE id = :id")
+    fun updateLanguage(id: UUID, language: String): Int
 }
 
 /**

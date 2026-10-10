@@ -1,4 +1,5 @@
 import type { ErrorCode } from 'yaml'
+import { documentMessages } from './messages.ts'
 
 /** A document to import and where it came from: the name of its file, or «Текст». */
 export interface ApiSource {
@@ -35,16 +36,16 @@ const loadYaml = () =>
   }))
 
 /** Reasons of the errors of YAML that people make most, in the words of the interface. */
-const REASONS: Partial<Record<ErrorCode, string>> = {
-  BAD_INDENT: 'неверный отступ',
-  TAB_AS_INDENT: 'табуляция в отступе',
-  DUPLICATE_KEY: 'ключ повторяется',
-  MISSING_CHAR: 'не хватает закрывающего символа',
-  MULTIPLE_DOCS: 'в файле несколько документов',
-  BAD_ALIAS: 'ссылка на неизвестный якорь',
-  MULTILINE_IMPLICIT_KEY: 'ключ на нескольких строках',
-  BLOCK_AS_IMPLICIT_KEY: 'ключ на нескольких строках',
-  UNEXPECTED_TOKEN: 'неожиданный символ',
+const REASONS: Partial<Record<ErrorCode, keyof typeof documentMessages.yamlReasons>> = {
+  BAD_INDENT: 'badIndent',
+  TAB_AS_INDENT: 'tabAsIndent',
+  DUPLICATE_KEY: 'duplicateKey',
+  MISSING_CHAR: 'missingChar',
+  MULTIPLE_DOCS: 'multipleDocs',
+  BAD_ALIAS: 'badAlias',
+  MULTILINE_IMPLICIT_KEY: 'multilineKey',
+  BLOCK_AS_IMPLICIT_KEY: 'multilineKey',
+  UNEXPECTED_TOKEN: 'unexpectedToken',
 }
 
 /** The line and the column, both from 1, of an offset in the text. */
@@ -60,7 +61,7 @@ export function position(text: string, offset: number): { line: number; column: 
  * Throws {@link ApiSpecError} for a document larger than `limit`, with an error of syntax or with too many aliases.
  */
 export async function loadDocument({ name, text, size }: ApiSource, limit = MAX_DOCUMENT_SIZE): Promise<unknown> {
-  if ((size ?? text.length) > limit) throw new ApiSpecError(`${name}: файл больше ${limit / 1024 / 1024} МБ`)
+  if ((size ?? text.length) > limit) throw new ApiSpecError(documentMessages.tooLarge(name, limit / 1024 / 1024))
   const source = text.replace(/^\uFEFF/, '')
   if (/^\s*\{/.test(source)) {
     try {
@@ -73,7 +74,7 @@ export async function loadDocument({ name, text, size }: ApiSource, limit = MAX_
   try {
     ;({ parseDocument } = await loadYaml())
   } catch {
-    throw new ApiSpecError(`${name}: не удалось загрузить разбор YAML — проверьте подключение к сети`)
+    throw new ApiSpecError(documentMessages.yamlUnavailable(name))
   }
   return documentValue(name, source, parseDocument(source, { prettyErrors: false, uniqueKeys: true }))
 }
@@ -83,12 +84,12 @@ function documentValue(name: string, source: string, document: import('yaml').Do
   const error = document.errors[0]
   if (error) {
     const { line, column } = position(source, error.pos[0])
-    throw new ApiSpecError(`${name}: строка ${line}, столбец ${column} — ${REASONS[error.code] ?? 'ошибка синтаксиса'}`)
+    throw new ApiSpecError(documentMessages.syntaxError(name, line, column, documentMessages.yamlReasons[REASONS[error.code] ?? 'other']))
   }
   try {
     return document.toJS({ maxAliasCount: MAX_ALIASES }) as unknown
   } catch {
-    throw new ApiSpecError(`${name}: слишком много ссылок на якоря YAML`)
+    throw new ApiSpecError(documentMessages.tooManyAliases(name))
   }
 }
 
@@ -97,7 +98,7 @@ function documentValue(name: string, source: string, document: import('yaml').Do
  * manifests of Kubernetes do; empty documents are left out. Throws {@link ApiSpecError} as {@link loadDocument} does.
  */
 export async function loadDocuments({ name, text, size }: ApiSource): Promise<unknown[]> {
-  if ((size ?? text.length) > MAX_DOCUMENT_SIZE) throw new ApiSpecError(`${name}: файл больше ${MAX_DOCUMENT_SIZE / 1024 / 1024} МБ`)
+  if ((size ?? text.length) > MAX_DOCUMENT_SIZE) throw new ApiSpecError(documentMessages.tooLarge(name, MAX_DOCUMENT_SIZE / 1024 / 1024))
   const source = text.replace(/^﻿/, '')
   if (/^\s*[{[]/.test(source)) {
     try {
@@ -110,7 +111,7 @@ export async function loadDocuments({ name, text, size }: ApiSource): Promise<un
   try {
     ;({ parseAllDocuments } = await loadYaml())
   } catch {
-    throw new ApiSpecError(`${name}: не удалось загрузить разбор YAML — проверьте подключение к сети`)
+    throw new ApiSpecError(documentMessages.yamlUnavailable(name))
   }
   return Array.from(parseAllDocuments(source, { prettyErrors: false, uniqueKeys: true }), (document) =>
     documentValue(name, source, document),

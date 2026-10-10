@@ -1,6 +1,7 @@
 import { splitField, type FieldParts } from '../sql/tableField.ts'
 import { indexColumnNames, splitIndex, type IndexParts } from '../sql/tableIndex.ts'
 import type { LabelStyle } from './autoWidth.ts'
+import { tableMessages } from './TableTools.messages.ts'
 
 /** Width of a text drawn with a font, in pixels at 100%. */
 export type Measure = (text: string, font: LabelStyle) => number
@@ -54,7 +55,7 @@ export const BADGE_HEIGHT = 16
 /** Width of the badge of a database: its short name in bold 9px with room on both sides. */
 export const badgeWidth = (badge: string) => Math.ceil(badge.length * 6.5) + 8
 /** The badge of a base table, at the right of its header. */
-export const BASE_BADGE = 'БАЗА'
+export const BASE_BADGE = tableMessages.baseBadge
 /** The badges of a view and of a materialized view, at the right of the header, where a base table has its own. */
 export const VIEW_BADGE = 'VIEW'
 export const MATERIALIZED_VIEW_BADGE = 'MAT VIEW'

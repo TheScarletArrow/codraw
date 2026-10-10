@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { useMemo, useSyncExternalStore } from 'react'
 import type * as Y from 'yjs'
 import { detailCrumbs, type DetailCrumb } from '../diagram/detail.ts'
+import { boardMessages } from './board.messages.ts'
 
 const NO_CRUMBS: DetailCrumb[] = []
 
@@ -51,7 +52,7 @@ export function DetailCrumbs({
   if (crumbs.length === 0) return null
   return (
     <nav
-      aria-label="Детализация"
+      aria-label={boardMessages.detailCrumbs}
       className="absolute top-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-0.5 overflow-hidden rounded-md border bg-background px-1 py-0.5 text-sm shadow-sm"
     >
       <ol className="flex min-w-0 items-center gap-0.5">

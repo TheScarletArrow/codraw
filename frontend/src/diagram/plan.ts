@@ -6,6 +6,8 @@
  * removes what goes and takes the marks off what appeared.
  */
 
+import { planLabels, planViewLabels } from './model.messages.ts'
+
 /** Style key of an element that is planned: it will appear, or it will go. */
 export const PLAN_KEY = 'codrawPlan'
 
@@ -14,7 +16,7 @@ export type Plan = 'added' | 'removed'
 export const PLANS: readonly Plan[] = ['added', 'removed']
 
 /** What a mark is called in the interface; an element without one is as it is. */
-export const PLAN_LABELS: Readonly<Record<Plan, string>> = { added: 'Появится', removed: 'Уйдёт' }
+export const PLAN_LABELS: Readonly<Record<Plan, string>> = planLabels
 
 export const isPlan = (value: unknown): value is Plan => value === 'added' || value === 'removed'
 
@@ -29,7 +31,7 @@ export type PlanView = 'diff' | 'current' | 'target'
 
 export const PLAN_VIEWS: readonly PlanView[] = ['diff', 'current', 'target']
 
-export const PLAN_VIEW_LABELS: Readonly<Record<PlanView, string>> = { diff: 'Разница', current: 'Как есть', target: 'Как будет' }
+export const PLAN_VIEW_LABELS: Readonly<Record<PlanView, string>> = planViewLabels
 
 export const isPlanView = (value: unknown): value is PlanView => value === 'diff' || value === 'current' || value === 'target'
 

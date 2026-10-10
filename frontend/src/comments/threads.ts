@@ -1,5 +1,7 @@
 import type { CommentThread, Person, ThreadPoint } from '../api/comments.ts'
 import type { CellKind } from '../diagram/model.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { commentsMessages as m } from './messages.ts'
 
 /**
  * What the panel shows: open threads, resolved threads, the threads that mention the current user or those assigned
@@ -69,7 +71,7 @@ export function groupByPage(
   })
   const known = new Set(pages.map((page) => page.id))
   const orphaned = threads.filter((thread) => !known.has(thread.pageId))
-  if (orphaned.length > 0) groups.push({ pageId: null, title: 'Удалённые страницы', threads: orphaned })
+  if (orphaned.length > 0) groups.push({ pageId: null, title: m.deletedPages, threads: orphaned })
   return groups
 }
 
@@ -94,7 +96,7 @@ export function threadsAtPoints(threads: CommentThread[], pageId: string, withRe
   )
 }
 
-export const commentTimeFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+export const commentTimeFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'short', timeStyle: 'short' }))
 
 /** An element of a page that a thread is about, as the board document has it. */
 export interface CellInfo {
@@ -108,12 +110,12 @@ export function threadTarget(
   thread: Pick<CommentThread, 'cellId' | 'point'> & Partial<Pick<CommentThread, 'decisionId'>>,
   cell: CellInfo | null,
 ): { label: string; deleted: boolean } {
-  if (thread.decisionId) return { label: 'Обсуждение решения', deleted: false }
-  if (thread.point) return { label: 'Место на холсте', deleted: false }
-  if (thread.cellId === null) return { label: 'Вся страница', deleted: false }
-  if (!cell) return { label: 'Элемент удалён', deleted: true }
-  if (cell.label !== '') return { label: `«${cell.label}»`, deleted: false }
-  return { label: cell.kind === 'edge' ? 'Связь без подписи' : 'Элемент без подписи', deleted: false }
+  if (thread.decisionId) return { label: m.target.decision, deleted: false }
+  if (thread.point) return { label: m.target.point, deleted: false }
+  if (thread.cellId === null) return { label: m.target.page, deleted: false }
+  if (!cell) return { label: m.target.deleted, deleted: true }
+  if (cell.label !== '') return { label: m.target.quoted(cell.label), deleted: false }
+  return { label: cell.kind === 'edge' ? m.target.unlabeledEdge : m.target.unlabeledElement, deleted: false }
 }
 
 /** The label of an element as one short line: without markup, the first line, shortened. */

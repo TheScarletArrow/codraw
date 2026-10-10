@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UserNotification } from '../api/notifications.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { describeNotification, notificationLink, notificationTitle, timeAgo } from './notifications.ts'
 
 const boardId = '0199a000-0000-7000-8000-000000000001'
@@ -116,5 +117,23 @@ describe('notifications', () => {
     expect(ago(25 * 60)).toBe('вчера')
     expect(ago(4 * 24 * 60)).toBe('4 дня назад')
     expect(ago(10 * 24 * 60)).toBe('26 сент. 2026 г.')
+  })
+
+  it('speaks English in the English interface', () => {
+    setLocale('en')
+    const now = Date.parse('2026-10-06T12:00:00Z')
+    const ago = (minutes: number) => timeAgo(new Date(now - minutes * 60_000).toISOString(), now)
+
+    expect(notificationTitle(describeNotification(notification()))).toBe('Аня: mention in “Схема БД”')
+    expect(describeNotification(notification({ kind: 'access-request', role: 'editor', ...access })).detail).toBe('Asks to edit')
+    expect(describeNotification(notification({ kind: 'ownership', access: false, ...access }))).toEqual({
+      actor: null,
+      action: 'Ownership transfer',
+      detail: 'The board is unavailable',
+    })
+    expect(ago(0)).toBe('just now')
+    expect(ago(5)).toBe('5 minutes ago')
+    expect(ago(25 * 60)).toBe('yesterday')
+    expect(ago(10 * 24 * 60)).toBe('Sep 26, 2026')
   })
 })

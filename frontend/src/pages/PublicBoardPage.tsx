@@ -13,6 +13,7 @@ import { usePages } from '../board/usePages.ts'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
+import { publicBoardMessages as m } from './PublicBoardPage.messages.ts'
 
 /** How often the page asks for a newer state of the board, in milliseconds; it asks when the tab is shown again too. */
 export const PUBLIC_REFRESH_INTERVAL = 60_000
@@ -70,11 +71,11 @@ function PublicBoard({ boardId }: { boardId: string }) {
     if (framed) {
       return (
         <PublicLayout action={<OpenInCodraw path={inCodraw} />}>
-          <Message>Доска недоступна без входа</Message>
+          <Message>{m.unavailable}</Message>
         </PublicLayout>
       )
     }
-    if (user.isPending) return <Message>Загрузка…</Message>
+    if (user.isPending) return <Message>{m.loading}</Message>
     // A signed-in user gets what their role gives on the page of the board; Layout sends nobody without a session back.
     return signedIn ? <Navigate to={inCodraw} replace /> : <Navigate to="/login" replace state={{ from: inCodraw }} />
   }
@@ -83,12 +84,12 @@ function PublicBoard({ boardId }: { boardId: string }) {
     <OpenInCodraw path={inCodraw} />
   ) : signedIn ? (
     <Button asChild size="sm" variant="outline">
-      <Link to={inCodraw}>Открыть доску</Link>
+      <Link to={inCodraw}>{m.openBoard}</Link>
     </Button>
   ) : user.isError ? (
     <Button asChild size="sm">
       <Link to="/login" state={{ from: inCodraw }}>
-        Войти
+        {m.signIn}
       </Link>
     </Button>
   ) : null
@@ -97,9 +98,9 @@ function PublicBoard({ boardId }: { boardId: string }) {
     <PublicLayout title={board.data?.title} action={action} report={<ReportButton boardId={boardId} />} editor={editor}>
       {!merged &&
         (board.isError || state.isError ? (
-          <Message alert>Не удалось загрузить доску</Message>
+          <Message alert>{m.loadFailed}</Message>
         ) : (
-          <Message>Загрузка…</Message>
+          <Message>{m.loading}</Message>
         ))}
       {merged && (
         <>
@@ -116,7 +117,7 @@ function PublicBoard({ boardId }: { boardId: string }) {
                 <StatusBadges editor={editor} document={document} />
               </>
             ) : (
-              <Message>Доска пока пуста</Message>
+              <Message>{m.empty}</Message>
             )}
           </div>
           <PageTabs
@@ -168,7 +169,7 @@ function PublicLayout({
         {title && <h1 className="min-w-0 truncate font-medium">{title}</h1>}
         {title && (
           <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-sm whitespace-nowrap text-muted-foreground">
-            Только просмотр
+            {m.readOnly}
           </span>
         )}
         {/* A phone zooms with two fingers: the line keeps its room for the title. */}
@@ -191,7 +192,7 @@ function OpenInCodraw({ path }: { path: string }) {
   return (
     <Button asChild size="sm" variant="outline">
       <a href={path} target="_blank" rel="noopener noreferrer">
-        Открыть в CoDraw
+        {m.openInCodraw}
       </a>
     </Button>
   )

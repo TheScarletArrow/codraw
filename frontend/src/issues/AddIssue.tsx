@@ -16,6 +16,7 @@ import {
 import { newId } from '../diagram/ids.ts'
 import { CONNECTIONS_PATH, isRepository, issueErrorMessage, parseIssueReference, stateLabel } from './issues.ts'
 import { useIssueLinkChange, useTrackerRepositories, useTrackerSettings } from './useIssues.ts'
+import { issueMessages as m } from './messages.ts'
 
 const fieldClass =
   'h-8 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
@@ -70,9 +71,9 @@ export function AddIssue({
   const connected = connection?.working === true
   const connect = (
     <p className="text-xs text-muted-foreground">
-      {connection ? 'GitHub больше не принимает ваш токен. ' : 'Чтобы привязывать и создавать задачи GitHub, '}
+      {connection ? m.tokenNoLongerAccepted : m.toLinkIssues}
       <Link to={CONNECTIONS_PATH} className="text-primary underline-offset-4 hover:underline">
-        {connection ? 'Подключить заново' : 'подключите GitHub'}
+        {connection ? m.reconnect : m.connectGitHub}
       </Link>
     </p>
   )
@@ -92,7 +93,7 @@ export function AddIssue({
 
   if (compact) {
     return (
-      <IssueWindow label="Задача GitHub" trigger={<><Ticket />Задача</>} compact>
+      <IssueWindow label={m.githubIssue} trigger={<><Ticket />{m.issue}</>} compact>
         {(close) => (connected ? <IssueModes link={linkForm(close)} create={createForm(close)} /> : connect)}
       </IssueWindow>
     )
@@ -100,10 +101,10 @@ export function AddIssue({
   if (!connected) return connect
   return (
     <div className="flex flex-wrap gap-1.5">
-      <IssueWindow label="Привязать задачу" trigger={<><Link2 />Привязать задачу</>}>
+      <IssueWindow label={m.linkIssue} trigger={<><Link2 />{m.linkIssue}</>}>
         {linkForm}
       </IssueWindow>
-      <IssueWindow label="Создать задачу" trigger={<><Plus />Создать задачу</>}>
+      <IssueWindow label={m.createIssue} trigger={<><Plus />{m.createIssue}</>}>
         {createForm}
       </IssueWindow>
     </div>
@@ -141,7 +142,7 @@ function IssueModes({ link, create }: { link: ReactNode; create: ReactNode }) {
   const [mode, setMode] = useState<'link' | 'create'>('link')
   return (
     <>
-      <div role="tablist" aria-label="Задача" className="flex gap-1">
+      <div role="tablist" aria-label={m.issue} className="flex gap-1">
         {(['link', 'create'] as const).map((value) => (
           <Button
             key={value}
@@ -152,7 +153,7 @@ function IssueModes({ link, create }: { link: ReactNode; create: ReactNode }) {
             size="xs"
             onClick={() => setMode(value)}
           >
-            {value === 'link' ? 'Существующая' : 'Новая'}
+            {value === 'link' ? m.existing : m.new}
           </Button>
         ))}
       </div>
@@ -180,7 +181,7 @@ function RepositoryField({
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-xs font-medium">
-        Репозиторий
+        {m.repository}
       </label>
       <input
         id={id}
@@ -254,39 +255,39 @@ function LinkIssueForm({
   }
   const pending = lookup.pending || link.isPending
   const lookupError = unclear
-    ? 'Укажите репозиторий owner/name и номер задачи, ссылку на неё или слова из названия'
+    ? m.unclear
     : lookup.error
-      ? issueErrorMessage(lookup.error, 'Не удалось найти задачу')
+      ? issueErrorMessage(lookup.error, m.findFailed)
       : null
 
   return (
     <>
-      <form aria-label="Найти задачу" className="flex flex-col gap-2" onSubmit={submit}>
+      <form aria-label={m.findIssue} className="flex flex-col gap-2" onSubmit={submit}>
         <RepositoryField id={`${id}-repository`} value={repository} required={false} onChange={setRepository} disabled={pending} />
         <div className="flex flex-col gap-1">
           <label htmlFor={`${id}-query`} className="text-xs font-medium">
-            Задача
+            {m.issue}
           </label>
           <div className="flex gap-1">
             <input
               id={`${id}-query`}
               required
               autoComplete="off"
-              placeholder={`12, ${settings.webUrl ?? 'https://github.com'}/owner/name/issues/12 или слова`}
+              placeholder={m.queryPlaceholder(settings.webUrl ?? 'https://github.com')}
               className={fieldClass}
               value={query}
               disabled={pending}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <Button type="submit" variant="outline" size="icon-sm" aria-label="Найти" title="Найти" disabled={pending}>
+            <Button type="submit" variant="outline" size="icon-sm" aria-label={m.find} title={m.find} disabled={pending}>
               <Search />
             </Button>
           </div>
         </div>
       </form>
       {results && (
-        <ul aria-label="Найденные задачи" className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
-          {results.length === 0 && <li className="text-xs text-muted-foreground">Ничего не найдено</li>}
+        <ul aria-label={m.foundIssues} className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+          {results.length === 0 && <li className="text-xs text-muted-foreground">{m.nothingFound}</li>}
           {results.map((issue) => (
             <li key={issue.number}>
               <button
@@ -302,7 +303,7 @@ function LinkIssueForm({
         </ul>
       )}
       {found && (
-        <section aria-label="Задача" className="flex flex-col gap-1.5 rounded-md border p-2 text-sm">
+        <section aria-label={m.issue} className="flex flex-col gap-1.5 rounded-md border p-2 text-sm">
           <span className="font-medium break-words">{found.title}</span>
           <span className="text-xs text-muted-foreground">
             {found.repository}#{found.number} · {stateLabel(found)}
@@ -310,10 +311,10 @@ function LinkIssueForm({
           {found.private ? (
             <p className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
               <Lock aria-hidden className="mt-px size-3 shrink-0" />
-              Репозиторий закрытый: номер, название и статус задачи увидят все, кто может открыть доску.
+              {m.privateVisible}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">Номер, название и статус задачи увидят все, кто может открыть доску.</p>
+            <p className="text-xs text-muted-foreground">{m.visible}</p>
           )}
           <Button
             type="button"
@@ -329,13 +330,13 @@ function LinkIssueForm({
               })
             }
           >
-            Привязать
+            {m.link}
           </Button>
         </section>
       )}
       {(lookupError || link.isError) && (
         <p role="alert" className="text-xs text-destructive">
-          {lookupError || issueErrorMessage(link.error, 'Не удалось привязать задачу')}
+          {lookupError || issueErrorMessage(link.error, m.linkFailed)}
         </p>
       )}
     </>
@@ -384,11 +385,11 @@ function CreateIssueForm({
   }
 
   return (
-    <form aria-label="Новая задача" className="flex flex-col gap-2" onSubmit={submit}>
+    <form aria-label={m.newIssue} className="flex flex-col gap-2" onSubmit={submit}>
       <RepositoryField id={`${id}-repository`} value={repository} required onChange={setRepository} disabled={create.isPending} />
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-title`} className="text-xs font-medium">
-          Название
+          {m.title}
         </label>
         <input
           id={`${id}-title`}
@@ -402,7 +403,7 @@ function CreateIssueForm({
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-description`} className="text-xs font-medium">
-          Описание
+          {m.description}
         </label>
         <textarea
           id={`${id}-description`}
@@ -414,17 +415,16 @@ function CreateIssueForm({
           onChange={(event) => setDescription(event.target.value)}
         />
         <span className="text-xs text-muted-foreground">
-          В конце задачи будет ссылка на {'threadId' in target ? 'это обсуждение' : 'этот элемент'} в CoDraw. Задачу увидят
-          все, кто может открыть доску.
+          {'threadId' in target ? m.backLinkToThread : m.backLinkToElement}
         </span>
       </div>
       {create.isError && (
         <p role="alert" className="text-xs text-destructive">
-          {issueErrorMessage(create.error, 'Не удалось создать задачу')}
+          {issueErrorMessage(create.error, m.createFailed)}
         </p>
       )}
       <Button type="submit" size="sm" className="self-start" disabled={create.isPending || !isRepository(repository.trim())}>
-        Создать в GitHub
+        {m.createInGitHub}
       </Button>
     </form>
   )

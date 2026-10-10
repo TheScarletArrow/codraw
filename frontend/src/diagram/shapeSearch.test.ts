@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { searchShapes, SHAPE_KEYWORDS } from './shapeSearch.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { SHAPE_SECTIONS } from './shapes.ts'
 
 const labels = (query: string) => searchShapes(query).map((shape) => shape.label)
@@ -49,6 +50,25 @@ describe('searching shapes', () => {
   it('has words for every shape of the palette', () => {
     for (const shape of SHAPE_SECTIONS.flatMap((section) => section.shapes)) {
       expect(SHAPE_KEYWORDS[shape.id].length).toBeGreaterThan(0)
+      expect(searchShapes(shape.label)).toContain(shape)
+    }
+  })
+})
+
+describe('searching shapes in English', () => {
+  it('finds shapes by their English names and shows those whose names match first', () => {
+    setLocale('en')
+    expect(labels('load balancer')).toEqual(['Load balancer'])
+    expect(labels('sticky note')).toEqual(['Sticky note'])
+    expect(labels('use case')).toEqual(['Use case', 'Actor', 'UML system boundary'])
+    expect(labels('c4 database')).toEqual(['C4 database'])
+    // Russian words still find shapes in the English interface.
+    expect(labels('балансир')).toEqual(['Load balancer'])
+  })
+
+  it('finds every shape by its English name', () => {
+    setLocale('en')
+    for (const shape of SHAPE_SECTIONS.flatMap((section) => section.shapes)) {
       expect(searchShapes(shape.label)).toContain(shape)
     }
   })
