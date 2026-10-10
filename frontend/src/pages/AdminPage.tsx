@@ -28,43 +28,27 @@ import { HttpError, isForbidden } from '../api/http.ts'
 import { REPORT_REASONS } from '../admin/reports.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
+import { perLocale } from '../i18n/i18n.ts'
+import { adminMessages as m } from './AdminPage.messages.ts'
 
 type Tab = 'reports' | 'users' | 'boards' | 'journal'
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'reports', label: 'Жалобы' },
-  { id: 'users', label: 'Пользователи' },
-  { id: 'boards', label: 'Доски' },
-  { id: 'journal', label: 'Журнал' },
-]
+const TABS: Tab[] = ['reports', 'users', 'boards', 'journal']
 
-const time = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
-const at = (value: string) => time.format(new Date(value))
+const time = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
+const at = (value: string) => time().format(new Date(value))
 
-const LINK_ACCESS: Record<LinkAccess, string> = {
-  none: 'Только участники',
-  view: 'Просмотр по ссылке',
-  public: 'Все, у кого есть ссылка, без входа',
-  edit: 'Редактирование по ссылке',
-}
+const linkAccess = (access: LinkAccess): string => m.linkAccess[access]
 
-const ACTIONS: Record<AdminActionKind, string> = {
-  'block-user': 'Заблокировать',
-  'unblock-user': 'Разблокировать',
-  'delete-user': 'Удалить учётную запись',
-  'block-sharing': 'Закрыть доступ по ссылке',
-  'unblock-sharing': 'Снять запрет доступа',
-  'trash-board': 'В корзину',
-  'resolve-reports': 'Закрыть жалобы',
-}
+const actionLabel = (action: AdminActionKind): string => m.actions[action]
 
 const reasonOf = (report: BoardReport) => REPORT_REASONS.find((reason) => reason.value === report.reason)?.label ?? ''
 
 /** Bytes in the units people read them in. */
 function size(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+  if (bytes < 1024) return m.bytes(bytes)
+  if (bytes < 1024 * 1024) return m.kilobytes((bytes / 1024).toFixed(1))
+  return m.megabytes((bytes / 1024 / 1024).toFixed(1))
 }
 
 /**
@@ -84,25 +68,25 @@ export function AdminPage() {
   }
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 overflow-y-auto p-6">
-      <h1 className="text-2xl font-bold">Администрирование</h1>
-      <div role="tablist" aria-label="Разделы администрирования" className="flex gap-1 border-b">
+      <h1 className="text-2xl font-bold">{m.title}</h1>
+      <div role="tablist" aria-label={m.sections} className="flex gap-1 border-b">
         {TABS.map((item) => (
           <button
-            key={item.id}
+            key={item}
             type="button"
             role="tab"
-            aria-selected={tab === item.id}
+            aria-selected={tab === item}
             className={cn(
               '-mb-px border-b-2 px-3 py-1.5 text-sm',
-              tab === item.id ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
+              tab === item ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
             )}
-            onClick={() => setTab(item.id)}
+            onClick={() => setTab(item)}
           >
-            {item.label}
+            {m.tabs[item]}
           </button>
         ))}
       </div>
-      <div role="tabpanel" aria-label={TABS.find((item) => item.id === tab)!.label} className="flex flex-col gap-4">
+      <div role="tabpanel" aria-label={m.tabs[tab]} className="flex flex-col gap-4">
         {tab === 'reports' && <Reports onOpenBoard={openBoard} />}
         {tab === 'users' && <Users />}
         {tab === 'boards' && <Boards selected={boardId} onSelect={setBoardId} />}
@@ -115,8 +99,8 @@ export function AdminPage() {
 function NoAccess() {
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold">Нет доступа</h1>
-      <p className="mt-2 text-muted-foreground">Раздел доступен только администраторам этой установки CoDraw.</p>
+      <h1 className="text-2xl font-bold">{m.noAccess}</h1>
+      <p className="mt-2 text-muted-foreground">{m.noAccessHint}</p>
     </div>
   )
 }
@@ -126,11 +110,11 @@ function Loaded<T>({ query, empty, children }: { query: { data?: T[]; isError: b
   if (query.isError) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        {isForbidden(query.error) ? 'Нет доступа' : 'Не удалось загрузить'}
+        {isForbidden(query.error) ? m.noAccess : m.loadFailed}
       </p>
     )
   }
-  if (!query.data) return <p className="text-sm text-muted-foreground">Загрузка…</p>
+  if (!query.data) return <p className="text-sm text-muted-foreground">{m.loading}</p>
   if (query.data.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>
   return <>{children(query.data)}</>
 }
@@ -143,16 +127,16 @@ function Reports({ onOpenBoard }: { onOpenBoard: (boardId: string) => void }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKey() }),
   })
   return (
-    <Loaded query={reports} empty="Открытых жалоб нет">
+    <Loaded query={reports} empty={m.noOpenReports}>
       {(items) => (
-        <ul className="flex flex-col gap-2" aria-label="Открытые жалобы">
+        <ul className="flex flex-col gap-2" aria-label={m.openReports}>
           {items.map((report) => (
             <li key={report.id} className="flex flex-col gap-1 rounded-md border p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{report.board.title}</span>
-                <span className="text-muted-foreground">владелец {report.board.owner.name}</span>
-                {report.board.sharingBlocked && <Badge>Доступ закрыт</Badge>}
-                {report.board.deletedAt && <Badge>В корзине</Badge>}
+                <span className="text-muted-foreground">{m.owner(report.board.owner.name)}</span>
+                {report.board.sharingBlocked && <Badge>{m.sharingBlocked}</Badge>}
+                {report.board.deletedAt && <Badge>{m.inTrash}</Badge>}
                 <span className="ml-auto text-muted-foreground">{at(report.createdAt)}</span>
               </div>
               <p>
@@ -160,11 +144,11 @@ function Reports({ onOpenBoard }: { onOpenBoard: (boardId: string) => void }) {
                 {report.message && <span className="whitespace-pre-wrap">: {report.message}</span>}
               </p>
               <p className="text-xs text-muted-foreground">
-                {report.reporter ? `Отправил(а) ${report.reporter.name}` : 'Отправлена без входа'}
+                {report.reporter ? m.reportedBy(report.reporter.name) : m.reportedAnonymously}
               </p>
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => onOpenBoard(report.board.id)}>
-                  Сведения о доске
+                  {m.boardDetails}
                 </Button>
                 <Button
                   type="button"
@@ -173,7 +157,7 @@ function Reports({ onOpenBoard }: { onOpenBoard: (boardId: string) => void }) {
                   disabled={resolve.isPending}
                   onClick={() => resolve.mutate(report.id)}
                 >
-                  Закрыть жалобу
+                  {m.resolveReport}
                 </Button>
               </div>
             </li>
@@ -203,7 +187,7 @@ function Search({ label, onSearch }: { label: string; onSearch: (text: string) =
         className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
       />
       <Button type="submit" size="sm">
-        Найти
+        {m.find}
       </Button>
     </form>
   )
@@ -223,33 +207,33 @@ function Users() {
   })
   return (
     <>
-      <Search label="Имя, id или id у GitHub и Google" onSearch={setText} />
+      <Search label={m.userSearch} onSearch={setText} />
       {change.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось изменить блокировку
+          {m.blockFailed}
         </p>
       )}
       {remove.isError && (
         <p role="alert" className="text-sm text-destructive">
           {remove.error instanceof HttpError && remove.error.problem?.reason === 'sole-workspace-owner'
-            ? 'Пользователь — единственный владелец пространства с другими участниками: сначала нужно передать роль владельца.'
-            : 'Не удалось удалить учётную запись'}
+            ? m.soleWorkspaceOwner
+            : m.deleteFailed}
         </p>
       )}
-      <Loaded query={users} empty="Никого не нашлось">
+      <Loaded query={users} empty={m.nobodyFound}>
         {(items) => (
-          <ul className="flex flex-col divide-y rounded-md border" aria-label="Пользователи">
+          <ul className="flex flex-col divide-y rounded-md border" aria-label={m.users}>
             {items.map((user) => (
               <li key={user.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
                 <span className="flex min-w-0 flex-col">
                   <span className="font-medium">{user.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {user.guest ? 'гость' : `${user.provider}:${user.providerUserId}`} · {user.boards} досок · с{' '}
-                    {at(user.createdAt)}
+                    {user.guest ? m.guest : `${user.provider}:${user.providerUserId}`} · {m.boardCount(user.boards)} ·{' '}
+                    {m.since(at(user.createdAt))}
                   </span>
                 </span>
-                {user.admin && <Badge>Администратор</Badge>}
-                {user.blockedAt && <Badge>Заблокирован(а) {at(user.blockedAt)}</Badge>}
+                {user.admin && <Badge>{m.admin}</Badge>}
+                {user.blockedAt && <Badge>{m.blockedAt(at(user.blockedAt))}</Badge>}
                 <span className="ml-auto flex gap-2">
                   {user.admin ? null : user.blockedAt ? (
                     <Button
@@ -259,32 +243,30 @@ function Users() {
                       disabled={change.isPending}
                       onClick={() => change.mutate({ user, block: false })}
                     >
-                      Разблокировать
+                      {m.unblock}
                     </Button>
                   ) : (
                     <ConfirmedAction
-                      label="Заблокировать"
-                      title={`Заблокировать ${user.name}?`}
-                      confirmLabel="Заблокировать"
+                      label={m.block}
+                      title={m.blockTitle(user.name)}
+                      confirmLabel={m.block}
                       variant="outline"
                       disabled={change.isPending}
                       onConfirm={() => change.mutate({ user, block: true })}
                     >
-                      {user.name} не сможет войти, а открытые сеансы и подключения к доскам закроются. Доски останутся.
+                      {m.blockText(user.name)}
                     </ConfirmedAction>
                   )}
                   {!user.admin && (
                     <ConfirmedAction
-                      label="Удалить"
-                      title={`Удалить учётную запись ${user.name}?`}
-                      confirmLabel="Удалить навсегда"
+                      label={m.remove}
+                      title={m.removeTitle(user.name)}
+                      confirmLabel={m.removeConfirm}
                       variant="ghost"
                       disabled={remove.isPending}
                       onConfirm={() => remove.mutate(user)}
                     >
-                      Учётная запись и все личные доски пользователя удалятся навсегда, в том числе доски, с которыми
-                      работают другие. Его комментарии и решения на чужих досках останутся с подписью «Удалённый
-                      пользователь».
+                      {m.removeText}
                     </ConfirmedAction>
                   )}
                 </span>
@@ -302,11 +284,11 @@ function Boards({ selected, onSelect }: { selected: string | null; onSelect: (id
   const boards = useQuery({ queryKey: adminKey('boards', text), queryFn: () => findBoards(text) })
   return (
     <>
-      <Search label="Название или id доски" onSearch={setText} />
+      <Search label={m.boardSearch} onSearch={setText} />
       {selected && <BoardDetails boardId={selected} />}
-      <Loaded query={boards} empty="Досок не нашлось">
+      <Loaded query={boards} empty={m.noBoardsFound}>
         {(items) => (
-          <ul className="flex flex-col divide-y rounded-md border" aria-label="Доски">
+          <ul className="flex flex-col divide-y rounded-md border" aria-label={m.boards}>
             {items.map((board) => (
               <li key={board.id}>
                 <button
@@ -316,11 +298,11 @@ function Boards({ selected, onSelect }: { selected: string | null; onSelect: (id
                 >
                   <span className="font-medium">{board.title}</span>
                   <span className="text-muted-foreground">{board.owner.name}</span>
-                  <span className="text-xs text-muted-foreground">{LINK_ACCESS[board.linkAccess]}</span>
-                  {board.embed && <Badge>Живая картинка</Badge>}
-                  {board.sharingBlocked && <Badge>Доступ закрыт</Badge>}
-                  {board.deletedAt && <Badge>В корзине</Badge>}
-                  {board.openReports > 0 && <Badge>Жалоб: {board.openReports}</Badge>}
+                  <span className="text-xs text-muted-foreground">{linkAccess(board.linkAccess)}</span>
+                  {board.embed && <Badge>{m.embed}</Badge>}
+                  {board.sharingBlocked && <Badge>{m.sharingBlocked}</Badge>}
+                  {board.deletedAt && <Badge>{m.inTrash}</Badge>}
+                  {board.openReports > 0 && <Badge>{m.reportCount(board.openReports)}</Badge>}
                 </button>
               </li>
             ))}
@@ -341,90 +323,88 @@ function BoardDetails({ boardId }: { boardId: string }) {
   if (details.isError) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        Не удалось загрузить доску
+        {m.boardLoadFailed}
       </p>
     )
   }
-  if (!details.data) return <p className="text-sm text-muted-foreground">Загрузка…</p>
+  if (!details.data) return <p className="text-sm text-muted-foreground">{m.loading}</p>
   const { board, workspace, sizes, embed, reports }: AdminBoardDetails = details.data
   return (
-    <section aria-label={`Доска «${board.title}»`} className="flex flex-col gap-3 rounded-md border p-4 text-sm">
+    <section aria-label={m.boardSection(board.title)} className="flex flex-col gap-3 rounded-md border p-4 text-sm">
       <h2 className="text-lg font-semibold">{board.title}</h2>
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
-        <dt className="text-muted-foreground">Владелец</dt>
+        <dt className="text-muted-foreground">{m.ownerLabel}</dt>
         <dd>{board.owner.name}</dd>
         {workspace && (
           <>
-            <dt className="text-muted-foreground">Пространство</dt>
+            <dt className="text-muted-foreground">{m.workspace}</dt>
             <dd>{workspace.name}</dd>
           </>
         )}
-        <dt className="text-muted-foreground">Доступ по ссылке</dt>
+        <dt className="text-muted-foreground">{m.linkAccessLabel}</dt>
         <dd>
-          {LINK_ACCESS[board.linkAccess]}
-          {board.sharingBlocked && ' · закрыт администратором'}
+          {linkAccess(board.linkAccess)}
+          {board.sharingBlocked && m.blockedByAdmin}
         </dd>
-        <dt className="text-muted-foreground">Живая картинка</dt>
-        <dd>{embed ? <code className="break-all">{embed.path}</code> : 'выключена'}</dd>
-        <dt className="text-muted-foreground">Размер</dt>
+        <dt className="text-muted-foreground">{m.embed}</dt>
+        <dd>{embed ? <code className="break-all">{embed.path}</code> : m.embedOff}</dd>
+        <dt className="text-muted-foreground">{m.size}</dt>
         <dd>
-          документ {size(sizes.document)}, версии {size(sizes.versions)} ({sizes.versionCount}), картинки {size(sizes.images)} (
-          {sizes.imageCount})
+          {m.sizes(size(sizes.document), size(sizes.versions), sizes.versionCount, size(sizes.images), sizes.imageCount)}
         </dd>
-        <dt className="text-muted-foreground">Создана</dt>
+        <dt className="text-muted-foreground">{m.created}</dt>
         <dd>{at(board.createdAt)}</dd>
-        <dt className="text-muted-foreground">Изменена</dt>
+        <dt className="text-muted-foreground">{m.updated}</dt>
         <dd>{at(board.updatedAt)}</dd>
         {board.deletedAt && (
           <>
-            <dt className="text-muted-foreground">В корзине</dt>
-            <dd>с {at(board.deletedAt)}</dd>
+            <dt className="text-muted-foreground">{m.inTrash}</dt>
+            <dd>{m.since(at(board.deletedAt))}</dd>
           </>
         )}
       </dl>
       <div className="flex flex-wrap gap-2">
         {board.sharingBlocked ? (
           <Button type="button" size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate(unblockSharing)}>
-            Снять запрет
+            {m.unblockSharing}
           </Button>
         ) : (
           <ConfirmedAction
-            label="Закрыть доступ по ссылке"
-            title="Закрыть доступ по ссылке?"
-            confirmLabel="Закрыть"
+            label={m.blockSharing}
+            title={m.blockSharingTitle}
+            confirmLabel={m.blockSharingConfirm}
             variant="outline"
             disabled={act.isPending}
             onConfirm={() => act.mutate(blockSharing)}
           >
-            Доску откроют только её участники, живая картинка выключится, и владелец не сможет открыть их снова, пока вы
-            не снимете запрет.
+            {m.blockSharingText}
           </ConfirmedAction>
         )}
         {!board.deletedAt && (
           <ConfirmedAction
-            label="В корзину"
-            title="Перенести доску в корзину?"
-            confirmLabel="В корзину"
+            label={m.trash}
+            title={m.trashTitle}
+            confirmLabel={m.trash}
             variant="outline"
             disabled={act.isPending}
             onConfirm={() => act.mutate(trashBoard)}
           >
-            Доска пропадёт у всех. Владелец сможет восстановить её из корзины в течение 30 дней.
+            {m.trashText}
           </ConfirmedAction>
         )}
         {reports.length > 0 && (
           <Button type="button" size="sm" variant="ghost" disabled={act.isPending} onClick={() => act.mutate(resolveReportsOf)}>
-            Закрыть жалобы ({reports.length})
+            {m.resolveReports(reports.length)}
           </Button>
         )}
       </div>
       {act.isError && (
         <p role="alert" className="text-destructive">
-          Не удалось выполнить действие
+          {m.actionFailed}
         </p>
       )}
       {reports.length > 0 && (
-        <ul className="flex flex-col gap-1" aria-label="Жалобы на доску">
+        <ul className="flex flex-col gap-1" aria-label={m.boardReports}>
           {reports.map((report) => (
             <li key={report.id}>
               <span className="text-muted-foreground">{at(report.createdAt)}</span> {reasonOf(report)}
@@ -440,15 +420,15 @@ function BoardDetails({ boardId }: { boardId: string }) {
 function Journal() {
   const actions = useQuery({ queryKey: adminKey('actions'), queryFn: fetchActions })
   return (
-    <Loaded query={actions} empty="Администраторы пока ничего не делали">
+    <Loaded query={actions} empty={m.noActions}>
       {(items: AdminAction[]) => (
-        <table className="w-full text-left text-sm" aria-label="Журнал действий администраторов">
+        <table className="w-full text-left text-sm" aria-label={m.journal}>
           <thead className="text-muted-foreground">
             <tr>
-              <th className="py-1 font-normal">Когда</th>
-              <th className="py-1 font-normal">Кто</th>
-              <th className="py-1 font-normal">Что</th>
-              <th className="py-1 font-normal">Над чем</th>
+              <th className="py-1 font-normal">{m.when}</th>
+              <th className="py-1 font-normal">{m.who}</th>
+              <th className="py-1 font-normal">{m.what}</th>
+              <th className="py-1 font-normal">{m.target}</th>
             </tr>
           </thead>
           <tbody>
@@ -457,11 +437,11 @@ function Journal() {
                 <td className="py-1 pr-2 whitespace-nowrap">{at(action.createdAt)}</td>
                 <td className="py-1 pr-2">{action.adminName}</td>
                 <td className="py-1 pr-2">
-                  {ACTIONS[action.action]}
+                  {actionLabel(action.action)}
                   {action.details && ` (${action.details})`}
                 </td>
                 <td className="py-1">
-                  {action.targetKind === 'user' ? 'Пользователь' : 'Доска'} «{action.targetLabel}»
+                  {action.targetKind === 'user' ? m.targetUser(action.targetLabel) : m.targetBoard(action.targetLabel)}
                 </td>
               </tr>
             ))}
