@@ -1,5 +1,8 @@
 package io.github.thescarletarrow.codraw.security
 
+import io.github.thescarletarrow.codraw.admin.AdminAuthorizationManager
+import io.github.thescarletarrow.codraw.admin.AdminController
+import io.github.thescarletarrow.codraw.admin.BoardReportController
 import io.github.thescarletarrow.codraw.board.PublicBoardController
 import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
@@ -24,11 +27,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter
-import org.springframework.security.oauth2.core.OAuth2AuthenticationException
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
-import org.springframework.security.web.authentication.AuthenticationFailureHandler
-import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
 import org.springframework.security.web.savedrequest.NullRequestCache
@@ -69,6 +69,7 @@ class SecurityConfiguration {
     fun appSecurity(
         http: HttpSecurity,
         oauth2UserService: CodrawOAuth2UserService,
+        adminAuthorization: AdminAuthorizationManager,
         oidcUserService: CodrawOidcUserService,
         registrations: CodrawClientRegistrations,
         @Value("\${server.servlet.session.timeout:30m}") sessionTimeout: Duration,
@@ -90,6 +91,10 @@ class SecurityConfiguration {
                 // sites, with their images; the controllers check the link of the board, and the images the session too.
                 authorize(HttpMethod.GET, "${PublicBoardController.PATH}/**", permitAll)
                 authorize(HttpMethod.GET, BoardImageController.IMAGE_PATH, permitAll)
+                // Their readers report such boards to the administrators of the installation, without a sign-in too.
+                authorize(HttpMethod.POST, BoardReportController.PATH, permitAll)
+                // Only administrators of the installation, whom the configuration names, before any controller.
+                authorize("${AdminController.PATH}/**", adminAuthorization)
                 // GitHub posts events of issues without a session; they carry the signature of the secret of the webhook.
                 authorize(HttpMethod.POST, GitHubWebhookController.PATH, permitAll)
                 authorize("/error", permitAll)
@@ -106,7 +111,8 @@ class SecurityConfiguration {
                     this.oidcUserService = oidcUserService
                 }
                 authenticationSuccessHandler = ProviderSignInSuccessHandler(sessionTimeout)
-                authenticationFailureHandler = signInFailureHandler()
+                // A blocked user and a user whom the provider does not admit are told so on the login page.
+                authenticationFailureHandler = SignInFailureHandler()
             }
             addFilterBefore<OAuth2AuthorizationRequestRedirectFilter>(SignInProviderFailureFilter(registrations))
             logout {
@@ -126,15 +132,5 @@ class SecurityConfiguration {
             requestCache { requestCache = NullRequestCache() }
         }
         return http.build()
-    }
-
-    /** Back to the login page: `?error=denied` when the restrictions of a provider turned the user away. */
-    private fun signInFailureHandler(): AuthenticationFailureHandler {
-        val failed = SimpleUrlAuthenticationFailureHandler("/login?error")
-        val denied = SimpleUrlAuthenticationFailureHandler("/login?error=denied")
-        return AuthenticationFailureHandler { request, response, exception ->
-            val accessDenied = (exception as? OAuth2AuthenticationException)?.error?.errorCode == CodrawOidcUserService.ACCESS_DENIED
-            (if (accessDenied) denied else failed).onAuthenticationFailure(request, response, exception)
-        }
     }
 }

@@ -83,6 +83,18 @@ describe('ShareButton', () => {
       expect(queryClient.getQueryData<Board>(['boards', board.id])?.linkAccess).toBe('public')
     })
 
+    it('tells the owner that an administrator closed the link, and offers only «Только участники» without the live image', async () => {
+      renderShare({}, { ...board, sharingBlocked: true })
+      await openShare()
+
+      expect(screen.getByRole('note')).toHaveTextContent('Доступ по ссылке закрыт администратором установки')
+      for (const radio of screen.getAllByRole('radio')) {
+        if (radio.getAttribute('value') === 'none') expect(radio).toBeEnabled()
+        else expect(radio).toBeDisabled()
+      }
+      expect(screen.queryByRole('region', { name: 'Живая картинка' })).toBeNull()
+    })
+
     it('offers the code that embeds a board shown to anybody, on the page of the participant, and copies it', async () => {
       const writeText = vi.fn(async () => {})
       vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })

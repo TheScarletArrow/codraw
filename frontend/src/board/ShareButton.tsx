@@ -162,6 +162,12 @@ export function ShareButton({
             </Button>
           </div>
         </div>
+        {board.sharingBlocked && (
+          <p role="note" className="rounded-md bg-amber-100 px-2 py-1.5 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+            Доступ по ссылке закрыт администратором установки: доску открывают только её участники, а живая картинка
+            выключена.
+          </p>
+        )}
         {isOwner ? (
           <fieldset className="flex flex-col gap-1" disabled={change.isPending}>
             <legend className="mb-1 text-sm font-medium">{m.linkAccessTitle}</legend>
@@ -178,6 +184,8 @@ export function ShareButton({
                   name="link-access"
                   value={option.value}
                   checked={linkAccess === option.value}
+                  // Only the members keep the board while the sharing is blocked.
+                  disabled={board.sharingBlocked && option.value !== 'none'}
                   aria-describedby={`link-access-${option.value}`}
                   className="mt-1"
                   onChange={() => {
@@ -207,7 +215,10 @@ export function ShareButton({
         {isOwner && <AccessRequestsSection board={board} requests={requests.data} onChanged={onChanged} />}
         <MembersSection board={board} onChanged={onChanged} />
         {isOwner && <InvitesSection board={board} />}
-        <EmbedSection board={board} embed={embed} pages={pages} pageId={pageId} document={document} onChanged={onChanged} />
+        {/* Nobody turns the live image on while the sharing is blocked. */}
+        {!(board.sharingBlocked && !embed) && (
+          <EmbedSection board={board} embed={embed} pages={pages} pageId={pageId} document={document} onChanged={onChanged} />
+        )}
       </PopoverContent>
     </Popover>
   )

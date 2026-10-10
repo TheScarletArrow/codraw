@@ -47,9 +47,9 @@
 ## Impact
 
 - `frontend`: новый `i18n/` (модуль, `LanguageMenu`, тесты словарей и сторож), словари во всех модулях с текстом,
-  `api/http.ts` (`Accept-Language`), `api/auth.ts`, `Layout.tsx`, `releaseNotes/`, `legal/`; «Что нового» 0.38.0,
+  `api/http.ts` (`Accept-Language`), `api/auth.ts`, `Layout.tsx`, `releaseNotes/`, `legal/`; «Что нового» 0.39.0,
   README.
-- `backend`: миграция V29/U29 (`users.language`), `Language`, `MeController`, `UserService`, `GuestLoginController`,
+- `backend`: миграция V30/U30 (`users.language`), `Language`, `MeController`, `UserService`, `GuestLoginController`,
   `NotificationMessages`/`NotificationWords`, `NotificationDelivery`, `NotificationSettingsService`, `EmbedController`,
   `IssueLinkController`/`IssueLinkService`.
 - `e2e`: `locale: 'ru-RU'` в конфигурациях Playwright, сценарий английского интерфейса.

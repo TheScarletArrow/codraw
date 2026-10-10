@@ -45,6 +45,15 @@ export const ACCESS_CHANGED = 'access-changed'
 /** Reason of collab rejecting a participant whom the board gives no access, e.g. the owner just closed the link. */
 export const NO_ACCESS = 'no-access'
 
+/**
+ * Reason of collab refusing a user whom an administrator of the installation blocked, and of closing their connections:
+ * their session is gone too.
+ */
+export const USER_BLOCKED = 'user-blocked'
+
+/** Reason of collab refusing a user whose account was deleted, e.g. on another device, and of closing their connections. */
+export const ACCOUNT_DELETED = 'account-deleted'
+
 /** Reason of collab closing the connection of a participant whose change would make the board larger than allowed. */
 export const DOCUMENT_TOO_LARGE = 'document-too-large'
 
@@ -212,6 +221,12 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
       releaseCopy()
       if (final === 'forbidden') void refetchBoard()
     }
+    // An administrator blocked the user, or their account is gone: the page connects no more, and without a session the
+    // layout opens the login page.
+    const blocked = () => {
+      stop('forbidden')
+      void recheckSession(queryClient)
+    }
     let handedOut = false
     const handOut = () => {
       if (handedOut || disposed) return
@@ -261,6 +276,7 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
       onAuthenticationFailed: ({ reason }) => {
         if (reason === BOARD_NOT_FOUND) stop('not-found')
         else if (reason === NO_ACCESS) stop('forbidden')
+        else if (reason === USER_BLOCKED || reason === ACCOUNT_DELETED) blocked()
       },
       // Collab closes the connections of a board that was deleted while participants worked on it, and the connections
       // whose access changed: the provider reconnects then, and the page gets the new role of the participant.
@@ -268,6 +284,8 @@ export function useBoardConnection(board: ConnectedBoard, userId: string, identi
         stopSending()
         if (event.reason === BOARD_NOT_FOUND) {
           stop('not-found')
+        } else if (event.reason === USER_BLOCKED || event.reason === ACCOUNT_DELETED) {
+          blocked()
         } else if (event.reason === ACCESS_CHANGED) {
           void refetchBoard()
         } else if (event.reason === DOCUMENT_TOO_LARGE || event.code === MESSAGE_TOO_BIG) {

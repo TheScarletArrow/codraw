@@ -111,6 +111,16 @@ class CodrawOidcUserServiceTest(
     }
 
     @Test
+    fun `a user whom an administrator blocked does not sign in`() {
+        val alice = signIn("corp", CORP, "a1", "name" to "Alice")
+        jdbcClient.sql("UPDATE users SET blocked_at = now() WHERE id = :id").param("id", alice.userId).update()
+
+        val failure = assertThrows<OAuth2AuthenticationException> { signIn("corp", CORP, "a1", "name" to "Alice") }
+
+        assertEquals(CodrawOAuth2UserService.BLOCKED, failure.error.errorCode)
+    }
+
+    @Test
     fun `admits only verified addresses of the allowed domains, without creating others`() {
         providers = mapOf("corp" to OidcProvider(issuerUri = CORP, clientId = "codraw", allowedEmailDomains = listOf("Example.com")))
 

@@ -3,7 +3,8 @@ import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
-import { isNotFound } from '../api/http.ts'
+import { isNotFound, isUnauthorized } from '../api/http.ts'
+import { ReportButton } from '../admin/ReportButton.tsx'
 import { fetchPublicBoard, fetchPublicDocument } from '../api/publicBoards.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { PageTabs } from '../board/PageTabs.tsx'
@@ -58,6 +59,8 @@ function PublicBoard({ boardId }: { boardId: string }) {
   })
   const merged = state.data !== undefined
   const user = useCurrentUser()
+  // A session that ended keeps the profile of its user in the cache next to the 401: there is no user any more.
+  const signedIn = user.data !== undefined && !isUnauthorized(user.error)
   const [framed] = useState(isFramed)
   const pages = usePages(document, false)
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
@@ -74,12 +77,12 @@ function PublicBoard({ boardId }: { boardId: string }) {
     }
     if (user.isPending) return <Message>{m.loading}</Message>
     // A signed-in user gets what their role gives on the page of the board; Layout sends nobody without a session back.
-    return user.data ? <Navigate to={inCodraw} replace /> : <Navigate to="/login" replace state={{ from: inCodraw }} />
+    return signedIn ? <Navigate to={inCodraw} replace /> : <Navigate to="/login" replace state={{ from: inCodraw }} />
   }
 
   const action = framed ? (
     <OpenInCodraw path={inCodraw} />
-  ) : user.data ? (
+  ) : signedIn ? (
     <Button asChild size="sm" variant="outline">
       <Link to={inCodraw}>{m.openBoard}</Link>
     </Button>
@@ -92,7 +95,7 @@ function PublicBoard({ boardId }: { boardId: string }) {
   ) : null
 
   return (
-    <PublicLayout title={board.data?.title} action={action} editor={editor}>
+    <PublicLayout title={board.data?.title} action={action} report={<ReportButton boardId={boardId} />} editor={editor}>
       {!merged &&
         (board.isError || state.isError ? (
           <Message alert>{m.loadFailed}</Message>
@@ -142,15 +145,20 @@ function PublicBoard({ boardId }: { boardId: string }) {
   )
 }
 
-/** The page: the title of the board, «Только просмотр», the scale, and what the reader can do next. */
+/**
+ * The page: the title of the board, «Только просмотр», the scale, what the reader can do next, and «Пожаловаться» once the
+ * board is there.
+ */
 function PublicLayout({
   title,
   action,
+  report,
   editor = null,
   children,
 }: {
   title?: string
   action: ReactNode
+  report?: ReactNode
   editor?: DiagramEditor | null
   children: ReactNode
 }) {
@@ -170,7 +178,10 @@ function PublicLayout({
             <EditorToolbar editor={editor} readOnly collaboration={false} />
           </div>
         )}
-        <span className="ml-auto shrink-0">{action}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {title && report}
+          {action}
+        </span>
       </header>
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
     </div>

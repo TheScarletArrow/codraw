@@ -18,6 +18,8 @@ data class User(
     val createdAt: Instant,
     /** The language of the interface of the user, in which their letters and messages of notifications go. */
     val language: Language = Language.RU,
+    /** When an administrator of the installation blocked the user; `null` while they are not blocked. */
+    val blockedAt: Instant? = null,
 )
 
 /** The user works without a sign-in provider. */
@@ -41,6 +43,20 @@ interface UserRepository : Repository<User, UUID> {
         """,
     )
     fun upsert(provider: String, providerUserId: String, name: String, avatarUrl: String?, createdAt: Instant): User
+
+    /** Blocks the user [id] at [at]; `false` when they are blocked already or do not exist. */
+    @Modifying
+    @Query("UPDATE users SET blocked_at = :at WHERE id = :id AND blocked_at IS NULL")
+    fun block(id: UUID, at: Instant): Boolean
+
+    /** Lets the user [id] sign in again; `false` when they were not blocked. */
+    @Modifying
+    @Query("UPDATE users SET blocked_at = NULL WHERE id = :id AND blocked_at IS NOT NULL")
+    fun unblock(id: UUID): Boolean
+
+    /** Those of the users [ids] who are blocked. */
+    @Query("SELECT id FROM users WHERE id IN (:ids) AND blocked_at IS NOT NULL")
+    fun blockedAmong(ids: Collection<UUID>): List<UUID>
 
     @Modifying
     @Query("UPDATE users SET language = :language WHERE id = :id")

@@ -4,11 +4,11 @@ import {
   accessOnConnect,
   BOARD_DELETED,
   createAccessChecks,
-  createAccountChecks,
   PROPOSAL_DELETED,
   type ConnectionContext,
 } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
+import { checkUserOnConnect, createUserChecks } from "./users.js";
 import {
   BoardNotFoundError,
   ProposalClosedError,
@@ -64,6 +64,11 @@ export interface CollabServerOptions {
    * server listens. `null` turns filling in off.
    */
   searchTextBackfillInterval?: number | null;
+  /**
+   * Period of closing the connections of users whom an administrator blocked or whose accounts are gone, in
+   * milliseconds; it bounds how long such a user keeps working.
+   */
+  userCheckInterval?: number;
 }
 
 /** Room for the framing of a message around the largest change. */
@@ -86,14 +91,16 @@ export function createCollabServer({
   broadcastDelay = 0,
   metrics = createMetrics(),
   searchTextBackfillInterval = 60 * 60_000,
+  userCheckInterval = 10_000,
 }: CollabServerOptions): Server {
   const checkAccess = createAccessChecks(backend, metrics);
-  const checkAccounts = createAccountChecks(backend, metrics);
+  const checkUsers = createUserChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
   /** The text for search that the backend has of each open board, as collab sent it last. */
   const searchTexts = new Map<string, string>();
   let accessChecks: NodeJS.Timeout | undefined;
+  let userChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
   let instance: Server["hocuspocus"] | undefined;
   const backfill = createSearchTextBackfill(backend, metrics, (boardId) => instance?.documents.get(boardId));
@@ -212,7 +219,8 @@ export function createCollabServer({
         // Any other name is neither a board nor a draft; the backend is not asked about it.
         const target = targetOf(documentName);
         const user = await verifyToken(token, target);
-        const access = await accessOnConnect(backend, target, user.id);
+        // A token issued before its user was blocked or deleted their account still opens documents for some minutes.
+        const [access] = await Promise.all([accessOnConnect(backend, target, user.id), checkUserOnConnect(backend, user.id)]);
         connectionConfig.readOnly = access === "view";
         return { user, access };
       } catch (error) {
@@ -265,20 +273,19 @@ export function createCollabServer({
       }
     },
     // Participants tell collab about changes of access, but the owner may change it without the board open, and such a
-    // message may be lost: open documents are checked from time to time as well, and so are the users of all
-    // connections, whose accounts may be gone. Boards without a text for search get theirs at the start and then from
-    // time to time.
+    // message may be lost: open documents are checked from time to time as well. The users of all connections, who may
+    // have deleted their accounts or been blocked, are checked more often. Boards without a text for search get theirs
+    // at the start and then from time to time.
     async onListen({ instance: hocuspocus }) {
       instance = hocuspocus;
       metrics.observe(hocuspocus);
       accessChecks = setInterval(
-        () => {
-          hocuspocus.documents.forEach((document) => void checkAccess(document));
-          void checkAccounts(hocuspocus.documents.values());
-        },
+        () => hocuspocus.documents.forEach((document) => void checkAccess(document)),
         accessCheckInterval,
       );
       accessChecks.unref();
+      userChecks = setInterval(() => void checkUsers(hocuspocus), userCheckInterval);
+      userChecks.unref();
       if (searchTextBackfillInterval !== null) {
         fillInSearchTexts();
         backfills = setInterval(fillInSearchTexts, searchTextBackfillInterval);
@@ -287,6 +294,7 @@ export function createCollabServer({
     },
     async onDestroy() {
       clearInterval(accessChecks);
+      clearInterval(userChecks);
       clearInterval(backfills);
       backfill.stop();
     },

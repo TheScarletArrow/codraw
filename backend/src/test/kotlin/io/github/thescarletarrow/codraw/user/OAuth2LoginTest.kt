@@ -20,6 +20,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest
 import org.springframework.security.oauth2.core.OAuth2AccessToken
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
@@ -32,6 +33,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
@@ -63,6 +65,8 @@ class OAuth2LoginTest(
     @AfterEach
     fun signOut() {
         SecurityContextHolder.clearContext()
+        // Other tests sign users in: none of them stays blocked.
+        jdbcClient.sql("UPDATE users SET blocked_at = NULL").update()
     }
 
     @Test
@@ -243,6 +247,17 @@ class OAuth2LoginTest(
 
         assertEquals(google.userId, boards.find(board.id!!)?.ownerId)
         assertEquals(emptyList(), boards.list(gitHub.userId))
+    }
+
+    @Test
+    fun `a user whom an administrator blocked does not sign in, and nothing of them changes`() {
+        val alice = signIn("github", gitHubProfile(name = "Alice"))
+        jdbcClient.sql("UPDATE users SET blocked_at = now() WHERE id = :id").param("id", alice.userId).update()
+
+        val failure = assertFailsWith<OAuth2AuthenticationException> { signIn("github", gitHubProfile(name = "Alice Liddell")) }
+
+        assertEquals(CodrawOAuth2UserService.BLOCKED, failure.error.errorCode)
+        assertEquals("Alice", users.find(alice.userId)?.name)
     }
 
     private fun signedInAs(principal: OAuth2User) {

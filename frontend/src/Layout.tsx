@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plug, UserCog } from 'lucide-react'
+import { Plug, ShieldCheck, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -98,6 +98,13 @@ function UserMenu({ user }: { user: CurrentUser }) {
       <span className="max-sm:sr-only">{user.name}</span>
       <LanguageMenu />
       <ThemeMenu />
+      {user.admin && (
+        <Button asChild variant="ghost" size="icon-sm">
+          <Link to="/admin" aria-label="Администрирование" title="Администрирование установки">
+            <ShieldCheck />
+          </Link>
+        </Button>
+      )}
       <Button asChild variant="ghost" size="icon-sm">
         <Link to="/settings/account" aria-label={m.account} title={m.accountHint}>
           <UserCog />

@@ -33,6 +33,12 @@ data class LimitProperties(
     /** The most guests created from one network address in an hour. */
     @field:Positive
     val guestsPerAddressPerHour: Int = 20,
+    /** The most reports of boards taken from one network address in an hour. */
+    @field:Positive
+    val reportsPerAddressPerHour: Int = 5,
+    /** The most open reports a board has; more are not kept, the board is in the queue already. */
+    @field:Positive
+    val reportsPerBoard: Int = 50,
     /** The most reports of errors in browsers taken from one network address in a minute. */
     @field:Positive
     val clientErrorsPerAddressPerMinute: Int = 30,

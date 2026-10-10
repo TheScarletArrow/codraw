@@ -109,6 +109,20 @@ describe('Layout', () => {
     expect(screen.getByRole('button', { name: 'Язык: Русский' })).toBeInTheDocument()
   })
 
+  it('links the administration in the header for an administrator only', async () => {
+    mockFetch({ 'GET /api/me': { body: { ...ALICE, admin: true } }, 'GET /api/boards': { body: [] }, ...unreadCount })
+    const { unmount } = renderRoutes(routes)
+
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByRole('link', { name: 'Администрирование' })).toHaveAttribute('href', '/admin')
+    unmount()
+
+    mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] }, ...unreadCount })
+    renderRoutes(routes)
+    expect(await within(await screen.findByRole('banner')).findByText('Алиса')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Администрирование' })).toBeNull()
+  })
+
   it('links the account of the user in the header, of a guest too', async () => {
     mockFetch({ 'GET /api/me': { body: { ...ALICE, guest: true } }, 'GET /api/boards': { body: [] }, ...unreadCount })
 

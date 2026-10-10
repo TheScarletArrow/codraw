@@ -33,7 +33,11 @@ class CodrawOidcUserService(
         }
         // The session still belongs to whoever was signed in before, e.g. a guest whose boards pass to the user.
         val previousUser = (SecurityContextHolder.getContext().authentication?.principal as? OAuth2User)?.userId
-        val user = users.signIn(profileOf(request.idToken, providerUser.claims), previousUser)
+        val user = try {
+            users.signIn(profileOf(request.idToken, providerUser.claims), previousUser)
+        } catch (exception: UserBlockedException) {
+            throw OAuth2AuthenticationException(OAuth2Error(CodrawOAuth2UserService.BLOCKED), exception.message, exception)
+        }
         val idToken = request.idToken
         return DefaultOidcUser(
             AuthorityUtils.createAuthorityList("ROLE_USER"),

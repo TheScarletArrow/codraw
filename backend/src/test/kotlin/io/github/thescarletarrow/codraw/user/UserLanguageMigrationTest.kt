@@ -23,20 +23,20 @@ class UserLanguageMigrationTest {
     private val jdbc = JdbcClient.create(source)
 
     @Test
-    fun `users speak Russian through V29 and may speak English, and U29 forgets the languages`() {
-        // Migrations before V29 come from other changes, so do not assume how many of them there are.
-        Flyway.configure().dataSource(source).target("28").load().migrate()
+    fun `users speak Russian through V30 and may speak English, and U30 forgets the languages`() {
+        // Migrations before V30 come from other changes, so do not assume how many of them there are.
+        Flyway.configure().dataSource(source).target("29").load().migrate()
         jdbc.sql("INSERT INTO users(provider, provider_user_id, name, created_at) VALUES ('github', '1', 'Alice', now())").update()
 
-        Flyway.configure().dataSource(source).target("29").load().migrate()
+        Flyway.configure().dataSource(source).target("30").load().migrate()
         assertEquals("RU", jdbc.sql("SELECT language FROM users").query(String::class.java).single())
         jdbc.sql("UPDATE users SET language = 'EN'").update()
         assertFailsWith<DataIntegrityViolationException> { jdbc.sql("UPDATE users SET language = 'de'").update() }
 
         source.connection.use {
-            ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U29__claude_i18n_english_ui_user_language.sql"))
+            ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U30__claude_i18n_english_ui_user_language.sql"))
         }
         assertEquals(1, jdbc.sql("SELECT count(*) FROM users").query(Int::class.java).single())
-        assertEquals(1, Flyway.configure().dataSource(source).target("29").load().migrate().migrationsExecuted)
+        assertEquals(1, Flyway.configure().dataSource(source).target("30").load().migrate().migrationsExecuted)
     }
 }

@@ -7,6 +7,8 @@ export interface CurrentUser {
   avatarUrl: string | null
   /** The user works without a sign-in provider. */
   guest: boolean
+  /** The configuration of the installation makes the user its administrator. */
+  admin: boolean
   /** The language of the interface in which letters and messages of notifications reach the user. */
   language?: Locale
 }

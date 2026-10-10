@@ -8,6 +8,9 @@ import io.github.thescarletarrow.codraw.user.UserRepository
 import io.github.thescarletarrow.codraw.workspace.Workspaces
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
+import org.springframework.http.HttpStatus
+import org.springframework.http.ProblemDetail
+import org.springframework.web.ErrorResponseException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -169,9 +172,15 @@ class BoardService(
     @Transactional
     fun changeLinkAccess(board: Board, linkAccess: LinkAccess): Board {
         // Updating the row locks it: a request for access to the board waits for the new link, or the link for it.
-        boards.updateLinkAccess(checkNotNull(board.id), linkAccess.name)
+        // An administrator may have blocked the sharing of the board since it was read: the update says so too.
+        val updated = boards.updateLinkAccess(checkNotNull(board.id), linkAccess.name)
+        if (linkAccess != LinkAccess.NONE && (board.sharingBlockedAt != null || !updated && sharingBlocked(board.id))) {
+            throw SharingBlockedException()
+        }
         return board.copy(linkAccess = linkAccess).also(::dropSatisfiedRequests).also(::forgetUsersWithoutAccess)
     }
+
+    private fun sharingBlocked(id: UUID): Boolean = boards.findByIdOrNull(id)?.sharingBlockedAt != null
 
     /**
      * Sets what the workspace of the [board] gives its members on it; like the link access, this is not a change of the
@@ -310,6 +319,17 @@ class BoardService(
  * a board finds those itself.
  */
 data class BoardDeleted(val boardId: UUID)
+
+/**
+ * An administrator of the installation closed the link and the live image of the board: its owner opens neither again,
+ * 409 with the title «Sharing blocked».
+ */
+class SharingBlockedException : ErrorResponseException(
+    HttpStatus.CONFLICT,
+    ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "An administrator of the installation closed sharing of the board")
+        .apply { title = "Sharing blocked" },
+    null,
+)
 
 /** The user owns as many boards as the [limit] allows. */
 class BoardLimitReachedException(val limit: Int) : RuntimeException("The user owns $limit boards, the most allowed")

@@ -22,6 +22,11 @@ data class Board(
     val projectId: UUID? = null,
     /** What the workspace gives its editors and viewers on the board; a personal board has no use for it. */
     val workspaceAccess: WorkspaceAccess = WorkspaceAccess.EDIT,
+    /**
+     * When an administrator of the installation closed the link and the live image of the board; while it is set, its
+     * owner opens neither again.
+     */
+    val sharingBlockedAt: Instant? = null,
 ) {
     /**
      * The role of the user [userId] on the board, or `null` when it gives them none. Its owner — on a board of a

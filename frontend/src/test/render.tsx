@@ -11,6 +11,7 @@ export const ALICE: CurrentUser = {
   name: 'Алиса',
   avatarUrl: 'https://avatars.example.com/alice.png',
   guest: false,
+  admin: false,
 }
 
 /** The ways to sign in that page tests answer `GET /api/auth/providers` with: GitHub, Google and guests. */

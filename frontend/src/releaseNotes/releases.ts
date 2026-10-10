@@ -29,7 +29,7 @@ export interface Release {
 
 export const releases: Release[] = [
   {
-    version: '0.38.0',
+    version: '0.39.0',
     date: '2026-10-10',
     items: [
       {
@@ -41,6 +41,20 @@ export const releases: Release[] = [
           title: 'CoDraw in English',
           text: 'CoDraw speaks Russian and English: the interface opens in the language of your browser, and the “Language” button next to “Theme” in the header switches it and remembers your choice. The whole app, errors, notifications, “What’s new”, dates and the legal pages follow the chosen language, and notification emails and chat messages come in the language you use CoDraw in. Labels on boards are not translated: people wrote them.',
         },
+      },
+    ],
+  },
+  {
+    version: '0.38.0',
+    date: '2026-10-10',
+    items: [
+      {
+        title: 'Пожаловаться на доску',
+        text: 'На странице доски, открытой без входа, есть кнопка «Пожаловаться»: выберите причину — спам, незаконное содержимое, оскорбления или другое, — опишите, что не так, и жалоба уйдёт администраторам этой установки CoDraw. Ваш адрес с жалобой не сохраняется.',
+      },
+      {
+        title: 'Администрирование установки',
+        text: 'Администраторы, которых назначает оператор установки, в том числе из корпоративного входа, видят в шапке «Администрирование»: жалобы читателей, поиск пользователей и досок, сведения о доске с владельцем, размером и доступом. Нарушителя можно заблокировать — он сразу выходит отовсюду и не может войти — или удалить его учётную запись, а у доски закрыть доступ по ссылке и живую картинку или перенести её в корзину. Каждое такое действие записывается в журнал. Владелец доски, у которой администратор закрыл доступ, видит это в окне «Поделиться».',
       },
     ],
   },

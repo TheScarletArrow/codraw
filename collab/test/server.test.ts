@@ -466,7 +466,7 @@ describe("collab server", () => {
     });
 
     it("closes the sockets of a user whose account was deleted at the next check", async () => {
-      await startServer({ accessCheckInterval: 100 });
+      await startServer({ userCheckInterval: 100 });
       const owner = await connect(board);
       const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
       const bobClosed = closeReasonOf(bob);
@@ -506,6 +506,64 @@ describe("collab server", () => {
 
       await expect(bobClosed).resolves.toBe("access-changed");
       await expect(rejected).resolves.toBe("no-access");
+    });
+  });
+
+  describe("blocked users", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+
+    it("rejects a blocked user whose token was issued before the block, and sends them nothing", async () => {
+      await startServer();
+      const token = await backend.issueToken(board, { subject: BOB });
+      backend.blocked.add(BOB);
+
+      await expect(connect(board, token)).rejects.toThrow("user-blocked");
+    });
+
+    it("rejects a user whose account was deleted after the token was issued", async () => {
+      await startServer();
+      const token = await backend.issueToken(board, { subject: BOB });
+      backend.missingUsers.add(BOB);
+
+      await expect(connect(board, token)).rejects.toThrow("account-deleted");
+    });
+
+    it("closes the connections of a blocked user to all documents at the next check, and keeps the others", async () => {
+      await startServer({ userCheckInterval: 100 });
+      const owner = await connect(board);
+      const onBoard = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const onOther = await connect(otherBoard, () => backend.issueToken(otherBoard, { subject: BOB }));
+      const ownerClosed = vi.fn();
+      owner.provider.on("close", ownerClosed);
+      const reasons = [onBoard, onOther].map(
+        ({ provider }) =>
+          new Promise<{ code: number; reason: string }>((resolve) =>
+            provider.on("close", ({ event }: { event: CloseEvent }) => resolve({ code: event.code, reason: event.reason })),
+          ),
+      );
+
+      backend.blocked.add(BOB);
+
+      await expect(Promise.all(reasons)).resolves.toEqual([
+        { code: 4401, reason: "user-blocked" },
+        { code: 4401, reason: "user-blocked" },
+      ]);
+      expect(ownerClosed).not.toHaveBeenCalled();
+      // One request about all connected users at a time.
+      expect(backend.userChecks.at(-1)?.slice().sort()).toEqual([ALICE, BOB].sort());
+    });
+
+    it("keeps the connections when the backend cannot tell who is blocked", async () => {
+      await startServer({ userCheckInterval: 50 });
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const closed = vi.fn();
+      bob.provider.on("close", closed);
+      const checks = backend.userChecks.length;
+      backend.failingUserChecks = 1_000;
+      backend.blocked.add(BOB);
+
+      await waitFor(() => backend.userChecks.length > checks + 1);
+      expect(closed).not.toHaveBeenCalled();
     });
   });
 
