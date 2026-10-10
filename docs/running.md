@@ -359,6 +359,22 @@ pnpm --filter @codraw/e2e exec playwright install chromium   # один раз
 pnpm test:e2e
 ```
 
+### Нагрузка
+
+Нагрузочный клиент `load/` нагружает запущенный стек как настоящие участники: входит гостями, открывает доски,
+получает токены и правит доски через `collab`. Стек — из `docker-compose.prod.yml` (раздел «Запуск собранной
+версии») с пределом новых гостей, которого хватит на всех участников:
+
+```bash
+CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR=1000000 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+pnpm load                                   # все сценарии против http://localhost:8080, 20–30 минут
+pnpm load --scenarios boards --boards 50,100 --duration 30   # часть
+pnpm load --help
+```
+
+Отчёт печатается и сохраняется в `load/results/`. Сценарии, замеры и результаты — в
+[docs/load-testing.md](load-testing.md). Не запускайте нагрузку против рабочей установки: она создаёт гостей и доски.
+
 ## Частые проблемы
 
 **Backend не стартует: `Connection to localhost:5432 refused`.**
