@@ -1,5 +1,23 @@
 import { expect, test, type Page } from '@playwright/test'
+import * as Y from 'yjs'
+import { env } from './env.ts'
 import { addShape, cellBox, createBoard, openBoard, twoParticipants, userPage, vertices } from './helpers.ts'
+
+/** The labels of all cells of the document of the board that the backend stored, the cells of grid tables included. */
+async function storedLabels(page: Page): Promise<string[]> {
+  const boardId = new URL(page.url()).pathname.split('/').pop()
+  const response = await fetch(`${env.backendUrl}/internal/boards/${boardId}/document`, {
+    headers: { 'X-Internal-Token': env.internalToken },
+  })
+  if (response.status !== 200) return []
+  const document = new Y.Doc()
+  Y.applyUpdate(document, new Uint8Array(await response.arrayBuffer()))
+  // Mirrors the model of the board document: the cells of a page are in the top-level map `cells:<page id>`.
+  return Array.from(document.share.keys())
+    .filter((name) => name.startsWith('cells:'))
+    .flatMap((name) => Array.from(document.getMap<Y.Map<unknown>>(name).values()))
+    .map((cell) => String(cell.get('value') ?? ''))
+}
 
 /** The texts of the cells of a grid table, row by row. */
 function gridTexts(page: Page, id: string): Promise<string[]> {
@@ -59,6 +77,8 @@ test('the cells of a grid table take text: the other participant sees it, it sta
   await clickEmptyCanvas(bob)
   await expect.poll(() => gridTexts(alice, table)).toEqual(filled.with(4, 'Платежи'))
 
+  // The text of the cells is stored by the backend, not only kept by the participants.
+  await expect.poll(() => storedLabels(alice), { timeout: 15_000 }).toEqual(expect.arrayContaining(['Платежи', 'Итого']))
   await alice.reload()
   await expect(alice.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(() => gridTexts(alice, table)).toEqual(filled.with(4, 'Платежи'))
@@ -106,6 +126,9 @@ test('Enter continues a bulleted and a numbered list, Enter on an empty item lea
   await alice.keyboard.press('ControlOrMeta+Shift+Z')
   await expect.poll(() => valueOf(bob, numbers)).toBe(numbered)
 
+  await expect
+    .poll(() => storedLabels(bob), { timeout: 15_000 })
+    .toEqual(expect.arrayContaining([numbered, '• Элемент\n• Элемент\n• Элемент\n• Четвёртый\nВывод']))
   await bob.reload()
   await expect(bob.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(() => valueOf(bob, numbers)).toBe(numbered)
@@ -114,7 +137,7 @@ test('Enter continues a bulleted and a numbered list, Enter on an empty item lea
   await close()
 })
 
-test('the toolbar changes the kind of the selected list and Ctrl+Z changes it back', async ({ browser }) => {
+test('the toolbar changes the kind of the selected list and «Отменить» changes it back', async ({ browser }) => {
   const { alice, bob, close } = await twoParticipants(browser)
   const shapes = alice.getByRole('complementary', { name: 'Фигуры' })
   await expect(shapes.getByRole('button', { name: 'Список', exact: true }).locator('svg.lucide-list')).toBeVisible()
@@ -129,7 +152,7 @@ test('the toolbar changes the kind of the selected list and Ctrl+Z changes it ba
   await expect.poll(() => valueOf(bob, list)).toBe('1. Элемент\n2. Элемент\n3. Элемент')
   expect((await vertices(bob)).find((cell) => cell.id === list)?.style.codrawShape).toBe('numbered-list')
 
-  await alice.keyboard.press('ControlOrMeta+Z')
+  await alice.getByRole('button', { name: 'Отменить' }).click()
   await expect.poll(() => valueOf(bob, list)).toBe('• Элемент\n• Элемент\n• Элемент')
   await expect(bulleted).toHaveAttribute('aria-pressed', 'true')
 
