@@ -1,8 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MAX_DOCUMENT_SIZE } from '../apiSpec/loadDocument.ts'
 import type { CellData } from '../diagram/model.ts'
+import { ARCHITECTURE } from '../architecture/importFormat.ts'
+import { BIG_BANK_DSL } from '../architecture/testArchitecture.ts'
 import { COMPOSE, KUBERNETES, TERRAFORM, type InfraFormat } from './formats.ts'
 import { InfraImport } from './InfraImport.tsx'
 import { CODRAW_COMPOSE, SHOP_COMPOSE } from './testCompose.ts'
@@ -225,5 +227,36 @@ describe('InfraImport of Terraform', () => {
     await user.click(add())
     const cells = await onAdd.mock.lastCall![0]({ x: 0, y: 0 })
     expect(JSON.stringify(cells)).not.toMatch(/hunter2|db-admin-user|S3cr3t|top-secret-bucket/)
+  })
+
+})
+
+describe('InfraImport of architecture as code', () => {
+  it('imports architecture as code: warns of what it leaves out, names the files it cannot read and runs no includes', async () => {
+    const { onAdd, user } = renderImport(ARCHITECTURE)
+
+    expect(status()).toHaveTextContent('Structurizr DSL (workspace), C4-PlantUML (@startuml с макросами C4) или Mermaid C4')
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    await user.click(screen.getByText('Ограничения формата'))
+    expect(screen.getByText(/!include, !script, !plugin, workspace extends и препроцессор PlantUML не выполняются/)).toBeVisible()
+    await user.upload(screen.getByLabelText('Файлы архитектуры'), [
+      new File([BIG_BANK_DSL], 'bigbank.dsl'),
+      new File(['@startuml\n!include <C4/C4_Context>\n!include common.puml\nPerson(auditor, "Аудитор")\n@enduml'], 'context.puml'),
+      new File(['workspace {\n  model {\n'], 'broken.dsl'),
+    ])
+
+    await waitFor(() => expect(status()).toHaveTextContent('Элементов: 10, границ: 3, связей: 10'))
+    const warnings = within(screen.getByRole('list', { name: 'Предупреждения' }))
+    expect(warnings.getByText(/bigbank\.dsl: строка \d+ — развёртывание «Live» не переносится/)).toBeInTheDocument()
+    expect(warnings.getByText('context.puml: строка 3 — !include common.puml не выполняется: откройте этот файл вместе с остальными')).toBeInTheDocument()
+    expect(warnings.queryByText(/C4_Context/)).toBeNull()
+    expect(screen.getByRole('alert')).toHaveTextContent('broken.dsl: не закрыт блок, открытый в строке 1')
+    await user.click(add())
+
+    const cells = await onAdd.mock.lastCall![0]({ x: 0, y: 0 })
+    expect(cells.filter((cell) => cell.style.codrawShape === 'c4-boundary').map((cell) => cell.value)).toEqual([
+      'Internet Banking System\n[Software System]',
+      'API Application\n[Container: Java and Spring MVC]',
+    ])
   })
 })

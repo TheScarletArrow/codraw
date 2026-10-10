@@ -1,5 +1,6 @@
 import { layoutShapes, type LayoutEngine, type LayoutShape } from '../diagram/layout.ts'
 import type { CellData } from '../diagram/model.ts'
+import { LINK_KEY } from '../diagram/links.ts'
 import { findShape, type ShapePreset, type ShapeStyle } from '../diagram/shapes.ts'
 import { SOURCE_KEY } from '../diagram/sources.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -8,13 +9,19 @@ import type { InfraGraph, InfraNode } from './infraGraph.ts'
 /** Width of text estimated from its length, where the canvas cannot measure it; 16 px a line of the default font. */
 const CHAR_WIDTH = 7.5
 const LINE_HEIGHT = 16
-/** The widest shape a label widens: a longer line of an image runs past its sides. */
+/** The widest shape a label widens by default: a longer line wraps. */
 const MAX_WIDTH = 560
 
 /** A shape whose label is written under it, as «Топик событий» and «Хранилище объектов». */
 const captionBelow = (preset: ShapePreset) => preset.style.verticalLabelPosition === 'bottom'
 
 const textWidth = (lines: string[]) => Math.ceil(Math.max(...lines.map((line) => line.length)) * CHAR_WIDTH)
+
+/** How much taller the lines get when those wider than `room` wrap: a line of the default font for each wrap. */
+function wrapHeight(lines: string[], room: number): number {
+  if (room <= 0) return 0
+  return lines.reduce((sum, line) => sum + Math.max(0, Math.ceil((line.length * CHAR_WIDTH) / room) - 1), 0) * LINE_HEIGHT
+}
 
 /** The depth of the top and the right side of a `cube`; see `CubeShape` of `diagram/extensions.ts`. */
 const CUBE_DEPTH = 20
@@ -32,7 +39,11 @@ interface Measured {
   box: { width: number; height: number }
 }
 
-/** The size of the shape of a node, wide and tall enough for its label, but no smaller than in the palette. */
+/**
+ * The size of the shape of a node, wide and tall enough for its label, but no smaller than in the palette and no wider
+ * than its largest width, within which its longer lines wrap. The label of a shape whose preset keeps room above it, as
+ * the head of a person, starts below that room.
+ */
 function measure(node: InfraNode): Measured {
   const preset = findShape(node.shape)!
   const text = { width: textWidth(node.lines) + 32, height: node.lines.length * LINE_HEIGHT + 20 }
@@ -40,8 +51,12 @@ function measure(node: InfraNode): Measured {
     const shape = { width: preset.width, height: preset.height }
     return { shape, box: { width: Math.max(shape.width, text.width - 32), height: shape.height + text.height - 16 } }
   }
+  const above = Number(preset.style.spacingTop ?? 0)
   const fit = (width: number, height: number, style?: ShapeStyle): Measured => {
-    const shape = { width: Math.min(MAX_WIDTH, Math.max(preset.width, width)), height: Math.max(preset.height, height), style }
+    const shapeWidth = Math.min(node.maxWidth ?? MAX_WIDTH, Math.max(preset.width, width))
+    // What the label does not take of the width it asked for, it does not take of the width it gets either.
+    const room = shapeWidth - (width - textWidth(node.lines))
+    const shape = { width: shapeWidth, height: Math.max(preset.height, height + above + wrapHeight(node.lines, room)), style }
     return { shape, box: shape }
   }
   // The label of a component keeps clear of the two small boxes on its left side.
@@ -75,17 +90,29 @@ export async function infraCells(
   sourcePrefix?: string,
 ): Promise<CellData[]> {
   const builder = new DiagramBuilder()
-  const frames = graph.frames.map((frame) => builder.shape(frame.shape, 0, 0, { value: frame.label }))
+  const frames = graph.frames.map((frame) => builder.shape(frame.shape, 0, 0, { value: frame.label, element: frame.element }))
   const sizes = graph.nodes.map(measure)
-  const nodes = graph.nodes.map((node, index) =>
-    builder.shape(node.shape, 0, 0, { value: node.lines.join('\n'), ...sizes[index]!.shape, element: node.element }),
-  )
+  const nodes = graph.nodes.map((node, index) => {
+    const { style, ...size } = sizes[index]!.shape
+    return builder.shape(node.shape, 0, 0, {
+      value: node.lines.join('\n'),
+      ...size,
+      style: node.link ? ({ ...style, [LINK_KEY]: node.link } as ShapeStyle) : style,
+      element: node.element,
+      showTechnology: node.showTechnology,
+    })
+  })
   const keyOf = (node: InfraNode) => node.key ?? node.lines[0]
+  /** The cell of an end of a link, a node or a frame, and what identifies it in its source. */
+  const end = (index: number, frame = false) =>
+    frame ? { id: frames[index]!, key: graph.frames[index]!.key ?? graph.frames[index]!.label } : { id: nodes[index]!, key: keyOf(graph.nodes[index]!) }
+  const ends = graph.edges.map((edge) => [end(edge.source, edge.sourceFrame), end(edge.target, edge.targetFrame)] as const)
   const sourceMarks = new Map<string, string>()
-  for (const edge of graph.edges) {
-    const id = builder.edge(nodes[edge.source]!, nodes[edge.target]!, { value: edge.label })
-    if (sourcePrefix) sourceMarks.set(id, `${sourcePrefix}:edge:${keyOf(graph.nodes[edge.source]!)}->${keyOf(graph.nodes[edge.target]!)}:${edge.label}`)
-  }
+  graph.edges.forEach((edge, index) => {
+    const [source, target] = ends[index]!
+    const id = builder.edge(source.id, target.id, { value: edge.label, technology: edge.technology })
+    if (sourcePrefix) sourceMarks.set(id, `${sourcePrefix}:edge:${source.key}->${target.key}:${edge.label}`)
+  })
   const cells = builder.build()
   if (sourcePrefix) {
     const byId = new Map(cells.map((cell) => [cell.id, cell]))
@@ -118,12 +145,15 @@ export async function infraCells(
   ]
   const boxes = await layoutShapes(
     shapes,
-    graph.edges.map((edge, index) => ({
-      id: `edge-${index}`,
-      source: nodes[edge.source]!,
-      target: nodes[edge.target]!,
-      ...(edge.label && { label: { width: textWidth([edge.label]) + 8, height: LINE_HEIGHT } }),
-    })),
+    graph.edges.map((edge, index) => {
+      const lines = edge.label.split('\n')
+      return {
+        id: `edge-${index}`,
+        source: ends[index]![0].id,
+        target: ends[index]![1].id,
+        ...(edge.label && { label: { width: textWidth(lines) + 8, height: lines.length * LINE_HEIGHT } }),
+      }
+    }),
     graph.direction ?? 'right',
     engine,
   )

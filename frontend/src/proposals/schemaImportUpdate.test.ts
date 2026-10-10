@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
+import { architectureGraph } from '../architecture/importModel.ts'
+import { parseArchitectureFiles } from '../architecture/parseArchitecture.ts'
+import { SHOP_DSL } from '../architecture/testArchitecture.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, readCell, writeCell } from '../diagram/model.ts'
 import { infraCells } from '../infra/infraCells.ts'
 import { parseTerraform } from '../infra/parseTerraform.ts'
@@ -108,5 +111,31 @@ describe('schema import update', () => {
       codrawShape: 'load-balancer',
       codrawSource: 'terraform:node:aws_lb.web',
     })
+  })
+
+  it('matches elements of architecture as code by their identifiers: a moved container keeps its place and gets its new technology', async () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const architectureCells = (text: string, origin: { x: number; y: number }) =>
+      infraCells(architectureGraph(parseArchitectureFiles([{ name: 'workspace.dsl', text }]).model), origin, undefined, 'architecture')
+    const before = await architectureCells(SHOP_DSL, { x: 100, y: 80 })
+    const api = before.find((cell) => cell.style.codrawSource === 'architecture:node:api')!
+    doc.transact(() =>
+      before.forEach((cell) => writeCell(getCells(doc, DEFAULT_PAGE_ID), cell.id === api.id ? { ...cell, geometry: { ...cell.geometry!, x: 2000, y: 1500 } } : cell)),
+    )
+
+    const changed = SHOP_DSL.replace('"Заказы" "Spring Boot"', '"Заказы" "Ktor"').replace(
+      '            api = container',
+      '            worker = container "worker" "" "Go"\n            api = container',
+    )
+    const summary = applySchemaUpdate(doc, DEFAULT_PAGE_ID, await architectureCells(changed, { x: 900, y: 80 }))
+    const cells = cellsOf(doc)
+    const updated = cells.find((cell) => cell.id === api.id)!
+
+    expect(summary).toMatchObject({ added: 1, removed: 0, matchedByName: [] })
+    expect(updated.value).toBe('API\n[Container: Ktor]\nЗаказы')
+    expect(updated.style.codrawTechnology).toBe('Ktor')
+    expect(updated.geometry).toMatchObject({ x: 2000, y: 1500 })
+    expect(cells.find((cell) => cell.style.codrawSource === 'architecture:node:worker')).toMatchObject({ value: 'worker\n[Container: Go]' })
   })
 })

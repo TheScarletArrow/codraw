@@ -10,6 +10,8 @@ export interface InfraFrame {
   parent?: number | null
   /** What identifies it in its source for the next import, when its label does not: the address of a module. */
   key?: string
+  /** Properties of its element: a boundary of C4 that is a system or a container with its parts inside. */
+  element?: Partial<ElementProperties>
 }
 
 /** A shape of the palette with a label of several lines, in a frame or on the page. */
@@ -22,13 +24,25 @@ export interface InfraNode {
   key?: string
   /** Properties of its element: the shape gets an element of its own with them. */
   element?: Partial<ElementProperties>
+  /** The plain label of its element shows the technology on its second line. */
+  showTechnology?: boolean
+  /** The link of the shape: an address of the web. */
+  link?: string
+  /** The widest the shape gets, 560 px by default: a longer line of its label wraps, and the shape grows taller. */
+  maxWidth?: number
 }
 
-/** A link between two nodes, by their indexes. */
+/** A link between two nodes, by their indexes; an end may be a frame, by its index among the frames. */
 export interface InfraEdge {
   source: number
   target: number
   label: string
+  /** `source` is the index of a frame. */
+  sourceFrame?: boolean
+  /** `target` is the index of a frame. */
+  targetFrame?: boolean
+  /** The technology or protocol of the link, as a property of the edge. */
+  technology?: string
 }
 
 /** What an import of infrastructure adds to a page, between the parse of its files and the cells. */
