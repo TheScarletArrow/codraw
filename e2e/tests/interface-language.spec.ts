@@ -21,7 +21,8 @@ test('CoDraw speaks the language of the browser, and «Язык» switches it fo
   await expect.poll(language).toBe('en')
 
   await header.getByRole('button', { name: 'Language: English' }).click()
-  await page.getByRole('dialog', { name: 'Language' }).getByRole('radio', { name: 'Русский' }).check()
+  // The choice reloads the page in Russian.
+  await page.getByRole('dialog', { name: 'Language' }).getByRole('radio', { name: 'Русский' }).click()
 
   await expect(page.getByRole('status')).toHaveText('Синхронизировано')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ru')
