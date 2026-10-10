@@ -7,6 +7,8 @@ import { logout, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 import { HeaderSlotProvider } from './headerSlot.tsx'
+import { LanguageMenu } from './i18n/LanguageMenu.tsx'
+import { layoutMessages as m } from './messages.ts'
 import { NotificationBell } from './notifications/NotificationBell.tsx'
 import { deleteLocalCopiesOf, keepLocalCopiesOf } from './offline/localCopies.ts'
 import { WhatsNew } from './releaseNotes/WhatsNew.tsx'
@@ -53,10 +55,10 @@ export function Layout() {
       </header>
       <main className="flex min-h-0 flex-1 flex-col">
         <HeaderSlotProvider slot={headerSlot}>{user.data && <Outlet />}</HeaderSlotProvider>
-        {user.isPending && <p className="p-6 text-muted-foreground">Загрузка…</p>}
+        {user.isPending && <p className="p-6 text-muted-foreground">{m.loading}</p>}
         {user.isError && (
           <p role="alert" className="p-6 text-destructive">
-            Не удалось загрузить профиль
+            {m.profileFailed}
           </p>
         )}
       </main>
@@ -81,10 +83,11 @@ function UserMenu({ user }: { user: CurrentUser }) {
     <div className="flex shrink-0 items-center gap-2 text-sm">
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
       <span>{user.name}</span>
+      <LanguageMenu />
       <ThemeMenu />
       {!user.guest && (
         <Button asChild variant="ghost" size="icon-sm">
-          <Link to="/settings/connections" aria-label="Подключения" title="Подключения: GitHub">
+          <Link to="/settings/connections" aria-label={m.connections} title={m.connectionsHint}>
             <Plug />
           </Link>
         </Button>
@@ -92,11 +95,11 @@ function UserMenu({ user }: { user: CurrentUser }) {
       {/* Signing out would cut a guest off from their boards; signing in through a provider keeps them. */}
       {user.guest ? (
         <Button asChild variant="ghost" size="sm">
-          <Link to="/login">Войти</Link>
+          <Link to="/login">{m.signIn}</Link>
         </Button>
       ) : (
         <Button type="button" variant="ghost" size="sm" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
-          Выйти
+          {m.signOut}
         </Button>
       )}
     </div>

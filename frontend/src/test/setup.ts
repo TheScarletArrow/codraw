@@ -3,6 +3,7 @@ import 'fake-indexeddb/auto'
 import { cleanup } from '@testing-library/react'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach } from 'vitest'
+import { setLocale } from '../i18n/i18n.ts'
 
 // The backend sets the CSRF cookie with every API response, so the app normally has it. Tests of code that runs in a
 // worker run without a document.
@@ -18,4 +19,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+})
+
+// Tests speak Russian: a test that switches the language does not leave it to the next one.
+afterEach(() => {
+  setLocale('ru')
 })

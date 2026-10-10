@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { themeMessages } from './messages.ts'
 
 /** What the user chose in «Тема»: the theme of the system, or a theme of their own. */
 export type ThemeChoice = 'system' | 'light' | 'dark'
@@ -18,17 +19,16 @@ export const DARK_CLASS = 'dark'
 const SYSTEM_DARK = '(prefers-color-scheme: dark)'
 
 /** The options of «Тема» in the order of the menu. */
-export const THEME_CHOICES: readonly { value: ThemeChoice; label: string }[] = [
-  { value: 'system', label: 'Как в системе' },
-  { value: 'light', label: 'Светлая' },
-  { value: 'dark', label: 'Тёмная' },
-]
+export const THEME_CHOICES: readonly ThemeChoice[] = ['system', 'light', 'dark']
 
 /** The theme to show for a choice: «Как в системе» shows the scheme of the system. */
 export function resolveTheme(choice: ThemeChoice, systemDark: boolean): Theme {
   if (choice === 'system') return systemDark ? 'dark' : 'light'
   return choice
 }
+
+/** The name of a choice in «Тема», e.g. «Светлая». */
+export const themeChoiceLabel = (choice: ThemeChoice): string => themeMessages[choice]
 
 /** The choice made in this page when the browser keeps no data for the site; it holds until the page is reloaded. */
 let unstoredChoice: ThemeChoice | null = null
