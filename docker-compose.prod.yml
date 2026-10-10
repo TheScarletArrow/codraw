@@ -139,6 +139,9 @@ services:
       BACKEND_JWKS_URL: http://backend:8080/.well-known/jwks.json
       CODRAW_INTERNAL_TOKEN: ${CODRAW_INTERNAL_TOKEN}
       DOCUMENT_SIZE_LIMIT_BYTES: ${DOCUMENT_SIZE_LIMIT_BYTES:-16777216}
+      # Milliseconds that changes and cursors of a board gather before they go out together; 0 sends them at once.
+      # A few tens help installations with crowded boards (docs/load-testing.md).
+      BROADCAST_DELAY_MS: ${CODRAW_COLLAB_BROADCAST_DELAY_MS:-0}
       # One line of JSON (ECS) per event, like the backend; "text" gives plain text.
       LOG_FORMAT: json
     depends_on:

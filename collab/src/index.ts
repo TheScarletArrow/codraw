@@ -18,6 +18,7 @@ await createCollabServer({
   verifyToken,
   accessCheckInterval: config.accessCheckInterval,
   documentSizeLimit: config.documentSizeLimit,
+  broadcastDelay: config.broadcastDelay,
   // With a JSON log the start banner of Hocuspocus would be a stray line of text; the server tells it started instead.
   quiet: config.logFormat === "json",
 }).listen();

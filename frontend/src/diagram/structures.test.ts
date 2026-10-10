@@ -2,6 +2,8 @@ import { CellEditorHandler } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
+import { parseDrawio } from '../drawio/parse.ts'
+import { exportDrawio } from '../drawio/serialize.ts'
 import { continueList, formatList, listKind } from './lists.ts'
 import { initializeDocument } from './model.ts'
 import { connect } from './testing.ts'
@@ -60,6 +62,12 @@ describe('editable tables and lists', () => {
     expect(continueList('Обычный текст', 13)).toBeNull()
   })
 
+  it('renumbers the numbered items of the same level after an inserted one, up to the end of the list', () => {
+    expect(continueList('1. Один\n2. Два\n3. Три\nИтог', 7)).toEqual({ text: '1. Один\n2. \n3. Два\n4. Три\nИтог', caret: 11 })
+    expect(continueList('1) Один\n  1) Вложенный\n2) Два', 7)?.text).toBe('1) Один\n2) \n  1) Вложенный\n3) Два')
+    expect(continueList('• Один\n• Два', 6)?.text).toBe('• Один\n• \n• Два')
+  })
+
   it('adds the next marker when Enter is pressed in the label editor', () => {
     const { editor } = open()
     const list = editor.addShape('list')!
@@ -76,6 +84,72 @@ describe('editable tables and lists', () => {
     expect(textarea.innerHTML).toBe('• Один<br>• ')
     editor.graph.stopEditing(false)
     expect(list.getValue()).toBe('• Один\n• ')
+  })
+
+  it('continues a numbered list twice and leaves it with Enter on an empty item, as a browser shows the text', () => {
+    const { editor } = open()
+    const list = editor.addShape('numbered-list')!
+    editor.graph.startEditingAtCell(list)
+    const textarea = editor.graph.getPlugin<CellEditorHandler>('CellEditorHandler')!.textarea!
+    const enter = () => {
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))
+    }
+    const range = document.createRange()
+    range.selectNodeContents(textarea)
+    range.collapse(false)
+    window.getSelection()!.removeAllRanges()
+    window.getSelection()!.addRange(range)
+    enter()
+    expect(textarea.innerHTML).toBe('1. Элемент<br>2. Элемент<br>3. Элемент<br>4. ')
+    window.getSelection()!.getRangeAt(0).insertNode(document.createTextNode('Четвёртый'))
+    window.getSelection()!.collapseToEnd()
+    enter()
+    expect(textarea.innerHTML).toBe('1. Элемент<br>2. Элемент<br>3. Элемент<br>4. Четвёртый<br>5. ')
+    enter()
+    // The empty last line is a block of its own, as the label editor of maxGraph writes it, and the caret is in it.
+    expect(textarea.innerHTML).toBe('1. Элемент<br>2. Элемент<br>3. Элемент<br>4. Четвёртый<div><br></div>')
+    expect(window.getSelection()!.getRangeAt(0).startContainer).toBe(textarea.lastChild)
+    editor.graph.stopEditing(false)
+    expect(list.getValue()).toBe('1. Элемент\n2. Элемент\n3. Элемент\n4. Четвёртый\n')
+  })
+
+  it('puts the caret back where Enter was pressed once the browser undoes the continuation', () => {
+    const { editor } = open()
+    const list = editor.addShape('list')!
+    editor.graph.startEditingAtCell(list)
+    const textarea = editor.graph.getPlugin<CellEditorHandler>('CellEditorHandler')!.textarea!
+    textarea.textContent = '• Один'
+    window.getSelection()!.selectAllChildren(textarea)
+    window.getSelection()!.collapseToEnd()
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))
+    // The browser restores the text and selects all of it, as the continuation replaced it.
+    textarea.textContent = '• Один'
+    window.getSelection()!.selectAllChildren(textarea)
+    textarea.dispatchEvent(new InputEvent('input', { inputType: 'historyUndo', bubbles: true }))
+    const selection = window.getSelection()!
+    expect(selection.isCollapsed).toBe(true)
+    expect(selection.anchorNode).toBe(textarea.firstChild)
+    expect(selection.anchorOffset).toBe(6)
+  })
+
+  it('keeps the text of grid cells and lists in the document: a board opened again and a .drawio file show it', async () => {
+    const { doc, editor } = open()
+    const table = editor.addShape('grid-table')!
+    editor.graph.cellLabelChanged(table.getChildAt(4), 'Заказы', false)
+    const list = editor.addShape('numbered-list')!
+    editor.graph.cellLabelChanged(list, '1. Один\n2. Два', false)
+    const reopened = new Y.Doc()
+    Y.applyUpdate(reopened, Y.encodeStateAsUpdate(doc))
+    const again = open(reopened).editor
+    const model = again.graph.getDataModel()
+    expect(model.getCell(table.getId()!)!.getChildAt(4).getValue()).toBe('Заказы')
+    expect(model.getCell(list.getId()!)!.getValue()).toBe('1. Один\n2. Два')
+
+    const [page] = await parseDrawio(exportDrawio(doc))
+    const cells = page!.cells
+    expect(cells.find((cell) => cell.parent === table.getId() && cell.value === 'Заказы')).toBeDefined()
+    expect(cells.filter((cell) => cell.parent === table.getId())).toHaveLength(12)
+    expect(cells.find((cell) => cell.id === list.getId())).toMatchObject({ value: '1. Один\n2. Два' })
   })
 
   it('converts lists, reports the selected mode and undoes the conversion', () => {

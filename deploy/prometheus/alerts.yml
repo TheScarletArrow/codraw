@@ -28,6 +28,16 @@ groups:
         annotations:
           summary: "collab не смог сохранить документы досок: изменения пока только в памяти"
 
+      # collab is one process of Node.js: past about 80 % of a core the delivery of edits slows down quickly
+      # (docs/load-testing.md).
+      - alert: CodrawCollabBusy
+        expr: rate(process_cpu_seconds_total{job="collab"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "collab 10 минут занимает больше 80% ядра: правки скоро начнут доходить с задержкой"
+
       - alert: CodrawDatabaseConnectionsPending
         expr: max(hikaricp_connections_pending{job="backend"}) > 0
         for: 5m

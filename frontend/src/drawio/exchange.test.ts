@@ -254,6 +254,39 @@ describe('exportDrawio', () => {
     expect(pageCells(copy, DEFAULT_PAGE_ID).turned!.style).toEqual({ rotation: 45, fontSize: 13 })
   })
 
+  it('keeps the shadow, the rounded corners and the gradient of a shape through a file of draw.io', async () => {
+    const doc = board()
+    const effects = { shadow: true, rounded: true, arcSize: 25, gradientColor: '#ffffff', gradientDirection: 'west' }
+    doc.transact(() => writeCell(getCells(doc), cell('styled', { style: effects })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain('style="shadow=1;rounded=1;arcSize=25;gradientColor=#ffffff;gradientDirection=west;fontSize=13;"')
+    expect(pageCells(copy, DEFAULT_PAGE_ID).styled!.style).toEqual({ ...effects, fontSize: 13 })
+  })
+
+  it('reads the shadow, the corners and the gradient of a file that draw.io wrote', async () => {
+    const xml =
+      '<mxfile><diagram id="p" name="Страница"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>' +
+      '<mxCell id="a" value="A" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;gradientColor=#7EA6E0;gradientDirection=north;shadow=1;" vertex="1" parent="1">' +
+      '<mxGeometry x="40" y="40" width="120" height="60" as="geometry"/></mxCell>' +
+      '</root></mxGraphModel></diagram></mxfile>'
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    const [styled] = Object.values(pageCells(copy, listPages(copy)[0]!.id))
+    expect(styled!.style).toMatchObject({
+      rounded: true,
+      arcSize: 40,
+      fillColor: '#dae8fc',
+      gradientColor: '#7EA6E0',
+      gradientDirection: 'north',
+      shadow: true,
+    })
+  })
+
   it('writes pictures of the board into the file as draw.io does, and reads them back to be stored on a board', async () => {
     const doc = board()
     const url = '/api/boards/0199a000-0000-7000-8000-000000000001/images/0199a000-0000-7000-8000-0000000000aa'

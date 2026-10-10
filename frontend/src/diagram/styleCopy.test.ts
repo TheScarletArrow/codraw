@@ -6,7 +6,7 @@ describe('styleCopy', () => {
 
   it('carries over exactly the fill, the line and the text that the toolbar sets', () => {
     expect(STYLE_PARTS).toEqual({
-      fill: ['fillColor', 'fillOpacity'],
+      fill: ['fillColor', 'fillOpacity', 'gradientColor', 'gradientDirection', 'shadow'],
       line: ['strokeColor', 'strokeWidth', 'dashed', 'dashPattern'],
       text: ['fontColor', 'fontSize', 'fontFamily', 'fontStyle', 'align'],
     })
@@ -14,7 +14,7 @@ describe('styleCopy', () => {
   })
 
   it('carries over the parts that both elements have', () => {
-    const fill = ['fillColor', 'fillOpacity']
+    const fill = ['fillColor', 'fillOpacity', 'gradientColor', 'gradientDirection', 'shadow']
     const line = ['strokeColor', 'strokeWidth', 'dashed', 'dashPattern']
     const text = ['fontColor', 'fontSize', 'fontFamily', 'fontStyle', 'align']
 
@@ -59,6 +59,8 @@ describe('styleCopy', () => {
       link: 'https://example.com',
       shadow: true,
       gradientColor: '#ffffff',
+      gradientDirection: 'east',
+      arcSize: 30,
     }
 
     expect(copyLook(style, 'shape')).toEqual({
@@ -66,6 +68,9 @@ describe('styleCopy', () => {
       values: {
         fillColor: '#dae8fc',
         fillOpacity: 60,
+        gradientColor: '#ffffff',
+        gradientDirection: 'east',
+        shadow: true,
         strokeColor: '#b85450',
         strokeWidth: 3,
         dashed: true,

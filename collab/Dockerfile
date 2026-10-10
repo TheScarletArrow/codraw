@@ -4,9 +4,11 @@ RUN corepack enable
 WORKDIR /workspace
 # Manifests of every package of the workspace: pnpm checks the whole lockfile.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY collab/package.json collab/
 COPY frontend/package.json frontend/
 COPY e2e/package.json e2e/
+COPY load/package.json load/
 RUN pnpm install --frozen-lockfile --filter @codraw/collab
 COPY collab/tsconfig.json collab/tsconfig.build.json collab/
 COPY collab/src collab/src

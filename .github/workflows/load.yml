@@ -1,0 +1,93 @@
+name: Load
+
+# The load test of collaboration (docs/load-testing.md): by hand, not on every push. It builds the images of the commit,
+# starts the stack of docker-compose.prod.yml on the runner and loads it through the app address. The runner is not a
+# server of an installation: its figures compare commits with each other, the report names the limits of a server.
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: Scenarios, comma-separated
+        default: boards,crowd,large,reconnect
+      boards:
+        description: Boards of the scenario boards, one step each
+        default: 50,100,200,400
+      crowd:
+        description: Participants of the one board of the scenario crowd, one step each
+        default: 25,50,100
+      duration:
+        description: Seconds of measuring in each step
+        default: "60"
+      broadcast-delay:
+        description: BROADCAST_DELAY_MS of collab
+        default: "0"
+
+jobs:
+  load:
+    name: load
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CODRAW_IMAGE_PREFIX: codraw-load-
+      CODRAW_VERSION: ${{ github.sha }}
+      POSTGRES_PASSWORD: load-postgres-password
+      CODRAW_S3_SECRET_KEY: load-s3-secret-key
+      CODRAW_INTERNAL_TOKEN: load-internal-token
+      # Every participant of the load is a guest from the address of the runner.
+      CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR: "1000000"
+      CODRAW_COLLAB_BROADCAST_DELAY_MS: ${{ inputs.broadcast-delay }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}backend:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=backend
+      - name: Build collab
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: collab/Dockerfile
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}collab:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=collab
+      - name: Build frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}frontend:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=frontend
+      - name: Start the stack
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$RUNNER_TEMP/signing-key.pem"
+          export CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat "$RUNNER_TEMP/signing-key.pem")"
+          docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 300
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Load the stack
+        # The inputs reach the command through the environment, not into its text.
+        env:
+          SCENARIOS: ${{ inputs.scenarios }}
+          BOARDS: ${{ inputs.boards }}
+          CROWD: ${{ inputs.crowd }}
+          DURATION: ${{ inputs.duration }}
+        run: >-
+          pnpm --silent load --url http://localhost:8080 --scenarios "$SCENARIOS" --boards "$BOARDS" --crowd "$CROWD"
+          --duration "$DURATION" | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --no-color --tail 500
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-report
+          path: load/results
+          retention-days: 30
