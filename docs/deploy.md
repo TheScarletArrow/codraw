@@ -1,7 +1,8 @@
 # Развёртывание CoDraw на сервере
 
-CoDraw разворачивается из готовых образов пятью контейнерами: `frontend` (nginx), `backend`, `collab`, PostgreSQL
-и `s3` — S3-совместимое хранилище картинок досок RustFS ([ADR-0006](adr/0006-image-storage.md)). Наружу открыт один
+CoDraw разворачивается из готовых образов шестью контейнерами: `frontend` (nginx), `backend`, `collab`, PostgreSQL,
+`s3` — S3-совместимое хранилище картинок досок RustFS ([ADR-0006](adr/0006-image-storage.md)) — и `backup`, который
+снимает резервные копии по расписанию (см. «Резервные копии»). Наружу открыт один
 порт — порт приложения: nginx отдаёт приложение и с того же адреса передаёт API в `backend`, а синхронизацию — в
 `collab`. Картинки браузеры получают через `backend`, хранилище снаружи недоступно. TLS завершает прокси перед этим
 портом.
@@ -10,6 +11,7 @@ CoDraw разворачивается из готовых образов пят�
 браузер ──https──▶ TLS-прокси ──http──▶ frontend :8080 ──/api/──▶ backend :8080 ──▶ PostgreSQL
                                                      │                        └──▶ s3 :9000 (картинки досок)
                                                      └─/collab─▶ collab :1234 ──▶ backend (внутренний API)
+backup ──по расписанию──▶ PostgreSQL, s3 ──▶ том backups и хранилище копий вне сервера
 ```
 
 ## Что нужно
@@ -27,6 +29,7 @@ CI публикует образы при каждом пуше в `main`:
 - `ghcr.io/thescarletarrow/codraw-backend`
 - `ghcr.io/thescarletarrow/codraw-collab`
 - `ghcr.io/thescarletarrow/codraw-frontend`
+- `ghcr.io/thescarletarrow/codraw-backup`
 
 с тегом полного хеша коммита, а когда прошли все проверки CI этого коммита, — и с тегом `latest`. Если пакеты
 репозитория закрыты, войдите в реестр токеном с правом `read:packages`: `docker login ghcr.io`. Собрать образы
@@ -284,7 +287,9 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod pull
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 ```
 
-Контейнеры пересоздаются, данные остаются в томах `codraw-prod_postgres-data` и `codraw-prod_s3-data` (картинки). Подключённые участники видят «Нет
+Контейнеры пересоздаются, данные остаются в томах `codraw-prod_postgres-data`, `codraw-prod_s3-data` (картинки) и
+`codraw-prod_backups` (резервные копии). Перед обновлением, которое меняет схему базы, снимите копию:
+`docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup now`. Подключённые участники видят «Нет
 связи» на время перезапуска и переподключаются сами. Для отката задайте `CODRAW_VERSION` с хешем предыдущего коммита
 и выполните `up -d --wait`. Откат на версию до изменения схемы базы требует отката миграций — U-скриптов в
 `backend/src/main/resources/db/migration`.
@@ -296,6 +301,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 | Где | Что |
 |---|---|
 | `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), удалённые учётные записи (`codraw_accounts_deleted_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component` и `libraries-size`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
+| `backup:9187/metrics.txt` | резервные копии: время и результат последней попытки, время последней удачной копии, размер и длительность (`codraw_backup_*`, см. «Резервные копии») |
 | `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
@@ -311,12 +317,14 @@ Prometheus слушает `127.0.0.1:9090` сервера (порт — `CODRAW_
 
 | Правило | Когда |
 |---|---|
-| `CodrawServiceDown` | `backend` или `collab` не отвечает Prometheus 2 минуты |
+| `CodrawServiceDown` | `backend`, `collab` или `backup` не отвечает Prometheus 2 минуты |
 | `CodrawBackendErrors` | больше 5% ответов `backend` — ошибки 5xx, 10 минут |
 | `CodrawDocumentStoreFailures` | `collab` не смог сохранить документ доски хотя бы раз за 10 минут |
 | `CodrawCollabBusy` | `collab` 10 минут занимает больше 80% ядра: правки вот-вот начнут доходить с задержкой, см. «Ресурсы» |
 | `CodrawDatabaseConnectionsPending` | запросы `backend` 5 минут ждут соединений с базой |
 | `CodrawClientErrors` | больше 20 ошибок в браузерах участников за 10 минут |
+| `CodrawBackupFailed` | последняя резервная копия не удалась |
+| `CodrawBackupMissing` | удачной резервной копии нет больше 26 часов (15 минут подряд) |
 
 Prometheus показывает сработавшие правила на странице Alerts. Чтобы получать оповещения, подключите Alertmanager
 (`alerting` в `deploy/prometheus/prometheus.yml`) или внешний мониторинг, который читает те же метрики. Проверить
@@ -353,40 +361,132 @@ Prometheus показывает сработавшие правила на ст�
 
 ## Резервные копии
 
-Состояние — в PostgreSQL (доски, документы, пользователи, сеансы, описания картинок) и в томе хранилища `s3-data`
-(файлы картинок).
+Состояние — в PostgreSQL (доски, документы, версии, пользователи, сеансы, описания картинок) и в хранилище картинок
+(файлы картинок). Сервис `backup` стека снимает их копии сам: после `up -d` — сразу, если удачной копии ещё нет, а дальше
+по расписанию. Решение — [ADR-0010](adr/0010-backups.md).
+
+Каждая копия — один архив `codraw-2026-10-10T030000Z.tar` (время UTC) в томе `codraw-prod_backups`: в нём
+`database.dump` — `pg_dump --format=custom` базы, `images/` — файлы бакета картинок и `manifest.txt`. Сначала снимается
+база, затем картинки: файл картинки по своему адресу никогда не меняется, поэтому копия картинок, снятая после копии
+базы, покрывает все картинки, на которые та ссылается. Картинки копируются по S3 API, поэтому так же копируется и внешнее
+хранилище картинок (`CODRAW_IMAGES_S3_*`). Два снятия одновременно не идут.
+
+| Переменная | По умолчанию | Что |
+|---|---|---|
+| `CODRAW_BACKUP_SCHEDULE` | `0 3 * * *` | когда снимать копии: cron из пяти полей, время UTC; с другим расписанием поправьте и порог `CodrawBackupMissing` |
+| `CODRAW_BACKUP_KEEP_DAILY` | `7` | сколько последних дней хранится последняя копия каждого дня; не меньше 1 |
+| `CODRAW_BACKUP_KEEP_WEEKLY` | `4` | сколько последних недель (ISO, с понедельника) хранится последняя копия каждой недели; 0 — без недельных |
+| `CODRAW_BACKUP_ENCRYPTION_PASSWORD` | пусто | пароль шифрования архивов; пусто — архивы не шифруются |
+| `CODRAW_BACKUP_S3_ENDPOINT` | пусто | адрес S3-совместимого хранилища копий вне сервера, например `https://s3.eu-central-1.amazonaws.com`; пусто — копии только на сервере |
+| `CODRAW_BACKUP_S3_REGION` | `us-east-1` | регион этого хранилища |
+| `CODRAW_BACKUP_S3_BUCKET` | — | бакет копий; создаётся, если его нет; обязателен с адресом |
+| `CODRAW_BACKUP_S3_PREFIX` | пусто | каталог копий в бакете, например `codraw/prod` |
+| `CODRAW_BACKUP_S3_ACCESS_KEY`, `CODRAW_BACKUP_S3_SECRET_KEY` | — | ключи хранилища копий; обязательны с адресом. Ключу хватает прав читать, писать и удалять объекты бакета |
+| `CODRAW_BACKUP_VOLUME` | `backups` | где на сервере лежат архивы: том Docker или каталог сервера, например на другом диске (`/mnt/backups`; владелец — пользователь с UID 70: `chown 70:70 /mnt/backups`) |
+
+Неверное расписание, число или половина настроек хранилища копий не дают сервису запуститься: `docker compose … logs
+backup` называет настройку.
+
+**Хранилище вне сервера.** Копия на том же диске спасает от ошибок, но не от потери сервера. Задайте
+`CODRAW_BACKUP_S3_*`: каждый архив тогда копируется и туда, а копия считается удачной, когда архив лёг в оба места.
+Подойдёт облачный S3, Backblaze B2, Yandex Object Storage, MinIO на другой машине — путь бакета в адресе (path-style).
+Дайте хранилищу копий отдельные ключи, которые не открывают хранилище картинок, и, если провайдер умеет, включите
+блокировку удаления объектов (object lock) на срок хранения.
+
+**Шифрование.** С `CODRAW_BACKUP_ENCRYPTION_PASSWORD` архивы шифруются (rclone crypt: XSalsa20-Poly1305 с проверкой
+целостности) и лежат на сервере и в хранилище только зашифрованными, с суффиксом `.tar.bin`. Храните пароль вне сервера:
+без него копии не восстановить. Если пароль сменить, старые копии читаются только старым паролем; правило хранения
+удаляет их как обычно.
+
+**Правило хранения.** После удачной копии остаются: последний архив каждого дня (UTC), если он моложе
+`CODRAW_BACKUP_KEEP_DAILY` суток, последний архив каждой недели, если он моложе `CODRAW_BACKUP_KEEP_WEEKLY` недель, и
+всегда — самый свежий архив; остальные удаляются и на сервере, и в хранилище копий. Файлы с другими именами не
+трогаются. Значит, удалённые пользователями данные остаются в копиях не дольше `max(N дней, 7·M дней)` — по умолчанию 28
+дней; этот срок называет политика конфиденциальности. Место: до N+M архивов, каждый — база и все картинки.
+
+**Метрики и оповещения.** `backup:9187/metrics.txt` в сети стека, Prometheus профиля `monitoring` читает их заданием
+`backup`:
+
+| Метрика | Что |
+|---|---|
+| `codraw_backup_last_success_timestamp_seconds` | когда закончилась последняя удачная копия, 0 — ни одной |
+| `codraw_backup_last_run_timestamp_seconds`, `codraw_backup_last_run_success` | когда началась последняя попытка и удалась ли она (1 или 0) |
+| `codraw_backup_last_size_bytes`, `codraw_backup_last_duration_seconds` | размер последнего архива и время последней попытки |
+
+Значения лежат в томе копий и переживают перезапуск. Правила `CodrawBackupFailed` (последняя копия не удалась) и
+`CodrawBackupMissing` (удачной копии нет больше 26 часов) — в таблице оповещений выше. Причина неудачи — в журнале:
+`docker compose -f docker-compose.prod.yml logs backup`.
+
+**Копия сейчас и список копий:**
 
 ```bash
-# копия
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
-  pg_dump -U codraw -d codraw --format=custom > codraw-$(date +%F).dump
-
-# восстановление в пустую базу
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
-  pg_restore -U codraw -d codraw --clean --if-exists < codraw-2026-10-05.dump
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup now
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup list
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup list --remote
 ```
 
-Картинки копируются вместе с томом хранилища; файл картинки по своему адресу никогда не меняется, поэтому копия тома,
-снятая после копии базы, покрывает все картинки, на которые та ссылается:
+### Восстановление
+
+Восстановление заменяет базу целиком и делает бакет картинок таким, каким он был при копии. Пока к базе подключён
+`backend` или `collab`, оно отказывается. Выполните его с теми же `.env.prod` и паролем шифрования, что и копию, и той
+же версией образов (`CODRAW_VERSION`) или новее:
 
 ```bash
-# копия тома картинок рядом с копией базы
+# 1. остановите приложение: база и хранилище картинок продолжают работать
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop frontend collab backend
+
+# 2. восстановите последний архив сервера; имя архива вместо latest — конкретную копию,
+#    --remote — из хранилища копий вне сервера
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps backup restore latest
+
+# 3. запустите приложение
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+```
+
+**На новом сервере** после потери старого: скопируйте `docker-compose.prod.yml`, `deploy/` и `.env.prod`, поднимите
+базу и хранилище картинок и восстановите последнюю копию из хранилища вне сервера:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait postgres s3
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps backup restore latest --remote
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+```
+
+Копия снимается раз в сутки, поэтому после восстановления пропадает работа с момента последней копии.
+
+**Вручную, без сервиса `backup`**, — те же шаги, что он делает:
+
+```bash
+# копия базы, затем тома картинок
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
+  pg_dump -U codraw -d codraw --format=custom > codraw-$(date +%F).dump
 docker run --rm -v codraw-prod_s3-data:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/codraw-images-$(date +%F).tar.gz -C /data .
 
-# восстановление: остановите s3, распакуйте копию в том и запустите стек снова
+# восстановление в пустую базу; том картинок — при остановленном s3
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
+  pg_restore -U codraw -d codraw --clean --if-exists < codraw-2026-10-05.dump
 docker compose -f docker-compose.prod.yml --env-file .env.prod stop s3
 docker run --rm -v codraw-prod_s3-data:/data -v "$PWD":/backup alpine \
   sh -c 'rm -rf /data/* && tar xzf /backup/codraw-images-2026-10-05.tar.gz -C /data'
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 ```
 
-Делайте копию по расписанию (cron) и храните её вне сервера.
+**Секреты.** Пароль базы, ключи хранилищ и пароль шифрования сервис получает только из окружения контейнера: их нет в
+образе, архивах и журнале, а rclone и `pg_dump` получают их через окружение, а не аргументы. Как и у остальных сервисов,
+их видит `docker inspect`: доступ к Docker на сервере — это доступ ко всему.
 
 ## Что проверяет CI
 
-Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает три образа, поднимает из них
-этот же `docker-compose.prod.yml` с профилем `monitoring` (с хранилищем изображений), ждёт, пока Prometheus увидит `backend` и `collab`, и в
-браузере проверяет через nginx совместную работу двух гостей, заголовки безопасности, кеширование и закрытость
-внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить против своего стека:
-`STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.
+Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает четыре образа, поднимает из них
+этот же `docker-compose.prod.yml` с профилем `monitoring` (с хранилищем изображений, хранилищем копий вне сервера — бакетом
+того же RustFS — и шифрованием копий), ждёт, пока Prometheus увидит `backend`, `collab` и `backup`, и в
+браузере проверяет через nginx совместную работу двух гостей, изображение и версию доски, заголовки безопасности,
+кеширование и закрытость внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить
+против своего стека: `STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.
+
+Затем `deploy/backup/check-restore.sh` проверяет резервные копии: правило хранения (`retention.test.sh`), отказ
+восстановления при работающем `backend`, неудачную копию в метриках и в оповещении `CodrawBackupFailed`, удаление старых
+архивов на сервере и в хранилище копий, а потом снимает копию, теряет базу, картинки и архивы сервера, восстанавливает
+последний архив из хранилища копий и сверяет каждую таблицу базы и каждый файл картинок с тем, что было; журнал `backup`
+не должен содержать секретов. После этого стек снова поднимается, и проверка в браузере проходит ещё раз.
