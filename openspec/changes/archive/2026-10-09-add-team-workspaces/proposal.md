@@ -65,12 +65,12 @@
 - `backend`: пакет `workspace` (`Workspaces`, `WorkspaceMembers`, `WorkspaceInvites`, `WorkspaceProjects`,
   `WorkspaceService`, `WorkspaceBoardService`, контроллеры); роль на доске (`Board.roleOf`, `BoardService`,
   `BoardLookup.ownedBy` по роли), перенос досок, корзина, список общих досок, поиск, упоминания, проверяющие
-  предложений, уведомления, внутренний API доступа для collab; миграция V26 и откат U26; пределы
+  предложений, уведомления, внутренний API доступа для collab; миграция V27 и откат U27; пределы
   `workspaces-per-user`, `members-per-workspace`, `invites-per-workspace`, `projects-per-workspace`,
   `boards-per-workspace` и метрики `codraw_limits_reached_total`.
 - `collab`: `BoardAccess.workspace` и правило доступа в `accessOf`; проверка соединений не меняется.
 - `frontend`: `api/workspaces.ts`, раздел «Пространства» на главной, страница `/workspaces/:id`, страница
   приглашения `/workspace-invite/:token`, «Перенести в пространство» в меню доски, «Доступ участникам пространства» и
-  добавление участника пространства в окне «Поделиться», пространство в шапке доски и в корзине, «Что нового» 0.27.0.
+  добавление участника пространства в окне «Поделиться», пространство в шапке доски и в корзине, «Что нового» 0.28.0.
 - `e2e`: `team-workspaces.spec.ts`.
 - Документация: README, политика конфиденциальности.

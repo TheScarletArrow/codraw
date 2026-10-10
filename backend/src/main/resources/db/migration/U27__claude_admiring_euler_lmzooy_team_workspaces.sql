@@ -1,4 +1,4 @@
--- Manual revert for V26. Flyway Community does not run U-files automatically:
+-- Manual revert for V27. Flyway Community does not run U-files automatically:
 -- `flyway undo` is a Teams/Enterprise feature, so review and run this script by hand.
 -- WARNING: forgets all workspaces, their members, invitations and projects; they are not restored. The boards of
 -- workspaces stay, as personal boards of the users responsible for them, with their documents and their members.
@@ -31,4 +31,4 @@ DROP TABLE workspace_members;
 
 DROP TABLE workspaces;
 
-DELETE FROM flyway_schema_history WHERE version = '26';
+DELETE FROM flyway_schema_history WHERE version = '27';

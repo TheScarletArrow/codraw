@@ -57,7 +57,7 @@ export function accessOf({ ownerId, linkAccess, members, workspace }: BoardAcces
   const member = members[userId];
   const inherited = workspace ? inheritedAccessOf(workspace, userId) : null;
   if (userId === ownerId || member === "editor" || linkAccess === "edit" || inherited === "edit") return "edit";
-  if (member === "viewer" || linkAccess === "view" || inherited === "view") return "view";
+  if (member === "viewer" || linkAccess === "view" || linkAccess === "public" || inherited === "view") return "view";
   return null;
 }
 

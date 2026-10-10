@@ -217,6 +217,23 @@ class BoardApiTest(
     }
 
     @Test
+    fun `a link without a sign-in lets other signed-in users view the board`() {
+        val id = createBoard("Доска Алисы", alice)
+
+        changeLinkAccess(id, alice, "public").andExpect {
+            status { isOk() }
+            jsonPath("$.linkAccess") { value("public") }
+        }
+
+        mockMvc.get("/api/boards/$id") { with(bob.session()) }.andExpect {
+            status { isOk() }
+            jsonPath("$.role") { value("viewer") }
+            jsonPath("$.linkAccess") { value("public") }
+        }
+        mockMvc.get("/api/boards/shared") { with(bob.session()) }.andExpect { jsonPath("$[0].id") { value(id) } }
+    }
+
+    @Test
     fun `a closed link answers 403 to other users and does not record their visit`() {
         val id = createBoard("Доска Алисы", alice)
         changeLinkAccess(id, alice, "none").andExpect { status { isOk() } }
@@ -244,7 +261,9 @@ class BoardApiTest(
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["none:EDITOR:editor", "view:EDITOR:editor", "edit:VIEWER:editor", "view:VIEWER:viewer"])
+    @ValueSource(
+        strings = ["none:EDITOR:editor", "view:EDITOR:editor", "edit:VIEWER:editor", "view:VIEWER:viewer", "public:EDITOR:editor", "public:VIEWER:viewer"],
+    )
     fun `a member gets the higher of their role and what the link gives`(case: String) {
         val (linkAccess, memberRole, role) = case.split(':')
         val id = createBoard("Доска Алисы", alice)
@@ -289,7 +308,7 @@ class BoardApiTest(
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["public", "VIEW", ""])
+    @ValueSource(strings = ["comment", "PUBLIC", "VIEW", ""])
     fun `rejects an unknown link access`(access: String) {
         val id = createBoard("Доска", alice)
 

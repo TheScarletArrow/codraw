@@ -129,6 +129,26 @@ class BoardImageApiTest(
     }
 
     @Test
+    fun `without a session only a board shown to anybody gives its images, and its room stays closed`() {
+        val file = encoded("png", 12, 12)
+        val url = url(add(alice, file))
+        setLinkAccess("public")
+
+        val image = mockMvc.get(url).andExpect {
+            status { isOk() }
+            content { contentType("image/png") }
+            header { string("Content-Security-Policy", containsString("sandbox")) }
+        }.andReturn().response
+        assertContentEquals(file, image.contentAsByteArray)
+        mockMvc.get("/api/boards/$board/images/usage").andExpect { status { isUnauthorized() } }
+        mockMvc.get("/api/boards/$board/images/${UUID.randomUUID()}").andExpect { status { isNotFound() } }
+
+        setLinkAccess("view")
+        mockMvc.get(url).andExpect { status { isUnauthorized() } }
+        mockMvc.get(url) { with(carol.session()) }.andExpect { status { isOk() } }
+    }
+
+    @Test
     fun `nobody without a role on the board gets or adds its images, and an image of another board is not found here`() {
         val url = url(add(alice, encoded("png", 8, 8)))
         setLinkAccess("none")

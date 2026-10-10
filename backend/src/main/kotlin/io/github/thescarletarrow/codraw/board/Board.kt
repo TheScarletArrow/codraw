@@ -65,6 +65,9 @@ enum class LinkAccess(@get:JsonValue val value: String, val role: BoardRole?) {
     /** Only the owner and the members open the board. */
     NONE("none", null),
     VIEW("view", BoardRole.VIEWER),
+
+    /** Signed-in users view the board, as with [VIEW], and anybody else views it too, without a sign-in. */
+    PUBLIC("public", BoardRole.VIEWER),
     EDIT("edit", BoardRole.EDITOR),
 }
 

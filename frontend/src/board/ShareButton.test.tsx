@@ -67,6 +67,54 @@ const bodyOf = (fetchMock: ReturnType<typeof mockFetch>, method: string, url: st
 describe('ShareButton', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  describe('link access', () => {
+    it('lets the owner show the board to anybody without a sign-in and tells the other participants', async () => {
+      const { fetchMock, onChanged, queryClient } = renderShare({
+        [`PATCH ${boardUrl}`]: { body: { ...board, linkAccess: 'public' } },
+      })
+      await openShare()
+
+      const option = screen.getByRole('radio', { name: /^Все, у кого есть ссылка, без входа/ })
+      expect(option).toHaveAccessibleDescription(/README, Confluence и <iframe>/)
+      await userEvent.click(option)
+
+      await waitFor(() => expect(onChanged).toHaveBeenCalled())
+      expect(bodyOf(fetchMock, 'PATCH', boardUrl)).toEqual({ linkAccess: 'public' })
+      expect(queryClient.getQueryData<Board>(['boards', board.id])?.linkAccess).toBe('public')
+    })
+
+    it('offers the code that embeds a board shown to anybody, on the page of the participant, and copies it', async () => {
+      const writeText = vi.fn(async () => {})
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+      renderShare({}, { ...board, linkAccess: 'public' })
+      await openShare()
+
+      const section = screen.getByRole('region', { name: 'Встроить на страницу' })
+      const code = `<iframe src="${location.origin}/view/${board.id}?page=page-1" width="800" height="600" style="border:0" allowfullscreen></iframe>`
+      expect(within(section).getByRole('textbox', { name: 'Код для встраивания' })).toHaveValue(code)
+      await userEvent.click(within(section).getByRole('button', { name: 'Копировать код' }))
+
+      expect(writeText).toHaveBeenCalledWith(code)
+      expect(within(section).getByRole('button', { name: 'Скопировано' })).toBeInTheDocument()
+    })
+
+    it('tells the others that anybody views the board through its link, with the code that embeds it', async () => {
+      renderShare({}, { ...board, linkAccess: 'public', role: 'editor' })
+      await openShare()
+
+      expect(screen.getByText('По ссылке доску можно смотреть, даже без входа')).toBeInTheDocument()
+      expect(screen.queryByRole('radio')).toBeNull()
+      expect(screen.getByRole('region', { name: 'Встроить на страницу' })).toBeInTheDocument()
+    })
+
+    it('offers no code to embed a board that its link does not show without a sign-in', async () => {
+      renderShare({}, { ...board, linkAccess: 'view' })
+      await openShare()
+
+      expect(screen.queryByRole('region', { name: 'Встроить на страницу' })).toBeNull()
+    })
+  })
+
   describe('participants', () => {
     it('lists the owner first and the members with their roles', async () => {
       renderShare()
