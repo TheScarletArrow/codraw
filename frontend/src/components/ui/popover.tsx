@@ -26,7 +26,11 @@ function PopoverContent({
         data-slot="popover-content"
         align={align}
         sideOffset={sideOffset}
-        className={cn('z-50 rounded-md border bg-background p-3 text-foreground shadow-md outline-hidden', className)}
+        // A window as wide as a phone or wider stays on its screen.
+        className={cn(
+          'z-50 max-w-[calc(100vw-1rem)] rounded-md border bg-background p-3 text-foreground shadow-md outline-hidden',
+          className,
+        )}
         {...props}
       />
     </PopoverPrimitive.Portal>

@@ -23,6 +23,7 @@ import { useImageUploads } from '../board/imageUploads.ts'
 import { usePageFilter } from '../board/usePageFilter.ts'
 import { ImageUploadError, ImageUploadProgress } from '../board/ImageUploadStatus.tsx'
 import { PageTabs } from '../board/PageTabs.tsx'
+import { PaletteButton, ToolsButton } from '../board/NarrowTools.tsx'
 import { Participants, PresentButton } from '../board/Participants.tsx'
 import { InHeader } from '../headerSlot.tsx'
 import { PresenceLayer } from '../board/PresenceLayer.tsx'
@@ -553,6 +554,14 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // `?share=` opens «Поделиться», e.g. on the requests for access, which it fetches again.
   const shareLinked = searchParams.has('share')
   const [shareOpen, setShareOpen] = useState(false)
+  // A narrow screen: the tools of the line of the board and the palette of shapes, which it hides until asked.
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  // A shape added from the palette, or a tap on the canvas, selects: the palette makes room for the canvas again.
+  useEffect(() => {
+    if (!paletteOpen || !editor) return
+    return editor.onSelectionChange(() => setPaletteOpen(false))
+  }, [paletteOpen, editor])
   const [openedShare, setOpenedShare] = useState(false)
   if (shareLinked !== openedShare) {
     setOpenedShare(shareLinked)
@@ -571,15 +580,22 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   const savedLocally = status === 'offline' && connection.cached && !readOnly
   const unsent = connection.unsent && status !== 'synced'
 
+  const showsPalette = !readOnly && !preview && !review && !visitChanges
+  // What a narrow screen hides in the line of the board until «Инструменты» shows it, after the rest of the line.
+  const narrowTool = toolsOpen ? 'max-lg:order-last' : 'max-lg:hidden'
+
   const workspace = (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* One line: the tools that appear with a selection must not move the canvas down. */}
-      <div className="flex items-center gap-x-3 border-b px-3 py-2">
+      {/*
+        One line: the tools that appear with a selection must not move the canvas down. A narrow screen keeps the title,
+        the state, «Поделиться» and «Комментарии» on it; «Инструменты» brings the rest on the lines under them.
+      */}
+      <div className="flex items-center gap-x-3 border-b px-3 py-2 max-lg:flex-wrap max-lg:gap-y-2">
         {board.workspace && (
           <Link
             to={workspacePath(board.workspace.id)}
             title={`Пространство «${board.workspace.name}»`}
-            className="max-w-32 shrink truncate text-sm text-muted-foreground hover:underline"
+            className={cn('max-w-32 shrink truncate text-sm text-muted-foreground hover:underline', narrowTool)}
           >
             {board.workspace.name}
           </Link>
@@ -611,7 +627,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         )}
         {viewer && <EditRequestButton boardId={board.id} />}
         {/* The files, the templates, the images and SQL stand close together, as on a toolbar: the tools need the room. */}
-        <div className="flex shrink-0 items-center gap-1">
+        <div className={cn('flex shrink-0 items-center gap-1', narrowTool)}>
           <DrawioActions
             document={document}
             title={board.title}
@@ -641,15 +657,18 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onProposalCreated={proposalCreated}
           />
         </div>
-        <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-        <EditorToolbar
-          editor={editor}
-          readOnly={readOnly}
-          planView={planView}
-          onPlanViewChange={changePlanView}
-          filter={filter}
-          onFilterChange={changeFilter}
-        />
+        <span aria-hidden className={cn('h-5 w-px shrink-0 bg-border', narrowTool)} />
+        {/* A line of its own on a narrow screen, which scrolls. */}
+        <div className={cn('contents', toolsOpen ? 'max-lg:order-last max-lg:flex max-lg:basis-full' : 'max-lg:hidden')}>
+          <EditorToolbar
+            editor={editor}
+            readOnly={readOnly}
+            planView={planView}
+            onPlanViewChange={changePlanView}
+            filter={filter}
+            onFilterChange={changeFilter}
+          />
+        </div>
         {/* Who is on the board shows in the header of the app: however many come, the line keeps its room for the tools. */}
         <InHeader>
           <Participants
@@ -662,7 +681,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           />
         </InHeader>
         {/* The buttons of icons stand close together, as on a toolbar: the line keeps its room for the tools. */}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        {/* A narrow screen shows «Комментарии» of these alone until «Инструменты» shows the rest. */}
+        <div
+          className={cn(
+            'ml-auto flex shrink-0 items-center gap-1',
+            toolsOpen ? 'max-lg:order-last max-lg:flex-wrap' : 'max-lg:contents max-lg:[&>:not([data-narrow])]:hidden',
+          )}
+        >
           <PresentButton
             presenting={following.presenting}
             disabled={!awareness}
@@ -673,11 +698,13 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <PropertiesButton open={propertiesOpen} onToggle={() => setPropertiesOpen((open) => !open)} />
           <ElementsButton open={elementsOpen} onToggle={() => setElementsOpen((open) => !open)} />
           <ChecksButton document={document} open={checksOpen} onToggle={() => setChecksOpen((open) => !open)} />
-          <CommentsButton
-            threads={boardThreads}
-            open={commentsOpen}
-            onToggle={() => (commentsOpen ? closeComments() : openComments())}
-          />
+          <span data-narrow className={cn('contents', !toolsOpen && 'max-lg:ml-auto max-lg:flex')}>
+            <CommentsButton
+              threads={boardThreads}
+              open={commentsOpen}
+              onToggle={() => (commentsOpen ? closeComments() : openComments())}
+            />
+          </span>
           <DecisionsButton
             decisions={decisions.data}
             open={decisionsOpen}
@@ -689,6 +716,10 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             onToggle={() => (proposalsOpen ? closeProposals() : openProposals())}
           />
           <ShortcutsHelp readOnly={readOnly} />
+        </div>
+        <div className={cn('flex shrink-0 items-center gap-1 lg:hidden', toolsOpen && 'ml-auto')}>
+          {showsPalette && <PaletteButton open={paletteOpen} onToggle={() => setPaletteOpen((open) => !open)} />}
+          <ToolsButton open={toolsOpen} onToggle={() => setToolsOpen((open) => !open)} />
         </div>
         <ShareButton
           board={board}
@@ -765,8 +796,21 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           onHide={() => setVisitHidden(true)}
         />
       )}
-      <div className="flex min-h-0 flex-1">
-        {!readOnly && !preview && !review && !visitChanges && <ShapePalette editor={editor} libraries={libraries} />}
+      <div className="relative flex min-h-0 flex-1">
+        {showsPalette && (
+          // Over the canvas on a narrow screen, while «Фигуры» shows it.
+          <div
+            className={cn(
+              'md:contents',
+              paletteOpen ? 'max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:flex max-md:bg-background max-md:shadow-lg' : 'max-md:hidden',
+            )}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && paletteOpen) setPaletteOpen(false)
+            }}
+          >
+            <ShapePalette editor={editor} libraries={libraries} />
+          </div>
+        )}
         {preview && document ? (
           <VersionPreview
             key={preview.id}

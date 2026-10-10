@@ -37,7 +37,7 @@ export function Layout() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b px-4">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:gap-4 sm:px-4">
         <Link to="/" className="font-bold">
           CoDraw
         </Link>
@@ -78,9 +78,10 @@ function UserMenu({ user }: { user: CurrentUser }) {
   })
 
   return (
-    <div className="flex shrink-0 items-center gap-2 text-sm">
+    <div className="flex shrink-0 items-center gap-1 text-sm sm:gap-2">
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
-      <span>{user.name}</span>
+      {/* A phone keeps the room of the line for who is on the board; the avatar tells who is signed in. */}
+      <span className="max-sm:sr-only">{user.name}</span>
       <ThemeMenu />
       {!user.guest && (
         <Button asChild variant="ghost" size="icon-sm">
