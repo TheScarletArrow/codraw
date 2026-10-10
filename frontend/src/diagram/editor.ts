@@ -227,6 +227,7 @@ import { blocksPlacement, placeConnected, type Side } from './quickConnect.ts'
 import { DEFAULT_FILL_COLOR, DEFAULT_LINE_COLOR } from './colors.ts'
 import { DEFAULT_FONT, fontFamilyOf } from './fonts.ts'
 import { touchedByRegion } from './regionSelection.ts'
+import { configureTouch } from './touch.ts'
 import { normalizeRotation, ROTATION_KEY, rotatedBounds, rotationOf } from './rotation.ts'
 import { cellsToRestore, writeRestoredFields } from './restore.ts'
 import { canDetail, createDetailPage, detailPageOf } from './detail.ts'
@@ -1616,8 +1617,21 @@ const TOOL_CLASSES: Record<CanvasTool, string> = {
   pencil: 'pencil-tool',
 }
 
-/** Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes. */
-const TOOL_STOPPED_EVENTS = ['pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'dblclick'] as const
+/**
+ * Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes; touch events for iOS,
+ * where maxGraph takes them instead of pointer events.
+ */
+const TOOL_STOPPED_EVENTS = [
+  'pointermove',
+  'pointerup',
+  'mousedown',
+  'mousemove',
+  'mouseup',
+  'dblclick',
+  'touchstart',
+  'touchmove',
+  'touchend',
+] as const
 
 /**
  * Events of the canvas that a click following a link keeps from maxGraph besides its press and release: those of the main
@@ -3271,8 +3285,10 @@ export function createDiagramEditor(
     const point = toDiagramPoint(event.clientX, event.clientY)
     commentListeners.forEach((listener) => listener(point))
   }
-  const stopForTool = (event: MouseEvent) => {
+  const stopForTool = (event: MouseEvent | TouchEvent) => {
     if (!tool) return
+    // A finger has no other button: all of it is the tool's.
+    if (!('button' in event)) return event.stopImmediatePropagation()
     const move = event.type === 'pointermove' || event.type === 'mousemove'
     // Panning needs the moves with the right button, and the menu its press and release.
     if (move ? (event.buttons & RIGHT_BUTTON_BIT) !== 0 : event.button !== 0) return
@@ -3375,25 +3391,52 @@ export function createDiagramEditor(
     if (isGroup(cell)) return 'group'
     return isTable(cell) ? 'table' : 'shape'
   }
+  /** Opens the menu of what is selected at a point of the screen. */
+  const openMenu = (clientX: number, clientY: number) => {
+    // The tooltip, which the release of the button would show over the menu.
+    tooltips?.hide()
+    if (graph.isEditing()) return
+    const rect = container.getBoundingClientRect()
+    const request: ContextMenuRequest = {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+      point: toDiagramPoint(clientX, clientY),
+      target: menuTarget(),
+      cellId: graph.getSelectionCount() === 1 ? (graph.getSelectionCell().getId() ?? null) : null,
+    }
+    menuListeners.forEach((listener) => listener(request))
+  }
   // maxGraph decides when a right click is a menu click (not panning), and selects the cell under the pointer
   // first. It shows no menu of its own: the factory adds no items to it.
   const popupMenu = graph.getPlugin<PopupMenuHandler>('PopupMenuHandler')
-  if (popupMenu) {
-    popupMenu.factoryMethod = (_menu, _cell, event) => {
-      // The tooltip, which the release of the button would show over the menu.
-      tooltips?.hide()
-      if (graph.isEditing()) return
+  if (popupMenu) popupMenu.factoryMethod = (_menu, _cell, event) => openMenu(event.clientX, event.clientY)
+  // Fingers: a finger held still opens the same menu, after selecting what is under it as a right click does.
+  const unconfigureTouch = configureTouch(graph, container, {
+    toDiagramPoint,
+    zoomAt(scale, point, clientX, clientY) {
+      const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
+      if (Math.abs(clamped - graph.getView().scale) >= 0.001) graph.zoomTo(clamped)
       const rect = container.getBoundingClientRect()
-      const request: ContextMenuRequest = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-        point: toDiagramPoint(event.clientX, event.clientY),
-        target: menuTarget(),
-        cellId: graph.getSelectionCount() === 1 ? (graph.getSelectionCell().getId() ?? null) : null,
+      editor.centerOn({
+        x: point.x + (rect.left + container.clientWidth / 2 - clientX) / clamped,
+        y: point.y + (rect.top + container.clientHeight / 2 - clientY) / clamped,
+      })
+    },
+    onLongPress(cell, clientX, clientY) {
+      if (cell && graph.isCellSelectable(cell)) {
+        if (!graph.isCellSelected(cell)) graph.setSelectionCell(cell)
+      } else if (!cell) {
+        graph.clearSelection()
       }
-      menuListeners.forEach((listener) => listener(request))
-    }
-  }
+      openMenu(clientX, clientY)
+    },
+    panBy(dx, dy) {
+      const { scale } = graph.getView()
+      const center = visibleCenter()
+      editor.centerOn({ x: center.x - dx / scale, y: center.y - dy / scale })
+    },
+    canGesture: () => tool !== 'pencil' && tool !== 'laser',
+  })
   // The label editor keeps the menu of the browser, with its text actions and spelling suggestions.
   const preventBrowserMenu = (event: MouseEvent) => {
     if (!(event.target instanceof HTMLElement && event.target.isContentEditable)) event.preventDefault()
@@ -5424,6 +5467,7 @@ export function createDiagramEditor(
       Reflect.deleteProperty(container, EDITOR_PROPERTY)
       container.removeEventListener('pointerdown', focusCanvas, true)
       container.removeEventListener('contextmenu', preventBrowserMenu)
+      unconfigureTouch()
       container.removeEventListener('pointermove', handlePointerMove, true)
       container.removeEventListener('pointerleave', handlePointerLeave)
       endLaserStroke()

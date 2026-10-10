@@ -4,6 +4,7 @@ import { useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { SIDE_PANEL_CLASS } from '@/lib/panels'
 import {
   fetchVersions,
   renameVersion,
@@ -50,7 +51,7 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
   })
 
   return (
-    <aside aria-label="История версий" className="flex w-72 shrink-0 flex-col border-l bg-background">
+    <aside aria-label="История версий" className={cn(SIDE_PANEL_CLASS, 'w-72')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <History className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">История версий</h3>

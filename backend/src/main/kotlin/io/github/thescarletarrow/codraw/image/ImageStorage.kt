@@ -108,6 +108,20 @@ class ImageStorage(properties: ImageProperties) : DisposableBean {
         }
     }
 
+    /**
+     * Copies the object [from] to [to] within the storage, without its bytes passing through the backend; `false` when
+     * there is no object [from].
+     */
+    fun copy(from: String, to: String): Boolean = call {
+        ensureBucket()
+        try {
+            client.copyObject { it.sourceBucket(bucket).sourceKey(from).destinationBucket(bucket).destinationKey(to) }
+            true
+        } catch (_: NoSuchKeyException) {
+            false
+        }
+    }
+
     /** Deletes the objects [keys]; keys without objects are fine. */
     fun delete(keys: Collection<String>) = call {
         for (batch in keys.chunked(MAX_DELETE)) {
