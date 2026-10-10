@@ -65,21 +65,24 @@ class UserAuthApiTest(
 
     @Test
     fun `remembers the language of the interface of the user`() {
+        // A user of its own: users sign in again in every test and keep their language, and other tests read letters in Russian.
+        val polyglot = users.gitHubUser("Polyglot")
         mockMvc.put("/api/me/language") {
-            with(alice.session())
+            with(polyglot.session())
             with(csrf())
             contentType = MediaType.APPLICATION_JSON
             content = """{"language": "en"}"""
         }.andExpect { status { isNoContent() } }
 
-        mockMvc.get("/api/me") { with(alice.session()) }.andExpect { jsonPath("$.language") { value("en") } }
-        assertEquals(Language.EN, users.find(alice.id)!!.language)
+        mockMvc.get("/api/me") { with(polyglot.session()) }.andExpect { jsonPath("$.language") { value("en") } }
+        assertEquals(Language.EN, users.find(polyglot.id)!!.language)
         mockMvc.put("/api/me/language") {
-            with(alice.session())
+            with(polyglot.session())
             with(csrf())
             contentType = MediaType.APPLICATION_JSON
             content = """{"language": "de"}"""
         }.andExpect { status { isBadRequest() } }
+        assertEquals(Language.EN, users.find(polyglot.id)!!.language)
     }
 
     @Test
@@ -89,7 +92,8 @@ class UserAuthApiTest(
             header("Accept-Language", "en-GB,en;q=0.9")
         }.andExpect { status { isNoContent() } }
 
-        val guest = jdbcClient.sql("SELECT name, language FROM users WHERE provider = 'guest' ORDER BY created_at DESC LIMIT 1")
+        // Other tests create guests too, all of them Russian.
+        val guest = jdbcClient.sql("SELECT name, language FROM users WHERE provider = 'guest' AND name LIKE 'Guest %'")
             .query { rs, _ -> rs.getString("name") to rs.getString("language") }.single()
         assertTrue(guest.first.matches(Regex("Guest \\d{1,3}")), guest.first)
         assertEquals("EN", guest.second)

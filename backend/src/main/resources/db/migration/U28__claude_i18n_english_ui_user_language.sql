@@ -3,3 +3,5 @@
 -- WARNING: forgets the languages of users; their letters and messages of notifications are in Russian again.
 
 ALTER TABLE users DROP COLUMN language;
+
+DELETE FROM flyway_schema_history WHERE version = '28';
