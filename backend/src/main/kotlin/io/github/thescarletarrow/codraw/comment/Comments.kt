@@ -549,12 +549,16 @@ class Comments(private val jdbc: JdbcClient) {
     private companion object {
         /**
          * Users other than the owner who take part in the board `:boardId`, with when they joined or last opened it:
-         * its members, and the users who opened it through its link while `:linkOpen`.
+         * its members, the users who opened it through its link while `:linkOpen`, and the members of its workspace
+         * whom the workspace gives a role on it.
          */
         const val PARTICIPANTS = """
             SELECT user_id, created_at AS since FROM board_members WHERE board_id = :boardId
             UNION ALL
             SELECT user_id, visited_at FROM board_visits WHERE board_id = :boardId AND :linkOpen
+            UNION ALL
+            SELECT w.user_id, w.created_at FROM boards b JOIN workspace_members w ON w.workspace_id = b.workspace_id
+            WHERE b.id = :boardId AND (w.role IN ('OWNER', 'ADMIN') OR b.workspace_access <> 'NONE')
         """
     }
 }

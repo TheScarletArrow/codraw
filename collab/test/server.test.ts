@@ -439,6 +439,34 @@ describe("collab server", () => {
 
       await expect(bobClosed).resolves.toBe("access-changed");
     });
+
+    it("closes the connection of a member taken out of the workspace of the board at the next check", async () => {
+      await startServer({ accessCheckInterval: 100 });
+      backend.access.set(board, {
+        ownerId: ALICE,
+        linkAccess: "none",
+        members: {},
+        workspace: { access: "edit", roles: { [ALICE]: "owner", [BOB]: "editor" } },
+      });
+      await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      expect(bob.provider.authorizedScope).toBe("read-write");
+      const bobClosed = closeReasonOf(bob);
+      const rejected = new Promise<string>((resolve) =>
+        bob.provider.on("authenticationFailed", ({ reason }: { reason: string }) => resolve(reason)),
+      );
+
+      // An administrator took Bob out of the workspace on its page, without the board open.
+      backend.access.set(board, {
+        ownerId: ALICE,
+        linkAccess: "none",
+        members: {},
+        workspace: { access: "edit", roles: { [ALICE]: "owner" } },
+      });
+
+      await expect(bobClosed).resolves.toBe("access-changed");
+      await expect(rejected).resolves.toBe("no-access");
+    });
   });
 
   describe("access on connecting", () => {
@@ -497,6 +525,33 @@ describe("collab server", () => {
 
       backend.access.set(board, { ownerId: ALICE, linkAccess: "edit", members: { [CAROL]: "viewer" } });
       expect((await as(CAROL)).provider.authorizedScope).toBe("read-write");
+    });
+
+    it("gives the members of the workspace of a board what the workspace gives them", async () => {
+      await startServer();
+      const ADMIN = "0199a000-0000-7000-8000-0000000000a2";
+      const EDITOR = "0199a000-0000-7000-8000-0000000000e2";
+      const VIEWER = "0199a000-0000-7000-8000-0000000000f2";
+      const roles = { [ALICE]: "owner", [ADMIN]: "admin", [EDITOR]: "editor", [VIEWER]: "viewer" } as const;
+      const as = (subject: string) => connect(board, () => backend.issueToken(board, { subject }));
+
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {}, workspace: { access: "edit", roles } });
+      expect((await as(EDITOR)).provider.authorizedScope).toBe("read-write");
+      expect((await as(VIEWER)).provider.authorizedScope).toBe("readonly");
+      await expect(as(BOB)).rejects.toThrow("no-access");
+
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {}, workspace: { access: "view", roles } });
+      expect((await as(EDITOR)).provider.authorizedScope).toBe("readonly");
+
+      backend.access.set(board, {
+        ownerId: ALICE,
+        linkAccess: "none",
+        members: { [VIEWER]: "editor" },
+        workspace: { access: "none", roles },
+      });
+      expect((await as(ADMIN)).provider.authorizedScope).toBe("read-write");
+      expect((await as(VIEWER)).provider.authorizedScope).toBe("read-write");
+      await expect(as(EDITOR)).rejects.toThrow("no-access");
     });
 
     it("lets the owner edit whatever the link gives", async () => {

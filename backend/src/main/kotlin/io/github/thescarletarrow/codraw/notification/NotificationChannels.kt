@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonValue
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.LinkAccess
 import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.board.WorkspaceAccess
+import io.github.thescarletarrow.codraw.workspace.WorkspaceRole
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -90,6 +92,8 @@ data class MutedBoard(
     val board: Board,
     /** The role of the user as a member of the board, `null` when they are not one. */
     val memberRole: MemberRole?,
+    /** The role of the user in the workspace of the board, `null` when they are not its member or there is none. */
+    val workspaceRole: WorkspaceRole?,
     val mutedAt: Instant,
 )
 
@@ -264,10 +268,12 @@ class NotificationChannels(private val jdbc: JdbcClient) {
     fun mutedBoards(userId: UUID): List<MutedBoard> = jdbc.sql(
         """
         SELECT b.id, b.title, b.owner_id, b.created_at, b.updated_at, b.link_access, m.role AS member_role,
+               b.workspace_id, b.project_id, b.workspace_access, w.role AS workspace_role,
                mute.created_at AS muted_at
         FROM notification_board_mutes mute
         JOIN boards b ON b.id = mute.board_id
         LEFT JOIN board_members m ON m.board_id = mute.board_id AND m.user_id = mute.user_id
+        LEFT JOIN workspace_members w ON w.workspace_id = b.workspace_id AND w.user_id = mute.user_id
         WHERE mute.user_id = :userId
         ORDER BY mute.created_at DESC, b.id
         """,
@@ -282,8 +288,12 @@ class NotificationChannels(private val jdbc: JdbcClient) {
                     createdAt = rs.instant("created_at")!!,
                     updatedAt = rs.instant("updated_at")!!,
                     linkAccess = LinkAccess.valueOf(rs.getString("link_access")),
+                    workspaceId = rs.getObject("workspace_id", UUID::class.java),
+                    projectId = rs.getObject("project_id", UUID::class.java),
+                    workspaceAccess = WorkspaceAccess.valueOf(rs.getString("workspace_access")),
                 ),
                 memberRole = rs.getString("member_role")?.let(MemberRole::valueOf),
+                workspaceRole = rs.getString("workspace_role")?.let(WorkspaceRole::valueOf),
                 mutedAt = rs.instant("muted_at")!!,
             )
         }

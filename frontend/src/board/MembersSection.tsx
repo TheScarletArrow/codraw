@@ -14,6 +14,7 @@ import {
   type MemberRole,
   type Participant,
 } from '../api/members.ts'
+import { fetchWorkspaceMembers, workspaceMembersKey } from '../api/workspaces.ts'
 import { counted, membersKey, ROLE_LABELS, visitorsKey } from './members.ts'
 
 /** Why a change of the members failed, when it ran into a limit. */
@@ -43,7 +44,15 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
   const isOwner = board.role === 'owner'
   const members = useQuery({ queryKey: membersKey(board.id), queryFn: () => fetchMembers(board.id) })
   const visitors = useQuery({ queryKey: visitorsKey(board.id), queryFn: () => fetchVisitors(board.id), enabled: isOwner })
+  const workspaceId = board.workspace?.id
+  // Who manages a board of a workspace gives its members roles of their own on it, above what the workspace gives.
+  const workspaceMembers = useQuery({
+    queryKey: workspaceMembersKey(workspaceId ?? ''),
+    queryFn: () => fetchWorkspaceMembers(workspaceId ?? ''),
+    enabled: isOwner && workspaceId !== undefined,
+  })
   const [confirming, setConfirming] = useState<Participant | null>(null)
+  const [adding, setAdding] = useState('')
 
   const refetch = () =>
     Promise.all([
@@ -157,6 +166,20 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
           {failureOf(failed, transfer.isError)}
         </p>
       )}
+      {isOwner && workspaceMembers.data && (
+        <WorkspaceMemberAdder
+          candidates={workspaceMembers.data.filter(
+            (member) => !members.data?.some((participant) => participant.id === member.id),
+          )}
+          value={adding}
+          onChange={setAdding}
+          disabled={pending}
+          onAdd={(userId, role) => {
+            setAdding('')
+            change.mutate({ userId, role })
+          }}
+        />
+      )}
       {isOwner && visitors.data && visitors.data.length > 0 && (
         <section aria-labelledby="board-visitors" className="mt-1 flex flex-col gap-1">
           <h4 id="board-visitors" className="text-xs font-medium text-muted-foreground">
@@ -181,6 +204,56 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
           </ul>
         </section>
       )}
+    </section>
+  )
+}
+
+interface WorkspaceMemberAdderProps {
+  /** Members of the workspace of the board who are neither its owner nor its members. */
+  candidates: { id: string; name: string }[]
+  /** The chosen member. */
+  value: string
+  onChange: (userId: string) => void
+  disabled: boolean
+  onAdd: (userId: string, role: MemberRole) => void
+}
+
+/** «Добавить участника пространства»: a member of the workspace gets a role of their own on its board. */
+function WorkspaceMemberAdder({ candidates, value, onChange, disabled, onAdd }: WorkspaceMemberAdderProps) {
+  const [role, setRole] = useState<MemberRole>('editor')
+  if (candidates.length === 0) return null
+  return (
+    <section aria-labelledby="board-workspace-members" className="mt-1 flex flex-col gap-1">
+      <h4 id="board-workspace-members" className="text-xs font-medium text-muted-foreground">
+        Добавить участника пространства
+      </h4>
+      <div className="flex gap-2">
+        <select
+          aria-label="Участник пространства"
+          className="h-8 min-w-0 flex-1 rounded-md border bg-background px-1 text-sm"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Выберите участника</option>
+          {candidates.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Роль на доске"
+          className="h-8 rounded-md border bg-background px-1 text-sm"
+          value={role}
+          onChange={(event) => setRole(event.target.value as MemberRole)}
+        >
+          <option value="editor">{ROLE_LABELS.editor}</option>
+          <option value="viewer">{ROLE_LABELS.viewer}</option>
+        </select>
+        <Button type="button" variant="outline" size="sm" disabled={disabled || value === ''} onClick={() => onAdd(value, role)}>
+          Добавить
+        </Button>
+      </div>
     </section>
   )
 }

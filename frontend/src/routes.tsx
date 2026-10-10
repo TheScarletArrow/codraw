@@ -8,6 +8,8 @@ import { ConnectionsPage } from './pages/ConnectionsPage.tsx'
 import { InvitePage } from './pages/InvitePage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage.tsx'
+import { WorkspaceInvitePage } from './pages/WorkspaceInvitePage.tsx'
+import { WorkspacePage } from './pages/WorkspacePage.tsx'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <AppError /> },
@@ -28,6 +30,9 @@ export const routes: RouteObject[] = [
       { index: true, element: <BoardsPage /> },
       // An invitation needs a signed-in user: a visitor without a session comes back here from the login page.
       { path: 'invite/:token', element: <InvitePage /> },
+      // Workspaces need an account of GitHub or Google: the page tells a guest to sign in.
+      { path: 'workspace-invite/:token', element: <WorkspaceInvitePage /> },
+      { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
       // The link of a letter that confirms an address comes here too, with `?confirm=`.
       { path: 'settings/notifications', element: <NotificationSettingsPage /> },
       { path: 'settings/connections', element: <ConnectionsPage /> },
