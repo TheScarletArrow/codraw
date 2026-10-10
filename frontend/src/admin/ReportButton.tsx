@@ -22,9 +22,10 @@ export function ReportButton({ boardId }: { boardId: string }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" size="sm" variant="ghost">
+        <Button type="button" size="sm" variant="ghost" aria-label="Пожаловаться" title="Пожаловаться">
           <Flag />
-          Пожаловаться
+          {/* A phone keeps the line of the header for the title of the board. */}
+          <span className="max-sm:hidden">Пожаловаться</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-80 flex-col gap-3" aria-label="Жалоба на доску">
