@@ -230,6 +230,7 @@ export class Participant {
     if (!this.provider.isSynced) return;
     const measurements = this.measurements();
     const cells = this.cells();
+    const sentAt = now();
     this.document.transact(() => {
       const geometry = {
         x: Math.round(Math.random() * 2000),
@@ -241,17 +242,19 @@ export class Participant {
         const id = `${this.tag}-${this.created++}`;
         const cell = this.newCell(id, this.created);
         cell.set("geometry", geometry);
-        cell.set(SENT_AT, now());
+        cell.set(SENT_AT, sentAt);
         cell.set(SENT_BY, this.tag);
         cells.set(id, cell);
       } else {
         const cell = cells.get(`${this.tag}-${this.edits % shapes}`) as Y.Map<unknown> | undefined;
         if (!cell) return;
         cell.set("geometry", geometry);
-        cell.set(SENT_AT, now());
+        cell.set(SENT_AT, sentAt);
       }
     });
     this.edits++;
+    // Counted by the same moment as their deliveries are.
+    if (sentAt < measurements.since) return;
     measurements.editsSent++;
     measurements.editsExpected += this.boardParticipants - 1;
   }
@@ -264,7 +267,8 @@ export class Participant {
       cursor: { x: Math.round(Math.random() * 2000), y: Math.round(Math.random() * 1200) },
       [SENT_AT]: now(),
     });
-    this.measurements().cursorsSent++;
+    const measurements = this.measurements();
+    if (now() >= measurements.since) measurements.cursorsSent++;
   }
 
   private received(events: Y.YEvent<Y.AbstractType<unknown>>[]) {

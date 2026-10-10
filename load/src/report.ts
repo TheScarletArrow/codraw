@@ -28,6 +28,10 @@ export function limitOf(results: StepResult[], slo: number): { kept: StepResult 
   return { kept, broke: null };
 }
 
+/** Whether a step kept the target; edits of a restart wait for collab by design, so it has none. */
+const target = (result: StepResult, slo: number) =>
+  result.scenario === "reconnect" ? "—" : keepsTarget(result, slo) ? "да" : "нет";
+
 const percent = (value: number | undefined) => (value === undefined ? "—" : `${Math.round(value)} %`);
 const mib = (value: number | null | undefined) =>
   value === undefined || value === null ? "—" : `${Math.round(value)} МиБ`;
@@ -59,7 +63,7 @@ export function report(results: StepResult[], { options, slo }: { options: RunOp
         `${ms(collab?.storeP95 ?? null)} | ` +
         `${collabUsage ? `${percent(collabUsage.cpuMean)} (пик ${percent(collabUsage.cpuPeak)})` : percent(collab?.cpu ?? undefined)} / ` +
         `${mib(collabUsage?.memoryPeak ?? collab?.memory)} | ${percent(result.usage.backend?.cpuMean)} | ` +
-        `${percent(result.usage.postgres?.cpuMean)} | ${keepsTarget(result, slo) ? "да" : "нет"} |`,
+        `${percent(result.usage.postgres?.cpuMean)} | ${target(result, slo)} |`,
     );
   }
   lines.push("");

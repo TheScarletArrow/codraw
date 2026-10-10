@@ -107,6 +107,12 @@ async function deleteBoards(boards: Boards) {
   });
 }
 
+/**
+ * Measuring starts this many milliseconds after the reset is sent: every worker has reset its counters by then, so that
+ * an edit counts on both sides or on neither.
+ */
+const RESET_LEAD = 500;
+
 const sleep = (seconds: number) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 
 /** Connects the participants, spread over the workers of the pool. */
@@ -133,7 +139,7 @@ async function connect(pool: Pool, options: RunOptions, participants: Participan
 async function measure(pool: Pool, options: RunOptions, behaviour: Behaviour) {
   await pool.all({ type: "start", behaviour });
   await sleep(options.warmup);
-  await pool.all({ type: "reset", since: now() });
+  await pool.all({ type: "reset", since: now() + RESET_LEAD });
   const sampler = new UsageSampler(options.stack);
   const before = await options.stack.scrapeCollab();
   const started = now();
@@ -186,6 +192,8 @@ function stepResult(
   const sum = (pick: (result: Measurements) => number) =>
     measured.collected.reduce((total, result) => total + pick(result), 0);
   const expected = sum((result) => result.editsExpected);
+  // Failures of one step are mostly alike: the first one tells why.
+  if (connected.failures.length > 0) notes = { ...notes, "first connect failure": connected.failures[0]! };
   return {
     scenario,
     step,
@@ -307,7 +315,7 @@ export async function reconnectAll(options: RunOptions, count: number, perBoard:
     const connected = await connect(pool, options, boards.participants);
     await pool.all({ type: "start", behaviour: options.behaviour });
     await sleep(options.warmup);
-    await pool.all({ type: "reset", since: now() });
+    await pool.all({ type: "reset", since: now() + RESET_LEAD });
     await pool.all({ type: "expect-resync" });
     const restarted = now();
     const restart = options.stack.restartCollab();
