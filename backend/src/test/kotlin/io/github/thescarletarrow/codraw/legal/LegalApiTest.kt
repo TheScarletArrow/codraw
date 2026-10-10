@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.legal
 
 import io.github.thescarletarrow.codraw.IntegrationTest
+import org.hamcrest.Matchers.contains
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.TestPropertySource
@@ -26,6 +27,9 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.issues") { value(true) }
             jsonPath("$.backupRetentionDays") { value(null) }
             jsonPath("$.backupOffsite") { value(false) }
+            jsonPath("$.signInProviders[*].name") { value(contains("GitHub", "Google")) }
+            jsonPath("$.signInProviders[*].corporate") { value(contains(false, false)) }
+            jsonPath("$.guests") { value(true) }
         }
     }
 }

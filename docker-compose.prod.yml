@@ -57,6 +57,18 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-not-configured}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-not-configured}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-not-configured}
+      # A corporate provider of OpenID Connect with the id corp (docs/deploy.md); without an issuer there is none.
+      CODRAW_AUTH_OIDC_CORP_ISSUER_URI: ${CODRAW_OIDC_ISSUER_URI:-}
+      CODRAW_AUTH_OIDC_CORP_CLIENT_ID: ${CODRAW_OIDC_CLIENT_ID:-}
+      CODRAW_AUTH_OIDC_CORP_CLIENT_SECRET: ${CODRAW_OIDC_CLIENT_SECRET:-}
+      CODRAW_AUTH_OIDC_CORP_NAME: ${CODRAW_OIDC_NAME:-}
+      CODRAW_AUTH_OIDC_CORP_SCOPES: ${CODRAW_OIDC_SCOPES:-openid,profile,email}
+      CODRAW_AUTH_OIDC_CORP_ALLOWED_EMAIL_DOMAINS: ${CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS:-}
+      CODRAW_AUTH_OIDC_CORP_ALLOWED_GROUPS: ${CODRAW_OIDC_ALLOWED_GROUPS:-}
+      CODRAW_AUTH_OIDC_CORP_GROUPS_CLAIM: ${CODRAW_OIDC_GROUPS_CLAIM:-groups}
+      CODRAW_AUTH_OIDC_CORP_LOGOUT: ${CODRAW_OIDC_LOGOUT:-false}
+      # «Продолжить без входа»; false leaves a closed installation with its providers only.
+      CODRAW_GUESTS_ENABLED: ${CODRAW_GUESTS_ENABLED:-true}
       CODRAW_GUESTS_BOARD_RETENTION: ${CODRAW_GUESTS_BOARD_RETENTION:-30d}
       # Who provides the service: the privacy policy and the terms of use name them.
       CODRAW_LEGAL_OPERATOR: ${CODRAW_LEGAL_OPERATOR:-}

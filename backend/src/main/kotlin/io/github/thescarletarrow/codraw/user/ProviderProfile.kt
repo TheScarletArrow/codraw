@@ -12,6 +12,9 @@ data class ProviderProfile(
         const val GOOGLE = "google"
         const val GUEST = "guest"
 
+        /** The provider of a user of OpenID Connect is this prefix and the issuer, see `CodrawOidcUserService`. */
+        const val OIDC_PREFIX = "oidc:"
+
         /** Reads the profile from the user info [attributes] of the provider with the registration id [provider]. */
         fun of(provider: String, attributes: Map<String, Any?>): ProviderProfile = when (provider) {
             GITHUB -> ProviderProfile(

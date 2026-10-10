@@ -183,6 +183,25 @@ describe('Layout', () => {
     expect(findLocalCopy(ALICE.id, boardId)).toBeNull()
   })
 
+  it('signs out at the provider when the installation signs out there too', async () => {
+    await storeCopy(ALICE.id, boardId)
+    const logoutUrl = 'https://sso.example.com/realms/acme/protocol/openid-connect/logout?id_token_hint=t'
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    mockFetch({
+      'GET /api/me': { body: ALICE },
+      'GET /api/boards': { body: [] },
+      'POST /api/logout': { body: { logoutUrl } },
+      ...unreadCount,
+    })
+    renderRoutes(routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Выйти' }))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(logoutUrl))
+    expect(findLocalCopy(ALICE.id, boardId)).toBeNull()
+  })
+
   it('removes the local copies that another user of the browser left', async () => {
     await storeCopy('guest-1', boardId)
     await storeCopy(ALICE.id, boardId)

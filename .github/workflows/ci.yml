@@ -113,6 +113,9 @@ jobs:
       CODRAW_BACKUP_ENCRYPTION_PASSWORD: ci-backup-password
       CODRAW_BACKUP_KEEP_DAILY: 3
       CODRAW_BACKUP_KEEP_WEEKLY: 2
+      # An OAuth application of GitHub that the stack offers: the browser check reads its callback URL.
+      GITHUB_CLIENT_ID: ci-github-client
+      GITHUB_CLIENT_SECRET: ci-github-secret
     steps:
       - uses: actions/checkout@v5
       - name: Name the images

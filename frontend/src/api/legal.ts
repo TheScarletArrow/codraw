@@ -22,6 +22,16 @@ export interface LegalInfo {
   backupRetentionDays: number | null
   /** Whether backups are kept outside the server too, at a provider of storage of the operator. */
   backupOffsite: boolean
+  /** The providers that users of this installation sign in through. */
+  signInProviders: LegalSignInProvider[]
+  /** Whether «Продолжить без входа» creates guests. */
+  guests: boolean
+}
+
+export interface LegalSignInProvider {
+  name: string
+  /** A provider of OpenID Connect that the operator chose, not GitHub or Google. */
+  corporate: boolean
 }
 
 export function fetchLegal(): Promise<LegalInfo> {

@@ -24,6 +24,11 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   issues: false,
   backupRetentionDays: null,
   backupOffsite: false,
+  signInProviders: [
+    { name: 'GitHub', corporate: false },
+    { name: 'Google', corporate: false },
+  ],
+  guests: true,
   ...changes,
 })
 
@@ -161,6 +166,31 @@ describe('legal pages', () => {
     )
     expect(retention).toHaveTextContent('Копия доски хранится как отдельная доска того, кто её сделал, со своими изображениями и не зависит от оригинала')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+  })
+
+  it('names the sign-in providers of the installation, the corporate one as chosen by the operator', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent('При входе через GitHub или Google — имя, адрес картинки профиля и идентификатор')
+    expect(data).not.toHaveTextContent('выбрал оператор')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'GitHub и Google узнают о входе через них по своим правилам.',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal({ signInProviders: [{ name: 'Keycloak компании', corporate: true }], guests: false }) } })
+    renderRoutes(routes, '/privacy')
+    const corporate = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(corporate).toHaveTextContent(
+      'При входе через Keycloak компании — провайдера входа, которого выбрал оператор установки, — CoDraw получает от провайдера идентификатор пользователя, имя, адрес картинки профиля, адрес электронной почты и группы',
+    )
+    expect(corporate).toHaveTextContent('почту и группы CoDraw только сверяет при входе с ограничениями, которые задал оператор, и не хранит')
+    expect(corporate).not.toHaveTextContent('GitHub или Google')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Провайдер входа, которого выбрал оператор, — Keycloak компании — узнаёт о входе и выходе через него по правилам оператора.',
+    )
   })
 
   it('names the token of GitHub and linked issues only when the installation links issues', async () => {
