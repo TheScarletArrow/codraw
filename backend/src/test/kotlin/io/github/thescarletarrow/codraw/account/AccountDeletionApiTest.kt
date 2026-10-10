@@ -312,6 +312,11 @@ class AccountDeletionApiTest(
             "INSERT INTO personal_templates (owner_id, title, description, drawio, created_at, updated_at) VALUES (:id, 'Шаблон', '', '<mxfile/>', now(), now())",
             "id" to user.id,
         )
+        // A report of a board of others that the user sent and, as an administrator, closed: it stays without them.
+        sql(
+            "INSERT INTO board_reports (board_id, reason, reporter_id, created_at, resolved_at, resolved_by, resolved_by_name) VALUES (:board, 'SPAM', :id, now(), now(), :id, 'Alice')",
+            "board" to board, "id" to user.id,
+        )
         val workspace = workspace("Платформа", other to "OWNER", user to "EDITOR")
         sql("INSERT INTO boards (title, owner_id, created_at, updated_at, workspace_id) VALUES ('Своя в пространстве', :user, now(), now(), :workspace)", "user" to user.id, "workspace" to workspace)
         return comment

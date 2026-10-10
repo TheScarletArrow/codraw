@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.Tokens
 import io.github.thescarletarrow.codraw.board.BoardService
+import io.github.thescarletarrow.codraw.board.SharingBlockedException
 import io.github.thescarletarrow.codraw.board.ownedBy
 import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.readAtMost
@@ -86,6 +87,7 @@ class EmbedController(
         @AuthenticationPrincipal principal: OAuth2User,
     ): EmbedResponse {
         val board = boards.ownedBy(id, principal.userId)
+        if (board.sharingBlockedAt != null) throw SharingBlockedException()
         if (request.pageId.length !in 1..PAGE_ID_MAX_LENGTH) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "pageId must have 1 to $PAGE_ID_MAX_LENGTH characters")
         }

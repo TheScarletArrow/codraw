@@ -6,6 +6,8 @@ export interface CurrentUser {
   avatarUrl: string | null
   /** The user works without a sign-in provider. */
   guest: boolean
+  /** The configuration of the installation makes the user its administrator. */
+  admin: boolean
 }
 
 /** A way to sign in that the installation offers: GitHub, Google or a provider of OpenID Connect of the operator. */

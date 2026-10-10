@@ -274,6 +274,8 @@ data class BoardResponse(
     val projectId: UUID?,
     /** What the workspace gives its editors and viewers on the board. */
     val workspaceAccess: WorkspaceAccess,
+    /** An administrator of the installation closed the link and the live image of the board; its owner opens neither. */
+    val sharingBlocked: Boolean,
 )
 
 /** A board of the user in their list of boards. */
@@ -321,4 +323,5 @@ fun Board.toResponse(owner: User, role: BoardRole, workspace: BoardWorkspace?) =
     workspace = workspace,
     projectId = projectId,
     workspaceAccess = workspaceAccess,
+    sharingBlocked = sharingBlockedAt != null,
 )

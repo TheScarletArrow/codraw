@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { participantColor, participantIdentity, PARTICIPANT_COLORS } from './identity.ts'
 
 describe('participantIdentity', () => {
-  const user = { id: '0199a000-0000-7000-8000-0000000000a1', name: 'Алиса', avatarUrl: 'https://avatars.example.com/a.png', guest: false }
+  const user = { id: '0199a000-0000-7000-8000-0000000000a1', name: 'Алиса', avatarUrl: 'https://avatars.example.com/a.png', guest: false, admin: false }
 
   it('takes the name and the avatar from the profile', () => {
     expect(participantIdentity(user)).toMatchObject({ name: 'Алиса', avatarUrl: 'https://avatars.example.com/a.png' })

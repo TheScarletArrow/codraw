@@ -73,6 +73,11 @@ services:
       # Who provides the service: the privacy policy and the terms of use name them.
       CODRAW_LEGAL_OPERATOR: ${CODRAW_LEGAL_OPERATOR:-}
       CODRAW_LEGAL_CONTACT_EMAIL: ${CODRAW_LEGAL_CONTACT_EMAIL:-}
+      # Administrators of the installation as <provider>:<id at the provider>, e.g. github:583231; see docs/deploy.md.
+      CODRAW_ADMINS: ${CODRAW_ADMINS:-}
+      CODRAW_ADMIN_RETENTION: ${CODRAW_ADMIN_RETENTION:-365d}
+      CODRAW_LIMITS_REPORTS_PER_ADDRESS_PER_HOUR: ${CODRAW_LIMITS_REPORTS_PER_ADDRESS_PER_HOUR:-5}
+      CODRAW_LIMITS_REPORTS_PER_BOARD: ${CODRAW_LIMITS_REPORTS_PER_BOARD:-50}
       # How long the service backup keeps archives and whether outside the server: the privacy policy states it.
       CODRAW_LEGAL_BACKUP_KEEP_DAILY: ${CODRAW_BACKUP_KEEP_DAILY:-7}
       CODRAW_LEGAL_BACKUP_KEEP_WEEKLY: ${CODRAW_BACKUP_KEEP_WEEKLY:-4}

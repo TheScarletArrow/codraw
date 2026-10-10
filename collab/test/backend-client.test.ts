@@ -62,14 +62,25 @@ describe("backend client", () => {
     await expect(client.loadAccess("0199a000-0000-7000-8000-000000000002")).rejects.toBeInstanceOf(BoardNotFoundError);
   });
 
-  it("asks which users are gone, and nothing without users", async () => {
+  it("asks which users are gone and which are blocked with one request, and nothing without users", async () => {
     backend.missingUsers.add("0199a000-0000-7000-8000-0000000000b1");
+    backend.blocked.add("0199a000-0000-7000-8000-0000000000c1");
 
     await expect(
-      client.missingUsers(["0199a000-0000-7000-8000-0000000000b1", "0199a000-0000-7000-8000-0000000000c1"]),
-    ).resolves.toEqual(["0199a000-0000-7000-8000-0000000000b1"]);
-    await expect(client.missingUsers([])).resolves.toEqual([]);
-    expect(backend.userChecks).toBe(1);
+      client.checkUsers([
+        "0199a000-0000-7000-8000-0000000000b1",
+        "0199a000-0000-7000-8000-0000000000c1",
+        "0199a000-0000-7000-8000-0000000000d1",
+      ]),
+    ).resolves.toEqual({ missing: ["0199a000-0000-7000-8000-0000000000b1"], blocked: ["0199a000-0000-7000-8000-0000000000c1"] });
+    await expect(client.checkUsers([])).resolves.toEqual({ missing: [], blocked: [] });
+    expect(backend.userChecks).toHaveLength(1);
+  });
+
+  it("fails when the backend cannot tell about the users", async () => {
+    backend.failingUserChecks = 1;
+
+    await expect(client.checkUsers(["alice"])).rejects.toThrow("500");
   });
 
   it("fails on other backend errors", async () => {
@@ -80,7 +91,7 @@ describe("backend client", () => {
     await expect(unauthorized.loadAccess(board)).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.storeSearchText(board, "Схема")).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.boardsWithoutSearchText(null, 10)).rejects.toThrow("backend responded with 401");
-    await expect(unauthorized.missingUsers([board])).rejects.toThrow("backend responded with 401");
+    await expect(unauthorized.checkUsers([board])).rejects.toThrow("backend responded with 401");
   });
 
   it("stores the text of a board for search in UTF-8, and only while it has none when asked so", async () => {
@@ -127,6 +138,7 @@ describe("config", () => {
       internalToken: "secret",
       jwksUrl: "http://backend:8080/.well-known/jwks.json",
       accessCheckInterval: 5000,
+      userCheckInterval: 10_000,
       documentSizeLimit: 16 * 1024 * 1024,
       broadcastDelay: 0,
       logFormat: "text",
@@ -147,6 +159,11 @@ describe("config", () => {
   it("reads the format of the log", () => {
     expect(loadConfig({ ...env, LOG_FORMAT: "json" }).logFormat).toBe("json");
     expect(() => loadConfig({ ...env, LOG_FORMAT: "xml" })).toThrow("LOG_FORMAT");
+  });
+
+  it("reads the period of checking the users of the connections", () => {
+    expect(loadConfig({ ...env, USER_CHECK_INTERVAL_MS: "2000" }).userCheckInterval).toBe(2_000);
+    expect(() => loadConfig({ ...env, USER_CHECK_INTERVAL_MS: "0" })).toThrow("USER_CHECK_INTERVAL_MS");
   });
 
   it.each(["0", "-1", "1.5", "minute"])("rejects an access check interval of %s", (value) => {

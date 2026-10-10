@@ -32,6 +32,13 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('tells a user whom an administrator blocked why they did not sign in', () => {
+    mockFetch(PROVIDERS)
+    renderRoutes(routes, '/login?blocked')
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Учётная запись заблокирована администратором установки.')
+  })
+
   it('offers only the corporate sign-in of a closed installation', async () => {
     mockFetch({ 'GET /api/auth/providers': { body: { providers: [{ id: 'corp', name: 'Keycloak компании' }], guests: false } } })
     renderRoutes(routes, '/login')

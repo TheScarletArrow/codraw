@@ -1,8 +1,12 @@
-import { focusManager } from '@tanstack/react-query'
+import { focusManager, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { Navigate } from 'react-router'
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
+import { isUnauthorized } from '../api/http.ts'
+import { recheckSession, useCurrentUser } from '../auth/session.ts'
 import { orderBetween, writePage } from '../diagram/model.ts'
 import type { FakeEditor } from '../test/fakeEditor.ts'
 import { ALICE, mockFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
@@ -110,6 +114,39 @@ describe('PublicBoardPage', () => {
     )
   })
 
+  it('sends a report of the reader to the administrators', async () => {
+    const { fetchMock } = renderPage({
+      [`GET ${boardUrl}`]: { body: publicBoard },
+      [`GET ${boardUrl}/document`]: { bytes: twoPages() },
+      [`POST ${boardUrl}/reports`]: { status: 204 },
+    })
+    await shownCanvas()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Пожаловаться' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Незаконное содержимое' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Что не так' }), '  Чужие персональные данные ')
+    await userEvent.click(screen.getByRole('button', { name: 'Отправить' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Жалоба отправлена. Спасибо!')
+    const [, init] = fetchMock.mock.calls.find(([input]) => input.toString() === `${boardUrl}/reports`)!
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ reason: 'illegal', message: 'Чужие персональные данные' })
+  })
+
+  it('tells the reader to try later when their address sent too many reports', async () => {
+    renderPage({
+      [`GET ${boardUrl}`]: { body: publicBoard },
+      [`GET ${boardUrl}/document`]: { bytes: twoPages() },
+      [`POST ${boardUrl}/reports`]: { status: 429 },
+    })
+    await shownCanvas()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Пожаловаться' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Отправить' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Слишком много жалоб с вашего адреса. Попробуйте позже.')
+  })
+
   it('opens the page of the address and offers a reader without a session to sign in and come back to it', async () => {
     const { router } = renderPage(
       { [`GET ${boardUrl}`]: { body: publicBoard }, [`GET ${boardUrl}/document`]: { bytes: twoPages() } },
@@ -183,6 +220,30 @@ describe('PublicBoardPage', () => {
 
     expect(await screen.findByText('Страница входа')).toBeInTheDocument()
     expect(router.state.location.state).toEqual({ from: `/boards/${boardId}?page=page-2` })
+  })
+
+  it('sends to the login page a user whose session ended on the board, though the cache still has their profile', async () => {
+    // Like the layout: the page of the board finds the session gone and opens the board for reading without one.
+    function BoardWithEndedSession() {
+      const queryClient = useQueryClient()
+      const user = useCurrentUser()
+      const loaded = user.data !== undefined
+      useEffect(() => {
+        if (loaded) void recheckSession(queryClient)
+      }, [loaded, queryClient])
+      return isUnauthorized(user.error) ? <Navigate to={`/view/${boardId}`} replace /> : <p>Страница доски</p>
+    }
+    mockFetch({ 'GET /api/me': [{ body: ALICE }, { status: 401 }], [`GET ${boardUrl}`]: { status: 404 } })
+    renderRoutes(
+      [
+        { path: '/view/:boardId', element: <PublicBoardPage /> },
+        { path: '/login', element: <p>Страница входа</p> },
+        { path: '/boards/:boardId', element: <BoardWithEndedSession /> },
+      ],
+      `/boards/${boardId}`,
+    )
+
+    expect(await screen.findByText('Страница входа')).toBeInTheDocument()
   })
 
   it('opens the board as usual for a signed-in user when it is not shown to anybody', async () => {

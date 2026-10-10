@@ -525,6 +525,20 @@ describe('BoardPage', () => {
       expect(provider.disconnected).toBe(true)
     })
 
+    it.each(['user-blocked', 'account-deleted'])('connects no more and checks the session when collab closes with %s', async (reason) => {
+      const provider = await openBoard({
+        'GET /api/me': [{ body: ALICE }, { status: 401 }],
+        [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }],
+      })
+      act(() => provider.emitSynced())
+
+      act(() => provider.emitClose(reason))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(provider.disconnected).toBe(true)
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', '/api/me')).toHaveLength(2))
+    })
+
     it('shows "Нет доступа" when the owner closed the link while the participant works on the board', async () => {
       const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
       act(() => provider.emitSynced())

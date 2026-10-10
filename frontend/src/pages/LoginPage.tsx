@@ -62,6 +62,12 @@ export function LoginPage() {
             Не удалось загрузить способы входа. Обновите страницу.
           </p>
         )}
+        {/* With `?blocked` when an administrator of the installation blocked the user. */}
+        {params.has('blocked') && (
+          <p role="alert" className="text-destructive">
+            Учётная запись заблокирована администратором установки.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           Входя или продолжая без входа, вы принимаете{' '}
           <Link to="/terms" className="underline">

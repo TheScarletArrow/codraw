@@ -33,7 +33,7 @@ class Embeds(private val jdbc: JdbcClient) {
         .optional()
         .orElse(null)
 
-    fun image(token: String): EmbedImage? = jdbc.sql("SELECT e.svg, e.updated_at FROM board_embeds e JOIN boards b ON b.id = e.board_id WHERE e.token = :token AND b.deleted_at IS NULL")
+    fun image(token: String): EmbedImage? = jdbc.sql("SELECT e.svg, e.updated_at FROM board_embeds e JOIN boards b ON b.id = e.board_id WHERE e.token = :token AND b.deleted_at IS NULL AND b.sharing_blocked_at IS NULL")
         .param("token", token)
         .query { rs, _ -> EmbedImage(rs.getBytes("svg"), rs.instant("updated_at")) }
         .optional()

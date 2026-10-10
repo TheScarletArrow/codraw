@@ -22,6 +22,7 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   closedProposalsPerBoard: 10,
   schemaImport: false,
   issues: false,
+  adminRetentionDays: 365,
   backupRetentionDays: null,
   backupOffsite: false,
   signInProviders: [
@@ -194,6 +195,23 @@ describe('legal pages', () => {
     expect(corporate).not.toHaveTextContent('GitHub или Google')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Провайдер входа, которого выбрал оператор, — Keycloak компании — узнаёт о входе и выходе через него по правилам оператора.',
+    )
+  })
+
+  it('names the reports, the journal of administrators and their retention of the installation', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ adminRetentionDays: 180 }) } })
+    renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent('Жалобы. Жалоба на доску, открытую без входа')
+    expect(data).toHaveTextContent('сетевой адрес отправителя с жалобой не хранится')
+    expect(data).toHaveTextContent('Журнал администраторов. Что делали администраторы этой установки: кто, что, когда')
+    expect(data).toHaveTextContent('Администратор может заблокировать учётную запись')
+    expect(screen.getByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'закрытая жалоба и записи журнала администраторов — 180 дней',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Жалобы и журнал действий администраторов видят только администраторы этой установки',
     )
   })
 

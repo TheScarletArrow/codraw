@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.e2e
 
 import io.github.thescarletarrow.codraw.user.ProviderProfile
+import io.github.thescarletarrow.codraw.user.UserBlockedException
 import io.github.thescarletarrow.codraw.user.UserService
 import io.github.thescarletarrow.codraw.user.signInToSession
 import jakarta.servlet.http.HttpServletRequest
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import org.springframework.core.annotation.Order
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
@@ -28,14 +30,19 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 class TestLoginController(private val users: UserService) {
 
-    /** Signs in as the test user with this name, creating the user on the first sign-in. */
+    /** Signs in as the test user with this name, creating the user on the first sign-in; 403 for a blocked one. */
     @PostMapping(PATH)
     fun login(
         @Valid @RequestBody request: TestLoginRequest,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
     ): ResponseEntity<Void> {
-        signInToSession(users.signIn(ProviderProfile(PROVIDER, request.name, request.name, null)), PROVIDER, httpRequest, httpResponse)
+        val user = try {
+            users.signIn(ProviderProfile(PROVIDER, request.name, request.name, null))
+        } catch (_: UserBlockedException) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+        signInToSession(user, PROVIDER, httpRequest, httpResponse)
         return ResponseEntity.noContent().build()
     }
 

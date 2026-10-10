@@ -32,7 +32,8 @@ class UserService(
 
     /**
      * Returns the user signing in with [profile]. The first sign-in through a provider creates the user,
-     * later sign-ins through the same provider find that user and update the name and the avatar.
+     * later sign-ins through the same provider find that user and update the name and the avatar. Throws
+     * [UserBlockedException] when an administrator blocked the user; nothing changes then.
      */
     @Transactional
     fun signIn(profile: ProviderProfile): User = users.upsert(
@@ -41,7 +42,7 @@ class UserService(
         name = profile.name,
         avatarUrl = profile.avatarUrl,
         createdAt = clock.instant().truncatedTo(ChronoUnit.MICROS),
-    )
+    ).also { if (it.blockedAt != null) throw UserBlockedException(it.id) }
 
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
@@ -74,3 +75,6 @@ class UserService(
 
     fun find(id: UUID): User? = users.findById(id)
 }
+
+/** An administrator of the installation blocked the user [userId], who does not sign in. */
+class UserBlockedException(val userId: UUID) : RuntimeException("User $userId is blocked")
