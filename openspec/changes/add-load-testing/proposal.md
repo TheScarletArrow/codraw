@@ -25,6 +25,7 @@
 - Исправлен скрытый предел единого адреса: nginx образа `frontend` принимал 1024 соединения на рабочий процесс при
   процессе на ядро, а каждый участник держит два соединения — на сервере с одним ядром это около 500 участников. Теперь
   4096.
+- Правило оповещения `CodrawCollabBusy`: `collab` 10 минут занимает больше 80% ядра — найденный предел одной установки.
 - Новая настройка `collab` `BROADCAST_DELAY_MS` (`CODRAW_COLLAB_BROADCAST_DELAY_MS` в `docker-compose.prod.yml`, по
   умолчанию 0 — как раньше): окно, за которое правки и курсоры доски уходят участникам одним сообщением. На доске со
   многими участниками оно вдвое снижает процессор `collab` ценой этой задержки.
@@ -38,6 +39,7 @@
 ### Modified Capabilities
 
 - `realtime-sync`: настраиваемое окно рассылки правок и курсоров участникам.
+- `observability`: правило оповещения о загрузке `collab`.
 - `deployment`: рекомендации по ресурсам одной установки, ссылка на отчёт о нагрузке и соединения nginx.
 
 ## Impact
@@ -48,6 +50,7 @@
   зависимости по lock-файлу; nginx образа `frontend` — `worker_connections 4096`.
 - `docker-compose.prod.yml`, `.env.prod.example`: `CODRAW_COLLAB_BROADCAST_DELAY_MS`.
 - `.github/workflows/load.yml`: ручной прогон.
+- `deploy/prometheus/alerts.yml` и его тесты: `CodrawCollabBusy`.
 - `docs/load-testing.md`, `docs/deploy.md`, `docs/running.md`, README («План работ»). Поведение приложения для
   пользователей не меняется: версия и «Что нового» не поднимаются.
 - Не меняются: `backend`, код `frontend`, схема БД, персональные данные.

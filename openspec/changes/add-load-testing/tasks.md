@@ -15,6 +15,8 @@
 
 - [x] 2.3 frontend: nginx образа с `worker_connections 4096` вместо 1024; проверка: прогон 200 × 3 с одним рабочим процессом nginx до и после
 
+- [x] 2.4 deploy: правило `CodrawCollabBusy` (процессор `collab` > 80% ядра 10 минут) и его тест; проверка: `promtool test rules`
+
 ## 3. Запуск и отчёт
 
 - [x] 3.1 CI: workflow `Load` с `workflow_dispatch` — образы коммита, стек, `pnpm load`, отчёт в артефакте и сводке; проверка: разбор YAML, запуск только вручную
