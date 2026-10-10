@@ -7,4 +7,8 @@ export const ALLOWED_RUSSIAN: Record<string, readonly string[] | 'all'> = {
   'i18n/i18n.ts': ['Русский'],
   // The novelties of every release in both languages; whatsNew.test.ts checks that each one has its English text.
   'releaseNotes/releases.ts': 'all',
+  // The import of MADR files reads their Russian headings, statuses and keys, and transliterates names of files.
+  'decisions/madr.ts': 'all',
+  // Mentions find people with «ё» as «е».
+  'comments/threads.ts': ['ё', 'е'],
 }

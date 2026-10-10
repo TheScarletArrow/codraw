@@ -1,6 +1,7 @@
 import { ScrollText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Decision } from '../api/decisions.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 /** Opens and closes the decisions of the board; shows how many are proposed and wait for a decision. */
 export function DecisionsButton({
@@ -18,9 +19,9 @@ export function DecisionsButton({
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={proposed > 0 ? `Решения (предложено: ${proposed})` : 'Решения'}
+      aria-label={proposed > 0 ? m.decisionsProposed(proposed) : m.decisions}
       aria-pressed={open}
-      title="Решения (ADR)"
+      title={m.decisionsAdr}
       className="relative shrink-0"
       onClick={onToggle}
     >

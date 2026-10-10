@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CommentText, Person } from '../api/comments.ts'
 import { Avatar } from '../board/Participants.tsx'
+import { commentsMessages as m } from './messages.ts'
 import { insertMention, mentionQueryAt, mentionsIn, suggestPeople, type MentionQuery } from './threads.ts'
 
 /** The most characters of a comment, as the backend takes. */
@@ -149,7 +150,7 @@ export function CommentComposer({
           <ul
             id={listId}
             role="listbox"
-            aria-label="Кого упомянуть"
+            aria-label={m.whomToMention}
             className="absolute top-full right-0 left-0 z-10 mt-1 flex flex-col rounded-md border bg-popover p-1 shadow-md"
           >
             {suggestions.map((person, index) => (
@@ -181,7 +182,7 @@ export function CommentComposer({
       <div className="flex justify-end gap-2">
         {onCancel && (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            Отмена
+            {m.cancel}
           </Button>
         )}
         <Button type="submit" size="sm" disabled={pending || text.trim() === ''}>

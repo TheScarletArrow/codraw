@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
+import { templatesMessages as m } from './messages.ts'
 import { TemplateCards } from './TemplateCards.tsx'
 
 interface EmptyBoardTemplatesProps {
@@ -41,7 +42,7 @@ export function EmptyBoardTemplates({ editor, onlyPage }: EmptyBoardTemplatesPro
     // At the bottom: the middle of the canvas stays free for shapes, cursors and the selection frame.
     <div className="pointer-events-none absolute inset-0 flex items-end justify-center p-6">
       <section
-        aria-label="Начните с шаблона"
+        aria-label={m.startWithTemplate}
         className={cn(
           'w-full max-w-2xl rounded-lg border bg-background p-3 shadow-md transition-opacity',
           dragging ? 'pointer-events-none opacity-40' : 'pointer-events-auto',
@@ -49,10 +50,10 @@ export function EmptyBoardTemplates({ editor, onlyPage }: EmptyBoardTemplatesPro
       >
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <h2 className="font-semibold">Начните с шаблона</h2>
-            <p className="text-sm text-muted-foreground">или перетащите фигуры из панели слева</p>
+            <h2 className="font-semibold">{m.startWithTemplate}</h2>
+            <p className="text-sm text-muted-foreground">{m.orDragShapes}</p>
           </div>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" onClick={() => setClosed(true)}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} onClick={() => setClosed(true)}>
             <X />
           </Button>
         </div>

@@ -2,6 +2,7 @@ import { addDecision, updateDecision, type Decision } from '../api/decisions.ts'
 import { HttpError } from '../api/http.ts'
 import { contentOf } from './decisions.ts'
 import { parseMadr, type ParsedDecision } from './madr.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 /** A file of a record to import: its name, with its folders when it comes from a folder, and its text. */
 export interface RecordFile {
@@ -84,10 +85,10 @@ export async function importDecisions(
 
 /** The report as one line for the panel: «Импортировано: 3. Номер уже занят: 0001-kafka.md». */
 export function reportText(report: ImportReport): string {
-  const parts = [`Импортировано: ${report.added.length}`]
-  if (report.taken.length > 0) parts.push(`Номер уже занят: ${report.taken.join(', ')}`)
-  if (report.untitled.length > 0) parts.push(`Без заголовка: ${report.untitled.join(', ')}`)
-  if (report.limit !== null) parts.push(`На доске уже ${report.limit} решений — больше нельзя`)
-  else if (report.failed.length > 0) parts.push(`Не удалось: ${report.failed.join(', ')}`)
+  const parts = [m.report.imported(report.added.length)]
+  if (report.taken.length > 0) parts.push(m.report.taken(report.taken.join(', ')))
+  if (report.untitled.length > 0) parts.push(m.report.untitled(report.untitled.join(', ')))
+  if (report.limit !== null) parts.push(m.limit(report.limit))
+  else if (report.failed.length > 0) parts.push(m.report.failed(report.failed.join(', ')))
   return `${parts.join('. ')}.`
 }

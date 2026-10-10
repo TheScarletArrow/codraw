@@ -7,7 +7,8 @@ import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import type { StatusItem } from '../board/statusList.ts'
 import type { CellInfo } from '../comments/threads.ts'
 import { DecisionForm } from './DecisionForm.tsx'
-import { contentOf, decisionCode, formatDay, isAbout, SECTIONS, statusText, withElements } from './decisions.ts'
+import { contentOf, decisionCode, formatDay, isAbout, SECTIONS, sectionTitle, statusText, withElements } from './decisions.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 const STATUS_COLORS: Record<Decision['status'], string> = {
   proposed: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100',
@@ -86,10 +87,10 @@ export function DecisionCard({
   const unlinked = selection.filter((element) => !isAbout(decision, element))
   const elementTitle = (element: DecisionElement) => {
     const page = pages.find((candidate) => candidate.id === element.pageId)
-    if (!page) return { label: 'Страница удалена', page: null, deleted: true }
+    if (!page) return { label: m.pageDeleted, page: null, deleted: true }
     const cell = cellInfo(element.pageId, element.cellId)
-    if (!cell) return { label: 'Элемент удалён', page: page.name, deleted: true }
-    return { label: cell.label !== '' ? `«${cell.label}»` : 'Без подписи', page: page.name, deleted: false }
+    if (!cell) return { label: m.elementDeleted, page: page.name, deleted: true }
+    return { label: cell.label !== '' ? m.quoted(cell.label) : m.unlabeled, page: page.name, deleted: false }
   }
 
   return (
@@ -121,19 +122,19 @@ export function DecisionCard({
         </span>
         <span>{formatDay(decision.decidedOn)}</span>
         {decision.author && <span>{decision.author.name}</span>}
-        {decision.elements.length > 0 && <span>Элементов: {decision.elements.length}</span>}
+        {decision.elements.length > 0 && <span>{m.elementsCount(decision.elements.length)}</span>}
       </p>
       {expanded && editing && (
         <DecisionForm
           initial={contentOf(decision)}
           decisionId={decision.id}
           decisions={decisions}
-          label={`Изменить решение ${code}`}
-          submitLabel="Сохранить"
+          label={m.editDecision(code)}
+          submitLabel={m.save}
           pending={pending}
           error={error}
           onSubmit={(content) =>
-            void attempt(() => actions.update(decision, content), 'Не удалось сохранить решение').then(
+            void attempt(() => actions.update(decision, content), m.saveFailed).then(
               (done) => done && setEditing(false),
             )
           }
@@ -146,19 +147,20 @@ export function DecisionCard({
       {expanded && !editing && (
         <>
           {SECTIONS.map(
-            ([key, title]) =>
+            (key) =>
               decision[key] !== '' && (
-                <section key={key} aria-label={title} className="flex flex-col gap-0.5 px-1">
-                  <h5 className="text-xs font-medium text-muted-foreground">{title}</h5>
+                <section key={key} aria-label={sectionTitle(key)} className="flex flex-col gap-0.5 px-1">
+                  <h5 className="text-xs font-medium text-muted-foreground">{sectionTitle(key)}</h5>
                   <p className="text-sm break-words whitespace-pre-wrap">{decision[key]}</p>
                 </section>
               ),
           )}
-          <section aria-label="Элементы" className="flex flex-col gap-1 px-1">
-            <h5 className="text-xs font-medium text-muted-foreground">Элементы</h5>
+          <section aria-label={m.elements} className="flex flex-col gap-1 px-1">
+            <h5 className="text-xs font-medium text-muted-foreground">{m.elements}</h5>
             {decision.elements.length === 0 && (
               <p className="text-xs text-muted-foreground">
-                Не привязано ни к одному элементу.{canEdit && ' Выделите элементы на холсте и нажмите «Привязать».'}
+                {m.notLinked}
+                {canEdit && m.linkHint}
               </p>
             )}
             <ul className="flex flex-col gap-0.5">
@@ -168,7 +170,7 @@ export function DecisionCard({
                   <li key={`${element.pageId}:${element.cellId}`} className="flex items-center gap-1">
                     <button
                       type="button"
-                      title={title.page ? `Показать на странице «${title.page}»` : undefined}
+                      title={title.page ? m.showOnPage(title.page) : undefined}
                       disabled={title.deleted}
                       className={cn(
                         'min-w-0 flex-1 truncate rounded px-1 text-left text-xs hover:bg-accent disabled:hover:bg-transparent',
@@ -186,7 +188,7 @@ export function DecisionCard({
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Отвязать ${title.deleted ? 'удалённый элемент' : title.label}`}
+                        aria-label={m.unlink(title.deleted ? m.deletedElement : title.label)}
                         disabled={pending}
                         onClick={() =>
                           void attempt(
@@ -197,7 +199,7 @@ export function DecisionCard({
                                   (other) => other.pageId !== element.pageId || other.cellId !== element.cellId,
                                 ),
                               ),
-                            'Не удалось отвязать элемент',
+                            m.unlinkFailed,
                           )
                         }
                       >
@@ -217,38 +219,38 @@ export function DecisionCard({
                 onClick={() =>
                   void attempt(
                     () => actions.link(decision, withElements(decision.elements, unlinked)),
-                    'Не удалось привязать элементы',
+                    m.linkSelectedFailed,
                   )
                 }
               >
                 <Link2 />
-                Привязать выделенные ({unlinked.length})
+                {m.linkSelected(unlinked.length)}
               </Button>
             )}
             {canEdit && suggestions.length > 0 && (
-              <div role="group" aria-label="Ждут ревью" className="flex flex-col gap-1 rounded-md bg-muted/60 p-1.5">
-                <p className="text-xs text-muted-foreground">Ждут ревью — может быть, решение и о них:</p>
+              <div role="group" aria-label={m.awaitingReview} className="flex flex-col gap-1 rounded-md bg-muted/60 p-1.5">
+                <p className="text-xs text-muted-foreground">{m.awaitingReviewHint}</p>
                 {suggestions.map((item) => (
                   <div key={`${item.pageId}:${item.cellId}`} className="flex items-center gap-1">
                     <span className="min-w-0 flex-1 truncate text-xs">
-                      «{item.title}» <span className="text-muted-foreground">· {item.pageName}</span>
+                      {m.quoted(item.title)} <span className="text-muted-foreground">· {item.pageName}</span>
                     </span>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       className="h-6 px-1.5 text-xs"
-                      aria-label={`Привязать «${item.title}»`}
+                      aria-label={m.linkItem(item.title)}
                       disabled={pending}
                       onClick={() =>
                         void attempt(
                           () =>
                             actions.link(decision, withElements(decision.elements, [{ pageId: item.pageId, cellId: item.cellId }])),
-                          'Не удалось привязать элемент',
+                          m.linkFailed,
                         )
                       }
                     >
-                      Привязать
+                      {m.link}
                     </Button>
                   </div>
                 ))}
@@ -263,7 +265,7 @@ export function DecisionCard({
           <div className="flex flex-wrap justify-end gap-1">
             <Button type="button" variant="ghost" size="sm" onClick={() => actions.download(decision)}>
               <Download />
-              Скачать .md
+              {m.downloadMd}
             </Button>
             {canEdit && (
               <>
@@ -271,21 +273,21 @@ export function DecisionCard({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  aria-label={`Изменить решение ${code}`}
+                  aria-label={m.editDecision(code)}
                   onClick={() => setEditing(true)}
                 >
                   <Pencil />
-                  Изменить
+                  {m.edit}
                 </Button>
                 <ConfirmedAction
-                  label="Удалить"
-                  title={`Удалить решение ${code}`}
-                  confirmLabel="Удалить"
+                  label={m.delete}
+                  title={m.deleteDecision(code)}
+                  confirmLabel={m.delete}
                   variant="ghost"
                   disabled={pending}
-                  onConfirm={() => void attempt(() => actions.remove(decision), 'Не удалось удалить решение')}
+                  onConfirm={() => void attempt(() => actions.remove(decision), m.deleteFailed)}
                 >
-                  Решение {code} удалится вместе с обсуждением; решения, которые оно заменило, перестанут на него ссылаться.
+                  {m.deleteWarning(code)}
                 </ConfirmedAction>
               </>
             )}

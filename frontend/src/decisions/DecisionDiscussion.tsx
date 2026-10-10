@@ -5,6 +5,7 @@ import { startThread, type CommentText, type CommentThread } from '../api/commen
 import { CommentComposer } from '../comments/CommentComposer.tsx'
 import { ThreadCard } from '../comments/ThreadCard.tsx'
 import { useCommentChange, usePeople, useThreadActions } from '../comments/useComments.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 interface DecisionDiscussionProps {
   boardId: string
@@ -43,8 +44,8 @@ export function DecisionDiscussion({
   const [composing, setComposing] = useState(false)
 
   return (
-    <section aria-label="Обсуждение" className="flex flex-col gap-2">
-      <h5 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Обсуждение</h5>
+    <section aria-label={m.discussion} className="flex flex-col gap-2">
+      <h5 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{m.discussion}</h5>
       {threads.map((thread) => (
         <ThreadCard
           key={thread.id}
@@ -61,19 +62,19 @@ export function DecisionDiscussion({
         (threads.length === 0 || composing ? (
           <CommentComposer
             people={people}
-            label="Комментарий к решению"
-            placeholder="Обсудить решение… @ — упомянуть"
-            submitLabel="Отправить"
+            label={m.decisionComment}
+            placeholder={m.discussPlaceholder}
+            submitLabel={m.send}
             autoFocus={composing}
             pending={start.isPending}
-            error={start.isError ? 'Не удалось отправить комментарий' : null}
+            error={start.isError ? m.sendFailed : null}
             onSubmit={(text) => start.mutateAsync(text).then(() => setComposing(false))}
             onCancel={composing ? () => setComposing(false) : undefined}
           />
         ) : (
           <Button type="button" variant="outline" size="sm" onClick={() => setComposing(true)}>
             <MessageSquarePlus />
-            Новая ветка
+            {m.newThread}
           </Button>
         ))}
     </section>

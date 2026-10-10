@@ -4,15 +4,16 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { CommentReaction, Reaction } from '../api/comments.ts'
+import { commentsMessages as m } from './messages.ts'
 
-/** The reactions of the set in its order: the emoji and what it says, as its hint. */
-const REACTIONS: readonly { reaction: Reaction; emoji: string; label: string }[] = [
-  { reaction: 'thumbs-up', emoji: '👍', label: 'Нравится' },
-  { reaction: 'heart', emoji: '❤️', label: 'Сердце' },
-  { reaction: 'party', emoji: '🎉', label: 'Праздник' },
-  { reaction: 'smile', emoji: '😄', label: 'Смешно' },
-  { reaction: 'eyes', emoji: '👀', label: 'Смотрю' },
-  { reaction: 'check', emoji: '✅', label: 'Готово' },
+/** The reactions of the set in its order: the emoji; what it says, its hint, is in the dictionary. */
+const REACTIONS: readonly { reaction: Reaction; emoji: string }[] = [
+  { reaction: 'thumbs-up', emoji: '👍' },
+  { reaction: 'heart', emoji: '❤️' },
+  { reaction: 'party', emoji: '🎉' },
+  { reaction: 'smile', emoji: '😄' },
+  { reaction: 'eyes', emoji: '👀' },
+  { reaction: 'check', emoji: '✅' },
 ]
 
 const emojiOf = (reaction: Reaction) => REACTIONS.find((entry) => entry.reaction === reaction)?.emoji ?? reaction
@@ -37,7 +38,7 @@ export function CommentReactions({ reactions, userId, onToggle }: CommentReactio
   const toggle = (reaction: Reaction) => void onToggle(reaction, !mine(reaction)).catch(() => {})
 
   return (
-    <div role="group" aria-label="Реакции" className="flex flex-wrap items-center gap-1">
+    <div role="group" aria-label={m.reactionsGroup} className="flex flex-wrap items-center gap-1">
       {reactions.map(({ reaction, people }) => (
         <button
           key={reaction}
@@ -59,19 +60,19 @@ export function CommentReactions({ reactions, userId, onToggle }: CommentReactio
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Добавить реакцию"
-            title="Добавить реакцию"
+            aria-label={m.addReaction}
+            title={m.addReaction}
             className="size-6 text-muted-foreground"
           >
             <SmilePlus />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" aria-label="Набор реакций" className="flex w-auto gap-0.5 p-1">
-          {REACTIONS.map(({ reaction, emoji, label }) => (
+        <PopoverContent align="start" aria-label={m.reactionSet} className="flex w-auto gap-0.5 p-1">
+          {REACTIONS.map(({ reaction, emoji }) => (
             <button
               key={reaction}
               type="button"
-              title={label}
+              title={m.reactions[reaction]}
               aria-pressed={mine(reaction)}
               className={cn('flex size-8 items-center justify-center rounded-md text-lg hover:bg-accent', mine(reaction) && 'bg-primary/10')}
               onClick={() => {

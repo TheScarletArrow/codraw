@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { iconPathNow, loadIconPath, logoImage, NO_ICON, searchIcons, type TechIcon } from '../diagram/techIcons.ts'
+import { elementsMessages as m } from './messages.ts'
 import { iconStatus, useTechIcons } from './useTechIcons.ts'
 
 const fieldClass = 'h-8 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground'
@@ -50,7 +51,7 @@ export function IconField({
         id={id}
         type="search"
         autoComplete="off"
-        placeholder="Найти логотип: Kafka, Spring…"
+        placeholder={m.findLogo}
         className={fieldClass}
         value={query}
         disabled={!icons}
@@ -67,14 +68,14 @@ export function IconField({
         }}
       />
       {found.length > 0 && (
-        <ul aria-label="Найденные логотипы" className="flex flex-col gap-0.5">
+        <ul aria-label={m.foundLogos} className="flex flex-col gap-0.5">
           {found.map((candidate) => (
             <li key={candidate.slug}>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={`Значок «${candidate.title}»`}
+                aria-label={m.logo(candidate.title)}
                 className="h-7 w-full justify-start px-1.5"
                 onClick={() => choose(candidate)}
               >
@@ -85,16 +86,16 @@ export function IconField({
           ))}
         </ul>
       )}
-      {icons && query.trim() !== '' && found.length === 0 && <p className="text-xs text-muted-foreground">Логотип не найден</p>}
+      {icons && query.trim() !== '' && found.length === 0 && <p className="text-xs text-muted-foreground">{m.logoNotFound}</p>}
       <div className="flex flex-wrap gap-1">
         {icon !== null && (
           <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => onChange(null)}>
-            По технологии
+            {m.byTechnology}
           </Button>
         )}
         {icon !== NO_ICON && (
           <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => onChange(NO_ICON)}>
-            Без значка
+            {m.noIcon}
           </Button>
         )}
       </div>

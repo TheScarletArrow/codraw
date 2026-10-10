@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react'
 import type { Decision } from '../api/decisions.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { decisionsByCell } from './decisions.ts'
+import { decisionsMessages as m } from './messages.ts'
 
 /** The height of a badge and its gap from the corner, outside the resize handle of a selected shape. */
 const BADGE_SIZE = 18
@@ -39,8 +40,8 @@ export function DecisionBadges({
             type="button"
             data-testid="decision-badge"
             data-cell={cellId}
-            aria-label={`Решения элемента: ${count}`}
-            title={`Решения (${count})`}
+            aria-label={m.elementDecisions(count)}
+            title={m.decisionsCount(count)}
             className="pointer-events-auto absolute flex items-center gap-0.5 rounded-full bg-sky-600 px-1 text-xs font-semibold text-white shadow-sm hover:bg-sky-500"
             style={{
               left: bounds.x + bounds.width + BADGE_GAP,

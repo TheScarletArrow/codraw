@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { CommentThread } from '../api/comments.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
+import { commentsMessages as m } from './messages.ts'
 import { openThreadsByCell } from './threads.ts'
 
 /** The size of a badge and its gap from the corner, outside the resize handle of a selected shape. */
@@ -38,8 +39,8 @@ export function CommentBadges({
             type="button"
             data-testid="comment-badge"
             data-cell={cellId}
-            aria-label={`Комментарии к элементу: ${count}`}
-            title="Комментарии"
+            aria-label={m.elementComments(count)}
+            title={m.comments}
             className="pointer-events-auto absolute flex items-center justify-center rounded-full rounded-bl-none bg-amber-400 text-xs font-semibold text-amber-950 shadow-sm hover:bg-amber-300"
             style={{
               left: bounds.x + bounds.width + BADGE_GAP,

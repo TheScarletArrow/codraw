@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Person } from '../api/comments.ts'
 import { Avatar } from '../board/MembersSection.tsx'
+import { commentsMessages as m } from './messages.ts'
 import { suggestPeople } from './threads.ts'
 
 interface AssigneePickerProps {
@@ -35,13 +36,13 @@ function AssigneePicker({ people, assignee, onAssign, children }: AssigneePicker
       }}
     >
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent align="end" aria-label="Назначить ответственного" className="flex w-64 flex-col gap-2 p-2">
+      <PopoverContent align="end" aria-label={m.assignResponsible} className="flex w-64 flex-col gap-2 p-2">
         <label className="relative flex items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-4 text-muted-foreground" />
           <input
             type="search"
-            aria-label="Найти участника"
-            placeholder="Найти участника"
+            aria-label={m.findMember}
+            placeholder={m.findMember}
             className="h-8 w-full rounded-md border bg-background pr-2 pl-8 text-sm"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -54,7 +55,7 @@ function AssigneePicker({ people, assignee, onAssign, children }: AssigneePicker
           />
         </label>
         {found.length > 0 ? (
-          <div role="group" aria-label="Участники доски" className="flex max-h-60 flex-col gap-0.5 overflow-y-auto">
+          <div role="group" aria-label={m.boardMembers} className="flex max-h-60 flex-col gap-0.5 overflow-y-auto">
             {found.map((person) => (
               <button
                 key={person.id}
@@ -70,7 +71,7 @@ function AssigneePicker({ people, assignee, onAssign, children }: AssigneePicker
             ))}
           </div>
         ) : (
-          <p className="px-2 text-sm text-muted-foreground">Никого не нашлось</p>
+          <p className="px-2 text-sm text-muted-foreground">{m.nobodyFound}</p>
         )}
       </PopoverContent>
     </Popover>
@@ -85,8 +86,8 @@ export function AssignButton({ people, onAssign }: { people: Person[]; onAssign:
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Назначить"
-        title="Назначить ответственного"
+        aria-label={m.assign}
+        title={m.assignResponsible}
         className="size-6 text-muted-foreground"
       >
         <UserPlus />
@@ -106,11 +107,11 @@ interface ThreadAssigneeProps {
 export function ThreadAssignee({ assignee, people, onAssign }: ThreadAssigneeProps) {
   return (
     <div className="flex items-center gap-1 px-1 text-xs">
-      <span className="text-muted-foreground">Ответственный:</span>
+      <span className="text-muted-foreground">{m.assignee}</span>
       <AssigneePicker people={people} assignee={assignee} onAssign={onAssign}>
         <button
           type="button"
-          title="Назначить другого"
+          title={m.assignAnother}
           className="flex min-w-0 items-center gap-1 rounded px-1 py-0.5 font-medium hover:bg-accent"
         >
           <Avatar person={assignee} className="size-4 text-[0.6rem]" />
@@ -124,7 +125,7 @@ export function ThreadAssignee({ assignee, people, onAssign }: ThreadAssigneePro
         className="ml-auto h-6 px-1.5 text-xs"
         onClick={() => void onAssign(null).catch(() => {})}
       >
-        Снять
+        {m.unassign}
       </Button>
     </div>
   )

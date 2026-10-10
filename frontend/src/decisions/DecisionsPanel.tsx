@@ -30,13 +30,14 @@ import {
   newContent,
   reviewSuggestions,
   sameElement,
-  STATUS_LABELS,
+  statusLabel,
   today,
   type DecisionFilter,
   type DecisionFocus,
 } from './decisions.ts'
 import { importDecisions, reportText } from './importDecisions.ts'
 import { madrFileName, recordFiles, toMadr } from './madr.ts'
+import { decisionsMessages as m } from './messages.ts'
 import { useDecisionChange } from './useDecisions.ts'
 
 interface DecisionsPanelProps {
@@ -71,7 +72,7 @@ interface DecisionsPanelProps {
 /** Problems of a change of decisions as the panel says them. */
 function failure(error: unknown, fallback: string): string {
   if (error instanceof HttpError && error.status === 409 && error.problem?.limit !== undefined) {
-    return `На доске уже ${error.problem.limit} решений — больше нельзя`
+    return m.limit(error.problem.limit)
   }
   return fallback
 }
@@ -168,14 +169,14 @@ export function DecisionsPanel({
 
   const downloadAll = () => {
     const bytes = zipBytes(all.map((decision) => ({ name: madrFileName(decision), text: toMadr(decision, all) })))
-    downloadBlob(new Blob([bytes], { type: 'application/zip' }), fileName(`${boardTitle} — решения`, 'zip'))
+    downloadBlob(new Blob([bytes], { type: 'application/zip' }), fileName(m.zipName(boardTitle), 'zip'))
   }
 
   const importChosen = async (event: ChangeEvent<HTMLInputElement>, fromFolder: boolean) => {
     const chosen = recordFiles([...(event.target.files ?? [])], fromFolder)
     event.target.value = ''
     if (chosen.length === 0) {
-      setImportReport(fromFolder ? 'В папке нет файлов вида 0001-название.md' : 'Не выбрано ни одного файла .md')
+      setImportReport(fromFolder ? m.noRecordsInFolder : m.noMdFiles)
       return
     }
     setImporting(true)
@@ -186,7 +187,7 @@ export function DecisionsPanel({
       )
       setImportReport(reportText(await imported.mutateAsync(files)))
     } catch {
-      setImportReport('Не удалось импортировать решения')
+      setImportReport(m.importFailed)
     } finally {
       setImporting(false)
     }
@@ -201,21 +202,21 @@ export function DecisionsPanel({
   // Statuses are read only for a proposal that is open: the suggestions are for it.
   const statuses = canEdit && document && expanded?.status === 'proposed' ? listStatuses(document) : []
   const filters: [DecisionFilter, string, number][] = [
-    ['all', 'Все', all.length],
-    ...DECISION_STATUSES.map((status): [DecisionFilter, string, number] => [status, STATUS_LABELS[status], counts[status]]),
+    ['all', m.all, all.length],
+    ...DECISION_STATUSES.map((status): [DecisionFilter, string, number] => [status, statusLabel(status), counts[status]]),
   ]
 
   return (
-    <aside aria-label="Решения" className="flex w-80 shrink-0 flex-col border-l bg-background">
+    <aside aria-label={m.decisions} className="flex w-80 shrink-0 flex-col border-l bg-background">
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <ScrollText className="size-4 text-muted-foreground" />
-        <h3 className="flex-1 text-sm font-semibold">Решения</h3>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть решения" onClick={onClose}>
+        <h3 className="flex-1 text-sm font-semibold">{m.decisions}</h3>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.closeDecisions} onClick={onClose}>
           <X />
         </Button>
       </div>
       <div className="flex flex-col gap-2 border-b p-3">
-        <div role="group" aria-label="Какие решения показать" className="flex flex-wrap gap-1">
+        <div role="group" aria-label={m.whichDecisions} className="flex flex-wrap gap-1">
           {filters.map(([value, label, count]) => (
             <Button
               key={value}
@@ -235,13 +236,13 @@ export function DecisionsPanel({
         {elementFocus && (
           <div className="flex items-center gap-1 rounded-md bg-muted/60 px-2 py-1 text-xs">
             <span className="min-w-0 flex-1 truncate">
-              Решения элемента{' '}
+              {m.elementDecisionsOf}{' '}
               <span className="font-medium">
-                {elementInfo ? (elementInfo.label !== '' ? `«${elementInfo.label}»` : 'без подписи') : '(удалён)'}
+                {elementInfo ? (elementInfo.label !== '' ? m.quoted(elementInfo.label) : m.unlabeledLower) : m.deletedMark}
               </span>
             </span>
             <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={() => onFocusChange(null)}>
-              Все решения
+              {m.allDecisions}
             </Button>
           </div>
         )}
@@ -250,10 +251,10 @@ export function DecisionsPanel({
             initial={newContent('', today())}
             decisionId={null}
             decisions={all}
-            label="Новое решение"
-            submitLabel="Записать"
+            label={m.newDecision}
+            submitLabel={m.record}
             pending={add.isPending}
-            error={add.isError ? failure(add.error, 'Не удалось записать решение') : null}
+            error={add.isError ? failure(add.error, m.recordFailed) : null}
             onSubmit={(content) =>
               void add.mutateAsync({ ...content, elements: creating }).then(
                 (decision) => {
@@ -270,10 +271,10 @@ export function DecisionsPanel({
             }}
           >
             {creating.length > 0 && (
-              <div role="group" aria-label="Элементы решения" className="flex flex-wrap gap-1">
+              <div role="group" aria-label={m.decisionElements} className="flex flex-wrap gap-1">
                 {creating.map((element) => {
                   const cell = cellInfo(element.pageId, element.cellId)
-                  const label = cell?.label ? `«${cell.label}»` : 'Без подписи'
+                  const label = cell?.label ? m.quoted(cell.label) : m.unlabeled
                   return (
                     <span
                       key={`${element.pageId}:${element.cellId}`}
@@ -282,7 +283,7 @@ export function DecisionsPanel({
                       {label}
                       <button
                         type="button"
-                        aria-label={`Не привязывать ${label}`}
+                        aria-label={m.dontLink(label)}
                         className="rounded hover:bg-accent"
                         onClick={() => setCreating(creating.filter((other) => !sameElement(other, element)))}
                       >
@@ -299,19 +300,19 @@ export function DecisionsPanel({
             {canEdit && (
               <Button type="button" variant="outline" size="sm" onClick={startCreating}>
                 <Plus />
-                Новое решение
+                {m.newDecision}
               </Button>
             )}
             <Button type="button" variant="ghost" size="sm" disabled={all.length === 0} onClick={downloadAll}>
               <FileArchive />
-              Выгрузить .zip
+              {m.downloadZip}
             </Button>
             {canEdit && (
               <Popover open={importOpen} onOpenChange={setImportOpen}>
                 <PopoverTrigger asChild>
                   <Button type="button" variant="ghost" size="sm" disabled={importing}>
                     <Upload />
-                    {importing ? 'Импорт…' : 'Импорт'}
+                    {importing ? m.importing : m.import}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="flex w-64 flex-col p-1">
@@ -326,7 +327,7 @@ export function DecisionsPanel({
                     }}
                   >
                     <FolderOpen />
-                    Папка ADR (docs/adr)…
+                    {m.adrFolder}
                   </Button>
                   <Button
                     type="button"
@@ -339,7 +340,7 @@ export function DecisionsPanel({
                     }}
                   >
                     <Upload />
-                    Файлы MADR (.md)…
+                    {m.madrFiles}
                   </Button>
                 </PopoverContent>
               </Popover>
@@ -350,7 +351,7 @@ export function DecisionsPanel({
               accept=".md,.markdown,text/markdown"
               multiple
               hidden
-              aria-label="Файлы решений"
+              aria-label={m.decisionFiles}
               onChange={(event) => void importChosen(event, false)}
             />
             <input
@@ -362,7 +363,7 @@ export function DecisionsPanel({
               type="file"
               multiple
               hidden
-              aria-label="Папка решений"
+              aria-label={m.decisionFolder}
               onChange={(event) => void importChosen(event, true)}
             />
           </div>
@@ -374,19 +375,19 @@ export function DecisionsPanel({
         )}
       </div>
       <div ref={list} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-        {!decisions && !failed && <p className="p-2 text-sm text-muted-foreground">Загрузка…</p>}
+        {!decisions && !failed && <p className="p-2 text-sm text-muted-foreground">{m.loading}</p>}
         {failed && (
           <p role="alert" className="p-2 text-sm text-destructive">
-            Не удалось загрузить решения
+            {m.loadFailed}
           </p>
         )}
         {decisions && shown.length === 0 && (
           <p className="p-2 text-sm text-muted-foreground">
             {elementFocus
-              ? 'У элемента нет решений.'
+              ? m.noElementDecisions
               : all.length > 0
-                ? 'Решений с таким статусом нет.'
-                : `Решений пока нет.${canEdit ? ' Запишите первое или импортируйте папку docs/adr.' : ''}`}
+                ? m.noStatusDecisions
+                : `${m.noDecisions}${canEdit ? m.noDecisionsHint : ''}`}
           </p>
         )}
         {shown.map((decision) => (

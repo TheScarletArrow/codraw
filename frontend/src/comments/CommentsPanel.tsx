@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { startThread, type CommentText, type CommentThread, type ThreadPoint } from '../api/comments.ts'
 import { CommentComposer } from './CommentComposer.tsx'
+import { commentsMessages as m } from './messages.ts'
 import { ThreadCard } from './ThreadCard.tsx'
 import {
   filterFor,
@@ -31,19 +32,7 @@ export interface ThreadDraft {
 const draftKey = ({ pageId, cellId, point }: ThreadDraft) =>
   `${pageId}:${cellId !== null ? `cell:${cellId}` : point ? 'point' : 'page'}`
 
-const FILTERS: [ThreadFilter, string][] = [
-  ['open', 'Открытые'],
-  ['resolved', 'Решённые'],
-  ['mentions', 'Упоминают меня'],
-  ['assigned', 'Назначены мне'],
-]
-
-const EMPTY: Record<ThreadFilter, string> = {
-  open: 'Открытых веток нет. Щёлкните правой кнопкой по элементу или по пустому месту и выберите «Комментировать».',
-  resolved: 'Решённых веток нет.',
-  mentions: 'Вас пока никто не упомянул.',
-  assigned: 'Вам пока не назначено ни одной ветки.',
-}
+const FILTERS: ThreadFilter[] = ['open', 'resolved', 'mentions', 'assigned']
 
 interface CommentsPanelProps {
   boardId: string
@@ -121,17 +110,17 @@ export function CommentsPanel({
   const draftTarget = draft && threadTarget(draft, draft.cellId === null ? null : cellInfo(draft.pageId, draft.cellId))
 
   return (
-    <aside aria-label="Комментарии" className="flex w-80 shrink-0 flex-col border-l bg-background">
+    <aside aria-label={m.comments} className="flex w-80 shrink-0 flex-col border-l bg-background">
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <MessageSquare className="size-4 text-muted-foreground" />
-        <h3 className="flex-1 text-sm font-semibold">Комментарии</h3>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть комментарии" onClick={onClose}>
+        <h3 className="flex-1 text-sm font-semibold">{m.comments}</h3>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.closeComments} onClick={onClose}>
           <X />
         </Button>
       </div>
       <div className="flex flex-col gap-2 border-b p-3">
-        <div role="group" aria-label="Какие ветки показать" className="flex flex-wrap gap-1">
-          {FILTERS.map(([value, label]) => (
+        <div role="group" aria-label={m.whichThreads} className="flex flex-wrap gap-1">
+          {FILTERS.map((value) => (
             <Button
               key={value}
               type="button"
@@ -141,24 +130,24 @@ export function CommentsPanel({
               className={cn('h-7 px-2 text-xs', filter === value && 'bg-accent')}
               onClick={() => setFilter(value)}
             >
-              {label}
+              {m.filters[value]}
             </Button>
           ))}
         </div>
         {draft && draftTarget ? (
-          <div role="group" aria-label="Новая ветка" className="flex flex-col gap-1.5">
+          <div role="group" aria-label={m.newThread} className="flex flex-col gap-1.5">
             <p className="text-xs text-muted-foreground">
-              Новая ветка: <span className="font-medium text-foreground">{draftTarget.label}</span>
+              {m.newThreadLabel} <span className="font-medium text-foreground">{draftTarget.label}</span>
             </p>
             <CommentComposer
               key={draftKey(draft)}
               people={people}
-              label="Новый комментарий"
-              placeholder="Комментарий… @ — упомянуть"
-              submitLabel="Отправить"
+              label={m.newComment}
+              placeholder={m.commentPlaceholder}
+              submitLabel={m.send}
               autoFocus
               pending={start.isPending}
-              error={start.isError ? 'Не удалось отправить комментарий' : null}
+              error={start.isError ? m.sendFailed : null}
               onSubmit={(text) => start.mutateAsync({ ...draft, ...text }).then(() => onDraftChange(null))}
               onCancel={() => onDraftChange(null)}
             />
@@ -172,19 +161,19 @@ export function CommentsPanel({
               onClick={() => onDraftChange({ pageId: currentPageId, cellId: null, point: null })}
             >
               <MessageSquarePlus />
-              Комментарий к странице
+              {m.pageComment}
             </Button>
           )
         )}
       </div>
       <div ref={list} className="min-h-0 flex-1 overflow-y-auto p-2">
-        {!threads && !failed && <p className="p-2 text-sm text-muted-foreground">Загрузка…</p>}
+        {!threads && !failed && <p className="p-2 text-sm text-muted-foreground">{m.loading}</p>}
         {failed && (
           <p role="alert" className="p-2 text-sm text-destructive">
-            Не удалось загрузить комментарии
+            {m.loadFailed}
           </p>
         )}
-        {threads && groups.length === 0 && <p className="p-2 text-sm text-muted-foreground">{EMPTY[filter]}</p>}
+        {threads && groups.length === 0 && <p className="p-2 text-sm text-muted-foreground">{m.empty[filter]}</p>}
         {groups.map((group) => (
           <section key={group.pageId ?? 'deleted'} aria-label={group.title} className="mb-3 flex flex-col gap-2 last:mb-0">
             <h4 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{group.title}</h4>

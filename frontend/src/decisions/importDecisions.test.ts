@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Decision, DecisionContent } from '../api/decisions.ts'
 import { HttpError } from '../api/http.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { importDecisions, reportText, type ImportReport } from './importDecisions.ts'
 
 const decision = (id: string, number: number, changes: Partial<Decision> = {}): Decision => ({
@@ -133,5 +134,11 @@ describe('reportText', () => {
     expect(reportText(report({ failed: ['y.md'], limit: 500 }))).toBe(
       'Импортировано: 0. На доске уже 500 решений — больше нельзя.',
     )
+  })
+
+  it('speaks English with the English interface', () => {
+    setLocale('en')
+    expect(reportText(report({ added: [decision('a', 1)], untitled: ['x.md'] }))).toBe('Imported: 1. No title: x.md.')
+    expect(reportText(report({ limit: 1 }))).toBe('Imported: 0. The board already has 1 decision: no more can be added.')
   })
 })
