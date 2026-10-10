@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import type { BoardFolder } from '../api/folders.ts'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { byName, FOLDER_NAME_MAX_LENGTH, type FolderFilter } from './boardList.ts'
+import { boardListMessages as m } from './messages.ts'
 
 interface FolderBarProps {
   folders: BoardFolder[]
@@ -51,17 +52,17 @@ export function FolderBar({ folders, selected, onSelect, onCreate, onRename, onD
 
   return (
     <div className="mt-3 flex flex-col gap-2">
-      <div role="group" aria-label="Папки" className="flex flex-wrap items-center gap-2">
+      <div role="group" aria-label={m.folders} className="flex flex-wrap items-center gap-2">
         {folders.length > 0 && (
           <>
-            {option({ kind: 'all' }, 'Все доски', 'all')}
-            {option({ kind: 'unfiled' }, 'Без папки', 'unfiled')}
+            {option({ kind: 'all' }, m.allBoards, 'all')}
+            {option({ kind: 'unfiled' }, m.unfiled, 'unfiled')}
             {byName(folders).map((folder) =>
               renaming && chosen?.id === folder.id ? (
                 <TitleInput
                   key={folder.id}
                   title={folder.name}
-                  label="Название папки"
+                  label={m.folderName}
                   maxLength={FOLDER_NAME_MAX_LENGTH}
                   className="h-8 w-48 px-2"
                   onDone={(name) => {
@@ -81,8 +82,8 @@ export function FolderBar({ folders, selected, onSelect, onCreate, onRename, onD
         {creating ? (
           <TitleInput
             title=""
-            label="Новая папка"
-            placeholder="Название папки"
+            label={m.newFolder}
+            placeholder={m.folderName}
             maxLength={FOLDER_NAME_MAX_LENGTH}
             className="h-8 w-48 px-2"
             onDone={(name) => {
@@ -93,7 +94,7 @@ export function FolderBar({ folders, selected, onSelect, onCreate, onRename, onD
         ) : (
           <Button type="button" variant="ghost" size="sm" onClick={() => setCreating(true)}>
             <FolderPlus />
-            Новая папка
+            {m.newFolder}
           </Button>
         )}
       </div>
@@ -121,17 +122,17 @@ function FolderMenu({ name, onRename, onDelete }: { name: string; onRename: () =
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Меню папки «${name}»`} title="Действия с папкой">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.folderMenu(name)} title={m.folderActions}>
           <Ellipsis />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
         {confirming ? (
-          <div role="alertdialog" aria-label="Удаление папки" className="flex flex-col gap-2 p-2">
-            <p className="text-sm">Удалить папку «{name}»? Доски из неё останутся в списке без папки.</p>
+          <div role="alertdialog" aria-label={m.deletingFolder} className="flex flex-col gap-2 p-2">
+            <p className="text-sm">{m.deleteFolderConfirm(name)}</p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-                Отмена
+                {m.cancel}
               </Button>
               <Button
                 type="button"
@@ -142,12 +143,12 @@ function FolderMenu({ name, onRename, onDelete }: { name: string; onRename: () =
                   onDelete()
                 }}
               >
-                Удалить
+                {m.delete}
               </Button>
             </div>
           </div>
         ) : (
-          <div role="menu" aria-label={`Папка «${name}»`} className="flex flex-col">
+          <div role="menu" aria-label={m.folder(name)} className="flex flex-col">
             <Button
               type="button"
               role="menuitem"
@@ -159,7 +160,7 @@ function FolderMenu({ name, onRename, onDelete }: { name: string; onRename: () =
                 onRename()
               }}
             >
-              Переименовать папку
+              {m.renameFolder}
             </Button>
             <Button
               type="button"
@@ -169,7 +170,7 @@ function FolderMenu({ name, onRename, onDelete }: { name: string; onRename: () =
               className={cn(item, 'text-destructive hover:text-destructive')}
               onClick={() => setConfirming(true)}
             >
-              Удалить папку
+              {m.deleteFolder}
             </Button>
           </div>
         )}

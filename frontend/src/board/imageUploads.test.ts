@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HttpError } from '../api/http.ts'
 import { uploadImage, type ImageUsage } from '../api/images.ts'
 import { boardImageUrl } from '../diagram/images.ts'
-import { IMAGE_FAILED, IMAGE_FORBIDDEN, ImageUploads, imageUploadError, megabytes, UNSUPPORTED_IMAGE } from './imageUploads.ts'
+import { setLocale } from '../i18n/i18n.ts'
+import { imageMessages } from './board.messages.ts'
+import { ImageUploads, imageUploadError, megabytes } from './imageUploads.ts'
+
+const { failed: IMAGE_FAILED, forbidden: IMAGE_FORBIDDEN, unsupported: UNSUPPORTED_IMAGE } = imageMessages
 
 vi.mock('../api/images.ts', () => ({ uploadImage: vi.fn() }))
 
@@ -72,6 +76,13 @@ describe('messages about images', () => {
     expect(megabytes(1.5 * MB)).toBe('1,5 МБ')
     expect(megabytes(99.6 * MB)).toBe('100 МБ')
     expect(megabytes(2048)).toBe('2 КБ')
+  })
+
+  it('name sizes in English', () => {
+    setLocale('en')
+    expect(megabytes(1.5 * MB)).toBe('1.5 MB')
+    expect(megabytes(2048)).toBe('2 KB')
+    expect(imageUploadError(new HttpError(413, { limit: 1_000_000, scope: 'pixels' }))).toBe('The image is larger than 1 megapixel')
   })
 
   it('tell why the backend refused a picture', () => {

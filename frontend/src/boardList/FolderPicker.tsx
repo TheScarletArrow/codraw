@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { BoardFolder } from '../api/folders.ts'
 import { byName, FOLDER_NAME_MAX_LENGTH, normalizeLabel, sameLabel } from './boardList.ts'
+import { boardListMessages as m } from './messages.ts'
 
 interface FolderPickerProps {
   /** The title of the board, which names the menu. */
@@ -53,15 +54,15 @@ export function FolderPicker({ title, folders, current, onMove, onCreate, error,
 
   return (
     <div className="flex flex-col gap-1">
-      <div role="menu" aria-label={`Папка доски «${title}»`} className="flex max-h-64 flex-col overflow-y-auto">
-        {choice(null, 'Без папки')}
+      <div role="menu" aria-label={m.boardFolder(title)} className="flex max-h-64 flex-col overflow-y-auto">
+        {choice(null, m.unfiled)}
         {byName(folders).map((folder) => choice(folder.id, folder.name))}
       </div>
       <input
-        aria-label="Новая папка"
+        aria-label={m.newFolder}
         value={name}
         maxLength={FOLDER_NAME_MAX_LENGTH}
-        placeholder="Новая папка…"
+        placeholder={m.newFolderPlaceholder}
         disabled={disabled}
         className="mx-1 mb-1 rounded border bg-background px-2 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         onChange={(event) => setName(event.target.value)}

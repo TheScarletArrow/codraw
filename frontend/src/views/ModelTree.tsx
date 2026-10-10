@@ -9,6 +9,7 @@ import type { CellRef } from '../diagram/sharedElements.ts'
 import { ELEMENT_DRAG_TYPE, type ElementDrag } from '../diagram/sharedElements.ts'
 import { environmentLabel } from '../diagram/viewRule.ts'
 import { elementDetails, elementName, modelStore } from './modelStore.ts'
+import { viewMessages as m } from './messages.ts'
 
 /** A row of the tree: an element, or an element running on a node. */
 interface TreeNode {
@@ -145,22 +146,22 @@ export function ModelTree({
       </ModelRow>
     ))
 
-  if (model.elements.size === 0) return <p className="p-2 text-sm text-muted-foreground">В модели нет элементов</p>
-  if (logical.length === 0 && deployment.length === 0) return <p className="p-2 text-sm text-muted-foreground">Ничего не найдено</p>
+  if (model.elements.size === 0) return <p className="p-2 text-sm text-muted-foreground">{m.noElements}</p>
+  if (logical.length === 0 && deployment.length === 0) return <p className="p-2 text-sm text-muted-foreground">{m.nothingFound}</p>
   return (
     <div className="flex flex-col gap-2">
       {logical.length > 0 && (
-        <section aria-label="Люди и системы">
-          <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Люди и системы</h3>
-          <ul role="tree" aria-label="Люди и системы" className="flex flex-col">
+        <section aria-label={m.peopleAndSystems}>
+          <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">{m.peopleAndSystems}</h3>
+          <ul role="tree" aria-label={m.peopleAndSystems} className="flex flex-col">
             {rows(logical, 0)}
           </ul>
         </section>
       )}
       {deployment.map(({ environment, nodes }) => (
-        <section key={environment} aria-label={`Развёртывание: ${environmentLabel(environment)}`}>
-          <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Развёртывание: {environmentLabel(environment)}</h3>
-          <ul role="tree" aria-label={`Развёртывание: ${environmentLabel(environment)}`} className="flex flex-col">
+        <section key={environment} aria-label={m.deployment(environmentLabel(environment))}>
+          <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">{m.deployment(environmentLabel(environment))}</h3>
+          <ul role="tree" aria-label={m.deployment(environmentLabel(environment))} className="flex flex-col">
             {rows(nodes, 0)}
           </ul>
         </section>
@@ -195,11 +196,11 @@ function ModelRow({
   }
   const parentable = node.children.length > 0
   return (
-    <li role="treeitem" aria-expanded={parentable ? open : undefined} aria-label={name || 'Без имени'} className="flex flex-col">
+    <li role="treeitem" aria-expanded={parentable ? open : undefined} aria-label={name || m.unnamed} className="flex flex-col">
       <div className="flex items-center" style={{ paddingLeft: depth * 14 }}>
         <button
           type="button"
-          aria-label={open ? `Свернуть ${name || 'элемент'}` : `Развернуть ${name || 'элемент'}`}
+          aria-label={open ? m.collapse(name || m.element) : m.expand(name || m.element)}
           tabIndex={parentable ? 0 : -1}
           className={cn('rounded p-1 text-muted-foreground hover:bg-accent', !parentable && 'invisible')}
           onClick={onToggle}
@@ -210,11 +211,11 @@ function ModelRow({
           type="button"
           draggable={canPlace}
           onDragStart={canPlace ? handleDragStart : undefined}
-          title={canPlace ? 'Щелчок — к ячейке, перетаскивание на холст — ещё одна ячейка элемента' : 'К ячейке элемента'}
+          title={canPlace ? m.placeHint : m.showHint}
           className={cn('flex min-w-0 flex-1 flex-col rounded px-1.5 py-1 text-left text-sm hover:bg-accent', canPlace && 'cursor-grab active:cursor-grabbing')}
           onClick={() => cell && onShow(cell.pageId, cell.cellId)}
         >
-          <span className={cn('truncate', !name && 'text-muted-foreground italic')}>{name || 'Без имени'}</span>
+          <span className={cn('truncate', !name && 'text-muted-foreground italic')}>{name || m.unnamed}</span>
           {node.details && <span className="truncate text-xs text-muted-foreground">{node.details}</span>}
         </button>
       </div>

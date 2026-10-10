@@ -3,13 +3,11 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { COMPONENT_NAME_MAX_LENGTH, LIBRARY_NAME_MAX_LENGTH } from '../api/libraries.ts'
 import type { ContextMenuRequest, DiagramEditor } from '../diagram/editor.ts'
+import { libraryMessages as m } from './messages.ts'
 import type { LibraryShelf } from './useLibraries.ts'
 
 /** The choice of the window that makes a new library. */
 const NEW_LIBRARY = ''
-
-/** The name a new library gets unless the user writes another. */
-export const DEFAULT_LIBRARY_NAME = 'Мои фигуры'
 
 /**
  * «Сохранить в библиотеку» at the point of the click of the menu: the name of the component, the name of the selected
@@ -28,9 +26,9 @@ export function SaveToLibraryDialog({
   onClose: () => void
 }) {
   const libraries = shelf.libraries
-  const [name, setName] = useState(() => editor.selectionComponent()?.name ?? 'Компонент')
+  const [name, setName] = useState(() => editor.selectionComponent()?.name ?? m.component)
   const [choice, setChoice] = useState(() => libraries?.[0]?.id ?? NEW_LIBRARY)
-  const [newName, setNewName] = useState(DEFAULT_LIBRARY_NAME)
+  const [newName, setNewName] = useState(m.defaultLibraryName)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // The libraries may come after the window opens: the first one is chosen then, unless the user chose meanwhile.
@@ -74,14 +72,14 @@ export function SaveToLibraryDialog({
         side="bottom"
         align="start"
         sideOffset={2}
-        aria-label="Сохранить в библиотеку"
+        aria-label={m.saveToLibrary}
         className="w-80 max-w-[calc(100vw-2rem)]"
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         <form className="flex flex-col gap-2" onSubmit={(event) => void save(event)}>
-          <h2 className="text-sm font-semibold">Сохранить в библиотеку</h2>
+          <h2 className="text-sm font-semibold">{m.saveToLibrary}</h2>
           <label htmlFor={nameId} className="text-xs text-muted-foreground">
-            Название
+            {m.name}
           </label>
           <input
             id={nameId}
@@ -93,7 +91,7 @@ export function SaveToLibraryDialog({
             onFocus={(event) => event.target.select()}
           />
           <label htmlFor={libraryId} className="text-xs text-muted-foreground">
-            Библиотека
+            {m.library}
           </label>
           <select
             id={libraryId}
@@ -109,12 +107,12 @@ export function SaveToLibraryDialog({
                 {library.name}
               </option>
             ))}
-            <option value={NEW_LIBRARY}>Новая библиотека…</option>
+            <option value={NEW_LIBRARY}>{m.newLibraryOption}</option>
           </select>
           {choice === NEW_LIBRARY && (
             <>
               <label htmlFor={newNameId} className="text-xs text-muted-foreground">
-                Название библиотеки
+                {m.libraryName}
               </label>
               <input
                 id={newNameId}
@@ -132,10 +130,10 @@ export function SaveToLibraryDialog({
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={close}>
-              Отмена
+              {m.cancel}
             </Button>
             <Button type="submit" size="sm" disabled={saving || !ready}>
-              {saving ? 'Сохранение…' : 'Сохранить'}
+              {saving ? m.savingShort : m.save}
             </Button>
           </div>
         </form>

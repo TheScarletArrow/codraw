@@ -1,13 +1,9 @@
 import type { WorkspaceAccess } from '../api/boards.ts'
 import type { WorkspaceRole } from '../api/workspaces.ts'
+import { workspacesMessages } from './messages.tsx'
 
-/** Roles in a workspace as the interface names them. */
-export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
-  owner: 'Владелец',
-  admin: 'Администратор',
-  editor: 'Редактор',
-  viewer: 'Читатель',
-}
+/** The name of a role in a workspace in the language of the interface. */
+export const workspaceRoleLabel = (role: WorkspaceRole): string => workspacesMessages.roles[role]
 
 /** All roles, from the most allowed. */
 export const WORKSPACE_ROLES: WorkspaceRole[] = ['owner', 'admin', 'editor', 'viewer']
@@ -29,27 +25,14 @@ export function mayGive(own: WorkspaceRole, role: WorkspaceRole): boolean {
 /** The roles that a member with the role `own` gives, from the most allowed. */
 export const rolesGivenBy = (own: WorkspaceRole) => WORKSPACE_ROLES.filter((role) => mayGive(own, role))
 
-/** What the workspace gives its members on a board, as the window «Поделиться» offers it. */
-export const WORKSPACE_ACCESS_OPTIONS: { value: WorkspaceAccess; label: string; description: string }[] = [
-  {
-    value: 'edit',
-    label: 'Редактирование',
-    description: 'Редакторы пространства правят доску, читатели смотрят',
-  },
-  { value: 'view', label: 'Просмотр', description: 'Все участники пространства только смотрят доску' },
-  {
-    value: 'none',
-    label: 'Только приглашённые',
-    description: 'Доску открывают её участники и те, кто управляет пространством',
-  },
-]
+/** The choices of what the workspace gives its members on a board, as the window «Поделиться» offers them. */
+export const WORKSPACE_ACCESS_VALUES: WorkspaceAccess[] = ['edit', 'view', 'none']
+
+/** A choice of access with its label and description in the language of the interface. */
+export const workspaceAccessOption = (value: WorkspaceAccess) => workspacesMessages.accessOptions[value]
 
 /** What the workspace gives its members on the board, as those who do not manage it see it. */
-export const WORKSPACE_ACCESS_OF_OTHERS: Record<WorkspaceAccess, string> = {
-  edit: 'Редакторы пространства правят доску, читатели смотрят',
-  view: 'Участники пространства смотрят доску без правки',
-  none: 'Доска открыта только её участникам и тем, кто управляет пространством',
-}
+export const workspaceAccessOfOthers = (access: WorkspaceAccess): string => workspacesMessages.accessOfOthers[access]
 
 /** The address of a workspace in the app. */
 export const workspacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`

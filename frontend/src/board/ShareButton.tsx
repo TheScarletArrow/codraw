@@ -13,31 +13,22 @@ import type * as Y from 'yjs'
 import { accessRequestsKey, REQUESTS_POLL_INTERVAL } from './accessRequests.ts'
 import { AccessRequestsSection } from './AccessRequestsSection.tsx'
 import { InvitesSection } from './InvitesSection.tsx'
-import { counted } from './members.ts'
 import { MembersSection } from './MembersSection.tsx'
 import { PublicViewSection } from './PublicViewSection.tsx'
+import { shareMessages as m } from './share.messages.ts'
 
 /** How long «Скопировано» replaces «Копировать», in milliseconds. */
 const COPIED_DURATION = 2_000
 
-const LINK_ACCESS_OPTIONS: { value: LinkAccess; label: string; description: string }[] = [
-  { value: 'none', label: 'Только я', description: 'По ссылке доску не откроет никто, кроме вас и участников' },
-  { value: 'view', label: 'Просмотр', description: 'По ссылке доску смотрят без правки' },
-  {
-    value: 'public',
-    label: 'Все, у кого есть ссылка, без входа',
-    description: 'Доску смотрят без входа и без правки, в том числе в README, Confluence и <iframe>; правят только участники',
-  },
-  { value: 'edit', label: 'Редактирование', description: 'По ссылке доску редактируют вместе с вами' },
-]
+/** The modes of the link in the order the owner chooses from. */
+const LINK_ACCESS_OPTIONS: readonly LinkAccess[] = ['none', 'view', 'public', 'edit']
 
-/** What the link gives, as a participant who does not own the board sees it. */
-const ACCESS_OF_OTHERS: Record<LinkAccess, string> = {
-  none: 'Владелец закрыл доступ по ссылке',
-  view: 'По ссылке доску можно только смотреть',
-  public: 'По ссылке доску можно смотреть, даже без входа',
-  edit: 'По ссылке доску можно редактировать',
-}
+const linkAccessOptions = () =>
+  LINK_ACCESS_OPTIONS.map((value) => ({
+    value,
+    label: m.linkAccess[value],
+    description: m.linkAccess[`${value}Hint`],
+  }))
 
 /** Address of the board open on the page, as the address bar shows it. */
 function boardLink(boardId: string, pageId: string | null, origin = window.location.origin) {
@@ -135,12 +126,12 @@ export function ShareButton({
           className="shrink-0"
           aria-label={
             waiting > 0
-              ? `Поделиться (${counted(waiting, ['запрос доступа', 'запроса доступа', 'запросов доступа'])})`
+              ? m.shareWaiting(waiting)
               : undefined
           }
         >
           <Link2 />
-          Поделиться
+          {m.share}
           {waiting > 0 && (
             <span
               aria-hidden
@@ -151,10 +142,10 @@ export function ShareButton({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex max-h-[80vh] w-96 flex-col gap-3 overflow-y-auto" aria-label="Поделиться доской">
+      <PopoverContent align="end" className="flex max-h-[80vh] w-96 flex-col gap-3 overflow-y-auto" aria-label={m.shareBoard}>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="board-link" className="text-sm font-medium">
-            Ссылка на доску
+            {m.boardLink}
           </label>
           <div className="flex gap-2">
             <input
@@ -166,14 +157,14 @@ export function ShareButton({
               onFocus={(event) => event.target.select()}
             />
             <Button type="button" size="sm" className="w-28" onClick={() => void copy()}>
-              {copied ? 'Скопировано' : 'Копировать'}
+              {copied ? m.copied : m.copy}
             </Button>
           </div>
         </div>
         {isOwner ? (
           <fieldset className="flex flex-col gap-1" disabled={change.isPending}>
-            <legend className="mb-1 text-sm font-medium">Доступ по ссылке</legend>
-            {LINK_ACCESS_OPTIONS.map((option) => (
+            <legend className="mb-1 text-sm font-medium">{m.linkAccessTitle}</legend>
+            {linkAccessOptions().map((option) => (
               <label
                 key={option.value}
                 className={cn(
@@ -203,12 +194,12 @@ export function ShareButton({
             ))}
             {change.isError && (
               <p role="alert" className="text-sm text-destructive">
-                Не удалось изменить доступ
+                {m.linkAccessFailed}
               </p>
             )}
           </fieldset>
         ) : (
-          <p className="text-sm text-muted-foreground">{ACCESS_OF_OTHERS[board.linkAccess]}</p>
+          <p className="text-sm text-muted-foreground">{m.accessOfOthers[board.linkAccess]}</p>
         )}
         {board.linkAccess === 'public' && <PublicViewSection boardId={board.id} pageId={pageId} />}
         {board.workspace && <WorkspaceAccessSection board={board} onChanged={onChanged} />}

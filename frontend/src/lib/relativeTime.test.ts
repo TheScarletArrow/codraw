@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { setLocale } from '../i18n/i18n.ts'
 import { relativeTime } from './relativeTime.ts'
 
 const NOW = Date.UTC(2026, 9, 6, 12, 0, 0)
@@ -40,5 +41,16 @@ describe('relativeTime', () => {
     expect(ago(362 * DAY)).toBe('1 год назад')
     expect(ago(2 * 365 * DAY)).toBe('2 года назад')
     expect(ago(5 * 365 * DAY)).toBe('5 лет назад')
+  })
+
+  it('speaks English in the English interface', () => {
+    setLocale('en')
+    expect(ago(30 * SECOND)).toBe('just now')
+    expect(ago(MINUTE)).toBe('1 minute ago')
+    expect(ago(3 * MINUTE)).toBe('3 minutes ago')
+    expect(ago(21 * HOUR)).toBe('21 hours ago')
+    expect(ago(DAY)).toBe('1 day ago')
+    expect(ago(65 * DAY)).toBe('2 months ago')
+    expect(ago(365 * DAY)).toBe('1 year ago')
   })
 })

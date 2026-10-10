@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { DiagramEditor } from './editor.ts'
+import { pickerMessages } from './pickers.messages.ts'
 import { PLAN_COLORS, PLAN_LABELS, PLAN_VIEW_LABELS, PLAN_VIEWS, type Plan, type PlanView } from './plan.ts'
 import { useEditorState } from './useEditorState.ts'
+
+const m = pickerMessages.plan
 
 function Swatch({ plan }: { plan: Plan }) {
   return (
@@ -47,9 +50,9 @@ export function PlanViewPicker({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="Как есть и как будет"
+          aria-label={m.name}
           aria-pressed={view !== 'diff'}
-          title={`Показать: ${PLAN_VIEW_LABELS[view].toLowerCase()}`}
+          title={m.showing(PLAN_VIEW_LABELS[view])}
           disabled={!editor}
           className="shrink-0 aria-pressed:bg-accent"
         >
@@ -57,9 +60,9 @@ export function PlanViewPicker({
           <span className="text-xs">{PLAN_VIEW_LABELS[view]}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" aria-label="Как есть и как будет" className="flex w-72 flex-col gap-3">
+      <PopoverContent align="start" aria-label={m.name} className="flex w-72 flex-col gap-3">
         <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-xs font-medium text-muted-foreground">Показать</legend>
+          <legend className="mb-1 text-xs font-medium text-muted-foreground">{m.show}</legend>
           {PLAN_VIEWS.map((value) => (
             <label key={value} className="flex items-center gap-2 text-sm">
               <input type="radio" name={name} checked={view === value} onChange={() => onChange(value)} />
@@ -81,13 +84,13 @@ export function PlanViewPicker({
             variant="outline"
             size="sm"
             disabled={!editor || planned === 0}
-            title="Удалить уходящее и снять отметки с появившегося, одним шагом отмены"
+            title={m.applyTitle}
             onClick={() => editor?.applyTargetState()}
           >
-            Применить целевое состояние
+            {m.apply}
           </Button>
         )}
-        <p className="text-xs text-muted-foreground">Что появится и что уйдёт, отмечают в меню правого щелчка: «Изменение».</p>
+        <p className="text-xs text-muted-foreground">{m.hint}</p>
       </PopoverContent>
     </Popover>
   )

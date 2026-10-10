@@ -9,19 +9,13 @@ import type { DiagramEditor } from '../diagram/editor.ts'
 import type { PageInfo } from '../diagram/pages.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
 import { isModLetter } from '../lib/keyboard.ts'
+import { canvasSearchMessages as m } from './board.messages.ts'
 
 /** The shortest time between two searches of a board that others change: a drag gives dozens of changes a second. */
 const MATCHES_INTERVAL_MS = 150
 
 const NO_MATCHES: CanvasMatch[] = []
 
-const pluralRules = new Intl.PluralRules('ru')
-
-/** «3 совпадения»: how many matches there are while none of them is the current one. */
-function matchCount(count: number): string {
-  const words: Partial<Record<Intl.LDMLPluralRule, string>> = { one: 'совпадение', few: 'совпадения', many: 'совпадений' }
-  return `${count} ${words[pluralRules.select(count)] ?? 'совпадения'}`
-}
 
 interface CanvasSearchProps {
   document: Y.Doc
@@ -129,15 +123,15 @@ export function CanvasSearch({
   const status = !query.trim()
     ? ''
     : matches.length === 0
-      ? 'Нет совпадений'
+      ? m.none
       : index >= 0
-        ? `${index + 1} из ${matches.length}${filtered === 'hidden' ? ' · скрыто фильтром' : filtered === 'dimmed' ? ' · приглушено фильтром' : ''}`
-        : matchCount(matches.length)
+        ? `${m.current(index + 1, matches.length)}${filtered === 'hidden' ? m.hidden : filtered === 'dimmed' ? m.dimmed : ''}`
+        : m.matches(matches.length)
 
   return (
     <div
       role="search"
-      aria-label="Поиск на доске"
+      aria-label={m.region}
       className="absolute top-2 right-6 z-20 flex items-center gap-1 rounded-md border bg-background p-1 shadow-md"
     >
       <label className="relative flex items-center">
@@ -145,8 +139,8 @@ export function CanvasSearch({
         <input
           ref={input}
           type="search"
-          aria-label="Найти на доске"
-          placeholder="Найти на доске"
+          aria-label={m.find}
+          placeholder={m.find}
           className="h-8 w-52 rounded-md border bg-background pr-2 pl-8 text-sm [&::-webkit-search-cancel-button]:hidden"
           value={query}
           onChange={(event) => search(event.target.value)}
@@ -168,8 +162,8 @@ export function CanvasSearch({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Предыдущее совпадение"
-        title="Предыдущее совпадение (Shift+Enter)"
+        aria-label={m.previous}
+        title={m.previousHint}
         disabled={matches.length === 0}
         onClick={() => step(-1)}
       >
@@ -179,14 +173,14 @@ export function CanvasSearch({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Следующее совпадение"
-        title="Следующее совпадение (Enter)"
+        aria-label={m.next}
+        title={m.nextHint}
         disabled={matches.length === 0}
         onClick={() => step(1)}
       >
         <ChevronDown />
       </Button>
-      <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть поиск" title="Закрыть поиск (Esc)" onClick={close}>
+      <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} title={m.closeHint} onClick={close}>
         <X />
       </Button>
     </div>

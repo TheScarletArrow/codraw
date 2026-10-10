@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import type { WorkspaceProject } from '../api/workspaces.ts'
 import { TitleInput } from '../board/TitleInput.tsx'
+import { workspacesMessages as m } from './messages.tsx'
 import { ALL_PROJECTS, PROJECT_NAME_MAX_LENGTH, type ProjectFilter } from './workspaces.ts'
 
 interface ProjectBarProps {
@@ -53,15 +54,15 @@ export function ProjectBar({ projects, selected, onSelect, manage, error }: Proj
 
   return (
     <div className="mt-3 flex flex-col gap-2">
-      <div role="group" aria-label="Проекты" className="flex flex-wrap items-center gap-2">
-        {option(ALL_PROJECTS, 'Все доски', 'all')}
-        {projects.length > 0 && option({ kind: 'none' }, 'Без проекта', 'none')}
+      <div role="group" aria-label={m.projects} className="flex flex-wrap items-center gap-2">
+        {option(ALL_PROJECTS, m.allBoards, 'all')}
+        {projects.length > 0 && option({ kind: 'none' }, m.noProject, 'none')}
         {projects.map((project) =>
           renaming && chosen?.id === project.id && manage ? (
             <TitleInput
               key={project.id}
               title={project.name}
-              label="Название проекта"
+              label={m.projectName}
               maxLength={PROJECT_NAME_MAX_LENGTH}
               className="h-8 w-48 px-2"
               onDone={(name) => {
@@ -80,8 +81,8 @@ export function ProjectBar({ projects, selected, onSelect, manage, error }: Proj
           (creating ? (
             <TitleInput
               title=""
-              label="Новый проект"
-              placeholder="Название проекта"
+              label={m.newProject}
+              placeholder={m.projectName}
               maxLength={PROJECT_NAME_MAX_LENGTH}
               className="h-8 w-48 px-2"
               onDone={(name) => {
@@ -92,7 +93,7 @@ export function ProjectBar({ projects, selected, onSelect, manage, error }: Proj
           ) : (
             <Button type="button" variant="ghost" size="sm" onClick={() => setCreating(true)}>
               <FolderPlus />
-              Новый проект
+              {m.newProject}
             </Button>
           ))}
       </div>
@@ -120,17 +121,17 @@ function ProjectMenu({ name, onRename, onDelete }: { name: string; onRename: () 
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Меню проекта «${name}»`} title="Действия с проектом">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.projectMenu(name)} title={m.projectActions}>
           <Ellipsis />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
         {confirming ? (
-          <div role="alertdialog" aria-label="Удаление проекта" className="flex flex-col gap-2 p-2">
-            <p className="text-sm">Удалить проект «{name}»? Его доски останутся в пространстве без проекта.</p>
+          <div role="alertdialog" aria-label={m.projectDeletion} className="flex flex-col gap-2 p-2">
+            <p className="text-sm">{m.deleteProjectQuestion(name)}</p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-                Отмена
+                {m.cancel}
               </Button>
               <Button
                 type="button"
@@ -141,12 +142,12 @@ function ProjectMenu({ name, onRename, onDelete }: { name: string; onRename: () 
                   onDelete()
                 }}
               >
-                Удалить
+                {m.delete}
               </Button>
             </div>
           </div>
         ) : (
-          <div role="menu" aria-label={`Проект «${name}»`} className="flex flex-col">
+          <div role="menu" aria-label={m.project(name)} className="flex flex-col">
             <Button
               type="button"
               role="menuitem"
@@ -158,7 +159,7 @@ function ProjectMenu({ name, onRename, onDelete }: { name: string; onRename: () 
                 onRename()
               }}
             >
-              Переименовать проект
+              {m.renameProject}
             </Button>
             <Button
               type="button"
@@ -168,7 +169,7 @@ function ProjectMenu({ name, onRename, onDelete }: { name: string; onRename: () 
               className={cn(item, 'text-destructive hover:text-destructive')}
               onClick={() => setConfirming(true)}
             >
-              Удалить проект
+              {m.deleteProject}
             </Button>
           </div>
         )}

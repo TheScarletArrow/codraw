@@ -18,6 +18,7 @@ import {
   type CheckRule,
   type MergeChoice,
 } from './checks.ts'
+import { checkMessages as m } from './messages.ts'
 import { useChecks } from './useChecks.ts'
 
 /**
@@ -31,9 +32,9 @@ export function ChecksButton({ document, open, onToggle }: { document: Y.Doc | n
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={count > 0 ? `Проверки: ${issuesLabel(count)}` : 'Проверки'}
+      aria-label={count > 0 ? m.checksCount(issuesLabel(count)) : m.checks}
       aria-pressed={open}
-      title={count > 0 ? `Проверки: ${issuesLabel(count)}` : 'Проверки схемы'}
+      title={count > 0 ? m.checksCount(issuesLabel(count)) : m.diagramChecks}
       className="shrink-0"
       onClick={onToggle}
     >
@@ -88,20 +89,20 @@ export function ChecksPanel({
 
   return (
     <aside
-      aria-label="Проверки"
+      aria-label={m.checks}
       className="pointer-events-auto flex min-h-0 w-[320px] max-w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
-        <h2 className="mr-auto text-sm font-semibold">Проверки</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
+        <h2 className="mr-auto text-sm font-semibold">{m.checks}</h2>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} title={m.close} onClick={onClose}>
           <X />
         </Button>
       </header>
-      <div role="tablist" aria-label="Проверки" className="flex gap-1 border-b p-1">
+      <div role="tablist" aria-label={m.checks} className="flex gap-1 border-b p-1">
         {(
           [
-            ['issues', 'Замечания', shown.length],
-            ['rules', 'Правила', null],
+            ['issues', m.remarks, shown.length],
+            ['rules', m.rulesTab, null],
           ] as const
         ).map(([value, label, count]) => (
           <button
@@ -123,10 +124,10 @@ export function ChecksPanel({
         ))}
       </div>
       {tab === 'issues' ? (
-        <div role="tabpanel" aria-label="Замечания" className="flex min-h-0 flex-col overflow-y-auto">
+        <div role="tabpanel" aria-label={m.remarks} className="flex min-h-0 flex-col overflow-y-auto">
           {listed.length === 0 ? (
             <p className="p-3 text-sm text-muted-foreground">
-              {settings.disabled.size === CHECK_RULE_ORDER.length ? 'Все правила выключены' : 'Замечаний нет'}
+              {settings.disabled.size === CHECK_RULE_ORDER.length ? m.allRulesOff : m.noRemarks}
             </p>
           ) : (
             CHECK_RULE_ORDER.map((rule) => {
@@ -149,14 +150,14 @@ export function ChecksPanel({
           {hidden.length > 0 && (
             <label className="flex items-center gap-2 border-t px-3 py-2 text-sm text-muted-foreground">
               <input type="checkbox" checked={showHidden} onChange={(event) => setShowHidden(event.target.checked)} />
-              {`Показать скрытые (${hidden.length})`}
+              {m.showHidden(hidden.length)}
             </label>
           )}
         </div>
       ) : (
-        <div role="tabpanel" aria-label="Правила" className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+        <div role="tabpanel" aria-label={m.rulesTab} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
           <p className="text-xs text-muted-foreground">
-            {canChange ? 'Правила общие для всех участников доски.' : 'Правила доски меняют те, кто её редактирует.'}
+            {canChange ? m.sharedRules : m.editorsChangeRules}
           </p>
           {CHECK_RULE_ORDER.map((rule) => (
             <label key={rule} className="flex items-start gap-2 text-sm">
@@ -204,7 +205,7 @@ function RuleIssues({
     <section aria-label={info.title} className="flex flex-col gap-1 border-b p-3 last:border-b-0">
       <h3 className="flex items-center gap-1.5 text-sm font-medium">
         <LevelIcon level={info.level} />
-        {`${info.title} (${issues.length})`}
+        {m.ruleCount(info.title, issues.length)}
       </h3>
       <p className="text-xs text-muted-foreground">{info.reason}</p>
       <ul className="mt-1 flex flex-col gap-2">
@@ -230,7 +231,7 @@ function placeLabels(places: CheckPlace[]): { place: CheckPlace; label: string }
   return places.map((place) => {
     const index = (seen.get(place.pageId) ?? 0) + 1
     seen.set(place.pageId, index)
-    return { place, label: index === 1 ? `стр. «${place.pageName}»` : `стр. «${place.pageName}» (${index})` }
+    return { place, label: index === 1 ? m.page(place.pageName) : m.pageAgain(place.pageName, index) }
   })
 }
 
@@ -263,7 +264,7 @@ function IssueRow({
               variant="link"
               size="xs"
               className="h-auto px-0"
-              title={`Показать на странице «${place.pageName}»`}
+              title={m.showOnPage(place.pageName)}
               onClick={() => onShow(place.pageId, place.cellId)}
             >
               {label}
@@ -271,7 +272,7 @@ function IssueRow({
           ))}
           {issue.choices && canChange && !hidden && !merging && (
             <Button type="button" variant="link" size="xs" className="h-auto px-0" onClick={() => setMerging(true)}>
-              Объединить…
+              {m.mergeMenu}
             </Button>
           )}
         </span>
@@ -295,8 +296,8 @@ function IssueRow({
           variant="ghost"
           size="icon-sm"
           // The rule tells apart two remarks of one element or edge.
-          aria-label={`${hidden ? 'Показать' : 'Скрыть'} замечание «${CHECK_RULES[issue.rule].title}»: ${issue.subject}`}
-          title={hidden ? 'Показать замечание' : 'Скрыть замечание для этого случая'}
+          aria-label={(hidden ? m.showRemark : m.hideRemark)(CHECK_RULES[issue.rule].title, issue.subject)}
+          title={hidden ? m.showRemarkHint : m.hideRemarkHint}
           onClick={() => onHide(issue, !hidden)}
         >
           {hidden ? <Eye /> : <EyeOff />}
@@ -320,14 +321,14 @@ function MergeForm({ choices, onMerge, onCancel }: { choices: MergeChoice[]; onM
     onMerge(choices[kept]!.ref)
   }
   return (
-    <form aria-label="Объединить в один элемент" className="mt-1 flex flex-col gap-1 rounded border p-2" onSubmit={submit}>
+    <form aria-label={m.mergeInto} className="mt-1 flex flex-col gap-1 rounded border p-2" onSubmit={submit}>
       <fieldset className="flex flex-col gap-1">
-        <legend className="mb-1 text-xs text-muted-foreground">Все их ячейки станут одним элементом. Чьи свойства оставить?</legend>
+        <legend className="mb-1 text-xs text-muted-foreground">{m.whichProperties}</legend>
         {choices.map((choice, index) => (
           <label key={`${choice.ref.pageId}/${choice.ref.cellId}`} className="flex items-start gap-2 text-sm">
             <input type="radio" name={name} className="mt-1" checked={kept === index} onChange={() => setKept(index)} />
             <span className="flex min-w-0 flex-col">
-              <span className="truncate">{choice.properties.name || 'Без имени'}</span>
+              <span className="truncate">{choice.properties.name || m.unnamed}</span>
               <span className="truncate text-xs text-muted-foreground">{choiceDetails(choice)}</span>
             </span>
           </label>
@@ -335,10 +336,10 @@ function MergeForm({ choices, onMerge, onCancel }: { choices: MergeChoice[]; onM
       </fieldset>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          Отмена
+          {m.cancel}
         </Button>
         <Button type="submit" size="sm">
-          Объединить
+          {m.merge}
         </Button>
       </div>
     </form>

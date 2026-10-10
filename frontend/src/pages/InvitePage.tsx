@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { SHARED_BOARDS_QUERY_KEY } from '../api/boards.ts'
 import { isNotFound } from '../api/http.ts'
 import { acceptInvite, limitOf } from '../api/members.ts'
-import { counted } from '../board/members.ts'
+import { inviteMessages as m } from './InvitePage.messages.ts'
 
 /**
  * An invitation link: the signed-in user, a guest too, accepts it and lands on the board with its role. A visitor
@@ -31,26 +31,26 @@ export function InvitePage() {
     mutate(token)
   }, [token, mutate])
 
-  if (!accept.isError) return <p className="p-6 text-muted-foreground">Принимаем приглашение…</p>
+  if (!accept.isError) return <p className="p-6 text-muted-foreground">{m.accepting}</p>
   const limit = limitOf(accept.error)
   return (
     <section className="mx-auto flex w-full max-w-xl flex-col gap-3 px-4 py-6">
       {isNotFound(accept.error) ? (
         <>
-          <h2 className="text-2xl font-semibold">Приглашение недействительно</h2>
+          <h2 className="text-2xl font-semibold">{m.invalid}</h2>
           <p className="text-muted-foreground">
-            Владелец доски отозвал эту ссылку-приглашение, или в ней ошибка. Попросите у него новую.
+            {m.invalidHint}
           </p>
         </>
       ) : (
         <p role="alert" className="text-destructive">
           {limit === null
-            ? 'Не удалось принять приглашение. Попробуйте ещё раз.'
-            : `На доске уже ${counted(limit, ['участник', 'участника', 'участников'])}: владелец не может добавить больше.`}
+            ? m.failed
+            : m.membersLimit(limit)}
         </p>
       )}
       <Link to="/" className="underline">
-        К списку досок
+        {m.toBoards}
       </Link>
     </section>
   )

@@ -1,5 +1,6 @@
 import { HttpError } from '../api/http.ts'
 import type { IssueLink, IssueTarget } from '../api/issues.ts'
+import { issueMessages as m } from './messages.ts'
 
 /** The links of all boards, e.g. after the user changed the connection that keeps theirs up to date. */
 export const ISSUE_LINKS_KEY = ['issue-links'] as const
@@ -43,14 +44,14 @@ export function staleLinks(links: readonly IssueLink[], now: number): IssueLink[
 
 /** The state of the issue in the words of GitHub. */
 export function stateLabel(link: Pick<IssueLink, 'state' | 'stateReason'>): string {
-  if (link.state === 'open') return 'Открыта'
+  if (link.state === 'open') return m.state.open
   switch (link.stateReason) {
     case 'not-planned':
-      return 'Закрыта: не планируется'
+      return m.state.notPlanned
     case 'duplicate':
-      return 'Закрыта: дубликат'
+      return m.state.duplicate
     default:
-      return 'Закрыта: выполнена'
+      return m.state.completed
   }
 }
 
@@ -60,15 +61,15 @@ export function syncProblem(link: IssueLink): string | null {
     case 'ok':
       return null
     case 'deleted':
-      return 'Задача удалена в GitHub'
+      return m.sync.deleted
     case 'no-access':
       return link.linkedBy
-        ? `Нет доступа: задачу удалили или перенесли, либо подключение привязавшего её участника (${link.linkedBy.name}) больше её не видит`
-        : 'Нет доступа к задаче'
+        ? m.sync.noAccessBy(link.linkedBy.name)
+        : m.sync.noAccess
     case 'disconnected':
       return link.linkedBy
-        ? `Не обновляется: у привязавшего задачу участника (${link.linkedBy.name}) нет рабочего подключения к GitHub`
-        : 'Не обновляется: привязавший задачу участник удалён'
+        ? m.sync.disconnectedBy(link.linkedBy.name)
+        : m.sync.disconnected
   }
 }
 
@@ -100,40 +101,40 @@ export function parseIssueReference(text: string, repository: string | null): { 
 
 /** What to tell the user when a request about issues failed. */
 export function issueErrorMessage(error: unknown, fallback: string): string {
-  if (!(error instanceof HttpError)) return `${fallback} — проверьте соединение`
+  if (!(error instanceof HttpError)) return m.errors.offline(fallback)
   switch (error.problem?.reason) {
     case 'not-connected':
-      return 'Подключите GitHub в настройках подключений'
+      return m.errors.notConnected
     case 'token-rejected':
-      return 'GitHub больше не принимает ваш токен — подключите GitHub заново'
+      return m.errors.tokenRejected
     case 'invalid-token':
-      return 'GitHub не принял токен'
+      return m.errors.invalidToken
     case 'not-found':
-      return 'Не найдено: такой задачи нет или ваш токен не даёт к ней доступа'
+      return m.errors.notFound
     case 'issue-deleted':
-      return 'Задача удалена в GitHub'
+      return m.errors.issueDeleted
     case 'not-an-issue':
-      return 'Это pull request, а не задача'
+      return m.errors.notAnIssue
     case 'tracker-forbidden':
-      return 'Токену не хватает прав: нужен доступ «Issues: Read and write» к репозиторию'
+      return m.errors.trackerForbidden
     case 'tracker-rejected':
-      return 'GitHub не принял задачу: возможно, задачи в репозитории выключены'
+      return m.errors.trackerRejected
     case 'tracker-unavailable':
-      return 'GitHub не отвечает — попробуйте позже'
+      return m.errors.trackerUnavailable
     case 'creation-in-progress':
-      return 'Задача уже создаётся — подождите немного'
+      return m.errors.creationInProgress
     case 'forbidden':
-      return 'Привязывать задачи к элементам могут владелец и редакторы доски'
+      return m.errors.forbidden
     case 'guest':
-      return 'Задачи GitHub доступны после входа через GitHub или Google'
+      return m.errors.guest
     case 'tracker-off':
-      return 'На этом сервере задачи GitHub не подключены'
+      return m.errors.trackerOff
     case 'limit':
-      return `На доске уже ${error.problem.limit ?? 'много'} привязанных задач — больше нельзя`
+      return m.errors.limit(error.problem.limit)
     case 'no-thread':
-      return 'Ветка удалена'
+      return m.errors.noThread
     case 'no-link':
-      return 'Привязка уже удалена'
+      return m.errors.noLink
     default:
       return fallback
   }

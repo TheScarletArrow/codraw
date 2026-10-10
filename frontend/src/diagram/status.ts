@@ -1,4 +1,6 @@
+import { perLocale } from '../i18n/i18n.ts'
 import type { Author } from './attribution.ts'
+import { statusLabels } from './model.messages.ts'
 import type { CellMap } from './model.ts'
 
 /** Statuses of an element of a board, from the first draft to an agreed part of the diagram. */
@@ -7,11 +9,7 @@ export const ELEMENT_STATUSES = ['draft', 'review', 'done'] as const
 export type ElementStatus = (typeof ELEMENT_STATUSES)[number]
 
 /** What a status is called in the interface. */
-export const STATUS_LABELS: Record<ElementStatus, string> = {
-  draft: 'Черновик',
-  review: 'Нужно ревью',
-  done: 'Готово',
-}
+export const STATUS_LABELS: Readonly<Record<ElementStatus, string>> = statusLabels
 
 /**
  * Keys of a cell in the board document with its status and who set it when: the status, the id of the user, their name
@@ -95,10 +93,10 @@ export function clearStatus(cell: CellMap) {
   STATUS_KEYS.forEach((key) => cell.delete(key))
 }
 
-const exactTime = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
+const exactTime = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 
 /** When a status was set, as its badge says it: «7 окт. 2026 г., 14:05». */
-export const statusTime = (at: number) => exactTime.format(at)
+export const statusTime = (at: number) => exactTime().format(at)
 
 /** What the badge of a status says: «Нужно ревью — Алиса, 7 окт. 2026 г., 14:05», or less when the cell keeps less. */
 export function statusLabel({ status, name, at }: StatusMark): string {

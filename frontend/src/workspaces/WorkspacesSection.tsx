@@ -5,9 +5,9 @@ import { Link, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { createWorkspace, fetchWorkspaces, WORKSPACES_QUERY_KEY, workspaceLimitOf } from '../api/workspaces.ts'
 import { useCurrentUser } from '../auth/session.ts'
-import { counted } from '../board/members.ts'
 import { TitleInput } from '../board/TitleInput.tsx'
-import { WORKSPACE_NAME_MAX_LENGTH, WORKSPACE_ROLE_LABELS, workspacePath } from './workspaces.ts'
+import { workspacesMessages as m } from './messages.tsx'
+import { WORKSPACE_NAME_MAX_LENGTH, workspacePath, workspaceRoleLabel } from './workspaces.ts'
 
 /**
  * «Пространства» on the main page: the team workspaces of the user with their roles, and «Создать пространство», which
@@ -32,9 +32,9 @@ export function WorkspacesSection() {
   if (guest) {
     return (
       <p className="mt-4 text-sm text-muted-foreground">
-        Командные пространства с общими проектами доступны после входа через GitHub или Google.{' '}
+        {m.guestHint}{' '}
         <Link to="/login" className="underline">
-          Войти
+          {m.signIn}
         </Link>
       </p>
     )
@@ -44,13 +44,13 @@ export function WorkspacesSection() {
     <section aria-labelledby="workspaces" className="mt-4 flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="workspaces" className="text-lg font-semibold">
-          Пространства
+          {m.workspaces}
         </h3>
         {creating ? (
           <TitleInput
             title=""
-            label="Название пространства"
-            placeholder="Название пространства"
+            label={m.workspaceName}
+            placeholder={m.workspaceName}
             maxLength={WORKSPACE_NAME_MAX_LENGTH}
             className="w-64 py-1"
             onDone={(name) => {
@@ -61,25 +61,25 @@ export function WorkspacesSection() {
         ) : (
           <Button type="button" variant="outline" size="sm" disabled={create.isPending} onClick={() => setCreating(true)}>
             <Users />
-            Создать пространство
+            {m.createWorkspace}
           </Button>
         )}
       </div>
       {create.isError && (
         <p role="alert" className="text-sm text-destructive">
           {limit === null
-            ? 'Не удалось создать пространство'
-            : `Можно состоять не больше чем в ${counted(limit.limit, ['пространстве', 'пространствах', 'пространствах'])}`}
+            ? m.createFailed
+            : m.workspacesLimit(limit.limit)}
         </p>
       )}
       {workspaces.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось загрузить пространства
+          {m.workspacesFailed}
         </p>
       )}
       {workspaces.data?.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          Пространство — общее место команды: проекты и доски, доступные всем её участникам по их ролям.
+          {m.workspacesIntro}
         </p>
       )}
       {workspaces.data && workspaces.data.length > 0 && (
@@ -92,8 +92,7 @@ export function WorkspacesSection() {
               >
                 <span className="truncate font-medium">{workspace.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {WORKSPACE_ROLE_LABELS[workspace.role]} · {counted(workspace.boards, ['доска', 'доски', 'досок'])} ·{' '}
-                  {counted(workspace.members, ['участник', 'участника', 'участников'])}
+                  {workspaceRoleLabel(workspace.role)} · {m.boards(workspace.boards)} · {m.membersCount(workspace.members)}
                 </span>
               </Link>
             </li>

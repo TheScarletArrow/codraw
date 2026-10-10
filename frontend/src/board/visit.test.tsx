@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { StrictMode, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reportVisit, startVisit, type ChangesSinceVisit } from '../api/visits.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { authorNames, useBoardVisit, visitTime, VISIT_REPORT_INTERVAL_MS } from './visit.ts'
 
 vi.mock('../api/visits.ts', () => ({ startVisit: vi.fn(), reportVisit: vi.fn(async () => {}) }))
@@ -160,5 +161,15 @@ describe('visitTime', () => {
     expect(visitTime(new Date(2026, 9, 5, 0, 5), now)).toBe('вчера в 0:05')
     expect(visitTime(new Date(2026, 9, 3, 18, 40), now)).toBe('3 октября в 18:40')
     expect(visitTime(new Date(2025, 11, 31, 23, 59), now)).toBe('31 декабря 2025 г. в 23:59')
+  })
+
+  it('names the day in English', () => {
+    setLocale('en')
+    // Intl may put a narrow space before AM and PM.
+    expect(visitTime(new Date(2026, 9, 6, 9, 15), now)).toMatch(/^today at 9:15\sAM$/)
+    expect(visitTime(new Date(2026, 9, 3, 18, 40), now)).toMatch(/^October 3 at 6:40\sPM$/)
+    const named = (...names: string[]) => names.map((name) => ({ id: name, name, avatarUrl: null }))
+    expect(authorNames(named('Ann', 'Bob'))).toBe('Ann and Bob')
+    expect(authorNames(named('Ann', 'Bob', 'Vera', 'Gleb'))).toBe('Ann, Bob, Vera and 1 more')
   })
 })

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { colorPickerMessages as m } from './ColorPicker.messages.ts'
 import { PALETTE } from './colors.ts'
 import { NumberField } from './NumberField.tsx'
 
@@ -29,7 +30,7 @@ interface ColorPickerProps {
 }
 
 /** A toolbar button that shows the current color and opens the palette. */
-export function ColorPicker({ label, name, value, noneLabel, onChange, opacity = null, opacityName = 'Прозрачность', onOpacityChange }: ColorPickerProps) {
+export function ColorPicker({ label, name, value, noneLabel, onChange, opacity = null, opacityName = m.transparency, onOpacityChange }: ColorPickerProps) {
   const [open, setOpen] = useState(false)
   const pick = (color: string) => {
     onChange(color)
@@ -98,11 +99,11 @@ function CustomColor({ value, onPick }: { value: string | null; onPick: (color: 
 
   return (
     <label className="flex items-center justify-between gap-2 text-sm">
-      Свой цвет
+      {m.customColor}
       <input
         ref={input}
         type="color"
-        aria-label="Свой цвет"
+        aria-label={m.customColor}
         defaultValue={value && /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'}
         className="h-8 w-12 cursor-pointer rounded border bg-background"
       />
@@ -141,7 +142,7 @@ function Transparency({
   return (
     <div className="flex flex-col gap-1.5 text-sm">
       <div className="flex items-center justify-between gap-2">
-        Прозрачность
+        {m.transparency}
         <span className="flex items-center gap-1">
           <NumberField
             label={`${name}, %`}

@@ -5,14 +5,10 @@ import { downloadDrawio } from '../drawio/files.ts'
 import { exportDrawio } from '../drawio/serialize.ts'
 import { embeddedImages } from '../image/inlineImages.ts'
 import { deleteLocalCopy, findLocalCopy, loadLocalCopy } from './localCopies.ts'
+import { offlineMessages as m } from './messages.ts'
 
 /** Why the edits of the copy did not go to the board. */
 export type UnsentCopyReason = 'no-edit-right' | 'kept'
-
-const MESSAGES: Record<UnsentCopyReason, string> = {
-  'no-edit-right': 'Правки, сделанные без связи, не отправлены: у вас больше нет права правки',
-  kept: 'Неотправленные правки остались в копии доски на этом устройстве',
-}
 
 interface UnsentCopyProps {
   userId: string
@@ -68,12 +64,12 @@ export function UnsentCopy({ userId, boardId, title, reason, dropSent = false, o
 
   return (
     <div role={role} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-sm', className)}>
-      <span className="min-w-0 flex-1">{MESSAGES[reason]}</span>
+      <span className="min-w-0 flex-1">{m.reasons[reason]}</span>
       {confirming ? (
         <>
-          <span>Удалить копию? Правки из неё пропадут.</span>
+          <span>{m.confirmDelete}</span>
           <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)} disabled={busy}>
-            Отмена
+            {m.cancel}
           </Button>
           <Button
             type="button"
@@ -82,20 +78,20 @@ export function UnsentCopy({ userId, boardId, title, reason, dropSent = false, o
             onClick={() => void remove()}
             disabled={busy}
           >
-            Удалить
+            {m.delete}
           </Button>
         </>
       ) : (
         <>
           <Button type="button" variant="outline" size="sm" onClick={() => void download()} disabled={busy}>
-            Скачать копию (.drawio)
+            {m.download}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(true)} disabled={busy}>
-            Удалить копию с устройства
+            {m.deleteFromDevice}
           </Button>
         </>
       )}
-      {failed && <span className="w-full">Не удалось прочитать копию</span>}
+      {failed && <span className="w-full">{m.readFailed}</span>}
     </div>
   )
 }

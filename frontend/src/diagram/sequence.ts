@@ -1,5 +1,6 @@
 import { generateNKeysBetween } from 'fractional-indexing'
 import { newId } from './ids.ts'
+import { sequenceMessages as m } from './sequence.messages.ts'
 import { LAYER_CELL_ID, type CellData, type StyleValue } from './model.ts'
 import { layoutSequence, type SequenceLayout } from './sequenceLayout.ts'
 import { measureLabel, type LabelStyle } from './textMeasure.ts'
@@ -65,35 +66,35 @@ const PARTS: readonly SequencePart[] = ['participant', 'message', 'note', 'frame
 
 /** The kinds of participants as the panel names them, in its order. */
 export const PARTICIPANT_KINDS: readonly { value: ParticipantKind; label: string }[] = [
-  { value: 'participant', label: 'Участник' },
-  { value: 'actor', label: 'Актёр' },
-  { value: 'service', label: 'Сервис' },
-  { value: 'database', label: 'База данных' },
-  { value: 'queue', label: 'Очередь' },
+  { value: 'participant', get label() { return m.participantKinds.participant } },
+  { value: 'actor', get label() { return m.participantKinds.actor } },
+  { value: 'service', get label() { return m.participantKinds.service } },
+  { value: 'database', get label() { return m.participantKinds.database } },
+  { value: 'queue', get label() { return m.participantKinds.queue } },
 ]
 
 /** The kinds of messages as the panel names them, in its order. */
 export const MESSAGE_ARROWS: readonly { value: MessageArrow; label: string }[] = [
-  { value: 'sync', label: 'Синхронный вызов' },
-  { value: 'async', label: 'Асинхронный' },
-  { value: 'reply', label: 'Ответ' },
+  { value: 'sync', get label() { return m.messageArrows.sync } },
+  { value: 'async', get label() { return m.messageArrows.async } },
+  { value: 'reply', get label() { return m.messageArrows.reply } },
 ]
 
 /** Where a note stands, as the panel names it, in its order. */
 export const NOTE_PLACEMENTS: readonly { value: NotePlacement; label: string }[] = [
-  { value: 'over', label: 'Над участником' },
-  { value: 'right', label: 'Справа от участника' },
-  { value: 'left', label: 'Слева от участника' },
+  { value: 'over', get label() { return m.notePlacements.over } },
+  { value: 'right', get label() { return m.notePlacements.right } },
+  { value: 'left', get label() { return m.notePlacements.left } },
 ]
 
 /** The kinds of frames, as UML and Mermaid name them, with what they mean. */
 export const FRAME_KINDS: readonly { value: FrameKind; label: string }[] = [
-  { value: 'alt', label: 'alt — варианты' },
-  { value: 'opt', label: 'opt — необязательно' },
-  { value: 'loop', label: 'loop — цикл' },
-  { value: 'par', label: 'par — параллельно' },
-  { value: 'critical', label: 'critical — критическая секция' },
-  { value: 'break', label: 'break — прерывание' },
+  { value: 'alt', get label() { return m.frameKinds.alt } },
+  { value: 'opt', get label() { return m.frameKinds.opt } },
+  { value: 'loop', get label() { return m.frameKinds.loop } },
+  { value: 'par', get label() { return m.frameKinds.par } },
+  { value: 'critical', get label() { return m.frameKinds.critical } },
+  { value: 'break', get label() { return m.frameKinds.break } },
 ]
 
 /** The word of Mermaid that starts a branch of a frame; frames of other kinds have no branches. */
@@ -475,10 +476,11 @@ export class SequenceBuilder {
 
 /** What a new diagram of the palette has: «Клиент» calls «Сервис», which answers. */
 export function starterSequence(): SequenceDiagram {
-  const builder = new SequenceBuilder('Сценарий')
-  const client = builder.participant('Клиент')
-  const service = builder.participant('Сервис')
-  builder.message(client, service, 'Запрос')
-  builder.message(service, client, 'Ответ', 'reply')
+  const { title, client: clientName, service: serviceName, request, reply } = m.starter
+  const builder = new SequenceBuilder(title)
+  const client = builder.participant(clientName)
+  const service = builder.participant(serviceName)
+  builder.message(client, service, request)
+  builder.message(service, client, reply, 'reply')
   return builder.diagram
 }

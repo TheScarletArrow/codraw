@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { shareMessages as m } from './share.messages.ts'
 
 /** How long «Скопировано» replaces «Копировать код», in milliseconds. */
 const COPIED_DURATION = 2_000
@@ -32,21 +33,21 @@ export function PublicViewSection({ boardId, pageId }: { boardId: string; pageId
   }
 
   return (
-    <section aria-label="Встроить на страницу" className="flex flex-col gap-1.5">
-      <h3 className="text-sm font-medium">Встроить на страницу</h3>
+    <section aria-label={m.embed} className="flex flex-col gap-1.5">
+      <h3 className="text-sm font-medium">{m.embed}</h3>
       <p className="text-xs text-muted-foreground">
-        Доска со всеми страницами для Confluence, вики и сайтов: её смотрят без входа и без правки.
+        {m.embedAbout}
       </p>
       <div className="flex gap-2">
         <input
           readOnly
-          aria-label="Код для встраивания"
+          aria-label={m.embedCode}
           value={code}
           className="h-8 min-w-0 flex-1 rounded-md border bg-muted/50 px-2 text-sm"
           onFocus={(event) => event.target.select()}
         />
         <Button type="button" variant="outline" size="sm" className="w-32" onClick={() => void copy()}>
-          {copied ? 'Скопировано' : 'Копировать код'}
+          {copied ? m.copied : m.copyCode}
         </Button>
       </div>
     </section>

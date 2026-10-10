@@ -21,6 +21,7 @@ import {
   type ParameterLocation,
 } from '../diagram/edgeApi.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
+import { edgeApiMessages as m } from './messages.ts'
 
 /** Colors of methods as Swagger UI paints them, which people who read APIs know. */
 const METHOD_COLORS: Record<HttpMethod, string> = {
@@ -107,30 +108,30 @@ function EdgePanel({
     try {
       const { stringify } = await import('yaml')
       await navigator.clipboard.writeText(stringify(toOpenApi(api)))
-      setMessage('Скопировано как OpenAPI')
+      setMessage(m.copiedAsOpenApi)
     } catch {
-      setMessage('Не удалось скопировать')
+      setMessage(m.copyFailed)
     }
   }
 
   return (
     <aside
-      aria-label="Описание API"
+      aria-label={m.apiDescription}
       className="pointer-events-auto flex min-h-0 w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
-        <h2 className="mr-auto text-sm font-semibold">Описание API</h2>
+        <h2 className="mr-auto text-sm font-semibold">{m.apiDescription}</h2>
         {!editable && api && (
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Копировать как OpenAPI" title="Копировать как OpenAPI" onClick={() => void copy()}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={m.copyAsOpenApi} title={m.copyAsOpenApi} onClick={() => void copy()}>
             <Copy />
           </Button>
         )}
         {!editable && api && canChange && (
           <>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Изменить" title="Изменить" onClick={() => setDraft(api)}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={m.edit} title={m.edit} onClick={() => setDraft(api)}>
               <Pencil />
             </Button>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Удалить описание" title="Удалить описание" onClick={remove}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={m.deleteDescription} title={m.deleteDescription} onClick={remove}>
               <Trash2 />
             </Button>
           </>
@@ -139,8 +140,8 @@ function EdgePanel({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Закрыть"
-          title="Закрыть"
+          aria-label={m.close}
+          title={m.close}
           onClick={() => {
             setDraft(null)
             setHidden(true)
@@ -201,8 +202,8 @@ function ParameterTable({ parameters, caption }: { parameters: ApiParameter[]; c
       <caption className="sr-only">{caption}</caption>
       <thead>
         <tr className="border-b text-left text-muted-foreground">
-          <th className="w-2/5 py-1 pr-2 font-medium">Имя</th>
-          <th className="py-1 font-medium">Описание</th>
+          <th className="w-2/5 py-1 pr-2 font-medium">{m.name}</th>
+          <th className="py-1 font-medium">{m.description}</th>
         </tr>
       </thead>
       <tbody>
@@ -212,7 +213,7 @@ function ParameterTable({ parameters, caption }: { parameters: ApiParameter[]; c
               <div className="font-mono font-semibold break-all">
                 {parameter.name}
                 {parameter.required && (
-                  <span className="text-destructive" title="Обязательный">
+                  <span className="text-destructive" title={m.required}>
                     {' '}
                     *
                   </span>
@@ -227,7 +228,7 @@ function ParameterTable({ parameters, caption }: { parameters: ApiParameter[]; c
               {parameter.description}
               {parameter.example && (
                 <div className="text-muted-foreground">
-                  Пример: <code className="font-mono">{parameter.example}</code>
+                  {m.exampleValue}<code className="font-mono">{parameter.example}</code>
                 </div>
               )}
             </td>
@@ -253,23 +254,23 @@ export function EdgeApiView({ api }: { api: EdgeApi }) {
         {api.description && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{api.description}</p>}
       </div>
       {parameters.length > 0 && (
-        <Section title="Параметры">
-          <ParameterTable parameters={parameters} caption="Параметры" />
+        <Section title={m.parameters}>
+          <ParameterTable parameters={parameters} caption={m.parameters} />
         </Section>
       )}
       {headers.length > 0 && (
-        <Section title="Заголовки">
-          <ParameterTable parameters={headers} caption="Заголовки" />
+        <Section title={m.headers}>
+          <ParameterTable parameters={headers} caption={m.headers} />
         </Section>
       )}
       {api.requestBody && (
-        <Section title="Тело запроса">
+        <Section title={m.requestBody}>
           {api.requestBody.contentType && <code className="font-mono text-xs text-muted-foreground">{api.requestBody.contentType}</code>}
           {api.requestBody.body && <Code>{api.requestBody.body}</Code>}
         </Section>
       )}
       {api.responses.length > 0 && (
-        <Section title="Ответы">
+        <Section title={m.responses}>
           <ul className="flex flex-col gap-3">
             {api.responses.map((response, index) => (
               <li key={index} className="flex flex-col gap-1">
@@ -344,7 +345,7 @@ export function EdgeApiForm({
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             <select
-              aria-label="Метод"
+              aria-label={m.method}
               className={cn(fieldClass, 'w-28 shrink-0 font-mono font-bold text-white')}
               style={{ backgroundColor: METHOD_COLORS[api.method] }}
               value={api.method}
@@ -359,7 +360,7 @@ export function EdgeApiForm({
             <input
               // The form opens for the path.
               autoFocus
-              aria-label="Путь"
+              aria-label={m.path}
               placeholder="/orders/{id}"
               className={cn(fieldClass, 'font-mono')}
               value={api.path}
@@ -367,15 +368,15 @@ export function EdgeApiForm({
             />
           </div>
           <input
-            aria-label="Кратко"
-            placeholder="Кратко: что делает вызов"
+            aria-label={m.summary}
+            placeholder={m.summaryPlaceholder}
             className={fieldClass}
             value={api.summary}
             onChange={(event) => update({ summary: event.target.value })}
           />
           <textarea
-            aria-label="Описание"
-            placeholder="Подробности: когда вызывается, идемпотентность, авторизация…"
+            aria-label={m.description}
+            placeholder={m.descriptionPlaceholder}
             rows={2}
             className={cn(areaClass, 'font-sans text-sm')}
             value={api.description}
@@ -383,20 +384,20 @@ export function EdgeApiForm({
           />
         </div>
 
-        <Section title="Параметры и заголовки">
+        <Section title={m.parametersAndHeaders}>
           {api.parameters.map((parameter, index) => (
             <fieldset key={index} className="flex flex-col gap-1.5 rounded-md border p-2">
-              <legend className="sr-only">Параметр {index + 1}</legend>
+              <legend className="sr-only">{m.parameterNumber(index + 1)}</legend>
               <div className="flex gap-1.5">
                 <input
-                  aria-label="Имя"
+                  aria-label={m.name}
                   placeholder={parameter.in === 'header' ? 'X-Request-Id' : 'id'}
                   className={cn(fieldClass, 'font-mono')}
                   value={parameter.name}
                   onChange={(event) => updateParameter(index, { name: event.target.value })}
                 />
                 <select
-                  aria-label="Где"
+                  aria-label={m.location}
                   className={cn(fieldClass, 'w-32 shrink-0')}
                   value={parameter.in}
                   onChange={(event) => updateParameter(index, { in: event.target.value as ParameterLocation })}
@@ -411,8 +412,8 @@ export function EdgeApiForm({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Удалить параметр"
-                  title="Удалить параметр"
+                  aria-label={m.deleteParameter}
+                  title={m.deleteParameter}
                   onClick={() => update({ parameters: api.parameters.filter((_, at) => at !== index) })}
                 >
                   <Trash2 />
@@ -420,15 +421,15 @@ export function EdgeApiForm({
               </div>
               <div className="flex items-center gap-1.5">
                 <input
-                  aria-label="Тип"
+                  aria-label={m.type}
                   placeholder="string"
                   className={cn(fieldClass, 'w-28 shrink-0 font-mono')}
                   value={parameter.type}
                   onChange={(event) => updateParameter(index, { type: event.target.value })}
                 />
                 <input
-                  aria-label="Пример"
-                  placeholder="Пример"
+                  aria-label={m.example}
+                  placeholder={m.example}
                   className={fieldClass}
                   value={parameter.example}
                   onChange={(event) => updateParameter(index, { example: event.target.value })}
@@ -439,12 +440,12 @@ export function EdgeApiForm({
                     checked={parameter.required}
                     onChange={(event) => updateParameter(index, { required: event.target.checked })}
                   />
-                  Обязательный
+                  {m.required}
                 </label>
               </div>
               <input
-                aria-label="Описание параметра"
-                placeholder="Описание"
+                aria-label={m.parameterDescription}
+                placeholder={m.description}
                 className={fieldClass}
                 value={parameter.description}
                 onChange={(event) => updateParameter(index, { description: event.target.value })}
@@ -453,17 +454,17 @@ export function EdgeApiForm({
           ))}
           <div className="flex flex-wrap gap-1.5">
             <Button type="button" variant="outline" size="sm" disabled={api.parameters.length >= MAX_PARAMETERS} onClick={() => addParameter('query')}>
-              <Plus /> Параметр
+              <Plus /> {m.parameter}
             </Button>
             <Button type="button" variant="outline" size="sm" disabled={api.parameters.length >= MAX_PARAMETERS} onClick={() => addParameter('header')}>
-              <Plus /> Заголовок
+              <Plus /> {m.header}
             </Button>
             {missingPathParameters.length > 0 && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                title={`Добавить параметры пути: ${missingPathParameters.join(', ')}`}
+                title={m.addPathParameters(missingPathParameters.join(', '))}
                 onClick={() =>
                   update({
                     parameters: [
@@ -473,22 +474,22 @@ export function EdgeApiForm({
                   })
                 }
               >
-                <Plus /> Из пути
+                <Plus /> {m.fromPath}
               </Button>
             )}
           </div>
         </Section>
 
-        <Section title="Тело запроса">
+        <Section title={m.requestBody}>
           <input
-            aria-label="Тип тела запроса"
+            aria-label={m.requestBodyType}
             placeholder="application/json"
             className={cn(fieldClass, 'font-mono')}
             value={api.requestBody?.contentType ?? ''}
             onChange={(event) => update({ requestBody: { contentType: event.target.value, body: api.requestBody?.body ?? '' } })}
           />
           <textarea
-            aria-label="Тело запроса"
+            aria-label={m.requestBody}
             placeholder={'{\n  "amount": 100\n}'}
             rows={4}
             className={areaClass}
@@ -499,13 +500,13 @@ export function EdgeApiForm({
           />
         </Section>
 
-        <Section title="Ответы">
+        <Section title={m.responses}>
           {api.responses.map((response, index) => (
             <fieldset key={index} className="flex flex-col gap-1.5 rounded-md border p-2">
-              <legend className="sr-only">Ответ {index + 1}</legend>
+              <legend className="sr-only">{m.responseNumber(index + 1)}</legend>
               <div className="flex gap-1.5">
                 <input
-                  aria-label="Код"
+                  aria-label={m.code}
                   placeholder="200"
                   className={cn(fieldClass, 'w-20 shrink-0 font-mono font-bold')}
                   style={{ color: STATUS_COLORS[statusClass(response.status)] }}
@@ -513,7 +514,7 @@ export function EdgeApiForm({
                   onChange={(event) => updateResponse(index, { status: event.target.value })}
                 />
                 <input
-                  aria-label="Описание ответа"
+                  aria-label={m.responseDescription}
                   placeholder="OK"
                   className={fieldClass}
                   value={response.description}
@@ -523,22 +524,22 @@ export function EdgeApiForm({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Удалить ответ"
-                  title="Удалить ответ"
+                  aria-label={m.deleteResponse}
+                  title={m.deleteResponse}
                   onClick={() => update({ responses: api.responses.filter((_, at) => at !== index) })}
                 >
                   <Trash2 />
                 </Button>
               </div>
               <input
-                aria-label="Тип ответа"
+                aria-label={m.responseType}
                 placeholder="application/json"
                 className={cn(fieldClass, 'font-mono')}
                 value={response.contentType}
                 onChange={(event) => updateResponse(index, { contentType: event.target.value })}
               />
               <textarea
-                aria-label="Тело ответа"
+                aria-label={m.responseBody}
                 rows={3}
                 className={areaClass}
                 value={response.body}
@@ -554,17 +555,17 @@ export function EdgeApiForm({
               disabled={api.responses.length >= MAX_RESPONSES}
               onClick={() => update({ responses: [...api.responses, emptyResponse(api.responses.length === 0 ? '200' : '')] })}
             >
-              <Plus /> Ответ
+              <Plus /> {m.response}
             </Button>
           </div>
         </Section>
       </div>
       <footer className="flex justify-end gap-2 border-t px-3 py-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          Отмена
+          {m.cancel}
         </Button>
         <Button type="submit" size="sm">
-          Сохранить
+          {m.save}
         </Button>
       </footer>
     </form>

@@ -100,8 +100,11 @@ const C4_TYPE = /^\[([^:\]]+)(?::\s*([^\]]*))?\]$/
 /** `[Redis]`: the technology on the second line of a plain label. */
 const BRACKETS = /^\[([^\]]*)\]$/
 
-/** Words of the shapes of C4 of the palette that stand where the technology and the description go. */
-const C4_PLACEHOLDERS = { technology: 'технология', description: 'Описание' }
+/**
+ * Words of the shapes of C4 of the palette that stand where the technology and the description go, in each language of
+ * the interface: a board keeps the words of the language its shapes were added in.
+ */
+const C4_PLACEHOLDERS = { technology: ['технология', 'technology'], description: ['Описание', 'Description'] }
 
 /** A label as its parts. */
 export interface ParsedLabel {
@@ -138,9 +141,9 @@ export function parseLabel(value: string, format: LabelFormat, style: Record<str
     return {
       name: lines[0]?.trim() ?? '',
       c4Type: typed && !untyped ? typed[1]!.trim() : null,
-      technology: technology === C4_PLACEHOLDERS.technology ? '' : technology,
+      technology: C4_PLACEHOLDERS.technology.includes(technology) ? '' : technology,
       technologyShown: typed !== null && (untyped || typed[2] !== undefined),
-      description: description === C4_PLACEHOLDERS.description ? '' : description,
+      description: C4_PLACEHOLDERS.description.includes(description) ? '' : description,
       rest: [],
     }
   }

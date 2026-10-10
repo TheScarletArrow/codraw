@@ -1,12 +1,13 @@
 import type { ComponentDraft } from '../api/libraries.ts'
 import { COMPONENT_NAME_MAX_LENGTH } from '../api/libraries.ts'
+import { megabytes } from '../board/imageUploads.ts'
 import { cellsModelXml } from '../drawio/serialize.ts'
 import { cellsXml } from '../diagram/clipboardFormat.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { boardImageOf, cellImageUrls, fittedImageSize, IMAGE_FILE_TYPES, imageStyle, replaceCellImages } from '../diagram/images.ts'
 import { LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
 import { blobToDataUri, downloadPicture } from '../image/inlineImages.ts'
-import { libraryImageTooLarge, UNSUPPORTED_LIBRARY_IMAGE } from './messages.ts'
+import { libraryMessages as m } from './messages.ts'
 import { pictureSize } from './pictureSize.ts'
 import { previewOf, previewOfImage } from './preview.ts'
 import { cleanSvg, iconSize, svgDataUri } from './svgIcon.ts'
@@ -89,7 +90,7 @@ export async function selectionDraft(editor: DiagramEditor, name?: string): Prom
   const kept = pictures.filter((entry): entry is readonly [string, string] => typeof entry[1] === 'string')
   replaceCellImages(selection.cells, new Map(kept))
   return {
-    name: componentName(name ?? selection.name) || 'Компонент',
+    name: componentName(name ?? selection.name) || m.component,
     content: cellsXml(selection.cells),
     preview: selection.image ? await previewOfImage(selection.image) : null,
   }
@@ -104,18 +105,18 @@ const isSvg = (file: File) => file.type === 'image/svg+xml' || (file.type === ''
  */
 export async function fileDraft(file: File, imageLimit: number): Promise<ComponentDraft | string> {
   const svg = isSvg(file)
-  if (!svg && !IMAGE_FILE_TYPES.includes(file.type)) return UNSUPPORTED_LIBRARY_IMAGE
-  if (file.size > imageLimit) return libraryImageTooLarge(imageLimit)
+  if (!svg && !IMAGE_FILE_TYPES.includes(file.type)) return m.unsupportedImage
+  if (file.size > imageLimit) return m.imageTooLarge(megabytes(imageLimit))
   let picture: string
   let size: { width: number; height: number }
   if (svg) {
     const icon = cleanSvg(await file.text())
-    if (!icon) return 'Файл не похож на SVG'
+    if (!icon) return m.notSvg
     picture = svgDataUri(icon.svg)
     size = iconSize(icon.width, icon.height, 600)
   } else {
     const natural = pictureSize(new Uint8Array(await file.arrayBuffer()))
-    if (!natural) return UNSUPPORTED_LIBRARY_IMAGE
+    if (!natural) return m.unsupportedImage
     // Of the type its bytes have: a JPEG named «.png» is still a JPEG, which the backend checks.
     picture = await blobToDataUri(new Blob([file], { type: natural.type }))
     size = fittedImageSize(natural.width, natural.height)
@@ -134,7 +135,7 @@ export async function fileDraft(file: File, imageLimit: number): Promise<Compone
     },
   ])
   return {
-    name: componentName(file.name.replace(/\.[^.]+$/, '')) || 'Изображение',
+    name: componentName(file.name.replace(/\.[^.]+$/, '')) || m.image,
     content,
     preview: await previewOf(picture),
   }

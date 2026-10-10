@@ -1,3 +1,4 @@
+import { locationLabels, modelMessages } from './model.messages.ts'
 import type { StyleValue } from './model.ts'
 
 /**
@@ -17,12 +18,7 @@ export type HttpMethod = (typeof HTTP_METHODS)[number]
 export const PARAMETER_LOCATIONS = ['path', 'query', 'header', 'cookie'] as const
 export type ParameterLocation = (typeof PARAMETER_LOCATIONS)[number]
 
-export const LOCATION_LABELS: Record<ParameterLocation, string> = {
-  path: 'путь',
-  query: 'запрос',
-  header: 'заголовок',
-  cookie: 'cookie',
-}
+export const LOCATION_LABELS: Readonly<Record<ParameterLocation, string>> = locationLabels
 
 /** A parameter of the call, as `parameters` of an operation of OpenAPI 3 has it. */
 export interface ApiParameter {
@@ -233,6 +229,6 @@ export function toOpenApi(api: EdgeApi): Record<string, unknown> {
             },
           ]),
         )
-      : { default: { description: 'Ответ' } }
+      : { default: { description: modelMessages.apiResponse } }
   return { paths: { [clean.path]: { [clean.method.toLowerCase()]: operation } } }
 }

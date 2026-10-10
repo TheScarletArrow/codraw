@@ -13,7 +13,8 @@ import {
 } from '../api/versions.ts'
 import { TitleInput } from './TitleInput.tsx'
 import { VersionAuthors } from './VersionAuthors.tsx'
-import { REASON_LABELS, versionsKey, versionTimeFormat } from './versions.ts'
+import { versionsKey, versionTimeFormat } from './versions.ts'
+import { versionMessages as m } from './versions.messages.ts'
 
 interface VersionHistoryProps {
   boardId: string
@@ -50,11 +51,11 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
   })
 
   return (
-    <aside aria-label="История версий" className="flex w-72 shrink-0 flex-col border-l bg-background">
+    <aside aria-label={m.history} className="flex w-72 shrink-0 flex-col border-l bg-background">
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <History className="size-4 text-muted-foreground" />
-        <h3 className="flex-1 text-sm font-semibold">История версий</h3>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть историю" onClick={onClose}>
+        <h3 className="flex-1 text-sm font-semibold">{m.history}</h3>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.closeHistory} onClick={onClose}>
           <X />
         </Button>
       </div>
@@ -66,44 +67,44 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
         }}
       >
         <input
-          aria-label="Название версии"
-          placeholder="Название, если нужно"
+          aria-label={m.name}
+          placeholder={m.namePlaceholder}
           value={name}
           maxLength={VERSION_NAME_MAX_LENGTH}
           className="h-8 rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           onChange={(event) => setName(event.target.value)}
         />
         <Button type="submit" variant="outline" size="sm" disabled={!document || save.isPending}>
-          Сохранить версию
+          {m.save}
         </Button>
         {save.isError && (
           <p role="alert" className="text-sm text-destructive">
-            Не удалось сохранить версию
+            {m.saveFailed}
           </p>
         )}
       </form>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
-        {versions.isPending && <p className="p-2 text-sm text-muted-foreground">Загрузка…</p>}
+        {versions.isPending && <p className="p-2 text-sm text-muted-foreground">{m.loading}</p>}
         {versions.isError && (
           <p role="alert" className="p-2 text-sm text-destructive">
-            Не удалось загрузить версии
+            {m.loadFailed}
           </p>
         )}
         {rename.isError && (
           <p role="alert" className="p-2 text-sm text-destructive">
-            Не удалось переименовать версию
+            {m.renameFailed}
           </p>
         )}
         {versions.data?.length === 0 && (
           <p className="p-2 text-sm text-muted-foreground">
-            Версий пока нет: они сохраняются по ходу работы над доской, не реже раза в 10 минут.
+            {m.none}
           </p>
         )}
         {versions.data && versions.data.length > 0 && (
-          <ul aria-label="Версии" className="flex flex-col">
+          <ul aria-label={m.list} className="flex flex-col">
             {versions.data.map((version) => {
-              const time = versionTimeFormat.format(new Date(version.createdAt))
-              const reason = REASON_LABELS[version.reason]
+              const time = versionTimeFormat().format(new Date(version.createdAt))
+              const reason = m.reasons[version.reason]
               // The name being saved shows at once.
               const name = rename.isPending && rename.variables.id === version.id ? rename.variables.name : version.name
               return (
@@ -112,7 +113,7 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
                     <div className="flex flex-col gap-0.5 rounded-md bg-accent px-2 py-1.5">
                       <TitleInput
                         title={version.name ?? ''}
-                        label="Новое название версии"
+                        label={m.newName}
                         placeholder={reason}
                         maxLength={VERSION_NAME_MAX_LENGTH}
                         allowEmpty
@@ -148,8 +149,8 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label="Переименовать"
-                        title="Переименовать"
+                        aria-label={m.rename}
+                        title={m.rename}
                         className="absolute top-1 right-1 size-7 text-muted-foreground"
                         onClick={() => setRenaming(version.id)}
                       >

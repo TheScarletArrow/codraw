@@ -5,6 +5,7 @@ import type { ParticipantIdentity } from './identity.ts'
 import { LaserTrails } from './LaserTrails.tsx'
 import { Avatar } from './Participants.tsx'
 import { useRemotePresence, type Awareness, type RemotePresence } from './presence.ts'
+import { boardMessages as m } from './board.messages.ts'
 
 const SELECTION_PADDING = 3
 /** Distance of an off-screen cursor label from the edge of the canvas. */
@@ -158,7 +159,7 @@ function EditedLabel({ bounds, editors, tags }: { bounds: Box; editors: RemotePr
               style={{ backgroundColor: participant.color }}
             >
               <PenLine aria-hidden className="size-3" />
-              {participant.name} редактирует
+              {m.editing(participant.name)}
             </span>
           ))}
         </div>
@@ -191,15 +192,13 @@ function EditingWarning({ editing, bounds, others }: { editing: LabelEditing; bo
       <div className="flex flex-col gap-0.5">
         {others.length > 0 && (
           <p>
-            {joinNames(others.map((participant) => participant.name))}{' '}
-            {others.length === 1 ? 'тоже редактирует' : 'тоже редактируют'} эту подпись: сохранится правка, которую
-            закончат последней
+            {m.othersEditing(joinNames(others.map((participant) => participant.name)), others.length)}
           </p>
         )}
         {editing.changedRemotely && (
           <p>
-            Подпись изменили, пока вы её редактировали.{' '}
-            <span className="text-amber-800 dark:text-amber-200">Сохранится ваша правка, Esc отменит её</span>
+            {m.changedRemotely}{' '}
+            <span className="text-amber-800 dark:text-amber-200">{m.yourEditingStays}</span>
           </p>
         )}
       </div>
@@ -209,7 +208,7 @@ function EditingWarning({ editing, bounds, others }: { editing: LabelEditing; bo
 
 /** «Боб», «Боб и Вера», «Боб, Вера и Гена». */
 function joinNames(names: string[]): string {
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} и ${names.at(-1)}` : (names[0] ?? '')
+  return names.length > 1 ? m.and(names.slice(0, -1).join(', '), names.at(-1)!) : (names[0] ?? '')
 }
 
 function RemoteCursor({ participant, position }: { participant: RemotePresence; position: Point }) {
@@ -268,8 +267,8 @@ function OffscreenCursor({
       type="button"
       data-testid="remote-cursor-offscreen"
       data-participant={participant.name}
-      aria-label={`Показать курсор: ${participant.name}`}
-      title={`Показать курсор: ${participant.name}`}
+      aria-label={m.showCursor(participant.name)}
+      title={m.showCursor(participant.name)}
       className="pointer-events-auto absolute top-0 left-0 flex items-center gap-1 rounded-full px-2 py-0.5 text-xs whitespace-nowrap text-white shadow-sm"
       style={{ transform: `translate(${x}px, ${y}px) translate(${shiftX}, ${shiftY})`, backgroundColor: participant.color }}
       onClick={onClick}

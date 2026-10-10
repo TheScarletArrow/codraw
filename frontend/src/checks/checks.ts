@@ -9,6 +9,7 @@ import { readingOrder } from '../diagram/readingOrder.ts'
 import type { CellRef } from '../diagram/sharedElements.ts'
 import { findShape } from '../diagram/shapes.ts'
 import { listElements } from '../elements/elementList.ts'
+import { checkMessages as m } from './messages.ts'
 
 /**
  * Checks of the architecture of a board: what a review of a diagram finds again and again — an edge without a label, a
@@ -46,79 +47,36 @@ export interface CheckRuleInfo {
   byDefault: boolean
 }
 
+/** A rule with its words in the language of the interface. */
+const ruleInfo = (rule: CheckRule, level: CheckLevel, byDefault: boolean): CheckRuleInfo => ({
+  level,
+  byDefault,
+  get title() {
+    return m.rules[rule].title
+  },
+  get reason() {
+    return m.rules[rule].reason
+  },
+})
+
 /** The rules, in the order of the list of remarks: the completeness of the elements and edges first, the structure after. */
 export const CHECK_RULES: Readonly<Record<CheckRule, CheckRuleInfo>> = {
-  'edge-label': {
-    title: 'Связь без подписи',
-    level: 'remark',
-    reason: 'Подпись говорит, зачем один элемент обращается к другому: «Читает заказы», «Отправляет события».',
-    byDefault: true,
-  },
-  'edge-technology': {
-    title: 'Связь без технологии',
-    level: 'remark',
-    reason: 'У связи указывают протокол или способ обмена: HTTPS, gRPC, Kafka, JDBC.',
-    byDefault: true,
-  },
-  technology: {
-    title: 'Без технологии',
-    level: 'remark',
-    reason: 'У контейнера и компонента C4 указывают технологию: Kotlin, Spring Boot, PostgreSQL.',
-    byDefault: true,
-  },
-  description: {
-    title: 'Элемент C4 без описания',
-    level: 'remark',
-    reason: 'Нотация C4 требует у элемента короткое описание его ответственности.',
-    byDefault: true,
-  },
-  owner: {
-    title: 'Без владельца',
-    level: 'remark',
-    reason: 'За систему и контейнер отвечает команда: без владельца непонятно, к кому идти с вопросом.',
-    byDefault: false,
-  },
-  isolated: {
-    title: 'Элемент без связей',
-    level: 'remark',
-    reason: 'Элемент ни с чем не связан ни на одной странице: возможно, связь забыли нарисовать.',
-    byDefault: true,
-  },
-  nesting: {
-    title: 'Вне границы',
-    level: 'remark',
-    reason: 'В C4 контейнер лежит внутри границы своей системы, а компонент — внутри границы своего контейнера.',
-    byDefault: true,
-  },
-  cycle: {
-    title: 'Цикл зависимостей',
-    level: 'warning',
-    reason: 'Сервисы зависят друг от друга по кругу: их трудно менять и выкатывать по отдельности.',
-    byDefault: true,
-  },
-  'shared-database': {
-    title: 'Общая база данных',
-    level: 'warning',
-    reason: 'В одну базу ходят разные сервисы: схема базы связывает их изменения.',
-    byDefault: true,
-  },
-  duplicate: {
-    title: 'Вероятные дубли',
-    level: 'warning',
-    reason: 'На разных страницах есть разные элементы с одним именем. Если это одно и то же, объедините их — свойства станут общими.',
-    byDefault: true,
-  },
+  'edge-label': ruleInfo('edge-label', 'remark', true),
+  'edge-technology': ruleInfo('edge-technology', 'remark', true),
+  technology: ruleInfo('technology', 'remark', true),
+  description: ruleInfo('description', 'remark', true),
+  owner: ruleInfo('owner', 'remark', false),
+  isolated: ruleInfo('isolated', 'remark', true),
+  nesting: ruleInfo('nesting', 'remark', true),
+  cycle: ruleInfo('cycle', 'warning', true),
+  'shared-database': ruleInfo('shared-database', 'warning', true),
+  duplicate: ruleInfo('duplicate', 'warning', true),
 }
 
 export const CHECK_RULE_ORDER = Object.keys(CHECK_RULES) as CheckRule[]
 
-const pluralRules = new Intl.PluralRules('ru')
-
 /** «1 замечание», «3 замечания», «5 замечаний». */
-export function issuesLabel(count: number): string {
-  const words: Partial<Record<Intl.LDMLPluralRule, string>> = { one: 'замечание', few: 'замечания', many: 'замечаний' }
-  return `${count} ${words[pluralRules.select(count)] ?? 'замечания'}`
-}
+export const issuesLabel = (count: number): string => m.issues(count)
 
 /** A cell a remark is about, with the name of its page. */
 export interface CheckPlace extends CellRef {
@@ -172,7 +130,7 @@ interface BoardLink {
   technology: string
 }
 
-const named = (name: string) => `«${name || 'Без имени'}»`
+const named = (name: string) => m.named(name || m.unnamed)
 
 /** A name as duplicates are found by: no case, no extra spaces, `ё` as `е`. */
 const nameKey = (name: string) => name.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
@@ -245,9 +203,9 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
         // The frame each element of C4 lies in, on this page.
         const detail =
           c4 && node.kind === 'container' && !frames.includes('system')
-            ? 'Контейнер вне границы системы'
+            ? m.containerOutside
             : c4 && node.kind === 'component' && !frames.includes('container')
-              ? 'Компонент вне границы контейнера'
+              ? m.componentOutside
               : null
         if (detail && !computed(node.cellId)) {
           nesting.push({ key: `nesting:${page.id}/${node.cellId}`, rule: 'nesting', subject: named(node.name), detail, places: [placeOf(node.cellId)] })
@@ -291,7 +249,7 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
     const subject = named(element.name)
     const issue = (rule: CheckRule, detail = ''): CheckIssue => ({ key: `${rule}:${element.key}`, rule, subject, detail, places: element.places })
     if ((element.kind === 'container' || element.kind === 'component') && !element.technology) {
-      issues.push(issue('technology', element.kind === 'component' ? 'Компонент' : 'Контейнер'))
+      issues.push(issue('technology', element.kind === 'component' ? m.component : m.container))
     }
     if (element.c4 && !element.description) issues.push(issue('description'))
     if (((element.kind === 'system' && !element.external) || element.kind === 'container') && !element.owner) issues.push(issue('owner'))
@@ -314,7 +272,7 @@ export function boardChecks(doc: Y.Doc): CheckIssue[] {
       key: `shared-database:${element.key}`,
       rule: 'shared-database',
       subject: named(element.name),
-      detail: `В неё ходят ${[...users].map(nameOf).join(', ')}`,
+      detail: m.usedBy([...users].map(nameOf).join(', ')),
       places: element.places,
     })
   }
@@ -389,7 +347,7 @@ function cycles(elements: ReadonlyMap<string, BoardElement>, links: readonly Boa
       key: `cycle:${[...sorted].sort().join(',')}`,
       rule: 'cycle' as const,
       subject: names.join(' → '),
-      detail: sorted.length > path.length - 1 ? `Сервисов в циклах: ${sorted.length}` : '',
+      detail: sorted.length > path.length - 1 ? m.servicesInCycles(sorted.length) : '',
       places: sorted.map((key) => elements.get(key)!.places[0]!),
     }
   })
@@ -416,7 +374,7 @@ function duplicates(doc: Y.Doc): CheckIssue[] {
       key: `duplicate:${key}`,
       rule: 'duplicate',
       subject: named(sorted[0]!.properties.name),
-      detail: `Разные элементы на страницах ${[...new Set(sorted.flatMap((item) => item.places.map((place) => `«${place.pageName}»`)))].join(', ')}`,
+      detail: m.onPages([...new Set(sorted.flatMap((item) => item.places.map((place) => m.named(place.pageName))))].join(', ')),
       places: sorted.map((item) => ({ pageId: item.places[0]!.pageId, pageName: item.places[0]!.pageName, cellId: item.places[0]!.cellIds[0]! })),
       choices: sorted.map((item) => ({
         ref: { pageId: item.places[0]!.pageId, cellId: item.places[0]!.cellIds[0]! },

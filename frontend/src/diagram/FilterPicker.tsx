@@ -4,16 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { DiagramEditor } from './editor.ts'
 import { FILTER_FACETS, isFilterActive, NO_FILTER, type FilterFacet, type PageFilter } from './pageFilter.ts'
+import { pickerMessages } from './pickers.messages.ts'
 import { useEditorState } from './useEditorState.ts'
 
-/** The titles of the facets in the window, in its order. */
-const FACET_TITLES: Readonly<Record<FilterFacet, string>> = {
-  tags: 'Теги',
-  kinds: 'Типы',
-  technologies: 'Технологии',
-  owners: 'Владельцы',
-  interactions: 'Вид связи',
-}
+const m = pickerMessages.filter
 
 /**
  * The filter of the page (see `pageFilter.ts`): the values of the tags, kinds, technologies and owners of the elements of
@@ -47,25 +41,25 @@ export function FilterPicker({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Фильтр"
+          aria-label={m.name}
           aria-pressed={active}
-          title={active ? 'Фильтр включён' : 'Фильтр: показать элементы по тегам, типам, технологиям, владельцам и связям'}
+          title={active ? m.on : m.title}
           disabled={!editor}
           className="aria-pressed:bg-accent"
         >
           <Filter />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" aria-label="Фильтр" className="flex max-h-[70vh] w-80 flex-col gap-3 overflow-y-auto">
+      <PopoverContent align="start" aria-label={m.name} className="flex max-h-[70vh] w-80 flex-col gap-3 overflow-y-auto">
         <p aria-live="polite" className="text-sm text-muted-foreground">
-          {active && shown ? `Подходит ${shown.matched} из ${shown.total}` : 'Выберите, что показать'}
+          {active && shown ? m.matched(shown.matched, shown.total) : m.choose}
         </p>
         {choices &&
           FILTER_FACETS.map((facet) => (
             <fieldset key={facet} className="flex flex-col gap-1">
-              <legend className="mb-1 text-xs font-medium text-muted-foreground">{FACET_TITLES[facet]}</legend>
+              <legend className="mb-1 text-xs font-medium text-muted-foreground">{m.facets[facet]}</legend>
               {choices[facet].length === 0 ? (
-                <p className="text-sm text-muted-foreground">Нет на странице</p>
+                <p className="text-sm text-muted-foreground">{m.none}</p>
               ) : (
                 choices[facet].map((choice) => (
                   <label key={choice.value} className="flex items-center gap-2 text-sm">
@@ -85,10 +79,10 @@ export function FilterPicker({
           ))}
         <label className="flex items-center gap-2 border-t pt-3 text-sm">
           <input type="checkbox" checked={filter.hide} onChange={(event) => onChange({ ...filter, hide: event.target.checked })} />
-          Скрывать неподходящее
+          {m.hide}
         </label>
         <Button type="button" variant="outline" size="sm" disabled={!active} onClick={() => onChange({ ...NO_FILTER, hide: filter.hide })}>
-          Сбросить
+          {m.reset}
         </Button>
       </PopoverContent>
     </Popover>

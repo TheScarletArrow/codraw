@@ -5,6 +5,7 @@ import { listPages } from '../diagram/pages.ts'
 import { readingOrder } from '../diagram/readingOrder.ts'
 import { isTableStyle, shapeOf } from '../diagram/shapes.ts'
 import { readStatus, STATUS_KEY, type ElementStatus, type StatusMark } from '../diagram/status.ts'
+import { changeMessages } from './changes.messages.ts'
 
 /** An element of the board with a status, as the list of statuses shows it. */
 export interface StatusItem extends StatusMark {
@@ -60,7 +61,7 @@ export function countStatuses(items: readonly StatusItem[]): Record<ElementStatu
 /** What an element without a label is: a table, a group (a container without a fill and a border) or a shape. */
 function kindOf(cell: CellMap, hasChildren: boolean): string {
   const style = (cell.get('style') as Y.Map<unknown> | undefined)?.toJSON() ?? {}
-  if (isTableStyle(style)) return 'Таблица'
-  if (hasChildren && style.fillColor === 'none' && style.strokeColor === 'none') return 'Группа'
-  return shapeOf(style)?.label ?? 'Фигура'
+  if (isTableStyle(style)) return changeMessages.kinds.table
+  if (hasChildren && style.fillColor === 'none' && style.strokeColor === 'none') return changeMessages.kinds.group
+  return shapeOf(style)?.label ?? changeMessages.kinds.shape
 }

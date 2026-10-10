@@ -7,6 +7,7 @@ import type { LibraryShelf } from '../libraries/useLibraries.ts'
 import type { DiagramEditor } from './editor.ts'
 import { IMAGE_FILE_TYPES } from './images.ts'
 import { ShapeIcon } from './ShapeIcon.tsx'
+import { paletteMessages as m } from './ShapePalette.messages.ts'
 import { searchShapes } from './shapeSearch.ts'
 import { SHAPE_DRAG_TYPE, SHAPE_SECTIONS, type ShapePreset } from './shapes.ts'
 import { useEditorState } from './useEditorState.ts'
@@ -14,8 +15,11 @@ import { LogoPicture } from '../elements/IconField.tsx'
 import { useTechIcons } from '../elements/useTechIcons.ts'
 import { loadIconPath, LOGO_DRAG_TYPE, searchIcons, type TechIcon } from './techIcons.ts'
 
-/** Words of a search that mean pictures rather than shapes: the search offers «Изображение» for them. */
-const IMAGE_WORDS = ['изображение', 'картинка', 'рисунок', 'фото', 'скриншот', 'логотип', 'image', 'picture', 'png', 'jpeg']
+/**
+ * Words of a search that mean pictures rather than shapes, in Russian and English whatever the language of the
+ * interface: the search offers «Изображение» for them.
+ */
+const IMAGE_WORDS = ['изображение', 'картинка', 'рисунок', 'фото', 'скриншот', 'логотип', 'image', 'picture', 'photo', 'screenshot', 'logo', 'png', 'jpeg']
 
 const searchesImage = (query: string) => {
   const words = query.trim().toLowerCase().split(/\s+/)
@@ -37,13 +41,13 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
   const foundLogos = searching && icons ? searchIcons(icons, query, LOGOS_FOUND) : []
 
   return (
-    <aside aria-label="Фигуры" className="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r p-2">
+    <aside aria-label={m.shapes} className="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r p-2">
       <label className="relative flex items-center">
         <Search aria-hidden className="pointer-events-none absolute left-2 size-4 text-muted-foreground" />
         <input
           type="search"
-          aria-label="Поиск фигур"
-          placeholder="Поиск фигур"
+          aria-label={m.search}
+          placeholder={m.search}
           className="h-8 w-full rounded-md border bg-background pr-2 pl-8 text-sm"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -68,15 +72,15 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
         found.length > 0 || foundComponents.length > 0 || imageFound || foundLogos.length > 0 ? (
           <>
             {(found.length > 0 || foundComponents.length > 0 || imageFound) && (
-              <div role="group" aria-label="Найденные фигуры" className="flex flex-col gap-1">
+              <div role="group" aria-label={m.found} className="flex flex-col gap-1">
                 {libraries && foundComponents.length > 0 && (
                   <>
-                    <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Из библиотек</h2>
+                    <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{m.fromLibraries}</h2>
                     {foundComponents.map(({ library, component }) => (
                       <ComponentButton key={component.id} shelf={libraries} editor={editor} library={library} component={component} />
                     ))}
                     {(found.length > 0 || imageFound) && (
-                      <h2 className="mt-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Фигуры</h2>
+                      <h2 className="mt-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{m.shapes}</h2>
                     )}
                   </>
                 )}
@@ -87,8 +91,8 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
               </div>
             )}
             {foundLogos.length > 0 && (
-              <section aria-label="Логотипы" className="flex flex-col gap-1">
-                <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Логотипы</h2>
+              <section aria-label={m.logos} className="flex flex-col gap-1">
+                <h2 className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{m.logos}</h2>
                 {foundLogos.map((icon) => (
                   <LogoButton key={icon.slug} icon={icon} editor={editor} />
                 ))}
@@ -96,14 +100,14 @@ export function ShapePalette({ editor, libraries = null }: { editor: DiagramEdit
             )}
           </>
         ) : (
-          <p className="px-2 text-sm text-muted-foreground">Ничего не найдено</p>
+          <p className="px-2 text-sm text-muted-foreground">{m.nothingFound}</p>
         )
       ) : (
         <>
           {libraries && <LibrarySections shelf={libraries} editor={editor} />}
           {SHAPE_SECTIONS.map((section) => (
             // A section collapses with a click on its title.
-            <details key={section.title} open aria-label={section.title} className="group">
+            <details key={section.id} open aria-label={section.title} className="group">
               <summary className="flex cursor-pointer list-none items-center gap-1 rounded px-2 py-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
                 <ChevronDown aria-hidden className="size-3.5 -rotate-90 transition-transform group-open:rotate-0" />
                 {section.title}
@@ -159,7 +163,7 @@ function LogoButton({ icon, editor }: { icon: TechIcon; editor: DiagramEditor | 
       type="button"
       variant="ghost"
       className="h-auto justify-start py-1.5 text-left whitespace-normal"
-      title={`Логотип ${icon.title}`}
+      title={m.logo(icon.title)}
       disabled={!editor}
       draggable
       onDragStart={(event) => {
@@ -185,7 +189,7 @@ function ImageButton({ editor }: { editor: DiagramEditor | null }) {
         type="file"
         accept={IMAGE_FILE_TYPES.join(',')}
         multiple
-        aria-label="Файлы изображений"
+        aria-label={m.imageFiles}
         className="hidden"
         onChange={(event) => {
           const files = Array.from(event.target.files ?? [])
@@ -197,12 +201,12 @@ function ImageButton({ editor }: { editor: DiagramEditor | null }) {
         type="button"
         variant="ghost"
         className="h-auto justify-start py-1.5 text-left whitespace-normal"
-        title="Изображение PNG, JPEG, GIF или WebP с компьютера; картинку можно и вставить (Ctrl+V), и перетащить на холст"
+        title={m.imageHint}
         disabled={!canAddImages}
         onClick={() => input.current?.click()}
       >
         <ImagePlus aria-hidden className="size-5 text-foreground" strokeWidth={1.5} />
-        Изображение
+        {m.image}
       </Button>
     </>
   )

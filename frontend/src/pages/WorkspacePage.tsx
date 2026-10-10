@@ -30,7 +30,6 @@ import {
 } from '../api/workspaces.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
-import { counted } from '../board/members.ts'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { ProjectBar } from '../workspaces/ProjectBar.tsx'
@@ -41,20 +40,20 @@ import {
   inProject,
   managesWorkspace,
   WORKSPACE_NAME_MAX_LENGTH,
-  WORKSPACE_ROLE_LABELS,
+  workspaceRoleLabel,
   type ProjectFilter,
 } from '../workspaces/workspaces.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { workspacePageMessages as m } from './WorkspacePage.messages.ts'
 
-export const NEW_WORKSPACE_BOARD_TITLE = 'Новая доска'
-
-const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
+const dateFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 
 /** Why a change of the projects did not happen. */
 function projectErrorOf(error: unknown): string {
-  if (isProjectNameTaken(error)) return 'Проект с таким названием уже есть'
+  if (isProjectNameTaken(error)) return m.projectNameTaken
   const limit = workspaceLimitOf(error)
-  if (limit !== null) return `В пространстве уже ${counted(limit.limit, ['проект', 'проекта', 'проектов'])}`
-  return 'Не удалось изменить проекты'
+  if (limit !== null) return m.projectsLimit(limit.limit)
+  return m.projectsChangeFailed
 }
 
 /**
@@ -66,22 +65,22 @@ export function WorkspacePage() {
   const user = useCurrentUser()
   const workspace = useQuery({ queryKey: workspaceKey(workspaceId), queryFn: () => fetchWorkspace(workspaceId) })
 
-  if (workspace.isPending) return <p className="p-6 text-muted-foreground">Загрузка…</p>
+  if (workspace.isPending) return <p className="p-6 text-muted-foreground">{m.loading}</p>
   if (workspace.isError) {
     return (
       <section className="mx-auto flex w-full max-w-xl flex-col gap-3 px-4 py-6">
         {isNotFound(workspace.error) ? (
           <>
-            <h2 className="text-2xl font-semibold">Пространство не найдено</h2>
-            <p className="text-muted-foreground">Его удалили, или вы больше не его участник.</p>
+            <h2 className="text-2xl font-semibold">{m.notFound}</h2>
+            <p className="text-muted-foreground">{m.notFoundHint}</p>
           </>
         ) : (
           <p role="alert" className="text-destructive">
-            Не удалось загрузить пространство
+            {m.loadFailed}
           </p>
         )}
         <Link to="/" className="underline">
-          К списку досок
+          {m.toBoards}
         </Link>
       </section>
     )
@@ -114,7 +113,7 @@ function WorkspaceView({ workspace, userId }: { workspace: Workspace; userId: st
     },
   })
   const create = useMutation({
-    mutationFn: () => createWorkspaceBoard(workspace.id, NEW_WORKSPACE_BOARD_TITLE, chosen.kind === 'project' ? chosen.id : null),
+    mutationFn: () => createWorkspaceBoard(workspace.id, m.newBoardTitle, chosen.kind === 'project' ? chosen.id : null),
     onSuccess: async (board) => {
       await refreshWorkspace()
       await navigate(`/boards/${board.id}`)
@@ -149,25 +148,25 @@ function WorkspaceView({ workspace, userId }: { workspace: Workspace; userId: st
     : changeProject.isError
       ? projectErrorOf(changeProject.error)
       : removeProject.isError
-        ? 'Не удалось удалить проект'
+        ? m.projectDeleteFailed
         : null
   const shown = (boards.data ?? []).filter((board) => inProject(chosen, board.projectId))
   const boardLimit = boardLimitOf(create.error)
 
   return (
     <section className="mx-auto w-full max-w-3xl overflow-auto px-4 py-6">
-      <nav aria-label="Путь" className="text-sm text-muted-foreground">
+      <nav aria-label={m.breadcrumbs} className="text-sm text-muted-foreground">
         <Link to="/" className="hover:underline">
-          Доски
+          {m.boards}
         </Link>{' '}
-        / Пространство
+        / {m.workspace}
       </nav>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-2">
           {renaming ? (
             <TitleInput
               title={workspace.name}
-              label="Название пространства"
+              label={m.workspaceName}
               maxLength={WORKSPACE_NAME_MAX_LENGTH}
               className="w-72 text-2xl font-semibold"
               onDone={(name) => {
@@ -180,7 +179,7 @@ function WorkspaceView({ workspace, userId }: { workspace: Workspace; userId: st
               <button
                 type="button"
                 className="max-w-full truncate rounded px-1 hover:bg-accent"
-                title="Переименовать пространство"
+                title={m.renameWorkspace}
                 onClick={() => setRenaming(true)}
               >
                 {rename.isPending ? rename.variables : workspace.name}
@@ -189,26 +188,26 @@ function WorkspaceView({ workspace, userId }: { workspace: Workspace; userId: st
           ) : (
             <h2 className="min-w-0 truncate text-2xl font-semibold">{workspace.name}</h2>
           )}
-          <span title="Ваша роль" className="rounded bg-muted px-1.5 text-xs whitespace-nowrap">
-            {WORKSPACE_ROLE_LABELS[workspace.role]}
+          <span title={m.yourRole} className="rounded bg-muted px-1.5 text-xs whitespace-nowrap">
+            {workspaceRoleLabel(workspace.role)}
           </span>
         </div>
         {createsBoards(workspace.role) && (
           <Button type="button" onClick={() => create.mutate()} disabled={create.isPending}>
-            Создать доску
+            {m.createBoard}
           </Button>
         )}
       </div>
       {rename.isError && (
         <p role="alert" className="mt-2 text-sm text-destructive">
-          Не удалось переименовать пространство
+          {m.renameFailed}
         </p>
       )}
       {create.isError && (
         <p role="alert" className="mt-2 text-sm text-destructive">
           {boardLimit === null
-            ? 'Не удалось создать доску'
-            : `В пространстве уже ${counted(boardLimit, ['доска', 'доски', 'досок'])} — больше нельзя`}
+            ? m.createFailed
+            : m.boardsLimit(boardLimit)}
         </p>
       )}
 
@@ -228,19 +227,19 @@ function WorkspaceView({ workspace, userId }: { workspace: Workspace; userId: st
         error={projectError}
       />
 
-      {boards.isPending && <p className="mt-4 text-muted-foreground">Загрузка…</p>}
+      {boards.isPending && <p className="mt-4 text-muted-foreground">{m.loading}</p>}
       {boards.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          Не удалось загрузить доски
+          {m.boardsFailed}
         </p>
       )}
       {boards.data && shown.length === 0 && (
         <p className="mt-4 text-muted-foreground">
-          {chosen.kind === 'all' ? 'Досок пока нет' : 'В проекте нет досок'}
+          {chosen.kind === 'all' ? m.noBoards : m.noBoardsInProject}
         </p>
       )}
       {shown.length > 0 && (
-        <ul aria-label="Доски пространства" className="mt-4 divide-y">
+        <ul aria-label={m.workspaceBoards} className="mt-4 divide-y">
           {shown.map((board) => (
             <WorkspaceBoardItem
               key={board.id}
@@ -258,27 +257,26 @@ function WorkspaceView({ workspace, userId }: { workspace: Workspace; userId: st
       {workspace.role === 'owner' && (
         <section aria-labelledby="workspace-delete" className="mt-8 flex flex-col gap-2 border-t pt-4">
           <h3 id="workspace-delete" className="text-lg font-semibold">
-            Удаление пространства
+            {m.deletion}
           </h3>
           <p className="text-sm text-muted-foreground">
-            Доски пространства перейдут в вашу корзину на 30 дней — их можно восстановить в свои доски. Проекты, участники
-            и приглашения удалятся сразу.
+            {m.deletionHint}
           </p>
           <div>
             <ConfirmedAction
-              label="Удалить пространство"
-              title="Удаление пространства"
-              confirmLabel="Удалить"
+              label={m.deleteWorkspace}
+              title={m.deletion}
+              confirmLabel={m.delete}
               variant="outline"
               disabled={remove.isPending}
               onConfirm={() => remove.mutate()}
             >
-              Удалить пространство «{workspace.name}»? Его участники потеряют доступ к его доскам.
+              {m.deleteQuestion(workspace.name)}
             </ConfirmedAction>
           </div>
           {remove.isError && (
             <p role="alert" className="text-sm text-destructive">
-              Не удалось удалить пространство
+              {m.deleteFailed}
             </p>
           )}
         </section>
@@ -323,13 +321,13 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
   const manages = board.role === 'owner'
   const limit = boardLimitOf(takeOut.error)
   const error = move.isError
-    ? 'Не удалось переместить доску'
+    ? m.moveFailed
     : takeOut.isError
       ? limit === null
-        ? 'Не удалось вынести доску'
-        : `У вас уже ${counted(limit, ['доска', 'доски', 'досок'])} — больше нельзя`
+        ? m.takeOutFailed
+        : m.ownBoardsLimit(limit)
       : remove.isError
-        ? 'Не удалось удалить'
+        ? m.boardDeleteFailed
         : null
   const at = board.updatedAt
 
@@ -341,13 +339,13 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
         </Link>
         <span className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
           {board.owner.avatarUrl && <img src={board.owner.avatarUrl} alt="" className="size-4 rounded-full" />}
-          <span title="Отвечает за доску">{board.owner.name}</span>
+          <span title={m.responsible}>{board.owner.name}</span>
           <span className="rounded bg-muted px-1.5 text-xs">
-            {board.role === 'owner' ? 'управление' : board.role === 'editor' ? 'редактирование' : 'просмотр'}
+            {board.role === 'owner' ? m.roleOnBoard.owner : board.role === 'editor' ? m.roleOnBoard.editor : m.roleOnBoard.viewer}
           </span>
           {project && (
             <span className="truncate text-xs">
-              <span className="sr-only">Проект: </span>
+              <span className="sr-only">{m.projectPrefix}</span>
               {project.name}
             </span>
           )}
@@ -359,8 +357,8 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
             {error}
           </span>
         )}
-        <time dateTime={at} className="whitespace-nowrap text-muted-foreground" title="Изменена">
-          {dateFormat.format(new Date(at))}
+        <time dateTime={at} className="whitespace-nowrap text-muted-foreground" title={m.updated}>
+          {dateFormat().format(new Date(at))}
         </time>
         {manages && (
           <WorkspaceBoardMenu
@@ -403,7 +401,7 @@ function WorkspaceBoardMenu({ title, projects, current, disabled, onMove, onTake
       <p className="text-sm">{text}</p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={() => setView('items')}>
-          Отмена
+          {m.cancel}
         </Button>
         <Button
           type="button"
@@ -446,34 +444,34 @@ function WorkspaceBoardMenu({ title, projects, current, disabled, onMove, onTake
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Меню доски «${title}»`} disabled={disabled}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={m.boardMenu(title)} disabled={disabled}>
           <Ellipsis />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
         {view === 'project' && (
-          <div role="menu" aria-label={`Проект доски «${title}»`} className="flex max-h-64 flex-col overflow-y-auto">
-            {choice(null, 'Без проекта')}
+          <div role="menu" aria-label={m.boardProject(title)} className="flex max-h-64 flex-col overflow-y-auto">
+            {choice(null, m.noProject)}
             {projects.map((project) => choice(project.id, project.name))}
           </div>
         )}
         {view === 'take-out' &&
           onTakeOut &&
           confirm(
-            `Вынести «${title}» из пространства? Доска станет вашей личной, участники пространства потеряют к ней доступ, а тот, кто отвечал за неё, останется на ней редактором.`,
-            'Вынести',
+            m.takeOutQuestion(title),
+            m.takeOut,
             onTakeOut,
           )}
         {view === 'delete' &&
-          confirm(`Переместить доску «${title}» в корзину? Её можно восстановить в течение 30 дней.`, 'Удалить', onDelete)}
+          confirm(m.trashQuestion(title), m.delete, onDelete)}
         {view === 'items' && (
-          <div role="menu" aria-label={`Доска «${title}»`} className="flex flex-col">
+          <div role="menu" aria-label={m.board(title)} className="flex flex-col">
             <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={() => setView('project')}>
-              Переместить в проект
+              {m.moveToProject}
             </Button>
             {onTakeOut && (
               <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={() => setView('take-out')}>
-                Вынести из пространства
+                {m.takeOutOfWorkspace}
               </Button>
             )}
             <Button
@@ -484,7 +482,7 @@ function WorkspaceBoardMenu({ title, projects, current, disabled, onMove, onTake
               className={cn(item, 'text-destructive hover:text-destructive')}
               onClick={() => setView('delete')}
             >
-              Удалить
+              {m.delete}
             </Button>
           </div>
         )}

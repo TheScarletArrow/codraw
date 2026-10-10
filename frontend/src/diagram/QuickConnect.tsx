@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Box, DiagramEditor } from './editor.ts'
 import type { Side } from './quickConnect.ts'
+import { pickerMessages } from './pickers.messages.ts'
 import { ShapeIcon } from './ShapeIcon.tsx'
 import { findShape, type ShapeId } from './shapes.ts'
 import { useEditorState } from './useEditorState.ts'
@@ -12,11 +13,11 @@ const ARROW_SIZE = 20
 /** Distance of an arrow from the border: past the connection point of maxGraph at the right border. */
 const ARROW_OFFSET = 24
 
-const ARROWS: { side: Side; where: string; icon: LucideIcon }[] = [
-  { side: 'left', where: 'слева', icon: ArrowLeft },
-  { side: 'right', where: 'справа', icon: ArrowRight },
-  { side: 'top', where: 'сверху', icon: ArrowUp },
-  { side: 'bottom', where: 'снизу', icon: ArrowDown },
+const ARROWS: { side: Side; icon: LucideIcon }[] = [
+  { side: 'left', icon: ArrowLeft },
+  { side: 'right', icon: ArrowRight },
+  { side: 'top', icon: ArrowUp },
+  { side: 'bottom', icon: ArrowDown },
 ]
 
 /**
@@ -48,14 +49,12 @@ export function QuickConnect({ editor }: { editor: DiagramEditor | null }) {
 
 function QuickConnectArrow({
   side,
-  where,
   icon: Icon,
   bounds,
   shapes,
   onPick,
 }: {
   side: Side
-  where: string
   icon: LucideIcon
   bounds: Box
   shapes: ShapeId[]
@@ -64,7 +63,7 @@ function QuickConnectArrow({
   const [open, setOpen] = useState(false)
   // After a pick the canvas keeps the focus that the editor gave it, so that its shortcuts work on the new shape.
   const picked = useRef(false)
-  const name = `Добавить фигуру ${where}`
+  const name = pickerMessages.quickConnect.add[side]
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -81,7 +80,7 @@ function QuickConnectArrow({
       </PopoverTrigger>
       <PopoverContent
         side={side}
-        aria-label="Фигуры для связи"
+        aria-label={pickerMessages.quickConnect.shapes}
         className="flex max-h-80 w-56 flex-col gap-0.5 overflow-y-auto p-1"
         onCloseAutoFocus={(event) => {
           if (picked.current) event.preventDefault()

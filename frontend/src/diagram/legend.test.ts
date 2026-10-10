@@ -3,7 +3,6 @@ import { INTERACTION_KEY, TECHNOLOGY_KEY } from './elementKinds.ts'
 import { FREEHAND_KEY } from './freehand.ts'
 import {
   colorWord,
-  EMPTY_LEGEND,
   isLegendStyle,
   layoutLegend,
   LEGEND_KEY,
@@ -180,7 +179,7 @@ describe('the rows and the layout of a legend', () => {
   })
 
   it('says so when it has nothing to show, and counts what is beyond its limit', () => {
-    expect(legendRows([], { names: {}, hidden: [] })).toEqual([{ type: 'empty', key: null, label: EMPTY_LEGEND, cellId: null, ratio: 1 }])
+    expect(legendRows([], { names: {}, hidden: [] })).toEqual([{ type: 'empty', key: null, label: 'Нет фигур и связей', cellId: null, ratio: 1 }])
     expect(legendRows(items, { names: {}, hidden: items.map((item) => item.key) })[0]!.type).toBe('empty')
     const many = Array.from({ length: MAX_LEGEND_ROWS + 3 }, (_, index) => edge(`e${index}`, { [TECHNOLOGY_KEY]: `T${String(index).padStart(2, '0')}` }))
     const rows = legendRows(legendItems(many), { names: {}, hidden: [] })

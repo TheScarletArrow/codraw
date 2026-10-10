@@ -1,6 +1,7 @@
 import { GitPullRequestArrow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Proposal } from '../api/proposals.ts'
+import { proposalMessages as m } from './messages.ts'
 import { isOpen } from './proposals.ts'
 
 /**
@@ -22,9 +23,9 @@ export function ProposalsButton({
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={count > 0 ? `Предложения (${count})` : 'Предложения'}
+      aria-label={count > 0 ? m.proposalsCount(count) : m.proposals}
       aria-pressed={open}
-      title="Предложения изменений"
+      title={m.changeProposals}
       className="relative shrink-0"
       onClick={onToggle}
     >

@@ -58,20 +58,18 @@ import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
 import { templatePage, type BoardTemplate } from '../templates/templates.ts'
 import { moveBoardToWorkspace, WORKSPACES_QUERY_KEY, workspaceLimitOf } from '../api/workspaces.ts'
 import { useCurrentUser } from '../auth/session.ts'
-import { counted } from '../board/members.ts'
 import { WorkspacePicker } from '../workspaces/WorkspacePicker.tsx'
 import { WorkspacesSection } from '../workspaces/WorkspacesSection.tsx'
+import { perLocale } from '../i18n/i18n.ts'
+import { boardsPageMessages as m } from './BoardsPage.messages.ts'
 
-export const NEW_BOARD_TITLE = 'Новая доска'
-
-const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
+const dateFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 
 /** Tells the user that they own as many boards as allowed, when that is why a board was not created. */
 function boardLimitMessage(error: unknown): string | null {
   const limit = boardLimitOf(error)
   if (limit === null) return null
-  const boards = new Intl.PluralRules('ru').select(limit) === 'one' ? 'доски' : 'досок'
-  return `Можно держать не больше ${limit} ${boards}. Удалите ненужные, чтобы создать новую`
+  return m.boardLimit(limit)
 }
 
 /** What a row of a board in the list needs besides the board: how the list is shown and what the user has. */
@@ -95,7 +93,7 @@ export function BoardsPage() {
   const shared = useQuery({ queryKey: SHARED_BOARDS_QUERY_KEY, queryFn: fetchSharedBoards })
   const folders = useQuery({ queryKey: FOLDERS_QUERY_KEY, queryFn: fetchFolders })
   const create = useMutation({
-    mutationFn: () => createBoard(NEW_BOARD_TITLE),
+    mutationFn: () => createBoard(m.newBoardTitle),
     onSuccess: async (board) => {
       await queryClient.invalidateQueries({ queryKey: ['boards'] })
       await navigate(`/boards/${board.id}`)
@@ -168,20 +166,20 @@ export function BoardsPage() {
     : renameFolder.isError
       ? folderErrorMessage(renameFolder.error, 'rename')
       : deleteFolder.isError
-        ? 'Не удалось удалить папку'
+        ? m.folderDeleteFailed
         : null
 
   return (
     <section className="mx-auto w-full max-w-3xl overflow-auto px-4 py-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-2xl font-semibold">Доски</h2>
+        <h2 className="text-2xl font-semibold">{m.boards}</h2>
         <div className="flex flex-wrap gap-2">
           <PersonalTemplates />
           <input
             ref={fileInput}
             type="file"
             accept={DRAWIO_FILE_TYPES}
-            aria-label="Файл draw.io"
+            aria-label={m.drawioFile}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0]
@@ -190,28 +188,28 @@ export function BoardsPage() {
             }}
           />
           <Button type="button" variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}>
-            Открыть .drawio
+            {m.openDrawio}
           </Button>
           <Button type="button" onClick={() => create.mutate()} disabled={busy}>
-            Создать доску
+            {m.createBoard}
           </Button>
         </div>
       </div>
       {create.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          {boardLimitMessage(create.error) ?? 'Не удалось создать доску'}
+          {boardLimitMessage(create.error) ?? m.createFailed}
         </p>
       )}
       {fromTemplate.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          {boardLimitMessage(fromTemplate.error) ?? 'Не удалось создать доску из шаблона'}
+          {boardLimitMessage(fromTemplate.error) ?? m.fromTemplateFailed}
         </p>
       )}
       {open.isError && (
         <p role="alert" className="mt-4 text-destructive">
           {open.error instanceof DrawioFormatError
             ? open.error.message
-            : (boardLimitMessage(open.error) ?? 'Не удалось создать доску из файла')}
+            : (boardLimitMessage(open.error) ?? m.fromFileFailed)}
         </p>
       )}
 
@@ -248,22 +246,22 @@ export function BoardsPage() {
       )}
       {text.failed && (
         <p role="alert" className="mt-3 text-sm text-destructive">
-          Не удалось поискать в тексте досок: найдены только названия
+          {m.textSearchFailed}
         </p>
       )}
       {filtering && (
         <p role="status" className="sr-only">
-          {text.searching ? 'Ищем в тексте досок' : `Найдено досок: ${ownShown.length + sharedShown.length}`}
+          {text.searching ? m.searchingText : m.found(ownShown.length + sharedShown.length)}
         </p>
       )}
 
-      {boards.isPending && <p className="mt-4 text-muted-foreground">Загрузка…</p>}
+      {boards.isPending && <p className="mt-4 text-muted-foreground">{m.loading}</p>}
       {boards.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          Не удалось загрузить доски
+          {m.loadFailed}
         </p>
       )}
-      {boards.data && !filtering && own.length === 0 && <p className="mt-4 text-muted-foreground">Досок пока нет</p>}
+      {boards.data && !filtering && own.length === 0 && <p className="mt-4 text-muted-foreground">{m.noBoards}</p>}
       {boards.data && filtering && ownShown.length === 0 && sharedShown.length === 0 && (
         <EmptyResult
           searching={text.searching}
@@ -282,7 +280,7 @@ export function BoardsPage() {
       {sharedShown.length > 0 && (
         <section aria-labelledby="shared-boards" className="mt-8">
           <h3 id="shared-boards" className="text-lg font-semibold">
-            Общие со мной
+            {m.sharedWithMe}
           </h3>
           <ul className="mt-2 divide-y">
             {sharedShown.map((board) => (
@@ -294,17 +292,17 @@ export function BoardsPage() {
 
       <section aria-labelledby="templates" className="mt-8">
         <h3 id="templates" className="text-lg font-semibold">
-          Начать с шаблона
+          {m.startFromTemplate}
         </h3>
         <TemplateCards className="mt-2" disabled={busy} onChoose={(template) => fromTemplate.mutate(template)} />
       </section>
 
-      <nav aria-label="Документы" className="mt-10 flex flex-wrap gap-4 border-t pt-4 text-sm text-muted-foreground">
+      <nav aria-label={m.documents} className="mt-10 flex flex-wrap gap-4 border-t pt-4 text-sm text-muted-foreground">
         <Link to="/terms" className="underline">
-          Условия использования
+          {m.terms}
         </Link>
         <Link to="/privacy" className="underline">
-          Политика конфиденциальности
+          {m.privacy}
         </Link>
       </nav>
       <BoardTrash />
@@ -314,13 +312,13 @@ export function BoardsPage() {
 
 /** Why the list is empty under its filters: nothing found yet, an empty folder, or nothing found at all. */
 function EmptyResult({ searching, folderOnly, onReset }: { searching: boolean; folderOnly: boolean; onReset: () => void }) {
-  if (searching) return <p className="mt-4 text-muted-foreground">Ищем в тексте досок…</p>
-  if (folderOnly) return <p className="mt-4 text-muted-foreground">В папке нет досок</p>
+  if (searching) return <p className="mt-4 text-muted-foreground">{m.searchingTextNow}</p>
+  if (folderOnly) return <p className="mt-4 text-muted-foreground">{m.emptyFolder}</p>
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
-      <p className="text-muted-foreground">Ничего не найдено</p>
+      <p className="text-muted-foreground">{m.nothingFound}</p>
       <Button type="button" variant="outline" size="sm" onClick={onReset}>
-        Сбросить фильтры
+        {m.resetFilters}
       </Button>
     </div>
   )
@@ -382,7 +380,7 @@ function BoardDetails({ board, context }: { board: ListedBoard; context: RowCont
     <>
       {fragment !== undefined && (
         <span className="truncate text-sm text-muted-foreground">
-          <span className="sr-only">Найдено на доске: </span>
+          <span className="sr-only">{m.foundOnBoard}</span>
           {parts ? (
             <>
               {parts.before}
@@ -397,13 +395,13 @@ function BoardDetails({ board, context }: { board: ListedBoard; context: RowCont
       {(board.tags.length > 0 || folder) && (
         <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
           {folder && (
-            <span className="flex min-w-0 items-center gap-1" title="Папка">
+            <span className="flex min-w-0 items-center gap-1" title={m.folder}>
               <Folder aria-hidden className="size-3.5 shrink-0" />
-              <span className="sr-only">Папка: </span>
+              <span className="sr-only">{m.folderPrefix}</span>
               <span className="truncate">{folder.name}</span>
             </span>
           )}
-          {board.tags.length > 0 && <span className="sr-only">Теги: </span>}
+          {board.tags.length > 0 && <span className="sr-only">{m.tagsPrefix}</span>}
           {board.tags.map((tag) => (
             <span key={tag} className="rounded bg-muted px-1.5 py-0.5 text-foreground">
               {tag}
@@ -418,10 +416,10 @@ function BoardDetails({ board, context }: { board: ListedBoard; context: RowCont
 /** The time the list is ordered by, or that a board was never opened. */
 function BoardTime({ board, sort }: { board: ListedBoard; sort: BoardSort }) {
   const { at, label } = boardTime(board, sort)
-  if (at === null) return <span className="whitespace-nowrap text-muted-foreground">Не открывалась</span>
+  if (at === null) return <span className="whitespace-nowrap text-muted-foreground">{m.neverOpened}</span>
   return (
     <time dateTime={at} className="whitespace-nowrap text-muted-foreground" title={label}>
-      {dateFormat.format(new Date(at))}
+      {dateFormat().format(new Date(at))}
     </time>
   )
 }
@@ -482,15 +480,15 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
   const title = rename.isPending ? rename.variables : board.title
   const workspaceLimit = workspaceLimitOf(toWorkspace.error)
   const error = rename.isError
-    ? 'Не удалось переименовать'
+    ? m.renameFailed
     : remove.isError
-      ? 'Не удалось удалить'
+      ? m.deleteFailed
       : organization.moveFailed
-        ? 'Не удалось переместить доску'
+        ? m.moveFailed
         : toWorkspace.isError
           ? workspaceLimit === null
-            ? 'Не удалось перенести доску'
-            : `В пространстве уже ${counted(workspaceLimit.limit, ['доска', 'доски', 'досок'])}`
+            ? m.toWorkspaceFailed
+            : m.workspaceBoardsLimit(workspaceLimit.limit)
           : null
 
   return (
@@ -505,7 +503,7 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
           <BoardTime board={board} sort={context.sort} />
           <BoardActions
             title={board.title}
-            deleteLabel="Удалить"
+            deleteLabel={m.delete}
             disabled={remove.isPending}
             onRename={() => setRenaming(true)}
             tags={organization.tags}
@@ -532,7 +530,7 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
       {renaming ? (
         <TitleInput
           title={board.title}
-          label="Название доски"
+          label={m.boardTitle}
           className="flex-1 py-1 font-medium"
           onDone={(next) => {
             setRenaming(false)
@@ -561,7 +559,7 @@ function SharedBoardItem({ board, context }: { board: SharedBoard; context: RowC
         <>
           {organization.moveFailed && (
             <span role="alert" className="text-sm text-destructive">
-              Не удалось переместить доску
+              {m.moveFailed}
             </span>
           )}
           <BoardTime board={board} sort={context.sort} />
@@ -575,7 +573,7 @@ function SharedBoardItem({ board, context }: { board: SharedBoard; context: RowC
       <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
         {board.owner.avatarUrl && <img src={board.owner.avatarUrl} alt="" className="size-4 rounded-full" />}
         {board.owner.name}
-        <span className="rounded bg-muted px-1.5 text-xs">{board.role === 'viewer' ? 'просмотр' : 'редактирование'}</span>
+        <span className="rounded bg-muted px-1.5 text-xs">{board.role === 'viewer' ? m.viewing : m.editing}</span>
       </span>
       <BoardDetails board={board} context={context} />
     </BoardRow>

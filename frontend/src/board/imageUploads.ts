@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { HttpError } from '../api/http.ts'
 import { fetchImageUsage, imageUsageKey, uploadImage, type ImageTarget, type ImageUsage } from '../api/images.ts'
 import { boardImageOf, IMAGE_FILE_TYPES, type ImageHost, type StoredImage } from '../diagram/images.ts'
+import { perLocale } from '../i18n/i18n.ts'
+import { imageMessages as m } from './board.messages.ts'
 
 /** How the uploads of images of a page go, as the lines under its header show them. */
 export interface ImageUploadState {
@@ -18,38 +20,36 @@ const IDLE: ImageUploadState = { count: 0, progress: 0, error: null }
 
 const MEGABYTE = 1024 * 1024
 
+const sizeFormat = perLocale((tag) => new Intl.NumberFormat(tag, { maximumFractionDigits: 1, useGrouping: false }))
+
 /** A size in megabytes as people read it: `10 МБ`, `1,5 МБ`, and kilobytes below a megabyte. */
 export function megabytes(bytes: number): string {
-  if (bytes < MEGABYTE) return `${Math.max(1, Math.round(bytes / 1024))} КБ`
+  if (bytes < MEGABYTE) return m.kilobytes(String(Math.max(1, Math.round(bytes / 1024))))
   const value = bytes / MEGABYTE
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
-  return `${String(rounded).replace('.', ',')} МБ`
+  return m.megabytes(sizeFormat().format(rounded))
 }
 
-export const UNSUPPORTED_IMAGE = 'Формат файла не поддерживается: PNG, JPEG, GIF или WebP'
-export const IMAGE_FAILED = 'Не удалось загрузить изображение'
-export const IMAGE_FORBIDDEN = 'Нет права добавлять изображения на эту доску'
-
-export const imageTooLarge = (limit: number) => `Изображение больше ${megabytes(limit)}`
+export const imageTooLarge = (limit: number) => m.tooLarge(megabytes(limit))
 
 /** Why the backend did not store an image, in words. */
 export function imageUploadError(error: unknown): string {
-  if (!(error instanceof HttpError)) return IMAGE_FAILED
+  if (!(error instanceof HttpError)) return m.failed
   const { limit, scope, used } = error.problem ?? {}
   switch (error.status) {
     case 403:
-      return IMAGE_FORBIDDEN
+      return m.forbidden
     case 409:
       return limit !== undefined && used !== undefined
-        ? `На доске нет места для изображений: занято ${megabytes(used)} из ${megabytes(limit)}`
-        : 'На доске нет места для изображений'
+        ? m.noRoomOf(megabytes(used), megabytes(limit))
+        : m.noRoom
     case 413:
-      if (scope === 'pixels') return `Изображение больше ${Math.round((limit ?? 50_000_000) / 1_000_000)} мегапикселей`
-      return limit !== undefined ? imageTooLarge(limit) : 'Изображение слишком большое'
+      if (scope === 'pixels') return m.tooManyPixels(Math.round((limit ?? 50_000_000) / 1_000_000))
+      return limit !== undefined ? imageTooLarge(limit) : m.tooLargeUnknown
     case 415:
-      return UNSUPPORTED_IMAGE
+      return m.unsupported
     default:
-      return IMAGE_FAILED
+      return m.failed
   }
 }
 
@@ -89,7 +89,7 @@ export class ImageUploads {
   dismiss = () => this.update({ error: null })
 
   private async store(image: Blob): Promise<StoredImage | null> {
-    if (!IMAGE_FILE_TYPES.includes(image.type)) return this.fail(UNSUPPORTED_IMAGE)
+    if (!IMAGE_FILE_TYPES.includes(image.type)) return this.fail(m.unsupported)
     const limit = (await this.usage())?.imageSize
     if (limit !== undefined && image.size > limit) return this.fail(imageTooLarge(limit))
     const id = this.nextUpload++

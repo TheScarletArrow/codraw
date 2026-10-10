@@ -1,5 +1,5 @@
-import type { BoardRole } from '../api/boards.ts'
 import type { Invite } from '../api/members.ts'
+import { pluralRu } from '../i18n/i18n.ts'
 
 /** Query key of the owner and the members of a board. */
 export const membersKey = (boardId: string) => ['boards', boardId, 'members'] as const
@@ -10,22 +10,15 @@ export const visitorsKey = (boardId: string) => ['boards', boardId, 'visitors'] 
 /** Query key of the invitation links of a board. */
 export const invitesKey = (boardId: string) => ['boards', boardId, 'invites'] as const
 
-/** Roles as the window «Поделиться» names them, in the words of the modes of the link. */
-export const ROLE_LABELS: Record<BoardRole, string> = {
-  owner: 'Владелец',
-  editor: 'Редактирование',
-  viewer: 'Просмотр',
-}
-
 /** The address of an invitation as it is sent to others. */
 export function inviteUrl(invite: Pick<Invite, 'path'>, origin = window.location.origin) {
   return new URL(invite.path, origin).toString()
 }
 
-const pluralRules = new Intl.PluralRules('ru')
-
-/** The count with the word in its form for it: «1 участник», «2 участника», «5 участников». */
+/**
+ * The count with the Russian word in its form for it: «1 участник», «2 участника», «5 участников». Texts of the
+ * dictionaries use `pluralRu` and `pluralEn` instead.
+ */
 export function counted(count: number, [one, few, many]: [string, string, string]) {
-  const rule = pluralRules.select(count)
-  return `${count} ${rule === 'one' ? one : rule === 'few' ? few : many}`
+  return `${count} ${pluralRu(count, one, few, many)}`
 }

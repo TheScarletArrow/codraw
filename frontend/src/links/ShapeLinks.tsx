@@ -9,7 +9,8 @@ import type { DiagramEditor } from '../diagram/editor.ts'
 import { parseLink } from '../diagram/links.ts'
 import type { PageInfo } from '../diagram/pages.ts'
 import { useLinkableBoards } from './boards.ts'
-import { LINK_MESSAGE_DURATION, LINK_MESSAGES, linkTarget } from './linkTexts.ts'
+import { LINK_MESSAGE_DURATION, linkTarget } from './linkTexts.ts'
+import { linkMessages as m } from './messages.ts'
 
 /** The size of a badge and its gap from the corner, outside the resize handle of a selected shape. */
 const BADGE_SIZE = 18
@@ -51,7 +52,7 @@ export function ShapeLinks({ editor, pages, onSelectPage, onNavigate }: ShapeLin
       setMessage(null)
       const link = parseLink(value)
       if (!link) {
-        setMessage(LINK_MESSAGES.unsafe)
+        setMessage(m.followFailed.unsafe)
         return
       }
       if (link.kind === 'url') {
@@ -61,7 +62,7 @@ export function ShapeLinks({ editor, pages, onSelectPage, onNavigate }: ShapeLin
       }
       if (link.kind === 'page') {
         if (!pages.some((page) => page.id === link.pageId)) {
-          setMessage(LINK_MESSAGES.page)
+          setMessage(m.followFailed.page)
           return
         }
         onNavigate?.()
@@ -72,7 +73,7 @@ export function ShapeLinks({ editor, pages, onSelectPage, onNavigate }: ShapeLin
       const path = `/boards/${encodeURIComponent(link.boardId)}${link.pageId ? `?page=${encodeURIComponent(link.pageId)}` : ''}`
       void queryClient.fetchQuery({ queryKey: ['boards', link.boardId], queryFn: () => fetchBoard(link.boardId) }).then(
         () => navigate(path),
-        (error: unknown) => (isNotFound(error) ? setMessage(LINK_MESSAGES.board) : navigate(path)),
+        (error: unknown) => (isNotFound(error) ? setMessage(m.followFailed.board) : navigate(path)),
       )
     },
     [pages, onSelectPage, onNavigate, navigate, queryClient],
@@ -99,7 +100,7 @@ export function ShapeLinks({ editor, pages, onSelectPage, onNavigate }: ShapeLin
             data-testid="link-badge"
             data-cell={cellId}
             data-kind={parsed.kind}
-            aria-label={`Перейти по ссылке: ${target}`}
+            aria-label={m.follow(target)}
             title={target}
             className="pointer-events-auto absolute flex items-center justify-center rounded-full bg-sky-600 text-white shadow-sm hover:bg-sky-500"
             style={{
@@ -121,7 +122,7 @@ export function ShapeLinks({ editor, pages, onSelectPage, onNavigate }: ShapeLin
             className="pointer-events-auto flex items-center gap-1 rounded-md border bg-background py-1 pr-1 pl-3 text-sm text-foreground shadow-md"
           >
             {message}
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Закрыть" onClick={() => setMessage(null)}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={m.close} onClick={() => setMessage(null)}>
               <X />
             </Button>
           </p>

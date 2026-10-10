@@ -2,6 +2,7 @@ import { Lock } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import type { DiagramEditor } from './editor.ts'
 import { lockLabel } from './locks.ts'
+import { pickerMessages } from './pickers.messages.ts'
 import { FieldProps, IndexProps } from './TableTools.tsx'
 import { useEditorState } from './useEditorState.ts'
 
@@ -35,7 +36,7 @@ export function FieldPopover({ editor }: { editor: DiagramEditor | null }) {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div
         role="group"
-        aria-label={index ? 'Свойства индекса' : 'Свойства поля'}
+        aria-label={index ? pickerMessages.field.index : pickerMessages.field.field}
         data-side={fitsRight ? 'right' : 'left'}
         className="pointer-events-auto absolute flex items-center gap-1 rounded-md border bg-background p-1 text-foreground shadow-md"
         style={

@@ -1,6 +1,7 @@
 import { HOLLOW_TRIANGLE, markerChanges, markerOf } from './edgeMarkers.ts'
 import type { StyleValue } from './model.ts'
 import { shapeOf, type ShapeStyle } from './shapes.ts'
+import { useCaseMessages as m } from './useCase.messages.ts'
 
 /**
  * Relations of use cases of UML as data, without maxGraph: what an edge is by its line, its markers and its label, and
@@ -10,13 +11,15 @@ import { shapeOf, type ShapeStyle } from './shapes.ts'
 
 export type UmlRelation = 'association' | 'include' | 'extend' | 'generalization'
 
-/** The relations in the order of the toolbar, with their names. */
-export const UML_RELATIONS: readonly { value: UmlRelation; label: string }[] = [
-  { value: 'association', label: 'Ассоциация' },
-  { value: 'include', label: 'Включение «include»' },
-  { value: 'extend', label: 'Расширение «extend»' },
-  { value: 'generalization', label: 'Обобщение' },
-]
+/** The relations in the order of the toolbar, with their names in the language of the interface. */
+export const UML_RELATIONS: readonly { value: UmlRelation; label: string }[] = (
+  ['association', 'include', 'extend', 'generalization'] as const
+).map((value) => ({
+  value,
+  get label() {
+    return m[value]
+  },
+}))
 
 type Stereotype = 'include' | 'extend'
 

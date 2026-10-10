@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { fetchVisitBaseline } from '../api/visits.ts'
 import { VersionView } from './VersionView.tsx'
 import { visitBaselineKey, visitTime } from './visit.ts'
+import { changeMessages as m } from './changes.messages.ts'
 
 interface VisitChangesProps {
   boardId: string
@@ -37,28 +38,28 @@ export function VisitChanges({ boardId, since, document, participantId, onClose 
   }, [state.data])
 
   return (
-    <section aria-label="Изменения с прошлого визита" className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <section aria-label={m.visitChanges} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-3 border-b bg-muted/50 px-3 py-2 text-sm">
-        <span className="font-medium">{`Изменения с вашего прошлого визита (${visitTime(new Date(since))})`}</span>
-        <span className="text-muted-foreground">только просмотр</span>
+        <span className="font-medium">{m.visitChangesTitle(visitTime(new Date(since)))}</span>
+        <span className="text-muted-foreground">{m.viewOnly}</span>
         <span className="flex-1" />
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Закрыть
+          {m.close}
         </Button>
       </div>
       {state.isError ? (
         <p role="alert" className="p-6 text-destructive">
-          Не удалось загрузить изменения
+          {m.visitChangesFailed}
         </p>
       ) : baseline ? (
         <VersionView
           version={baseline}
           board={document}
-          unchanged="С вашего прошлого визита доска не менялась."
+          unchanged={m.unchangedSinceVisit}
           participantId={participantId}
         />
       ) : (
-        <p className="p-6 text-muted-foreground">Загрузка изменений…</p>
+        <p className="p-6 text-muted-foreground">{m.loadingChanges}</p>
       )}
     </section>
   )

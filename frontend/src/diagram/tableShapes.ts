@@ -11,6 +11,7 @@ import { vendorOf } from '../sql/dbVendors.ts'
 import { plainText, sourceRefers, splitField } from '../sql/tableField.ts'
 import { measureLabel, type LabelStyle } from './autoWidth.ts'
 import { isBaseTable } from './baseTables.ts'
+import { tableShapeMessages as m } from './tableShapes.messages.ts'
 import { isTableIndexStyle, isTableStyle, TABLE_INDEX_GAP, type ShapeStyle } from './shapes.ts'
 import {
   BADGE_HEIGHT,
@@ -42,12 +43,10 @@ const INDEX_COLOR = '#0d9488'
 const CAPTION_FONT_SIZE = 9
 /** Opacity of the texts after the name of a field, so that the name stands out. */
 const MUTED = 0.6
-/** What a field without text shows, so that it can be found and named. */
-export const FIELD_PLACEHOLDER = 'имя поля'
+/** What a field without text shows, so that it can be found and named; in the language of the page when it loaded. */
+export const FIELD_PLACEHOLDER = m.fieldPlaceholder
 /** What an index without text shows. */
-export const INDEX_PLACEHOLDER = 'имя (столбцы)'
-/** The caption of the block of indexes of a table. */
-export const INDEXES_CAPTION = 'Индексы'
+export const INDEX_PLACEHOLDER = m.indexPlaceholder
 
 function isTable(cell: Cell | null | undefined): boolean {
   return cell?.isVertex() === true && isTableStyle(cell.getStyle() as ShapeStyle)
@@ -229,7 +228,7 @@ class TableFieldShape extends RectangleShape {
     if (!String(cell.getValue() ?? '').trim()) {
       // On the canvas only, not in an exported image, and not while the field is being named.
       const onCanvas = (c as unknown as { root?: Element }).root === this.node
-      const placeholder = isIndexRow(cell) ? INDEX_PLACEHOLDER : FIELD_PLACEHOLDER
+      const placeholder = isIndexRow(cell) ? m.indexPlaceholder : m.fieldPlaceholder
       if (onCanvas && !graph.isEditing(cell)) paintPlaceholder(c, placeholder, this.style ?? {}, x + row.nameX, y, w - row.nameX, h)
       return
     }
@@ -287,7 +286,7 @@ class TableShape extends SwimlaneShape {
     c.setFontColor(String(style.fontColor ?? '#1f2328'))
     c.setFontSize(CAPTION_FONT_SIZE)
     c.setFontStyle(1)
-    c.text(ICON_X, top + TABLE_INDEX_GAP / 2, 0, 0, INDEXES_CAPTION, 'left', 'middle', false, '', 'visible', false, 0, '')
+    c.text(ICON_X, top + TABLE_INDEX_GAP / 2, 0, 0, m.indexes, 'left', 'middle', false, '', 'visible', false, 0, '')
     c.restore()
   }
 }

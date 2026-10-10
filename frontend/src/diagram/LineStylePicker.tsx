@@ -5,17 +5,20 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { MAX_LINE_WIDTH, MIN_LINE_WIDTH, type EdgeShape, type LineDash, type SelectionLine } from './editor.ts'
 import { NumberField } from './NumberField.tsx'
+import { pickerMessages } from './pickers.messages.ts'
+
+const m = pickerMessages.lineStyle
 
 const DASHES: { value: LineDash; label: string; pattern?: string }[] = [
-  { value: 'solid', label: 'Сплошная' },
-  { value: 'dashed', label: 'Пунктир', pattern: '6 4' },
-  { value: 'dotted', label: 'Точки', pattern: '2 3' },
+  { value: 'solid', label: m.solid },
+  { value: 'dashed', label: m.dashed, pattern: '6 4' },
+  { value: 'dotted', label: m.dotted, pattern: '2 3' },
 ]
 
 const EDGE_SHAPES: { value: EdgeShape; label: string; path: string }[] = [
-  { value: 'straight', label: 'Прямая', path: 'M3 17 L21 5' },
-  { value: 'orthogonal', label: 'Ортогональная', path: 'M3 17 H12 V5 H21' },
-  { value: 'curved', label: 'Кривая', path: 'M3 17 C12 17 12 5 21 5' },
+  { value: 'straight', label: m.straight, path: 'M3 17 L21 5' },
+  { value: 'orthogonal', label: m.orthogonal, path: 'M3 17 H12 V5 H21' },
+  { value: 'curved', label: m.curved, path: 'M3 17 C12 17 12 5 21 5' },
 ]
 
 interface LineStylePickerProps {
@@ -28,16 +31,16 @@ export function LineStylePicker({ line, onChange }: LineStylePickerProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" aria-label="Стиль линии" title="Стиль линии">
+        <Button type="button" variant="ghost" size="sm" aria-label={m.name} title={m.name}>
           <Spline />
-          Стиль
+          {m.style}
         </Button>
       </PopoverTrigger>
-      <PopoverContent aria-label="Стиль линии" className="flex w-72 flex-col gap-3">
+      <PopoverContent aria-label={m.name} className="flex w-72 flex-col gap-3">
         <label className="flex items-center justify-between gap-2 text-sm">
-          Толщина
+          {m.width}
           <NumberField
-            label="Толщина линии"
+            label={m.lineWidth}
             value={line.width}
             min={MIN_LINE_WIDTH}
             max={MAX_LINE_WIDTH}
@@ -45,7 +48,7 @@ export function LineStylePicker({ line, onChange }: LineStylePickerProps) {
             onCommit={(width) => onChange({ width })}
           />
         </label>
-        <Options label="Вид линии">
+        <Options label={m.dash}>
           {DASHES.map((dash) => (
             <Option
               key={dash.value}
@@ -60,7 +63,7 @@ export function LineStylePicker({ line, onChange }: LineStylePickerProps) {
           ))}
         </Options>
         {line.hasEdges && (
-          <Options label="Форма связи">
+          <Options label={m.edgeShape}>
             {EDGE_SHAPES.map((shape) => (
               <Option
                 key={shape.value}

@@ -7,7 +7,8 @@ import type { ShapeLibrary } from '../api/libraries.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { createFakeEditor } from '../test/fakeEditor.ts'
 import { mockFetch, type MockResponse } from '../test/render.tsx'
-import { OUTSIDE_PICTURES, useLibraries, type SaveResult } from './useLibraries.ts'
+import { libraryMessages } from './messages.ts'
+import { useLibraries, type SaveResult } from './useLibraries.ts'
 
 vi.mock('./preview.ts', () => ({
   previewOf: vi.fn(async () => null),
@@ -99,7 +100,7 @@ describe('useLibraries', () => {
       saved = await result.current.saveSelection(editor, { libraryId: 'l1' })
     })
 
-    expect(saved).toEqual({ error: OUTSIDE_PICTURES, libraryId: 'l1' })
+    expect(saved).toEqual({ error: libraryMessages.outsidePictures, libraryId: 'l1' })
     expect(sent(fetchMock, 'POST', '/api/libraries/l1/components')).toEqual([])
   })
 

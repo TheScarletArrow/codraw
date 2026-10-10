@@ -9,7 +9,9 @@ import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, getElements, writeCell, type Ce
 import { findShape, markedStyle, TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
 import { writeStatus } from '../diagram/status.ts'
 import { boardWith, edgeData, laterState, shapeData } from '../diagram/testing.ts'
+import { setLocale } from '../i18n/i18n.ts'
 import { absoluteBounds, changeItems, edgeLine, ghostCenter, lineMiddle } from './changes.ts'
+import { changeMessages } from './changes.messages.ts'
 
 const stored = (style: ShapeStyle) => fromStyle(style as CellStyle)
 
@@ -83,6 +85,24 @@ describe('items of the list of changes', () => {
         conflict: false,
       },
     ])
+  })
+
+  it('says what changed in English, with the nested elements counted', () => {
+    setLocale('en')
+    const version = boardWith(shapeData('a', 'a0', { value: 'API', style: { fillColor: '#ffffff' } }), shapeData('b', 'a1'))
+    const now = laterState(version, (doc) => {
+      const target = cell(doc, 'a')
+      target.set('geometry', { x: 40, y: 0, width: 160, height: 60 })
+      ;(target.get('style') as Y.Map<unknown>).set('fillColor', '#dae8fc')
+      writeCell(getCells(doc), edgeData('link', 'a2', 'a', 'b'))
+    })
+
+    expect(changeItems(firstPage(version, now)).map(({ kind, details }) => [kind, details])).toEqual([
+      ['Connector', []],
+      [expect.any(String), ['position', 'size', 'fill']],
+    ])
+    expect(changeMessages.nested(1)).toBe('1 nested element')
+    expect(changeMessages.nested(3)).toBe('3 nested elements')
   })
 
   it('names an image shape and the change of its picture', () => {

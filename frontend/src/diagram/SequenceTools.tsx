@@ -15,6 +15,9 @@ import {
   type NotePlacement,
   type ParticipantKind,
 } from './sequence.ts'
+import { sequenceMessages } from './sequence.messages.ts'
+
+const m = sequenceMessages.tools
 
 /** How long «Mermaid скопирован» stays after copying, in milliseconds. */
 const COPIED_FOR = 2000
@@ -47,28 +50,28 @@ export function SequenceTools({ editor, sequence }: { editor: DiagramEditor | nu
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
       <fieldset disabled={!sequence.canChange} className={FIELDSET}>
-        <Button type="button" variant="ghost" size="sm" title="Добавить участника" onClick={() => editor?.addSequenceParticipant()}>
+        <Button type="button" variant="ghost" size="sm" title={m.addParticipant} onClick={() => editor?.addSequenceParticipant()}>
           <Plus />
-          Участник
+          {m.participant}
         </Button>
-        <Button type="button" variant="ghost" size="sm" title="Добавить сообщение" onClick={() => editor?.addSequenceMessage()}>
+        <Button type="button" variant="ghost" size="sm" title={m.addMessage} onClick={() => editor?.addSequenceMessage()}>
           <Plus />
-          Сообщение
+          {m.message}
         </Button>
-        <Button type="button" variant="ghost" size="sm" title="Добавить заметку" onClick={() => editor?.addSequenceNote()}>
+        <Button type="button" variant="ghost" size="sm" title={m.addNote} onClick={() => editor?.addSequenceNote()}>
           <Plus />
-          Заметка
+          {m.note}
         </Button>
         <select
-          aria-label="Рамка"
-          title={sequence.rows > 0 ? 'Обернуть выделенные строки в рамку' : 'Добавить рамку'}
+          aria-label={m.frame}
+          title={sequence.rows > 0 ? m.wrapRows : m.addFrame}
           className={SELECT}
           value=""
           onChange={(event) => {
             if (event.target.value) editor?.addSequenceFrame(event.target.value as FrameKind)
           }}
         >
-          <option value="">Рамка…</option>
+          <option value="">{m.framePlaceholder}</option>
           {FRAME_KINDS.map((kind) => (
             <option key={kind.value} value={kind.value}>
               {kind.label}
@@ -80,19 +83,19 @@ export function SequenceTools({ editor, sequence }: { editor: DiagramEditor | nu
           variant="ghost"
           size="sm"
           aria-pressed={sequence.numbered}
-          title="Номера сообщений по порядку"
+          title={m.numberingTitle}
           className={toggle(sequence.numbered)}
           onClick={() => editor?.setSequenceNumbering(sequence.diagramId, !sequence.numbered)}
         >
-          Нумерация
+          {m.numbering}
         </Button>
       </fieldset>
-      <Button type="button" variant="ghost" size="sm" title="Скопировать как Mermaid sequenceDiagram" onClick={copyMermaid}>
-        Скопировать Mermaid
+      <Button type="button" variant="ghost" size="sm" title={m.copyMermaidTitle} onClick={copyMermaid}>
+        {m.copyMermaid}
       </Button>
       {copied && (
         <span role="status" className="text-sm whitespace-nowrap text-muted-foreground">
-          Mermaid скопирован
+          {m.copied}
         </span>
       )}
       {sequence.part && (
@@ -119,7 +122,7 @@ function Choice({ label, name, value, onChange, children }: { label: string; nam
 function PartTools({ editor, sequence, part }: { editor: DiagramEditor | null; sequence: SelectedSequence; part: SequencePartState }) {
   const participants = sequence.participants.map((participant) => (
     <option key={participant.key} value={participant.key}>
-      {participant.name || 'Без имени'}
+      {participant.name || m.unnamed}
     </option>
   ))
   return (
@@ -127,8 +130,8 @@ function PartTools({ editor, sequence, part }: { editor: DiagramEditor | null; s
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
       {part.type === 'participant' && (
         <Choice
-          label="Вид"
-          name="Вид участника"
+          label={m.kind}
+          name={m.participantKind}
           value={part.kind}
           onChange={(kind) => editor?.setSequenceParticipant(part.cellId, { kind: kind as ParticipantKind })}
         >
@@ -141,15 +144,15 @@ function PartTools({ editor, sequence, part }: { editor: DiagramEditor | null; s
       )}
       {part.type === 'message' && (
         <>
-          <Choice label="От" name="Отправитель" value={part.from} onChange={(from) => editor?.setSequenceMessage(part.cellId, { from })}>
+          <Choice label={m.from} name={m.sender} value={part.from} onChange={(from) => editor?.setSequenceMessage(part.cellId, { from })}>
             {participants}
           </Choice>
-          <Choice label="Кому" name="Получатель" value={part.to} onChange={(to) => editor?.setSequenceMessage(part.cellId, { to })}>
+          <Choice label={m.to} name={m.receiver} value={part.to} onChange={(to) => editor?.setSequenceMessage(part.cellId, { to })}>
             {participants}
           </Choice>
           <Choice
-            label="Вид"
-            name="Вид сообщения"
+            label={m.kind}
+            name={m.messageKind}
             value={part.arrow}
             onChange={(arrow) => editor?.setSequenceMessage(part.cellId, { arrow: arrow as MessageArrow })}
           >
@@ -164,30 +167,30 @@ function PartTools({ editor, sequence, part }: { editor: DiagramEditor | null; s
             variant="ghost"
             size="sm"
             aria-pressed={part.activates}
-            title="Полоса активации получателя начинается у этого сообщения"
+            title={m.activatesTitle}
             className={toggle(part.activates)}
             onClick={() => editor?.setSequenceMessage(part.cellId, { activates: !part.activates })}
           >
-            Активирует получателя
+            {m.activates}
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             aria-pressed={part.deactivates}
-            title="Полоса активации отправителя заканчивается у этого сообщения"
+            title={m.deactivatesTitle}
             className={toggle(part.deactivates)}
             onClick={() => editor?.setSequenceMessage(part.cellId, { deactivates: !part.deactivates })}
           >
-            Завершает активацию отправителя
+            {m.deactivates}
           </Button>
         </>
       )}
       {part.type === 'note' && (
         <>
           <Choice
-            label="Положение"
-            name="Положение заметки"
+            label={m.placement}
+            name={m.notePlacement}
             value={part.placement}
             onChange={(placement) => editor?.setSequenceNote(part.cellId, { placement: placement as NotePlacement })}
           >
@@ -197,18 +200,18 @@ function PartTools({ editor, sequence, part }: { editor: DiagramEditor | null; s
               </option>
             ))}
           </Choice>
-          <Choice label="Участник" name="Участник заметки" value={part.from} onChange={(from) => editor?.setSequenceNote(part.cellId, { from })}>
+          <Choice label={m.participant} name={m.noteParticipant} value={part.from} onChange={(from) => editor?.setSequenceNote(part.cellId, { from })}>
             {participants}
           </Choice>
           {part.placement === 'over' && (
-            <Choice label="До" name="Последний участник заметки" value={part.to} onChange={(to) => editor?.setSequenceNote(part.cellId, { to })}>
+            <Choice label={m.until} name={m.noteLastParticipant} value={part.to} onChange={(to) => editor?.setSequenceNote(part.cellId, { to })}>
               {participants}
             </Choice>
           )}
         </>
       )}
       {part.type === 'frame' && (
-        <Choice label="Вид" name="Вид рамки" value={part.kind} onChange={(kind) => editor?.setSequenceFrame(part.cellId, kind as FrameKind)}>
+        <Choice label={m.kind} name={m.frameKind} value={part.kind} onChange={(kind) => editor?.setSequenceFrame(part.cellId, kind as FrameKind)}>
           {FRAME_KINDS.map((kind) => (
             <option key={kind.value} value={kind.value}>
               {kind.label}
@@ -217,9 +220,9 @@ function PartTools({ editor, sequence, part }: { editor: DiagramEditor | null; s
         </Choice>
       )}
       {(part.type === 'frame' || part.type === 'branch') && BRANCH_WORDS[part.kind] && (
-        <Button type="button" variant="ghost" size="sm" title={`Добавить ветку ${BRANCH_WORDS[part.kind]}`} onClick={() => editor?.addSequenceBranch()}>
+        <Button type="button" variant="ghost" size="sm" title={m.addBranch(BRANCH_WORDS[part.kind]!)} onClick={() => editor?.addSequenceBranch()}>
           <Plus />
-          Ветка
+          {m.branch}
         </Button>
       )}
     </>

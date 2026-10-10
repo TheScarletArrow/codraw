@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { DB_VENDORS, vendorTypes, type DbVendorId } from '../sql/dbVendors.ts'
 import type { DiagramEditor, SelectedField, SelectedIndex, TableBase, TableView } from './editor.ts'
+import { tableMessages as m } from './TableTools.messages.ts'
 import { MAX_VIEW_QUERY } from './views.ts'
 
 interface TableToolsProps {
@@ -31,9 +32,9 @@ export function TableTools({ editor, vendor, field, index, base, view }: TableTo
     <>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
       <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        СУБД
+        {m.vendor}
         <select
-          aria-label="СУБД таблицы"
+          aria-label={m.tableVendor}
           className="h-8 rounded-md border bg-background px-2 text-foreground"
           value={vendor ?? ''}
           onChange={(event) => editor?.setTableVendor(event.target.value as DbVendorId)}
@@ -50,12 +51,12 @@ export function TableTools({ editor, vendor, field, index, base, view }: TableTo
       {base && !isView && <BaseTools editor={editor} base={base} />}
       <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableField()}>
         <Plus />
-        Добавить поле
+        {m.addField}
       </Button>
       {(!isView || view.materialized) && (
         <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableIndex()}>
           <Plus />
-          Добавить индекс
+          {m.addIndex}
         </Button>
       )}
       {field && <FieldTools editor={editor} vendor={vendor} field={field} />}
@@ -79,11 +80,11 @@ function ViewTools({ editor, view }: { editor: DiagramEditor | null; view: Table
         variant="ghost"
         size="sm"
         aria-pressed={view.view}
-        title="Представление (VIEW): столбцы запроса к таблицам; в SQL — CREATE VIEW"
+        title={m.viewTitle}
         className={toggle(view.view)}
         onClick={() => editor?.setViewTable(!view.view)}
       >
-        Представление
+        {m.view}
       </Button>
       {view.view && (
         <>
@@ -92,11 +93,11 @@ function ViewTools({ editor, view }: { editor: DiagramEditor | null; view: Table
             variant="ghost"
             size="sm"
             aria-pressed={view.materialized}
-            title="Материализованное представление: база хранит его строки, у него бывают индексы"
+            title={m.materializedTitle}
             className={toggle(view.materialized)}
             onClick={() => editor?.setViewMaterialized(!view.materialized)}
           >
-            Материализованное
+            {m.materialized}
           </Button>
           <ViewQuery editor={editor} query={view.query} />
         </>
@@ -122,15 +123,15 @@ function ViewQuery({ editor, query }: { editor: DiagramEditor | null; query: str
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" title={query || 'Запрос представления не задан'}>
-          Запрос…
+        <Button type="button" variant="ghost" size="sm" title={query || m.noQuery}>
+          {m.queryButton}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" aria-label="Запрос представления" className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col gap-2">
+      <PopoverContent align="start" aria-label={m.viewQuery} className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col gap-2">
         <label className="flex flex-col gap-1 text-sm font-medium">
-          Запрос представления
+          {m.viewQuery}
           <textarea
-            aria-label="Запрос"
+            aria-label={m.query}
             placeholder="SELECT id, email FROM users WHERE deleted_at IS NULL"
             rows={8}
             spellCheck={false}
@@ -146,13 +147,13 @@ function ViewQuery({ editor, query }: { editor: DiagramEditor | null; query: str
             }}
           />
         </label>
-        <p className="text-xs text-muted-foreground">Текст после AS; в SQL — CREATE VIEW … AS запрос. Ctrl+Enter — применить.</p>
+        <p className="text-xs text-muted-foreground">{m.queryHint}</p>
         <div className="flex gap-2">
           <Button type="button" size="sm" onClick={apply}>
-            Применить
+            {m.apply}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
-            Отмена
+            {m.cancel}
           </Button>
         </div>
       </PopoverContent>
@@ -166,9 +167,9 @@ function BaseTools({ editor, base }: { editor: DiagramEditor | null; base: Table
   return (
     <>
       <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        База
+        {m.base}
         <select
-          aria-label="База таблицы"
+          aria-label={m.tableBase}
           className="h-8 max-w-40 rounded-md border bg-background px-2 text-foreground"
           value={base.baseId ?? ''}
           onChange={(event) => editor?.setTableBase(event.target.value || null)}
@@ -186,11 +187,11 @@ function BaseTools({ editor, base }: { editor: DiagramEditor | null; base: Table
         variant="ghost"
         size="sm"
         aria-pressed={base.base}
-        title="Базовая таблица: шаблон полей, которые наследуют другие таблицы; в SQL её нет"
+        title={m.baseTableTitle}
         className={toggle(base.base)}
         onClick={() => editor?.setBaseTable(!base.base)}
       >
-        Базовая
+        {m.baseTable}
       </Button>
       {base.base && (
         <Button
@@ -198,11 +199,11 @@ function BaseTools({ editor, base }: { editor: DiagramEditor | null; base: Table
           variant="ghost"
           size="sm"
           aria-pressed={base.defaultBase}
-          title="Новые таблицы страницы получают эту базу"
+          title={m.defaultBaseTitle}
           className={toggle(base.defaultBase)}
           onClick={() => editor?.setDefaultBase(!base.defaultBase)}
         >
-          По умолчанию
+          {m.defaultBase}
         </Button>
       )}
     </>
@@ -215,7 +216,7 @@ function FieldTools({ editor, vendor, field }: { editor: DiagramEditor | null; v
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
       {field.inheritedFrom !== null ? (
         // An inherited field is edited in its base table.
-        <span className="text-sm whitespace-nowrap text-muted-foreground">{`Из ${field.inheritedFrom}`}</span>
+        <span className="text-sm whitespace-nowrap text-muted-foreground">{m.inheritedFrom(field.inheritedFrom)}</span>
       ) : (
         <FieldProps editor={editor} vendor={vendor} field={field} />
       )}
@@ -237,7 +238,7 @@ export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | 
   return (
     <>
       {type}
-      <div role="group" aria-label="Пустые значения" className="flex items-center">
+      <div role="group" aria-label={m.nullability} className="flex items-center">
         {[false, true].map((notNull) => (
           <Button
             key={String(notNull)}
@@ -246,7 +247,7 @@ export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | 
             size="sm"
             aria-pressed={field.notNull === notNull}
             disabled={field.primaryKey}
-            title={notNull ? 'Значение обязательно' : 'Может быть пустым'}
+            title={notNull ? m.required : m.nullable}
             className={cn('px-2 font-mono text-xs', toggle(field.notNull === notNull))}
             onClick={() => editor?.setFieldProps({ notNull })}
           >
@@ -259,7 +260,7 @@ export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | 
         variant="ghost"
         size="sm"
         aria-pressed={field.primaryKey}
-        title="Первичный ключ"
+        title={m.primaryKey}
         className={cn('px-2 font-mono text-xs', toggle(field.primaryKey))}
         onClick={() => editor?.setFieldProps({ primaryKey: !field.primaryKey })}
       >
@@ -270,7 +271,7 @@ export function FieldProps({ editor, vendor, field }: { editor: DiagramEditor | 
         variant="ghost"
         size="sm"
         aria-pressed={field.unique}
-        title="Уникальное значение"
+        title={m.unique}
         className={cn('px-2 font-mono text-xs', toggle(field.unique))}
         onClick={() => editor?.setFieldProps({ unique: !field.unique })}
       >
@@ -290,7 +291,7 @@ export function IndexProps({ editor, index }: { editor: DiagramEditor | null; in
         variant="ghost"
         size="sm"
         aria-pressed={index.unique}
-        title="Уникальный индекс"
+        title={m.uniqueIndex}
         className={cn('px-2 font-mono text-xs', index.unique && 'bg-accent text-accent-foreground')}
         onClick={() => editor?.setIndexProps({ unique: !index.unique })}
       >
@@ -310,9 +311,9 @@ function ColumnsField({ value, onCommit }: { value: string; onCommit: (columns: 
   }
   return (
     <input
-      aria-label="Столбцы индекса"
-      title="Столбцы и выражения индекса через запятую"
-      placeholder="Столбцы"
+      aria-label={m.indexColumns}
+      title={m.indexColumnsTitle}
+      placeholder={m.columns}
       spellCheck={false}
       value={draft ?? value}
       onChange={(event) => setDraft(event.target.value)}
@@ -363,10 +364,10 @@ function TypeField({ value, types, onCommit }: { value: string; types: string[];
   return (
     <>
       <input
-        aria-label="Тип поля"
-        title="Тип поля"
+        aria-label={m.fieldType}
+        title={m.fieldType}
         list={listId}
-        placeholder="Тип"
+        placeholder={m.type}
         spellCheck={false}
         value={draft ?? value}
         onChange={handleChange}

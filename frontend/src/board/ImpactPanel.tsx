@@ -7,19 +7,14 @@ import type { DiagramEditor } from '../diagram/editor.ts'
 import { boardImpact, cellName, type BoardImpactItem, type ImpactDepth, type ImpactPlace } from '../diagram/impact.ts'
 import { IMPACT_COLORS, type ImpactRole } from '../diagram/impactView.ts'
 import { useEditorState } from '../diagram/useEditorState.ts'
+import { impactMessages as m } from './board.messages.ts'
 
-const pluralRules = new Intl.PluralRules('ru')
+const steps = (count: number) => m.steps(count)
 
-/** `3 шага`, `5 шагов`. */
-function steps(count: number): string {
-  const words: Partial<Record<Intl.LDMLPluralRule, string>> = { one: 'шаг', few: 'шага', many: 'шагов' }
-  return `${count} ${words[pluralRules.select(count)] ?? 'шага'}`
-}
-
-const DEPTHS: readonly { value: ImpactDepth; label: string }[] = [
-  { value: 1, label: '1' },
-  { value: 2, label: '2' },
-  { value: 'all', label: 'Все' },
+const DEPTHS: readonly { value: ImpactDepth; label: () => string }[] = [
+  { value: 1, label: () => '1' },
+  { value: 2, label: () => '2' },
+  { value: 'all', label: () => m.all },
 ]
 
 /** A key of a color of the canvas. */
@@ -68,7 +63,7 @@ export function ImpactPanel({
   if (!editor || !document || !impact) return null
 
   const close = (
-    <Button type="button" variant="ghost" size="icon-sm" aria-label="Закончить анализ" title="Закончить анализ (Esc)" onClick={() => editor.clearImpact()}>
+    <Button type="button" variant="ghost" size="icon-sm" aria-label={m.end} title={m.endHint} onClick={() => editor.clearImpact()}>
       <X />
     </Button>
   )
@@ -77,18 +72,18 @@ export function ImpactPanel({
     const from = cellName(document, editor.pageId, impact.from)
     const to = cellName(document, editor.pageId, impact.to)
     return (
-      <aside aria-label="Путь между" className="pointer-events-auto flex w-[320px] max-w-full flex-col rounded-md border bg-background text-foreground shadow-lg">
+      <aside aria-label={m.path} className="pointer-events-auto flex w-[320px] max-w-full flex-col rounded-md border bg-background text-foreground shadow-lg">
         <header className="flex items-center gap-1 border-b px-3 py-2">
-          <h2 className="mr-auto text-sm font-semibold">{`Путь «${from}» → «${to}»`}</h2>
+          <h2 className="mr-auto text-sm font-semibold">{m.pathTitle(from, to)}</h2>
           {close}
         </header>
         <p className="flex items-center gap-2 p-3 text-sm">
           {impact.steps === null ? (
-            'Пути между ними нет'
+            m.noPath
           ) : (
             <>
               <Swatch role="path" />
-              {impact.directed ? steps(impact.steps) : `${steps(impact.steps)}, связи на пути идут в разные стороны`}
+              {impact.directed ? steps(impact.steps) : m.undirected(steps(impact.steps))}
             </>
           )}
         </p>
@@ -107,19 +102,19 @@ export function ImpactPanel({
 
   return (
     <aside
-      aria-label="Зависимости"
+      aria-label={m.dependencies}
       className="pointer-events-auto flex min-h-0 w-[320px] max-w-full flex-col overflow-hidden rounded-md border bg-background text-foreground shadow-lg"
     >
       <header className="flex items-center gap-1 border-b px-3 py-2">
-        <h2 className="mr-auto min-w-0 truncate text-sm font-semibold">{`Зависимости «${board.name}»`}</h2>
+        <h2 className="mr-auto min-w-0 truncate text-sm font-semibold">{m.dependenciesOf(board.name)}</h2>
         {close}
       </header>
       <div className="flex flex-col gap-3 overflow-y-auto p-3">
-        <div role="radiogroup" aria-label="Шаги" className="flex items-center gap-1 text-sm">
-          <span className="mr-1 text-xs text-muted-foreground">Шаги</span>
+        <div role="radiogroup" aria-label={m.depth} className="flex items-center gap-1 text-sm">
+          <span className="mr-1 text-xs text-muted-foreground">{m.depth}</span>
           {DEPTHS.map(({ value, label }) => (
             <Button
-              key={label}
+              key={value}
               type="button"
               role="radio"
               aria-checked={impact.depth === value}
@@ -128,12 +123,12 @@ export function ImpactPanel({
               className={cn(impact.depth === value && 'bg-accent text-accent-foreground')}
               onClick={() => editor.showDependencies(impact.cellId, value)}
             >
-              {label}
+              {label()}
             </Button>
           ))}
         </div>
-        <ItemList title="Зависит от" role="dependency" items={board.dependencies} onShow={show} />
-        <ItemList title="Зависят от него" role="dependent" items={board.dependents} onShow={show} />
+        <ItemList title={m.dependsOn} role="dependency" items={board.dependencies} onShow={show} />
+        <ItemList title={m.dependents} role="dependent" items={board.dependents} onShow={show} />
       </div>
     </aside>
   )
@@ -157,13 +152,13 @@ function ItemList({
         {`${title} (${items.length})`}
       </h3>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Ничего</p>
+        <p className="text-sm text-muted-foreground">{m.nothing}</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {items.map((item) => (
             <li key={item.key} className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
               <span className="font-medium">{item.name}</span>
-              {item.depth > 1 && <span className="text-xs text-muted-foreground">{`шаг ${item.depth}`}</span>}
+              {item.depth > 1 && <span className="text-xs text-muted-foreground">{m.step(item.depth)}</span>}
               {item.places.map((place) => (
                 <Button
                   key={place.pageId}
@@ -171,10 +166,10 @@ function ItemList({
                   variant="link"
                   size="xs"
                   className="h-auto px-0"
-                  title={`Открыть «${item.name}» на странице «${place.pageName}»`}
+                  title={m.open(item.name, place.pageName)}
                   onClick={() => onShow(place)}
                 >
-                  {`стр. «${place.pageName}»`}
+                  {m.onPage(place.pageName)}
                 </Button>
               ))}
             </li>

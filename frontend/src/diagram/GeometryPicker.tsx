@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { MIN_SHAPE_SIZE, type Box, type SelectionGeometry } from './editor.ts'
 import { NumberField } from './NumberField.tsx'
+import { pickerMessages } from './pickers.messages.ts'
 
-const NAME = 'Размер и положение'
+const m = pickerMessages.geometry
 
 /** A toolbar button that opens the width, the height, the position and the rotation of the selected shapes. */
 export function GeometryPicker({
@@ -21,29 +22,29 @@ export function GeometryPicker({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" title={NAME}>
+        <Button type="button" variant="ghost" size="sm" title={m.name}>
           <Ruler />
-          Размер
+          {m.size}
         </Button>
       </PopoverTrigger>
-      <PopoverContent aria-label={NAME} className="grid w-56 grid-cols-2 gap-x-3 gap-y-2">
-        <Field label="Ширина">
+      <PopoverContent aria-label={m.name} className="grid w-56 grid-cols-2 gap-x-3 gap-y-2">
+        <Field label={m.width}>
           <NumberField
-            label="Ширина"
+            label={m.width}
             value={geometry.width}
             min={MIN_SHAPE_SIZE}
             disabled={!geometry.canSetWidth}
-            title={geometry.canSetWidth ? 'Ширина' : 'Размер диаграммы последовательности задают её части'}
+            title={geometry.canSetWidth ? m.width : m.sequenceSize}
             onCommit={(width) => onChange({ width })}
           />
         </Field>
-        <Field label="Высота">
+        <Field label={m.height}>
           <NumberField
-            label="Высота"
+            label={m.height}
             value={geometry.height}
             min={MIN_SHAPE_SIZE}
             disabled={!geometry.canSetHeight}
-            title={geometry.canSetHeight ? 'Высота' : 'Высоту таблицы задают её поля, диаграммы последовательности — её части'}
+            title={geometry.canSetHeight ? m.height : m.fixedHeight}
             onCommit={(height) => onChange({ height })}
           />
         </Field>
@@ -53,12 +54,12 @@ export function GeometryPicker({
         <Field label="Y">
           <NumberField label="Y" value={geometry.y} onCommit={(y) => onChange({ y })} />
         </Field>
-        <Field label="Поворот, °">
+        <Field label={m.rotationField}>
           <NumberField
-            label="Поворот"
+            label={m.rotation}
             value={geometry.rotation}
             disabled={!geometry.canRotate}
-            title={geometry.canRotate ? 'Поворот по часовой стрелке, градусы' : 'Таблицы и группы не поворачиваются'}
+            title={geometry.canRotate ? m.rotationTitle : m.noRotation}
             onCommit={onRotate}
           />
         </Field>

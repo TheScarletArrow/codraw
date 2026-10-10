@@ -15,6 +15,7 @@ import {
 import { parseMessageLine } from '../mermaid/sequenceMermaid.ts'
 import { createCell } from './binding.ts'
 import { newId } from './ids.ts'
+import { sequenceShapeMessages as m } from './sequenceShapes.messages.ts'
 import { compareCells, type CellData } from './model.ts'
 import {
   ACTIVATE_KEY,
@@ -63,9 +64,6 @@ const PART_SHAPES: Record<SequencePart, string> = {
   else: 'codraw.seqBranch',
   end: 'codraw.seqEnd',
 }
-
-/** What an empty message shows on the canvas, so that it can be found and written. */
-export const MESSAGE_PLACEHOLDER = 'сообщение'
 
 /** A cell of a sequence diagram. */
 export function isSequence(cell: Cell | null | undefined): boolean {
@@ -565,7 +563,7 @@ class MessageShape extends Shape {
       c.setFontSize(Number(style.fontSize ?? 13))
       c.setFontStyle(2)
       const left = message?.self ? x + SELF_LABEL_X : x + w / 2
-      c.text(left, y + 2, 0, 0, MESSAGE_PLACEHOLDER, message?.self ? 'left' : 'center', 'top', false, '', 'visible', false, 0, '')
+      c.text(left, y + 2, 0, 0, m.messagePlaceholder, message?.self ? 'left' : 'center', 'top', false, '', 'visible', false, 0, '')
       c.restore()
     }
   }

@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import type { ImageUploadState } from './imageUploads.ts'
+import { imageMessages as m } from './board.messages.ts'
 
 /** «Загрузка изображения… 40%» while images are uploaded; goes under the header, in a region that is read out. */
 export function ImageUploadProgress({ state }: { state: ImageUploadState }) {
@@ -7,7 +8,7 @@ export function ImageUploadProgress({ state }: { state: ImageUploadState }) {
   const percent = Math.round(state.progress * 100)
   return (
     <p className="border-b bg-muted px-3 py-1 text-sm text-muted-foreground">
-      {state.count > 1 ? `Загрузка изображений (${state.count})… ${percent}%` : `Загрузка изображения… ${percent}%`}
+      {state.count > 1 ? m.uploadingMany(state.count, percent) : m.uploading(percent)}
     </p>
   )
 }
@@ -19,7 +20,7 @@ export function ImageUploadError({ state, onDismiss }: { state: ImageUploadState
     <div role="alert" className="flex items-center gap-x-3 border-b bg-destructive/10 px-3 py-1.5 text-sm text-destructive">
       <span className="flex-1">{state.error}</span>
       <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
-        Понятно
+        {m.dismiss}
       </Button>
     </div>
   )

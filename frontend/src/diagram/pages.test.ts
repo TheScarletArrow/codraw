@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
+import { setLocale } from '../i18n/i18n.ts'
 import { readAttribution, writeAttribution } from './attribution.ts'
 import {
   DEFAULT_PAGE_ID,
@@ -64,6 +65,11 @@ describe('pages', () => {
       ]),
     ).toBe('Страница 3')
     expect(nextPageName([{ id: 'a', name: 'Страница 2', order: 'a0' }])).toBe('Страница 3')
+  })
+
+  it('names a new page in the language of the interface', () => {
+    setLocale('en')
+    expect(nextPageName([{ id: 'a', name: 'Page 2', order: 'a0' }])).toBe('Page 3')
   })
 
   it('adds a page with its root and layer cells after the given page', () => {

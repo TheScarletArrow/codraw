@@ -23,7 +23,8 @@ import { snapshotDocument } from '../diagram/diff.ts'
 import { mergeConflicts, mergedSnapshot, mergeProposal } from '../diagram/merge.ts'
 import { timeAgo } from '../notifications/notifications.ts'
 import { SchemaMigrationMenu } from '../sql/SchemaMigrationMenu.tsx'
-import { draftPath, isOpen, proposalBaseKey, proposalKey, proposalsKey, STATUS_LABELS } from './proposals.ts'
+import { proposalMessages as m } from './messages.ts'
+import { draftPath, isOpen, proposalBaseKey, proposalKey, proposalsKey } from './proposals.ts'
 import { useDraftConnection } from './useDraftConnection.ts'
 
 interface ProposalReviewProps {
@@ -122,18 +123,18 @@ export function ProposalReview({
   const withdraw = useMutation({ mutationFn: () => withdrawProposal(boardId, proposalId), onSuccess: decided })
   const unsyncedHint = useId()
 
-  if (isNotFound(proposal.error)) return <Shell title="Предложение" onClose={onClose} message="Предложение не найдено" />
-  if (proposal.isError) return <Shell title="Предложение" onClose={onClose} message="Не удалось загрузить предложение" alert />
-  if (!proposal.data) return <Shell title="Предложение" onClose={onClose} message="Загрузка предложения…" />
+  if (isNotFound(proposal.error)) return <Shell title={m.proposal} onClose={onClose} message={m.notFound} />
+  if (proposal.isError) return <Shell title={m.proposal} onClose={onClose} message={m.proposalLoadFailed} alert />
+  if (!proposal.data) return <Shell title={m.proposal} onClose={onClose} message={m.proposalLoading} />
 
   const { title, description, author, createdAt, comment } = proposal.data
   const open = isOpen(proposal.data)
   const mine = author.id === userId
   const failed = accept.isError || decline.isError || withdraw.isError
   return (
-    <section aria-label={`Предложение «${title}»`} className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <section aria-label={m.proposalNamed(title)} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/50 px-3 py-2 text-sm">
-        <span className="font-medium">Предложение «{title}»</span>
+        <span className="font-medium">{m.proposalNamed(title)}</span>
         <span className="text-muted-foreground">
           {author.name} · <time dateTime={createdAt}>{timeAgo(createdAt)}</time>
         </span>
@@ -142,10 +143,10 @@ export function ProposalReview({
         {failed && (
           <span role="alert" className="text-destructive">
             {accept.isError
-              ? 'Не удалось принять предложение'
+              ? m.acceptFailed
               : decline.isError
-                ? 'Не удалось отклонить предложение'
-                : 'Не удалось отозвать предложение'}
+                ? m.declineFailed
+                : m.withdrawFailed}
           </span>
         )}
         <SchemaMigrationMenu
@@ -158,73 +159,69 @@ export function ProposalReview({
                 }
               : null
           }
-          states={{ from: 'текущая доска', to: `доска с предложением «${title}»` }}
+          states={{ from: m.currentBoard, to: m.boardWithProposal(title) }}
           boardTitle={boardTitle}
           disabled={!baseDocument || !draftDocument}
         />
         <Button asChild variant="outline" size="sm">
-          <Link to={draftPath(boardId, proposalId)}>{mine && open ? 'Править черновик' : 'Открыть черновик'}</Link>
+          <Link to={draftPath(boardId, proposalId)}>{mine && open ? m.editDraft : m.openDraft}</Link>
         </Button>
         {open && mine && (
           <ConfirmedAction
-            label="Отозвать"
-            title="Отзыв предложения"
-            confirmLabel="Отозвать"
+            label={m.withdraw}
+            title={m.withdrawTitle}
+            confirmLabel={m.withdraw}
             variant="outline"
             disabled={withdraw.isPending}
             onConfirm={() => withdraw.mutate()}
           >
-            Предложение закроется, а его черновик останется только для просмотра.
+            {m.withdrawText}
           </ConfirmedAction>
         )}
         {open && reviewer && (
           <>
             {!synced && (
               <span id={unsyncedHint} className="text-muted-foreground">
-                Принять можно после синхронизации
+                {m.acceptAfterSync}
               </span>
             )}
             <DeclineButton disabled={decline.isPending} onDecline={(text) => decline.mutate(text)} />
             <ConfirmedAction
-              label="Принять"
-              title="Принятие предложения"
-              confirmLabel="Принять"
+              label={m.accept}
+              title={m.acceptTitle}
+              confirmLabel={m.accept}
               disabled={!synced || !baseDocument || !draftDocument || accept.isPending}
               describedBy={synced ? undefined : unsyncedHint}
               onConfirm={() => baseDocument && draftDocument && accept.mutate({ base: baseDocument, draft: draftDocument })}
             >
-              Изменения предложения появятся на доске у всех участников.{' '}
-              {conflictCount > 0
-                ? `Где доску после предложения тоже изменили (${conflictCount}), останется вариант предложения.`
-                : 'Где доску после предложения тоже изменили, останется вариант предложения.'}{' '}
-              Текущее состояние доски сохранится в истории версий.
+              {m.acceptText} {conflictCount > 0 ? m.conflictsCount(conflictCount) : m.conflicts} {m.historyKept}
             </ConfirmedAction>
           </>
         )}
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Закрыть
+          {m.close}
         </Button>
       </div>
       {(description || comment) && (
         <div className="flex flex-col gap-1 border-b px-3 py-2 text-sm whitespace-pre-wrap">
           {description && <p>{description}</p>}
-          {comment && <p className="text-muted-foreground">Комментарий: {comment}</p>}
+          {comment && <p className="text-muted-foreground">{m.comment(comment)}</p>}
         </div>
       )}
       {base.isError || draft.status === 'not-found' || draft.status === 'forbidden' ? (
         <p role="alert" className="p-6 text-destructive">
-          Не удалось загрузить черновик
+          {m.draftLoadFailed}
         </p>
       ) : baseDocument && draftDocument ? (
         <VersionView
           version={baseDocument}
           board={draftDocument}
-          unchanged="В черновике пока нет изменений."
+          unchanged={m.draftUnchanged}
           participantId={userId}
           conflicts={conflicts}
         />
       ) : (
-        <p className="p-6 text-muted-foreground">Загрузка черновика…</p>
+        <p className="p-6 text-muted-foreground">{m.draftLoading}</p>
       )}
     </section>
   )
@@ -232,8 +229,8 @@ export function ProposalReview({
 
 /** What became of a closed proposal and who decided: «Принято: Алиса, 5 минут назад». */
 function decision({ status, decidedBy, decidedAt }: Proposal): string {
-  const who = decidedBy?.name ?? 'Удалённый пользователь'
-  return `${STATUS_LABELS[status]}: ${who}${decidedAt ? `, ${timeAgo(decidedAt)}` : ''}`
+  const who = decidedBy?.name ?? m.deletedUser
+  return `${m.statuses[status]}: ${who}${decidedAt ? `, ${timeAgo(decidedAt)}` : ''}`
 }
 
 /** «Отклонить» with a comment to the author, if any. */
@@ -244,12 +241,12 @@ function DeclineButton({ disabled, onDecline }: { disabled: boolean; onDecline: 
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm" disabled={disabled}>
-          Отклонить
+          {m.decline}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
         <form
-          aria-label="Отклонение предложения"
+          aria-label={m.declineTitle}
           className="flex flex-col gap-2 p-2"
           onSubmit={(event) => {
             event.preventDefault()
@@ -258,8 +255,8 @@ function DeclineButton({ disabled, onDecline }: { disabled: boolean; onDecline: 
           }}
         >
           <textarea
-            aria-label="Комментарий автору"
-            placeholder="Почему, если нужно"
+            aria-label={m.commentToAuthor}
+            placeholder={m.whyPlaceholder}
             value={comment}
             maxLength={PROPOSAL_TEXT_MAX_LENGTH}
             rows={3}
@@ -268,10 +265,10 @@ function DeclineButton({ disabled, onDecline }: { disabled: boolean; onDecline: 
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Отмена
+              {m.cancel}
             </Button>
             <Button type="submit" size="sm">
-              Отклонить
+              {m.decline}
             </Button>
           </div>
         </form>
@@ -287,7 +284,7 @@ function Shell({ title, message, alert = false, onClose }: { title: string; mess
       <div className="flex items-center gap-3 border-b bg-muted/50 px-3 py-2 text-sm">
         <span className="flex-1 font-medium">{title}</span>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Закрыть
+          {m.close}
         </Button>
       </div>
       <p role={alert ? 'alert' : undefined} className={alert ? 'p-6 text-destructive' : 'p-6 text-muted-foreground'}>

@@ -1,15 +1,15 @@
 import { tagLimitOf, type ListedBoard } from '../api/boards.ts'
 import { folderLimitOf, isFolderNameTaken } from '../api/folders.ts'
 import { searchText } from '../diagram/canvasSearch.ts'
+import { boardListMessages as m } from './messages.ts'
 
 /** How the list of boards is ordered: by when the user opened a board, by title, or by when it changed. */
 export type BoardSort = 'opened' | 'title' | 'changed'
 
-export const BOARD_SORTS: { value: BoardSort; label: string }[] = [
-  { value: 'opened', label: 'Недавно открытые' },
-  { value: 'title', label: 'По названию' },
-  { value: 'changed', label: 'Недавно изменённые' },
-]
+const SORTS: readonly BoardSort[] = ['opened', 'title', 'changed']
+
+/** The orders the user chooses from, with their names in the language of the page. */
+export const boardSorts = (): { value: BoardSort; label: string }[] => SORTS.map((value) => ({ value, label: m.sorts[value] }))
 
 /** The order of the list until the user chooses another one, as the backend gives own boards. */
 export const DEFAULT_BOARD_SORT: BoardSort = 'changed'
@@ -21,7 +21,7 @@ const SORT_KEY = 'codraw.boards.sort'
 export function readBoardSort(): BoardSort {
   try {
     const stored = localStorage.getItem(SORT_KEY)
-    return BOARD_SORTS.find((sort) => sort.value === stored)?.value ?? DEFAULT_BOARD_SORT
+    return SORTS.find((sort) => sort === stored) ?? DEFAULT_BOARD_SORT
   } catch {
     return DEFAULT_BOARD_SORT
   }
@@ -56,8 +56,8 @@ export function sortBoards<T extends ListedBoard>(boards: T[], sort: BoardSort):
 }
 
 /** The time a row of a board shows: the one the list is ordered by; `null` for a board never opened. */
-export function boardTime(board: ListedBoard, sort: BoardSort): { at: string | null; label: 'Открыта' | 'Изменена' } {
-  return sort === 'opened' ? { at: board.openedAt, label: 'Открыта' } : { at: board.updatedAt, label: 'Изменена' }
+export function boardTime(board: ListedBoard, sort: BoardSort): { at: string | null; label: string } {
+  return sort === 'opened' ? { at: board.openedAt, label: m.opened } : { at: board.updatedAt, label: m.changed }
 }
 
 /** Which boards the folder filter keeps: all, those in no folder, or those in one folder. */
@@ -176,25 +176,17 @@ export function highlightMatch(fragment: string, query: string): { before: strin
   return { before: fragment.slice(0, at), match: fragment.slice(at, at + wanted.length), after: fragment.slice(at + wanted.length) }
 }
 
-const pluralRules = new Intl.PluralRules('ru')
-
-/** «не больше 21 тега», «не больше 10 тегов»: the genitive after «не больше». */
-const atMost = (limit: number, one: string, many: string) =>
-  `не больше ${limit} ${pluralRules.select(limit) === 'one' ? one : many}`
-
 /** Why the tags of a board did not change, in words. */
 export function tagErrorMessage(error: unknown): string {
   const reached = tagLimitOf(error)
-  if (!reached) return 'Не удалось изменить теги'
-  return reached.scope === 'board'
-    ? `У доски может быть ${atMost(reached.limit, 'тега', 'тегов')}`
-    : `Можно завести ${atMost(reached.limit, 'разного тега', 'разных тегов')}`
+  if (!reached) return m.tagsFailed
+  return reached.scope === 'board' ? m.boardTagLimit(reached.limit) : m.userTagLimit(reached.limit)
 }
 
 /** Why a folder was not created or renamed, in words. */
 export function folderErrorMessage(error: unknown, action: 'create' | 'rename'): string {
-  if (isFolderNameTaken(error)) return 'Папка с таким названием уже есть'
+  if (isFolderNameTaken(error)) return m.folderTaken
   const limit = folderLimitOf(error)
-  if (limit !== null) return `Можно завести ${atMost(limit, 'папки', 'папок')}`
-  return action === 'create' ? 'Не удалось создать папку' : 'Не удалось переименовать папку'
+  if (limit !== null) return m.folderLimit(limit)
+  return action === 'create' ? m.createFolderFailed : m.renameFolderFailed
 }

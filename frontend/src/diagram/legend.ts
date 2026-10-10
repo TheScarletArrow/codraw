@@ -3,7 +3,6 @@ import { HOLLOW_TRIANGLE, markerOf } from './edgeMarkers.ts'
 import {
   FRAME_SHAPES,
   INTERACTION_KEY,
-  INTERACTION_LABELS,
   isElementKind,
   isInteraction,
   propertyLine,
@@ -11,6 +10,7 @@ import {
   TECHNOLOGY_KEY,
 } from './elementKinds.ts'
 import { isFreehandStyle } from './freehand.ts'
+import { legendMessages as m } from './legend.messages.ts'
 import { isImageStyle } from './images.ts'
 import { isLegendStyle, LEGEND_KEY } from './legendKeys.ts'
 import { ELEMENT_STYLE_KEYS } from './model.ts'
@@ -64,7 +64,7 @@ const colorKey = (value: unknown) => String(value).trim().toLowerCase()
 
 /** A color in words: its name in the palette in lower case, «без заливки» for none, otherwise the color as written. */
 export function colorWord(color: string): string {
-  if (color === 'none') return 'без заливки'
+  if (color === 'none') return m.noFill
   const named = PALETTE.find((entry) => entry.value === color)
   return named ? named.name.toLowerCase() : color
 }
@@ -119,14 +119,14 @@ function edgeItem(record: LegendRecord): LegendItem | null {
   const interaction = isInteraction(style[INTERACTION_KEY]) ? style[INTERACTION_KEY] : null
   const technology = propertyLine(style[TECHNOLOGY_KEY], PROPERTY_LIMITS.technology)
   const notes: string[] = []
-  if (dashed) notes.push('пунктир')
-  if (start === 'none' && end === 'none') notes.push('без стрелки')
-  else if (start !== 'none' && end !== 'none') notes.push('в обе стороны')
+  if (dashed) notes.push(m.dashed)
+  if (start === 'none' && end === 'none') notes.push(m.noArrow)
+  else if (start !== 'none' && end !== 'none') notes.push(m.bothWays)
   // The markers of UML tell relations of use cases apart.
-  if (start === 'open' || end === 'open') notes.push('открытая стрелка')
-  if (start === HOLLOW_TRIANGLE || end === HOLLOW_TRIANGLE) notes.push('полый треугольник')
-  if (ownStroke) notes.push(ownStroke === 'none' ? 'без линии' : colorWord(ownStroke))
-  const head = interaction ? `${INTERACTION_LABELS[interaction]} связь` : 'Связь'
+  if (start === 'open' || end === 'open') notes.push(m.openArrow)
+  if (start === HOLLOW_TRIANGLE || end === HOLLOW_TRIANGLE) notes.push(m.hollowTriangle)
+  if (ownStroke) notes.push(ownStroke === 'none' ? m.noLine : colorWord(ownStroke))
+  const head = interaction ? m.interactionEdge[interaction] : m.edge
   return {
     key: `edge:${JSON.stringify([dashed ? 1 : 0, start, end, ownStroke ?? '', interaction ?? '', technology])}`,
     type: 'edge',
@@ -202,9 +202,6 @@ export function legendSettingsValue(settings: LegendSettings): string | undefine
 /** How many items a legend shows at most; the others are counted in a last row. */
 export const MAX_LEGEND_ROWS = 30
 
-/** What an empty legend says. */
-export const EMPTY_LEGEND = 'Нет фигур и связей'
-
 /** A row of a legend: an item with its sample, the count of items beyond the limit, or the line of an empty legend. */
 export type LegendRow =
   | { type: 'shape' | 'edge'; key: string; label: string; cellId: string; ratio: number }
@@ -214,7 +211,7 @@ export type LegendRow =
 export function legendRows(items: readonly LegendItem[], settings: LegendSettings): LegendRow[] {
   const hidden = new Set(settings.hidden)
   const shown = items.filter((item) => !hidden.has(item.key))
-  if (shown.length === 0) return [{ type: 'empty', key: null, label: EMPTY_LEGEND, cellId: null, ratio: 1 }]
+  if (shown.length === 0) return [{ type: 'empty', key: null, label: m.empty, cellId: null, ratio: 1 }]
   const rows: LegendRow[] = shown.slice(0, MAX_LEGEND_ROWS).map((item) => ({
     type: item.type,
     key: item.key,
@@ -223,7 +220,7 @@ export function legendRows(items: readonly LegendItem[], settings: LegendSetting
     ratio: item.ratio,
   }))
   if (shown.length > MAX_LEGEND_ROWS) {
-    rows.push({ type: 'more', key: null, label: `…и ещё ${shown.length - MAX_LEGEND_ROWS}`, cellId: null, ratio: 1 })
+    rows.push({ type: 'more', key: null, label: m.more(shown.length - MAX_LEGEND_ROWS), cellId: null, ratio: 1 })
   }
   return rows
 }

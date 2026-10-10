@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { MESSAGE_MAX_LENGTH, roleGivenOf } from '../api/accessRequests.ts'
 import { limitOf, type MemberRole } from '../api/members.ts'
 import type { AccessWish } from './accessRequests.ts'
-import { counted, ROLE_LABELS } from './members.ts'
+import { shareMessages as m } from './share.messages.ts'
 
 const ROLES: MemberRole[] = ['viewer', 'editor']
 
@@ -12,8 +12,8 @@ const ROLES: MemberRole[] = ['viewer', 'editor']
 function failureOf(error: unknown): string | null {
   if (roleGivenOf(error)) return null
   const limit = limitOf(error)
-  if (limit === null) return 'Не удалось отправить запрос'
-  return `У доски уже ${counted(limit, ['запрос доступа', 'запроса доступа', 'запросов доступа'])} — попробуйте позже`
+  if (limit === null) return m.sendFailed
+  return m.requestLimit(limit)
 }
 
 interface AccessRequestFormProps {
@@ -43,7 +43,7 @@ export function AccessRequestForm({ label, choice, submitLabel, pending, error, 
     <form aria-label={label} className="flex flex-col gap-3" onSubmit={submit}>
       {choice && (
         <fieldset className="flex flex-col gap-1" disabled={pending}>
-          <legend className="mb-1 text-sm font-medium">Какой доступ нужен</legend>
+          <legend className="mb-1 text-sm font-medium">{m.whichAccess}</legend>
           {ROLES.map((option) => (
             <label
               key={option}
@@ -59,27 +59,27 @@ export function AccessRequestForm({ label, choice, submitLabel, pending, error, 
                 checked={role === option}
                 onChange={() => setRole(option)}
               />
-              {ROLE_LABELS[option]}
+              {m.roles[option]}
             </label>
           ))}
         </fieldset>
       )}
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-message`} className="text-sm font-medium">
-          Сообщение владельцу
+          {m.messageToOwner}
         </label>
         <textarea
           id={`${id}-message`}
           value={message}
           maxLength={MESSAGE_MAX_LENGTH}
           rows={3}
-          placeholder="Необязательно: кто вы и зачем вам доска"
+          placeholder={m.messagePlaceholder}
           disabled={pending}
           className="min-h-16 rounded-md border bg-background px-2 py-1.5 text-sm"
           onChange={(event) => setMessage(event.target.value)}
         />
         <span className="self-end text-xs text-muted-foreground">
-          {message.length} из {MESSAGE_MAX_LENGTH}
+          {m.length(message.length, MESSAGE_MAX_LENGTH)}
         </span>
       </div>
       {failure && (

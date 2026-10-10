@@ -7,6 +7,7 @@ import type { DiagramEditor } from '../diagram/editor.ts'
 import { viewOf } from '../diagram/modelViews.ts'
 import { sliceLabel, viewTitle } from '../diagram/viewRule.ts'
 import { elementName, hiddenLabel, modelStore } from './modelStore.ts'
+import { viewMessages as m } from './messages.ts'
 
 /**
  * The bar over the canvas of a page that is a view of the model: what it shows and its slice, and for who edits the
@@ -62,25 +63,25 @@ function Bar({
   return (
     <div
       role="region"
-      aria-label="Представление"
+      aria-label={m.view}
       className="absolute top-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-md border bg-background px-2 py-0.5 text-sm shadow-sm"
     >
       <ScanEye aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 truncate">
-        <span className="text-muted-foreground">Представление: </span>
-        <span className="font-medium">{missing ? 'элемента больше нет в модели' : title}</span>
+        <span className="text-muted-foreground">{m.viewPrefix}</span>
+        <span className="font-medium">{missing ? m.missing : title}</span>
         {slice && <span className="text-muted-foreground"> · {slice}</span>}
       </span>
       {canChange && hidden.length > 0 && (
         <Popover open={hiddenOpen} onOpenChange={setHiddenOpen}>
           <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2" title="Скрытое на этом представлении">
+            <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2" title={m.hiddenOnThisView}>
               <EyeOff aria-hidden />
-              Скрыто: {hidden.length}
+              {m.hiddenCount(hidden.length)}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" aria-label="Скрытое на представлении" className="flex w-72 flex-col gap-1 p-2">
-            <ul aria-label="Скрытое" className="flex max-h-64 flex-col overflow-y-auto">
+          <PopoverContent align="start" aria-label={m.hiddenOnView} className="flex w-72 flex-col gap-1 p-2">
+            <ul aria-label={m.hidden} className="flex max-h-64 flex-col overflow-y-auto">
               {hidden.map(({ key, label }) => (
                 <li key={key} className="flex items-center gap-2 py-0.5 text-sm">
                   <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -89,13 +90,13 @@ function Bar({
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
-                    aria-label={`Вернуть ${label}`}
+                    aria-label={m.restoreItem(label)}
                     onClick={() => {
                       editor.showOnView([key])
                       if (hidden.length === 1) setHiddenOpen(false)
                     }}
                   >
-                    Вернуть
+                    {m.restore}
                   </Button>
                 </li>
               ))}
@@ -109,7 +110,7 @@ function Bar({
                 setHiddenOpen(false)
               }}
             >
-              Вернуть всё
+              {m.restoreAll}
             </Button>
           </PopoverContent>
         </Popover>
@@ -118,18 +119,18 @@ function Bar({
         <>
           <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2" onClick={onEditRule}>
             <SlidersHorizontal aria-hidden />
-            Правило…
+            {m.rule}
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="h-7 shrink-0 gap-1 px-2"
-            title="Разложить страницу автораскладкой"
+            title={m.autoLayoutHint}
             onClick={() => void editor.autoLayout('right')}
           >
             <LayoutGrid aria-hidden />
-            Разложить
+            {m.autoLayout}
           </Button>
         </>
       )}

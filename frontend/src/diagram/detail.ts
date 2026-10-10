@@ -6,6 +6,7 @@ import { composeLabel, elementProperties, shapeIdOf } from './elementProps.ts'
 import { newId } from './ids.ts'
 import { LINK_KEY, pageLink, parseLink } from './links.ts'
 import { LOCKED_BY_KEY, LOCKED_KEY } from './locks.ts'
+import { modelMessages } from './model.messages.ts'
 import {
   cellElementId,
   ELEMENT_KEY,
@@ -37,8 +38,6 @@ import { findShape, markedStyle } from './shapes.ts'
 
 /** What the page of detail of an element shows: the containers of a system, or the components of a container. */
 export type DetailLevel = 'containers' | 'components'
-
-const LEVEL_NAMES: Record<DetailLevel, string> = { containers: 'контейнеры', components: 'компоненты' }
 
 /** Horizontal room between the boundary and the elements around it, and vertical room between these. */
 const GAP_X = 120
@@ -148,7 +147,7 @@ export function createDetailPage(doc: Y.Doc, ref: CellRef, author: Author | null
 
   const pageId = newId()
   writePage(doc, pageId, {
-    name: `${properties.name || 'Без имени'}: ${LEVEL_NAMES[level]}`,
+    name: modelMessages.detailPage[level](properties.name || modelMessages.unnamed),
     order: orderAfterPage(doc, ref.pageId),
     detailOf: { pageId: ref.pageId, cellId: ref.cellId, elementId },
   })

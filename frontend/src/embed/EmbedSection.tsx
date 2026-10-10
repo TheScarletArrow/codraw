@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import type { Board } from '../api/boards.ts'
 import { disableEmbed, enableEmbed, type Embed } from '../api/embed.ts'
 import { embedKey, embedMarkdown, embedUrl } from './links.ts'
+import { embedMessages as m } from './messages.ts'
 import { publishEmbed } from './useEmbedPublisher.ts'
 
 /** How long «Скопировано» replaces the label of a copy button, in milliseconds. */
@@ -60,7 +61,7 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
 
   if (!isOwner && !embed) return null
   return (
-    <section aria-label="Живая картинка" className="flex flex-col gap-1.5 border-t pt-3">
+    <section aria-label={m.liveImage} className="flex flex-col gap-1.5 border-t pt-3">
       {isOwner ? (
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
@@ -76,23 +77,23 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
               }
             }}
           />
-          Живая картинка
+          {m.liveImage}
         </label>
       ) : (
-        <h3 className="text-sm font-medium">Живая картинка</h3>
+        <h3 className="text-sm font-medium">{m.liveImage}</h3>
       )}
       <p className="text-xs text-muted-foreground">
         {embed
-          ? 'Картинка страницы обновляется после правок. Её видит любой, у кого есть ссылка, даже если доступ к доске закрыт.'
-          : 'Ссылка на картинку страницы, которая обновляется после правок: для README, вики и задач.'}
+          ? m.liveOn
+          : m.liveOff}
       </p>
       {embed && (
         <>
           {isOwner && (
             <label className="flex items-center gap-2 text-sm">
-              Страница
+              {m.page}
               <select
-                aria-label="Страница картинки"
+                aria-label={m.imagePage}
                 className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
                 value={embed.pageId}
                 disabled={pending}
@@ -108,14 +109,14 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
           )}
           <input
             readOnly
-            aria-label="Ссылка на картинку"
+            aria-label={m.imageLink}
             value={embedUrl(embed)}
             className="h-8 min-w-0 rounded-md border bg-muted/50 px-2 text-sm"
             onFocus={(event) => event.target.select()}
           />
           <div className="flex gap-2">
             <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => void copy(embedUrl(embed), 'link')}>
-              {copied === 'link' ? 'Скопировано' : 'Копировать ссылку'}
+              {copied === 'link' ? m.copied : m.copyLink}
             </Button>
             <Button
               type="button"
@@ -124,14 +125,14 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
               className="flex-1"
               onClick={() => void copy(embedMarkdown(embed, board.title), 'markdown')}
             >
-              {copied === 'markdown' ? 'Скопировано' : 'Копировать Markdown'}
+              {copied === 'markdown' ? m.copied : m.copyMarkdown}
             </Button>
           </div>
         </>
       )}
       {(enable.isError || disable.isError) && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось изменить живую картинку
+          {m.changeFailed}
         </p>
       )}
     </section>

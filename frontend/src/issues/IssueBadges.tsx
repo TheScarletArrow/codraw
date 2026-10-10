@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import type { IssueLink } from '../api/issues.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { linksByCell } from './issues.ts'
+import { issueMessages as m } from './messages.ts'
 
 /** The height of a badge and its gap from the element, as of the other badges. */
 const BADGE_SIZE = 18
@@ -37,7 +38,7 @@ export function IssueBadges({
         if (!bounds) return null
         const open = cellLinks.filter((link) => link.state === 'open').length
         const Icon = open > 0 ? CircleDot : CircleCheck
-        const label = `Задачи элемента: ${cellLinks.length}, открытых: ${open}`
+        const label = m.badge(cellLinks.length, open)
         return (
           <button
             key={cellId}

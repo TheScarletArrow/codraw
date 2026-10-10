@@ -7,6 +7,7 @@ import { relativeTime } from '../lib/relativeTime.ts'
 import { STATUS_LABELS, statusTime, type ElementStatus } from '../diagram/status.ts'
 import { StatusIcon } from '../diagram/StatusIcon.tsx'
 import { countStatuses, listStatuses, type StatusItem } from './statusList.ts'
+import { boardMessages as m } from './board.messages.ts'
 
 /** The shortest time between two readings of a board that others change: a drag gives dozens of changes a second. */
 const STATUSES_INTERVAL_MS = 150
@@ -48,13 +49,13 @@ export function StatusSummary({
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" title="Элементы со статусом" className="shrink-0 whitespace-nowrap">
+        <Button type="button" variant="ghost" size="sm" title={m.statuses} className="shrink-0 whitespace-nowrap">
           <StatusIcon status="review" />
-          {counts.review} на ревью
+          {m.inReview(counts.review)}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" aria-label="Статусы элементов" className="flex max-h-[70vh] w-80 flex-col p-0">
-        <div role="tablist" aria-label="Статус" className="flex gap-1 border-b p-1">
+      <PopoverContent align="end" aria-label={m.statusesOfElements} className="flex max-h-[70vh] w-80 flex-col p-0">
+        <div role="tablist" aria-label={m.status} className="flex gap-1 border-b p-1">
           {TABS.map((status) => (
             <button
               key={status}
@@ -91,7 +92,7 @@ function StatusList({ items, label, onSelect }: { items: StatusItem[]; label: st
   if (items.length === 0) {
     return (
       <p role="tabpanel" aria-label={label} className="p-3 text-sm text-muted-foreground">
-        Нет элементов со статусом «{label}»
+        {m.noStatus(label)}
       </p>
     )
   }

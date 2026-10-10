@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
+import { setLocale } from '../i18n/i18n.ts'
 import { ELEMENT_KEY, getCells, initializeDocument, readCell, ROOT_CELL_ID, writeCell, type CellData } from '../diagram/model.ts'
 import { addPage } from '../diagram/pages.ts'
 import { createViewPage } from '../diagram/modelViews.ts'
@@ -239,5 +240,11 @@ describe('checks of the architecture', () => {
       'nesting «API» Контейнер вне границы системы',
       'nesting «База» Контейнер вне границы системы',
     ])
+  })
+
+  it('counts remarks in English in the English interface', () => {
+    setLocale('en')
+    expect(issuesLabel(1)).toBe('1 remark')
+    expect(issuesLabel(3)).toBe('3 remarks')
   })
 })

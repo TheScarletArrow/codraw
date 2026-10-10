@@ -3,6 +3,7 @@ import { STICKY_COLORS } from './colors.ts'
 import { LEGEND_PRESET, LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_PRESET, SEQUENCE_SHAPE } from './sequence.ts'
 import { PROVIDER_SHAPES, type ProviderId } from './providers.ts'
+import { type NamedShapeId, shapeMessages as m, type ShapeSectionKey } from './shapes.messages.ts'
 
 export type ShapeId =
   | ProviderId
@@ -121,6 +122,8 @@ export interface ShapePreset {
 export type ShapeGroup = 'basic' | 'elements' | 'tables' | 'flowchart' | 'bpmn' | 'system' | 'uml' | 'usecase' | 'c4'
 
 export interface ShapeSection {
+  id: ShapeSectionKey
+  /** The title in the language of the interface. */
   title: string
   group: ShapeGroup
   shapes: ShapePreset[]
@@ -202,89 +205,86 @@ const c4Style = (fillColor: string, strokeColor: string, fontColor = '#ffffff'):
 })
 
 /**
+ * A shape of CoDraw whose name in the palette and text on the canvas are in the language of the interface at the moment
+ * they are read: the palette shows the name, a new shape gets the text.
+ */
+function named(preset: Omit<ShapePreset, 'id' | 'label' | 'value'> & { id: NamedShapeId }): ShapePreset {
+  const { id } = preset
+  return Object.defineProperties({ ...preset } as ShapePreset, {
+    label: { get: () => m.labels[id], enumerable: true },
+    value: { get: () => (m.values as Partial<Record<NamedShapeId, string>>)[id] ?? '', enumerable: true },
+  })
+}
+
+/**
  * A legend, in the sections of architecture and of C4: its items and their layout set its size, and its look but the
  * shape comes from the hooks of the canvas; see `legend.ts`. No edge goes to it, here and in draw.io.
  */
-const LEGEND: ShapePreset = {
+const LEGEND: ShapePreset = named({
   id: LEGEND_PRESET,
-  label: 'Легенда',
   width: 200,
   height: 80,
-  value: 'Легенда',
   style: { shape: LEGEND_SHAPE, connectable: false },
-}
+})
 
 /** Shapes of the palette by section. Style keys and shape names match draw.io, so they map to `.drawio` one to one. */
 export const SHAPE_SECTIONS: ShapeSection[] = [
   {
-    title: 'Основные',
+    id: 'basic',
+    get title() {
+      return m.sections.basic
+    },
     group: 'basic',
     shapes: [
-      { id: 'rectangle', label: 'Прямоугольник', width: 120, height: 60, value: '', style: {} },
-      { id: 'rounded', label: 'Скруглённый прямоугольник', width: 120, height: 60, value: '', style: { rounded: true } },
-      {
+      named({ id: 'rectangle', width: 120, height: 60, style: {} }),
+      named({ id: 'rounded', width: 120, height: 60, style: { rounded: true } }),
+      named({
         id: 'ellipse',
-        label: 'Эллипс',
         width: 120,
         height: 80,
-        value: '',
         style: { shape: 'ellipse', perimeter: 'ellipsePerimeter' },
-      },
-      {
+      }),
+      named({
         id: 'rhombus',
-        label: 'Ромб',
         width: 120,
         height: 80,
-        value: '',
         style: { shape: 'rhombus', perimeter: 'rhombusPerimeter' },
-      },
-      {
+      }),
+      named({
         id: 'triangle',
-        label: 'Треугольник',
         width: 110,
         height: 90,
-        value: '',
         style: { shape: 'codraw.triangle' },
-      },
-      {
+      }),
+      named({
         id: 'hexagon',
-        label: 'Шестиугольник',
         width: 120,
         height: 80,
-        value: '',
         style: { shape: 'hexagon', perimeter: 'hexagonPerimeter' },
-      },
-      {
+      }),
+      named({
         id: 'pentagon',
-        label: 'Пятиугольник',
         width: 120,
         height: 90,
-        value: '',
         style: { shape: 'codraw.pentagon' },
-      },
-      {
+      }),
+      named({
         id: 'star',
-        label: 'Звезда',
         width: 110,
         height: 110,
-        value: '',
         style: { shape: 'codraw.star' },
-      },
-      {
+      }),
+      named({
         id: 'text',
-        label: 'Текст',
         width: 100,
         height: 30,
-        value: 'Текст',
         // As in draw.io, the width of a text follows the text.
         style: { fillColor: 'none', strokeColor: 'none', autosize: true },
-      },
-      {
+      }),
+      named({
         id: 'sticky',
-        label: 'Стикер',
         width: STICKY_SIZE,
         height: STICKY_SIZE,
-        value: '',
         // The keys of the notes of draw.io whose text fits them: words wrap, and the size of the text fits the sticky.
         style: {
           fillColor: STICKY_COLORS[0].value,
@@ -295,34 +295,36 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
           fontSize: STICKY_FONT_SIZE,
           spacingBottom: STICKY_SIGNATURE_ROOM,
         },
-      },
+      }),
     ],
   },
   {
-    title: 'База данных',
+    id: 'database',
+    get title() {
+      return m.sections.database
+    },
     group: 'tables',
     shapes: [
-      {
+      named({
         id: 'table',
-        label: 'Таблица',
         width: 180,
         height: TABLE_HEADER_HEIGHT + TABLE_FIELD_HEIGHT,
-        value: 'Таблица',
         style: { ...TABLE_STYLE, dbVendor: 'postgresql', autosize: true },
         children: [{ value: 'id uuid PK', height: TABLE_FIELD_HEIGHT, style: TABLE_FIELD_STYLE }],
-      },
+      }),
     ],
   },
   {
-    title: 'Структуры',
+    id: 'structures',
+    get title() {
+      return m.sections.structures
+    },
     group: 'elements',
     shapes: [
-      {
+      named({
         id: 'grid-table',
-        label: 'Сетка таблицы',
         width: 240,
         height: 150,
-        value: 'Таблица',
         style: {
           shape: 'codraw.gridTable',
           gridRows: 4,
@@ -331,434 +333,382 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
           verticalAlign: 'top',
           spacingTop: 8,
         },
-      },
-      {
+      }),
+      named({
         id: 'list',
-        label: 'Список',
         width: 180,
         height: 110,
-        value: '• Элемент\n• Элемент\n• Элемент',
         style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
-      },
-      {
+      }),
+      named({
         id: 'numbered-list',
-        label: 'Нумерованный список',
         width: 180,
         height: 110,
-        value: '1. Элемент\n2. Элемент\n3. Элемент',
         style: { whiteSpace: 'wrap', align: 'left', verticalAlign: 'top', spacing: 12, spacingTop: 10 },
-      },
+      }),
     ],
   },
   {
-    title: 'Блок-схемы',
+    id: 'flowchart',
+    get title() {
+      return m.sections.flowchart
+    },
     group: 'flowchart',
     shapes: [
-      { id: 'flow-process', label: 'Процесс', width: 140, height: 70, value: 'Процесс', style: {} },
-      {
+      named({ id: 'flow-process', width: 140, height: 70, style: {} }),
+      named({
         id: 'flow-terminator',
-        label: 'Терминатор',
         width: 140,
         height: 60,
-        value: 'Старт / стоп',
         style: { rounded: true, arcSize: 50 },
-      },
-      {
+      }),
+      named({
         id: 'flow-decision',
-        label: 'Условие',
         width: 130,
         height: 90,
-        value: 'Условие?',
         style: { shape: 'rhombus', perimeter: 'rhombusPerimeter' },
-      },
-      {
+      }),
+      named({
         id: 'flow-data',
-        label: 'Данные',
         width: 140,
         height: 70,
-        value: 'Данные',
         style: { shape: 'parallelogram' },
-      },
-      {
+      }),
+      named({
         id: 'flow-document',
-        label: 'Документ процесса',
         width: 120,
         height: 80,
-        value: 'Документ',
         style: { shape: 'document' },
-      },
-      {
+      }),
+      named({
         id: 'flow-predefined-process',
-        label: 'Подпроцесс',
         width: 150,
         height: 70,
-        value: 'Подпроцесс',
         style: { shape: 'codraw.predefinedProcess' },
-      },
+      }),
     ],
   },
   {
-    title: 'BPMN',
+    id: 'bpmn',
+    get title() {
+      return m.sections.bpmn
+    },
     group: 'bpmn',
     shapes: [
-      {
+      named({
         id: 'bpmn-task',
-        label: 'Задача',
         width: 150,
         height: 80,
-        value: 'Задача',
         style: { rounded: true, arcSize: 12 },
-      },
-      {
+      }),
+      named({
         id: 'bpmn-event',
-        label: 'Событие',
         width: 54,
         height: 54,
-        value: 'Событие',
         style: { shape: 'codraw.bpmnEvent', perimeter: 'ellipsePerimeter', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'bpmn-gateway',
-        label: 'Шлюз',
         width: 70,
         height: 70,
-        value: 'Шлюз',
         style: { shape: 'codraw.bpmnGateway', perimeter: 'rhombusPerimeter', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'bpmn-data-object',
-        label: 'Объект данных',
         width: 90,
         height: 110,
-        value: 'Данные',
         style: { shape: 'note', verticalLabelPosition: 'bottom', verticalAlign: 'top' },
-      },
-      {
+      }),
+      named({
         id: 'bpmn-pool',
-        label: 'Пул / дорожки',
         width: 360,
         height: 180,
-        value: 'Пул',
         style: { shape: 'codraw.bpmnPool', fillColor: 'none', pointerEvents: false, lanes: 3, align: 'left', spacingLeft: 8 },
-      },
+      }),
     ],
   },
   {
-    title: 'Архитектура',
+    id: 'architecture',
+    get title() {
+      return m.sections.architecture
+    },
     group: 'system',
     shapes: [
-      { id: 'service', label: 'Сервис', width: 120, height: 60, value: 'Сервис', style: { rounded: true } },
-      { id: 'database', label: 'База данных', width: 100, height: 90, value: 'База данных', style: { shape: 'cylinder' } },
-      {
+      named({ id: 'service', width: 120, height: 60, style: { rounded: true } }),
+      named({ id: 'database', width: 100, height: 90, style: { shape: 'cylinder' } }),
+      named({
         id: 'queue',
-        label: 'Очередь',
         width: 140,
         height: 60,
-        value: 'Очередь',
         style: { shape: 'cylinder', direction: 'south' },
-      },
-      { id: 'cache', label: 'Кэш', width: 90, height: 70, value: 'Кэш', style: { shape: 'cylinder' } },
-      {
+      }),
+      named({ id: 'cache', width: 90, height: 70, style: { shape: 'cylinder' } }),
+      named({
         id: 'user',
-        label: 'Пользователь',
         width: 40,
         height: 60,
-        value: 'Пользователь',
         style: { shape: 'actor', verticalLabelPosition: 'bottom', verticalAlign: 'top' },
-      },
-      { id: 'external-system', label: 'Внешняя система', width: 140, height: 90, value: 'Внешняя система', style: { shape: 'cloud' } },
-      { id: 'document', label: 'Документ', width: 110, height: 80, value: 'Документ', style: { shape: 'document' } },
-      { id: 'boundary', label: 'Граница', width: 360, height: 240, value: 'Граница', style: boundaryStyle('#1f2328') },
+      }),
+      named({ id: 'external-system', width: 140, height: 90, style: { shape: 'cloud' } }),
+      named({ id: 'document', width: 110, height: 80, style: { shape: 'document' } }),
+      named({ id: 'boundary', width: 360, height: 240, style: boundaryStyle('#1f2328') }),
       LEGEND,
     ],
   },
   {
-    title: 'Инфраструктура',
+    id: 'infrastructure',
+    get title() {
+      return m.sections.infrastructure
+    },
     group: 'system',
     shapes: [
-      {
+      named({
         id: 'load-balancer',
-        label: 'Балансировщик нагрузки',
         // Plain-text captions do not wrap, so the shape is as wide as its caption.
         width: 180,
         height: 70,
-        value: 'Балансировщик нагрузки',
         style: { shape: 'hexagon', perimeter: 'hexagonPerimeter' },
-      },
-      { id: 'api-gateway', label: 'API-шлюз', width: 120, height: 60, value: 'API-шлюз', style: { shape: 'process' } },
-      {
+      }),
+      named({ id: 'api-gateway', width: 120, height: 60, style: { shape: 'process' } }),
+      named({
         id: 'cdn',
-        label: 'CDN',
         width: 100,
         height: 70,
-        value: 'CDN',
         style: { shape: 'doubleEllipse', perimeter: 'ellipsePerimeter' },
-      },
-      { id: 'server', label: 'Сервер', width: 50, height: 70, value: 'Сервер', style: { shape: 'codraw.server', ...captionBelow } },
-      { id: 'container', label: 'Контейнер', width: 110, height: 70, value: 'Контейнер', style: { shape: 'cube' } },
-      {
+      }),
+      named({ id: 'server', width: 50, height: 70, style: { shape: 'codraw.server', ...captionBelow } }),
+      named({ id: 'container', width: 110, height: 70, style: { shape: 'cube' } }),
+      named({
         id: 'kubernetes-cluster',
-        label: 'Кластер Kubernetes',
         width: 400,
         height: 260,
-        value: 'Кластер Kubernetes',
         style: { ...boundaryStyle('#326ce5'), rounded: true, arcSize: 4, fontColor: '#326ce5' },
-      },
-      {
+      }),
+      named({
         id: 'firewall',
-        label: 'Брандмауэр',
         width: 70,
         height: 50,
-        value: 'Брандмауэр',
         style: { shape: 'codraw.firewall', ...captionBelow },
-      },
-      { id: 'dns', label: 'DNS', width: 90, height: 60, value: 'DNS', style: { shape: 'card' } },
+      }),
+      named({ id: 'dns', width: 90, height: 60, style: { shape: 'card' } }),
     ],
   },
   {
-    title: 'Данные и сообщения',
+    id: 'data',
+    get title() {
+      return m.sections.data
+    },
     group: 'system',
     shapes: [
-      {
+      named({
         id: 'object-storage',
-        label: 'Хранилище объектов',
         width: 60,
         height: 64,
-        value: 'Хранилище объектов',
         style: { shape: 'codraw.bucket', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'search-index',
-        label: 'Поисковый индекс',
         width: 140,
         height: 70,
-        value: 'Поисковый индекс',
         // The caption keeps clear of the lines along the top and the left side.
         style: { shape: 'internalStorage', spacingLeft: 10, spacingTop: 10 },
-      },
-      {
+      }),
+      named({
         id: 'data-warehouse',
-        label: 'Хранилище данных',
         width: 130,
         height: 90,
-        value: 'Хранилище данных',
         style: { shape: 'datastore', spacingTop: 20 },
-      },
-      {
+      }),
+      named({
         id: 'event-topic',
-        label: 'Топик событий',
         width: 140,
         height: 36,
-        value: 'Топик событий',
         style: { shape: 'codraw.topic', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'scheduler',
-        label: 'Планировщик задач',
         width: 56,
         height: 56,
-        value: 'Планировщик задач',
         style: { shape: 'codraw.clock', perimeter: 'ellipsePerimeter', ...captionBelow },
-      },
-      { id: 'function', label: 'Функция', width: 120, height: 60, value: 'Функция', style: { shape: 'parallelogram' } },
+      }),
+      named({ id: 'function', width: 120, height: 60, style: { shape: 'parallelogram' } }),
     ],
   },
   {
-    title: 'Клиенты',
+    id: 'clients',
+    get title() {
+      return m.sections.clients
+    },
     group: 'system',
     shapes: [
-      {
+      named({
         id: 'browser',
-        label: 'Веб-браузер',
         width: 140,
         height: 90,
-        value: 'Веб-браузер',
         // The caption sits below the title bar of the window.
         style: { shape: 'codraw.browser', spacingTop: BROWSER_BAR_HEIGHT },
-      },
-      {
+      }),
+      named({
         id: 'mobile-app',
-        label: 'Мобильное приложение',
         width: 44,
         height: 76,
-        value: 'Мобильное приложение',
         style: { shape: 'codraw.mobile', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'desktop-app',
-        label: 'Десктоп-приложение',
         width: 80,
         height: 64,
-        value: 'Десктоп-приложение',
         style: { shape: 'codraw.desktop', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'iot-device',
-        label: 'IoT-устройство',
         width: 60,
         height: 60,
-        value: 'IoT-устройство',
         style: { shape: 'codraw.chip', ...captionBelow },
-      },
+      }),
     ],
   },
   {
-    title: 'UML',
+    id: 'uml',
+    get title() {
+      return m.sections.uml
+    },
     group: 'uml',
     shapes: [
-      {
+      named({
         id: 'uml-component',
-        label: 'Компонент',
         width: 140,
         height: 70,
-        value: 'Компонент',
         style: { shape: 'component', spacingLeft: 10 },
-      },
-      {
+      }),
+      named({
         id: 'uml-interface',
-        label: 'Интерфейс',
         width: 30,
         height: 30,
-        value: 'Интерфейс',
         style: { shape: 'ellipse', perimeter: 'ellipsePerimeter', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'uml-package',
-        label: 'Пакет',
         width: 140,
         height: 90,
-        value: 'Пакет',
         // The caption sits in the body, under the tab.
         style: { shape: 'folder', spacingTop: 20 },
-      },
-      {
+      }),
+      named({
         id: 'uml-note',
-        label: 'Заметка',
         width: 120,
         height: 80,
-        value: 'Заметка',
         style: { shape: 'note', fillColor: '#fff2cc', strokeColor: '#d6b656' },
-      },
-      {
+      }),
+      named({
         id: SEQUENCE_PRESET,
-        label: 'Диаграмма последовательности',
         // Its parts and their layout set its size; see `sequence.ts`.
         width: 320,
         height: 240,
-        value: 'Сценарий',
         style: { shape: SEQUENCE_SHAPE },
-      },
+      }),
     ],
   },
   {
-    title: 'UML: варианты использования',
+    id: 'useCases',
+    get title() {
+      return m.sections.useCases
+    },
     group: 'usecase',
     shapes: [
-      {
+      named({
         id: 'uml-actor',
-        label: 'Актёр',
         width: 30,
         height: 60,
-        value: 'Актёр',
         // The stick figure of draw.io, not the silhouette of «Пользователь»: UML draws actors this way.
         style: { shape: 'umlActor', ...captionBelow },
-      },
-      {
+      }),
+      named({
         id: 'uml-use-case',
-        label: 'Вариант использования',
         width: 160,
         height: 80,
-        value: 'Вариант использования',
         // The words of a long name wrap inside the ellipse instead of running out of it.
         style: { shape: 'ellipse', perimeter: 'ellipsePerimeter', whiteSpace: 'wrap' },
-      },
-      {
+      }),
+      named({
         id: 'uml-system-boundary',
         // Apart from the boundary of a system of C4: the palette, its search and the legend name each shape once.
-        label: 'Граница системы UML',
         width: 320,
         height: 360,
-        value: 'Система',
         // The subject of UML: a frame of a solid line named at the top in the middle; clicks inside reach the shapes
         // under it, as with the other frames.
         style: { fillColor: 'none', verticalAlign: 'top', spacingTop: 6, pointerEvents: false },
-      },
+      }),
     ],
   },
   {
-    title: 'C4',
+    id: 'c4',
+    get title() {
+      return m.sections.c4
+    },
     group: 'c4',
     shapes: [
-      {
+      named({
         id: 'c4-person',
-        label: 'Person',
         width: 200,
         height: 180,
-        value: 'Пользователь\n[Person]\nОписание',
         // The caption sits in the body, under the head.
         style: { shape: 'mxgraph.c4.person2', fillColor: '#08427B', strokeColor: '#073B6F', fontColor: '#ffffff', spacingTop: 70 },
-      },
-      {
+      }),
+      named({
         id: 'c4-system',
-        label: 'Software System',
         width: 240,
         height: 120,
-        value: 'Система\n[Software System]\nОписание',
         style: c4Style('#1168BD', '#0B4884'),
-      },
-      {
+      }),
+      named({
         id: 'c4-container',
-        label: 'Container',
         width: 240,
         height: 120,
-        value: 'Контейнер\n[Container: технология]\nОписание',
         style: c4Style('#438DD5', '#3C7FC0'),
-      },
-      {
+      }),
+      named({
         id: 'c4-component',
-        label: 'Component',
         width: 240,
         height: 120,
-        value: 'Компонент\n[Component: технология]\nОписание',
         style: c4Style('#85BBF0', '#78A8D8', '#000000'),
-      },
-      {
+      }),
+      named({
         id: 'c4-database',
-        label: 'Database',
         width: 240,
         height: 120,
-        value: 'База данных\n[Container: технология]\nОписание',
         style: { shape: 'cylinder', fillColor: '#438DD5', strokeColor: '#3C7FC0', fontColor: '#ffffff' },
-      },
-      {
+      }),
+      named({
         id: 'c4-external-system',
-        label: 'External System',
         width: 240,
         height: 120,
-        value: 'Внешняя система\n[Software System]\nОписание',
         style: c4Style('#999999', '#8A8A8A'),
-      },
-      {
+      }),
+      named({
         id: 'c4-boundary',
-        label: 'Граница системы',
         width: 480,
         height: 320,
-        value: 'Граница системы\n[Software System]',
         style: { ...boundaryStyle('#666666'), fontColor: '#333333' },
-      },
-      {
+      }),
+      named({
         id: 'c4-deployment-node',
-        label: 'Узел развёртывания',
         width: 360,
         height: 240,
-        value: 'Узел развёртывания\n[технология]',
         // A frame of solid lines, as nodes of deployment are drawn in C4: what lies inside runs on the node.
         style: { ...boundaryStyle('#444444'), dashed: false, rounded: true, arcSize: 3, fontColor: '#333333' },
-      },
+      }),
       LEGEND,
     ],
   },
-  { title: 'Провайдеры', group: 'system', shapes: PROVIDER_SHAPES },
+  {
+    id: 'providers',
+    get title() {
+      return m.sections.providers
+    },
+    group: 'system',
+    shapes: PROVIDER_SHAPES,
+  },
 ]
 
 /** Shapes of the palette in their order; a shape of two sections, the legend, comes once, with the first. */

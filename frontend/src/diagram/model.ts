@@ -1,5 +1,6 @@
 import { generateKeyBetween } from 'fractional-indexing'
 import * as Y from 'yjs'
+import { modelMessages } from './model.messages.ts'
 import { readViewRule, viewRuleData, type ViewRule } from './viewRule.ts'
 
 /**
@@ -163,8 +164,6 @@ export type PageMap = Y.Map<unknown>
 /** A page entry; plain objects are version 1 entries that {@link initializeDocument} has not migrated yet. */
 export type PageEntry = PageMap | PageData
 
-export const DEFAULT_PAGE_NAME = 'Страница 1'
-
 export function getMeta(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap('meta')
 }
@@ -326,12 +325,6 @@ export function dropUnusedElements(doc: Y.Doc, ids: Iterable<string | null>) {
  */
 export const HIDDEN_LAYER_KEY = 'codrawHidden'
 
-/** The name of the main layer of a page, the layer `1`, while it has no name of its own. */
-export const MAIN_LAYER_NAME = 'Основной слой'
-
-/** The name of another layer without a name of its own, e.g. of a file of draw.io. */
-export const UNNAMED_LAYER_NAME = 'Слой без имени'
-
 /** The style hides its layer for everybody: CoDraw keeps `true`. */
 export function isHiddenLayerStyle(style: Record<string, unknown> | null | undefined): boolean {
   const value = style?.[HIDDEN_LAYER_KEY]
@@ -341,7 +334,7 @@ export function isHiddenLayerStyle(style: Record<string, unknown> | null | undef
 /** The name a layer goes by: its own, or that of the main layer or of a layer without a name. */
 export function layerName(id: string, value: unknown): string {
   const own = typeof value === 'string' ? value.trim() : ''
-  return own || (id === LAYER_CELL_ID ? MAIN_LAYER_NAME : UNNAMED_LAYER_NAME)
+  return own || (id === LAYER_CELL_ID ? modelMessages.mainLayer : modelMessages.unnamedLayer)
 }
 
 /**
@@ -408,7 +401,7 @@ export function initializeDocument(doc: Y.Doc) {
   doc.transact(() => {
     if (typeof version !== 'number' || version < SCHEMA_VERSION) meta.set('schemaVersion', SCHEMA_VERSION)
     for (const [id, entry] of outdated) writePage(doc, id, readPage(entry))
-    if (pages.size === 0) writePage(doc, DEFAULT_PAGE_ID, { name: DEFAULT_PAGE_NAME, order: generateKeyBetween(null, null) })
+    if (pages.size === 0) writePage(doc, DEFAULT_PAGE_ID, { name: modelMessages.page(1), order: generateKeyBetween(null, null) })
     for (const id of pages.keys()) writeStructuralCells(getCells(doc, id))
   }, INIT_ORIGIN)
 }
