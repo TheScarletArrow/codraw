@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 import kotlin.test.assertContentEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ImageStorageTest {
 
@@ -45,6 +47,22 @@ class ImageStorageTest {
         assertNull(storage.get(keys[0]))
         assertNull(storage.get(keys[1]))
         storage.get(keys[2])!!.close()
+        storage.destroy()
+    }
+
+    @Test
+    fun `an object is copied within the storage, and a missing one is not`() {
+        val s3 = TestcontainersConfiguration.s3
+        val storage = storage("http://${s3.host}:${s3.getMappedPort(TestcontainersConfiguration.S3_PORT)}", "images-${UUID.randomUUID()}")
+        val original = "boards/${UUID.randomUUID()}/1"
+        val copy = "boards/${UUID.randomUUID()}/2"
+        storage.put(original, byteArrayOf(7, 8, 9), "image/png")
+
+        assertTrue(storage.copy(original, copy))
+        storage.delete(listOf(original))
+
+        storage.get(copy)!!.use { assertContentEquals(byteArrayOf(7, 8, 9), it.readAllBytes()) }
+        assertFalse(storage.copy(original, "boards/${UUID.randomUUID()}/3"))
         storage.destroy()
     }
 }

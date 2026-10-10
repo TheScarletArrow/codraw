@@ -73,6 +73,24 @@ class BoardDocumentRepository(private val jdbc: JdbcClient) {
         .filterNotNull()
 
     /**
+     * Stores the [state] as the document of the new board [copy], copied from that of the board [original], with the text
+     * of the original for search. Nobody changed the copy yet, so its next version has no authors from before.
+     */
+    fun insertCopy(original: UUID, copy: UUID, state: ByteArray, at: Instant) {
+        jdbc.sql(
+            """
+            INSERT INTO board_documents (board_id, state, updated_at, search_text)
+            VALUES (:copy, :state, :at, (SELECT search_text FROM board_documents WHERE board_id = :original))
+            """,
+        )
+            .param("original", original)
+            .param("copy", copy)
+            .param("state", state)
+            .param("at", at.atOffset(ZoneOffset.UTC))
+            .update()
+    }
+
+    /**
      * Stores the [state] of the document of the board [boardId], which the users [editors] changed: those of them who
      * did not change the stored document yet join its editors at the end, up to [maxEditors] together.
      */
