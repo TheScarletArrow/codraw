@@ -113,6 +113,14 @@ export function createBoard(title: string): Promise<Board> {
   })
 }
 
+/**
+ * Copies a board that the current user has any role on into a new board of theirs, with its document and its images: in
+ * the same workspace and project when they create boards there, among their own boards otherwise.
+ */
+export function copyBoard(id: string): Promise<Board> {
+  return request(`/api/boards/${encodeURIComponent(id)}/copy`, { method: 'POST' })
+}
+
 /** Renames a board of the current user. */
 export function renameBoard(id: string, title: string): Promise<Board> {
   return request(`/api/boards/${encodeURIComponent(id)}`, {

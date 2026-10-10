@@ -56,3 +56,12 @@ interface UserRepository : Repository<User, UUID> {
     @Query("SELECT id FROM users WHERE id IN (:ids) AND blocked_at IS NOT NULL")
     fun blockedAmong(ids: Collection<UUID>): List<UUID>
 }
+
+/**
+ * Stands for a deleted user where their id stays without a foreign key, in the changes of documents and the authors of
+ * versions: deleting an account replaces their id with it, and the versions show it as [DELETED_USER_NAME].
+ */
+val DELETED_USER_ID: UUID = UUID(0, 0)
+
+/** How the app names a user whose account was deleted, as it does for comments without an author. */
+const val DELETED_USER_NAME = "Удалённый пользователь"

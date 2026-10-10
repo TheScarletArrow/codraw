@@ -24,6 +24,7 @@ export type RejectionReason =
   | "error"
   | "document-too-large"
   | "access-changed"
+  | "account-deleted"
   | "user-blocked";
 
 const STORE_RESULTS: StoreResult[] = ["stored", "failed", "board_deleted", "proposal_closed", "proposal_deleted"];
@@ -36,6 +37,7 @@ const REJECTION_REASONS: RejectionReason[] = [
   "error",
   "document-too-large",
   "access-changed",
+  "account-deleted",
   "user-blocked",
 ];
 

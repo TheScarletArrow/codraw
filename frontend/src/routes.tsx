@@ -3,6 +3,7 @@ import { AppError } from './errors/AppError.tsx'
 import { Layout } from './Layout.tsx'
 import { PrivacyPage } from './legal/PrivacyPage.tsx'
 import { TermsPage } from './legal/TermsPage.tsx'
+import { AccountPage } from './pages/AccountPage.tsx'
 import { BoardsPage } from './pages/BoardsPage.tsx'
 import { ConnectionsPage } from './pages/ConnectionsPage.tsx'
 import { InvitePage } from './pages/InvitePage.tsx'
@@ -36,6 +37,7 @@ export const routes: RouteObject[] = [
       // The link of a letter that confirms an address comes here too, with `?confirm=`.
       { path: 'settings/notifications', element: <NotificationSettingsPage /> },
       { path: 'settings/connections', element: <ConnectionsPage /> },
+      { path: 'settings/account', element: <AccountPage /> },
       {
         // Only for the administrators of the installation; anybody else sees «Нет доступа».
         path: 'admin',

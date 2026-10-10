@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plug, ShieldCheck } from 'lucide-react'
+import { Plug, ShieldCheck, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -37,7 +37,7 @@ export function Layout() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b px-4">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:gap-4 sm:px-4">
         <Link to="/" className="font-bold">
           CoDraw
         </Link>
@@ -69,7 +69,13 @@ function UserMenu({ user }: { user: CurrentUser }) {
   const queryClient = useQueryClient()
   const signOut = useMutation({
     mutationFn: logout,
-    onSuccess: async () => {
+    onSuccess: async (logoutUrl) => {
+      if (logoutUrl) {
+        await deleteLocalCopiesOf(user.id)
+        // The provider ends its session too and sends the browser back to the login page.
+        window.location.assign(logoutUrl)
+        return
+      }
       await navigate('/login', { replace: true })
       // Nothing of the previous user stays in the cache, nor in the browser.
       queryClient.clear()
@@ -78,9 +84,10 @@ function UserMenu({ user }: { user: CurrentUser }) {
   })
 
   return (
-    <div className="flex shrink-0 items-center gap-2 text-sm">
+    <div className="flex shrink-0 items-center gap-1 text-sm sm:gap-2">
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
-      <span>{user.name}</span>
+      {/* A phone keeps the room of the line for who is on the board; the avatar tells who is signed in. */}
+      <span className="max-sm:sr-only">{user.name}</span>
       <ThemeMenu />
       {user.admin && (
         <Button asChild variant="ghost" size="icon-sm">
@@ -89,6 +96,11 @@ function UserMenu({ user }: { user: CurrentUser }) {
           </Link>
         </Button>
       )}
+      <Button asChild variant="ghost" size="icon-sm">
+        <Link to="/settings/account" aria-label="Учётная запись" title="Учётная запись: скачать данные или удалить">
+          <UserCog />
+        </Link>
+      </Button>
       {!user.guest && (
         <Button asChild variant="ghost" size="icon-sm">
           <Link to="/settings/connections" aria-label="Подключения" title="Подключения: GitHub">

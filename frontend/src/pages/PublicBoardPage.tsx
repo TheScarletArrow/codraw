@@ -171,7 +171,12 @@ function PublicLayout({
             Только просмотр
           </span>
         )}
-        {title && <EditorToolbar editor={editor} readOnly collaboration={false} />}
+        {/* A phone zooms with two fingers: the line keeps its room for the title. */}
+        {title && (
+          <div className="contents max-sm:hidden">
+            <EditorToolbar editor={editor} readOnly collaboration={false} />
+          </div>
+        )}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {title && report}
           {action}

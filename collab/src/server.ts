@@ -8,7 +8,7 @@ import {
   type ConnectionContext,
 } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
-import { checkNotBlocked, createBlockedUserChecks } from "./blocked.js";
+import { checkUserOnConnect, createUserChecks } from "./users.js";
 import {
   BoardNotFoundError,
   ProposalClosedError,
@@ -49,6 +49,14 @@ export interface CollabServerOptions {
   accessCheckInterval?: number;
   /** The largest a board document may grow, in bytes; changes that only delete pass beyond it. */
   documentSizeLimit?: number;
+  /**
+   * How long the changes and cursor moves of a document gather before they go to its participants in one message, in
+   * milliseconds. 0 sends what arrived in one turn of the event loop together and adds no delay. On a board of many
+   * participants every cursor move goes to all of them: a delay of a few tens of milliseconds sends fewer, larger
+   * messages and halves the processor time of collab there, at the cost of that delay for every change
+   * (docs/load-testing.md).
+   */
+  broadcastDelay?: number;
   /** Where the server counts what it does; `GET /metrics` gives them in the Prometheus format. */
   metrics?: Metrics;
   /**
@@ -57,10 +65,10 @@ export interface CollabServerOptions {
    */
   searchTextBackfillInterval?: number | null;
   /**
-   * Period of closing the connections of users whom an administrator blocked, in milliseconds; it bounds how long a
-   * blocked user keeps working.
+   * Period of closing the connections of users whom an administrator blocked or whose accounts are gone, in
+   * milliseconds; it bounds how long such a user keeps working.
    */
-  blockedCheckInterval?: number;
+  userCheckInterval?: number;
 }
 
 /** Room for the framing of a message around the largest change. */
@@ -80,18 +88,19 @@ export function createCollabServer({
   stopOnSignals = true,
   accessCheckInterval = 60_000,
   documentSizeLimit = DOCUMENT_SIZE_LIMIT,
+  broadcastDelay = 0,
   metrics = createMetrics(),
   searchTextBackfillInterval = 60 * 60_000,
-  blockedCheckInterval = 10_000,
+  userCheckInterval = 10_000,
 }: CollabServerOptions): Server {
   const checkAccess = createAccessChecks(backend, metrics);
-  const closeBlocked = createBlockedUserChecks(backend, metrics);
+  const checkUsers = createUserChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
   /** The text for search that the backend has of each open board, as collab sent it last. */
   const searchTexts = new Map<string, string>();
   let accessChecks: NodeJS.Timeout | undefined;
-  let blockedChecks: NodeJS.Timeout | undefined;
+  let userChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
   let instance: Server["hocuspocus"] | undefined;
   const backfill = createSearchTextBackfill(backend, metrics, (boardId) => instance?.documents.get(boardId));
@@ -155,6 +164,7 @@ export function createCollabServer({
     maxDebounce,
     // Store pending changes as soon as the last participant leaves.
     unloadImmediately: true,
+    flushDelay: broadcastDelay,
     // A message that cannot fit into a document is refused before it is read into memory: ws closes with 1009.
     websocketOptions: { maxPayload: documentSizeLimit + MESSAGE_OVERHEAD },
     extensions: [
@@ -209,8 +219,8 @@ export function createCollabServer({
         // Any other name is neither a board nor a draft; the backend is not asked about it.
         const target = targetOf(documentName);
         const user = await verifyToken(token, target);
-        // A token issued before an administrator blocked its user still opens documents for some minutes.
-        const [access] = await Promise.all([accessOnConnect(backend, target, user.id), checkNotBlocked(backend, user.id)]);
+        // A token issued before its user was blocked or deleted their account still opens documents for some minutes.
+        const [access] = await Promise.all([accessOnConnect(backend, target, user.id), checkUserOnConnect(backend, user.id)]);
         connectionConfig.readOnly = access === "view";
         return { user, access };
       } catch (error) {
@@ -263,8 +273,9 @@ export function createCollabServer({
       }
     },
     // Participants tell collab about changes of access, but the owner may change it without the board open, and such a
-    // message may be lost: open documents are checked from time to time as well. Boards without a text for search get
-    // theirs at the start and then from time to time.
+    // message may be lost: open documents are checked from time to time as well. The users of all connections, who may
+    // have deleted their accounts or been blocked, are checked more often. Boards without a text for search get theirs
+    // at the start and then from time to time.
     async onListen({ instance: hocuspocus }) {
       instance = hocuspocus;
       metrics.observe(hocuspocus);
@@ -273,8 +284,8 @@ export function createCollabServer({
         accessCheckInterval,
       );
       accessChecks.unref();
-      blockedChecks = setInterval(() => void closeBlocked(hocuspocus), blockedCheckInterval);
-      blockedChecks.unref();
+      userChecks = setInterval(() => void checkUsers(hocuspocus), userCheckInterval);
+      userChecks.unref();
       if (searchTextBackfillInterval !== null) {
         fillInSearchTexts();
         backfills = setInterval(fillInSearchTexts, searchTextBackfillInterval);
@@ -283,7 +294,7 @@ export function createCollabServer({
     },
     async onDestroy() {
       clearInterval(accessChecks);
-      clearInterval(blockedChecks);
+      clearInterval(userChecks);
       clearInterval(backfills);
       backfill.stop();
     },

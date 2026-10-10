@@ -2,6 +2,8 @@ package io.github.thescarletarrow.codraw.admin
 
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.MutableClock
+import io.github.thescarletarrow.codraw.board.BoardMembers
+import io.github.thescarletarrow.codraw.board.MemberRole
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.session
 import io.github.thescarletarrow.codraw.signedIn
@@ -42,6 +44,7 @@ class AdminApiTest(
     @Autowired private val sessions: SessionRepository<*>,
     @Autowired private val clock: MutableClock,
     @Autowired private val cleanup: AdminCleanup,
+    @Autowired private val members: BoardMembers,
 ) {
 
     private lateinit var admin: User
@@ -108,6 +111,36 @@ class AdminApiTest(
         adminGet("/api/admin/users?query=Admin").andExpect { jsonPath("$[0].admin") { value(true) } }
         // A pattern of LIKE in the query is taken literally.
         adminGet("/api/admin/users?query=%25").andExpect { jsonPath("$[*].name") { value(not(hasItem("Alice"))) } }
+    }
+
+    @Test
+    fun `an administrator deletes an account with its boards, those with other members too, and the journal keeps its name`() {
+        val carol = users.gitHubUser("Carol")
+        val cookie = sessions.signedIn(carol)
+        val shared = createBoard(carol, "Общая")
+        members.put(java.util.UUID.fromString(shared), bob.id, MemberRole.EDITOR, clock.instant())
+
+        adminDelete("/api/admin/users/${carol.id}").andExpect { status { isNoContent() } }
+
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM users WHERE id = :id").param("id", carol.id).query(Int::class.java).single())
+        assertEquals(0, count("boards"))
+        mockMvc.get("/api/me") { cookie(cookie) }.andExpect { status { isUnauthorized() } }
+        adminGet("/api/admin/actions").andExpect {
+            jsonPath("$[0].action") { value("delete-user") }
+            jsonPath("$[0].targetLabel") { value("Carol") }
+            jsonPath("$[0].targetId") { value(carol.id.toString()) }
+        }
+        adminDelete("/api/admin/users/${carol.id}").andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `an administrator deletes neither themselves nor other administrators`() {
+        adminDelete("/api/admin/users/${admin.id}").andExpect { status { isConflict() } }
+        mockMvc.delete("/api/admin/users/${bob.id}") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect { status { isForbidden() } }
+        assertEquals(0, count("admin_actions"))
     }
 
     @Test

@@ -1,5 +1,9 @@
 package io.github.thescarletarrow.codraw.admin
 
+import io.github.thescarletarrow.codraw.account.AccountDeletionService
+import io.github.thescarletarrow.codraw.account.Accounts
+import io.github.thescarletarrow.codraw.account.SoleWorkspaceOwnerException
+import io.github.thescarletarrow.codraw.account.UndecidedBoards
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.BoardRepository
 import io.github.thescarletarrow.codraw.board.BoardService
@@ -29,7 +33,8 @@ class AdminService(
     private val embeds: EmbedService,
     private val reports: BoardReports,
     private val actions: AdminActions,
-    private val sessions: UserSessions,
+    private val accounts: Accounts,
+    private val deletion: AccountDeletionService,
     private val access: AdminAccess,
     private val clock: Clock,
 ) {
@@ -47,10 +52,26 @@ class AdminService(
         }
         val now = now()
         if (users.block(user.id, now)) {
-            sessions.deleteAll(user.id)
+            accounts.endSessions(user.id)
             actions.record(admin, AdminActionKind.BLOCK_USER, AdminTargetKind.USER, user.id, user.name, now)
         }
         return userOf(userId)
+    }
+
+    /**
+     * Deletes the account of the user [userId] as the user would delete it themselves, see [AccountDeletionService]: their
+     * personal boards go with their images, those with other participants too, since nobody decides on them; their
+     * sessions end and collab closes their connections. Throws 409 for the administrator themselves and other
+     * administrators, and [SoleWorkspaceOwnerException] when they are the only owner of a workspace with other members.
+     */
+    @Transactional
+    fun deleteUser(admin: User, userId: UUID) {
+        val user = userOf(userId)
+        if (user.id == admin.id || access.isAdmin(user)) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Administrators of the installation are not deleted")
+        }
+        if (!deletion.delete(user.id, emptyMap(), UndecidedBoards.DELETE)) throw ResponseStatusException(HttpStatus.NOT_FOUND, "User not found")
+        actions.record(admin, AdminActionKind.DELETE_USER, AdminTargetKind.USER, user.id, user.name, now())
     }
 
     /** Lets the user [userId] sign in again; their deleted sessions do not come back. */

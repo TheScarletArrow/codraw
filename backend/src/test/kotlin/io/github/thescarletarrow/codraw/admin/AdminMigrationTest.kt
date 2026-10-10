@@ -26,9 +26,9 @@ class AdminMigrationTest {
     private val jdbc = JdbcClient.create(source)
 
     @Test
-    fun `V28 leaves users unblocked and boards open, keeps reports with their boards, and U28 reverts it`() {
-        // Migrations before V28 come from other changes, so do not assume how many of them there are.
-        Flyway.configure().dataSource(source).target("27").load().migrate()
+    fun `V29 leaves users unblocked and boards open, keeps reports with their boards, and U29 reverts it`() {
+        // Migrations before V29 come from other changes, so do not assume how many of them there are.
+        Flyway.configure().dataSource(source).target("28").load().migrate()
         jdbc.sql(
             """
             INSERT INTO users(id, provider, provider_user_id, name, created_at) VALUES ('$ALICE', 'github', '1', 'Alice', now());
@@ -36,7 +36,7 @@ class AdminMigrationTest {
             """,
         ).update()
 
-        Flyway.configure().dataSource(source).target("28").load().migrate()
+        Flyway.configure().dataSource(source).target("29").load().migrate()
         assertEquals(true, jdbc.sql("SELECT blocked_at IS NULL FROM users").query(Boolean::class.java).single())
         assertEquals(true, jdbc.sql("SELECT sharing_blocked_at IS NULL AND link_access = 'PUBLIC' FROM boards").query(Boolean::class.java).single())
 
@@ -60,9 +60,9 @@ class AdminMigrationTest {
         assertEquals(1, jdbc.sql("SELECT count(*) FROM admin_actions").query(Int::class.java).single())
 
         source.connection.use {
-            ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U28__claude_admin_moderation_162.sql"))
+            ScriptUtils.executeSqlScript(it, ClassPathResource("db/migration/U29__claude_admin_moderation_162.sql"))
         }
         assertEquals(0, jdbc.sql("SELECT count(*) FROM information_schema.tables WHERE table_name IN ('board_reports', 'admin_actions')").query(Int::class.java).single())
-        assertEquals(1, Flyway.configure().dataSource(source).target("28").load().migrate().migrationsExecuted)
+        assertEquals(1, Flyway.configure().dataSource(source).target("29").load().migrate().migrationsExecuted)
     }
 }

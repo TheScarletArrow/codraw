@@ -103,6 +103,19 @@ jobs:
       POSTGRES_PASSWORD: ci-postgres-password
       CODRAW_S3_SECRET_KEY: ci-s3-secret-key
       CODRAW_INTERNAL_TOKEN: ci-internal-token
+      # Backups go to a bucket of the storage of the stack, as to a storage outside the server, encrypted; the rule of
+      # retention is short for deploy/backup/check-restore.sh.
+      CODRAW_BACKUP_S3_ENDPOINT: http://s3:9000
+      CODRAW_BACKUP_S3_BUCKET: codraw-backups
+      CODRAW_BACKUP_S3_PREFIX: ci
+      CODRAW_BACKUP_S3_ACCESS_KEY: codraw
+      CODRAW_BACKUP_S3_SECRET_KEY: ci-s3-secret-key
+      CODRAW_BACKUP_ENCRYPTION_PASSWORD: ci-backup-password
+      CODRAW_BACKUP_KEEP_DAILY: 3
+      CODRAW_BACKUP_KEEP_WEEKLY: 2
+      # An OAuth application of GitHub that the stack offers: the browser check reads its callback URL.
+      GITHUB_CLIENT_ID: ci-github-client
+      GITHUB_CLIENT_SECRET: ci-github-secret
     steps:
       - uses: actions/checkout@v5
       - name: Name the images
@@ -135,6 +148,14 @@ jobs:
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}frontend:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+      - name: Build backup
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/backup
+          load: true
+          tags: ${{ env.CODRAW_IMAGE_PREFIX }}backup:${{ env.CODRAW_VERSION }}
+          cache-from: type=gha,scope=backup
+          cache-to: type=gha,mode=max,scope=backup
       - name: Check the Prometheus configuration and alert rules
         run: |
           promtool() {
@@ -149,11 +170,11 @@ jobs:
           { echo 'CODRAW_COLLAB_TOKEN_SIGNING_KEY<<KEY'; cat "$RUNNER_TEMP/signing-key.pem"; echo KEY; } >> "$GITHUB_ENV"
           export CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat "$RUNNER_TEMP/signing-key.pem")"
           docker compose -f docker-compose.prod.yml --profile monitoring up -d --no-build --wait --wait-timeout 300
-      - name: Check that Prometheus reads backend and collab
+      - name: Check that Prometheus reads backend, collab and backup
         run: |
           for attempt in $(seq 1 30); do
             up=$(curl -s http://127.0.0.1:9090/api/v1/targets | jq '[.data.activeTargets[] | select(.health == "up")] | length')
-            if [ "$up" = 2 ]; then exit 0; fi
+            if [ "$up" = 3 ]; then exit 0; fi
             sleep 2
           done
           curl -s http://127.0.0.1:9090/api/v1/targets
@@ -166,6 +187,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @codraw/e2e exec playwright install --with-deps chromium
       - name: Check the stack in a browser
+        run: pnpm --filter @codraw/e2e test:stack
+        env:
+          STACK_URL: http://localhost:8080
+      - name: Check backups and the restore of a backup
+        run: deploy/backup/check-restore.sh
+      - name: Check the restored stack in a browser
         run: pnpm --filter @codraw/e2e test:stack
         env:
           STACK_URL: http://localhost:8080
@@ -182,7 +209,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for service in backend collab frontend; do
+          for service in backend collab frontend backup; do
             docker push "${CODRAW_IMAGE_PREFIX}${service}:$CODRAW_VERSION"
           done
 
@@ -212,6 +239,6 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           prefix="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-"
-          for service in backend collab frontend; do
+          for service in backend collab frontend backup; do
             docker buildx imagetools create --tag "${prefix}${service}:latest" "${prefix}${service}:${GITHUB_SHA}"
           done

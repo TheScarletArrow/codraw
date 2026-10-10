@@ -75,6 +75,7 @@ export interface AdminBoardDetails {
 export type AdminActionKind =
   | 'block-user'
   | 'unblock-user'
+  | 'delete-user'
   | 'block-sharing'
   | 'unblock-sharing'
   | 'trash-board'
@@ -102,6 +103,8 @@ export const adminKey = (...parts: string[]) => ['admin', ...parts] as const
 export const findUsers = (text: string): Promise<AdminUser[]> => request(`/api/admin/users${query(text)}`)
 export const blockUser = (id: string): Promise<AdminUser> => post(`/api/admin/users/${id}/block`)
 export const unblockUser = (id: string): Promise<AdminUser> => remove(`/api/admin/users/${id}/block`)
+/** Deletes the account with its boards; 409 with `reason` = `sole-workspace-owner` while it is the only owner of a workspace. */
+export const deleteUser = (id: string): Promise<void> => remove(`/api/admin/users/${id}`)
 
 export const findBoards = (text: string): Promise<AdminBoard[]> => request(`/api/admin/boards${query(text)}`)
 export const fetchAdminBoard = (id: string): Promise<AdminBoardDetails> => request(`/api/admin/boards/${id}`)

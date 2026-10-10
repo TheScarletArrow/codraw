@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createBoard, userPage } from './helpers.ts'
+import { createBoard, openBoard, userPage } from './helpers.ts'
 
 /** The test user whom the `e2e` profile of the backend makes an administrator of the installation. */
 const ADMIN = 'Админ'
@@ -90,4 +90,32 @@ test('a report of a reader reaches the administrator, who closes the sharing of 
   await expect(journal).toContainText('Закрыть доступ по ссылке')
   await expect(journal).toContainText('Закрыть жалобы (1)')
   await Promise.all([owner.context().close(), reader.context().close(), admin.context().close()])
+})
+
+test('an administrator deletes an account: its connection to a board of others closes, its session ends and its boards go', async ({
+  browser,
+}) => {
+  // Test users outlive the runs: every run deletes a user of its own.
+  const name = `Удаляемый ${Date.now()}`
+  const user = await userPage(browser, name)
+  const own = (await createBoard(user)).split('/').pop()!
+  const admin = await userPage(browser, ADMIN)
+  // The link of a new board lets anybody edit it: the user works on a board of the administrator.
+  await openBoard(user, await createBoard(admin))
+
+  await openAdmin(admin, 'Пользователи')
+  await admin.getByRole('textbox', { name: 'Имя, id или id у GitHub и Google' }).fill(name)
+  await admin.getByRole('button', { name: 'Найти' }).click()
+  const row = admin.getByRole('list', { name: 'Пользователи' }).getByRole('listitem').filter({ hasText: name })
+  await row.getByRole('button', { name: 'Удалить' }).click()
+  await admin.getByRole('alertdialog', { name: `Удалить учётную запись ${name}?` }).getByRole('button', { name: 'Удалить навсегда' }).click()
+  await expect(admin.getByText('Никого не нашлось')).toBeVisible()
+
+  // collab closes the connection within its check of users, and the page finds the session gone.
+  await expect(user).toHaveURL(/\/login$/, { timeout: 20_000 })
+  expect((await user.request.get('/api/me')).status()).toBe(401)
+  expect((await admin.request.get(`/api/boards/${own}`)).status()).toBe(404)
+  await admin.getByRole('tab', { name: 'Журнал' }).click()
+  await expect(admin.getByRole('table', { name: 'Журнал действий администраторов' })).toContainText(`Пользователь «${name}»`)
+  await Promise.all([user.context().close(), admin.context().close()])
 })

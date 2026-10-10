@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
+import * as Y from 'yjs'
 
 /** A guest in a fresh browser context, whose page records what the Content Security Policy blocks. */
 async function guest(browser: Browser): Promise<Page> {
@@ -51,6 +52,45 @@ test('two guests work on one board through the app address without violations of
   expect(await cspViolations(other)).toEqual([])
 })
 
+// The board of this test is also what the check of backups in CI (deploy/backup/check-restore.sh) restores and compares.
+test('a board keeps an image and a named version through the app address', async ({ browser }) => {
+  const owner = await guest(browser)
+  await owner.getByRole('button', { name: 'Создать доску' }).click()
+  await expect(owner.getByRole('status')).toHaveText('Синхронизировано')
+  await owner.getByRole('complementary', { name: 'Фигуры' }).getByRole('button', { name: 'Прямоугольник', exact: true }).click()
+  const boardId = new URL(owner.url()).pathname.split('/').pop()!
+  await owner.request.get('/api/me')
+  const { cookies } = await owner.context().storageState()
+  const csrf = { 'X-XSRF-TOKEN': cookies.find((cookie) => cookie.name === 'XSRF-TOKEN')!.value }
+
+  const png = Buffer.from(
+    await owner.evaluate(async () => {
+      const canvas = new OffscreenCanvas(30, 20)
+      const context = canvas.getContext('2d')!
+      context.fillStyle = '#3366ff'
+      context.fillRect(0, 0, 30, 20)
+      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+      return Array.from(bytes)
+    }),
+  )
+  const added = await owner.request.post(`/api/boards/${boardId}/images`, {
+    data: png,
+    headers: { ...csrf, 'Content-Type': 'application/octet-stream' },
+  })
+  expect(added.status()).toBe(201)
+  const image = await owner.request.get(((await added.json()) as { url: string }).url)
+  expect(image.status()).toBe(200)
+  expect(Buffer.from(await image.body()).equals(png)).toBe(true)
+
+  const saved = await owner.request.post(`/api/boards/${boardId}/versions?reason=manual&name=${encodeURIComponent('Перед копией')}`, {
+    data: Buffer.from(Y.encodeStateAsUpdate(new Y.Doc())),
+    headers: { ...csrf, 'Content-Type': 'application/octet-stream' },
+  })
+  expect(saved.status()).toBe(201)
+  const versions = (await (await owner.request.get(`/api/boards/${boardId}/versions`)).json()) as { name: string | null }[]
+  expect(versions.map((version) => version.name)).toContain('Перед копией')
+})
+
 test('the app comes with the security headers, and its files are cached for a year', async ({ request }) => {
   const page = await request.get('/boards/0199a000-0000-7000-8000-000000000001')
   expect(page.status()).toBe(200)
@@ -94,9 +134,13 @@ test('the metrics of backend and collab are not given through the app address', 
 })
 
 test('the OAuth callback URL is the app address, with its port', async ({ request, baseURL }) => {
-  const response = await request.get('/api/oauth2/authorization/github', { maxRedirects: 0 })
+  // The login page offers only the providers that the stack set up; the first one will do.
+  const { providers } = (await (await request.get('/api/auth/providers')).json()) as { providers: { id: string }[] }
+  test.skip(providers.length === 0, 'The stack sets up no sign-in provider')
+  const provider = providers[0]!.id
+  const response = await request.get(`/api/oauth2/authorization/${provider}`, { maxRedirects: 0 })
 
   expect(response.status()).toBe(302)
   const location = new URL(response.headers()['location']!)
-  expect(location.searchParams.get('redirect_uri')).toBe(`${baseURL}/api/login/oauth2/code/github`)
+  expect(location.searchParams.get('redirect_uri')).toBe(`${baseURL}/api/login/oauth2/code/${provider}`)
 })

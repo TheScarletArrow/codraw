@@ -1,5 +1,7 @@
 package io.github.thescarletarrow.codraw.board
 
+import io.github.thescarletarrow.codraw.image.ImageQuotaReachedException
+import io.github.thescarletarrow.codraw.image.ImageStorageException
 import io.github.thescarletarrow.codraw.user.User
 import io.github.thescarletarrow.codraw.user.UserService
 import io.github.thescarletarrow.codraw.user.userId
@@ -29,6 +31,7 @@ import java.util.UUID
 @RequestMapping("/api/boards")
 class BoardController(
     private val boards: BoardService,
+    private val copies: BoardCopyService,
     private val organization: BoardOrganizationService,
     private val users: UserService,
 ) {
@@ -136,6 +139,18 @@ class BoardController(
         return ResponseEntity.noContent().build()
     }
 
+    /**
+     * Copies the board for the user, who needs only a role on it: a new board of theirs with its document and copies of
+     * its images, see [BoardCopyService.copy].
+     */
+    @PostMapping("/{id}/copy")
+    fun copy(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<BoardResponse> {
+        val (original, _) = boards.participated(id, principal.userId)
+        val copy = copies.copy(original, principal.userId)
+        val response = copy.toResponse(currentUser(principal), BoardRole.OWNER, boards.workspaceOf(copy))
+        return ResponseEntity.created(URI.create("/api/boards/${response.id}")).body(response)
+    }
+
     /** Boards in the trash that the user restores: their own, and those of the workspaces they manage. */
     @GetMapping("/trash")
     fun trash(@AuthenticationPrincipal principal: OAuth2User): List<TrashedBoardResponse> =
@@ -179,6 +194,18 @@ class BoardController(
                 setProperty("limit", exception.limit)
             }
 
+    @ExceptionHandler
+    fun imageQuotaReached(exception: ImageQuotaReachedException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.message).apply {
+            title = "Image quota reached"
+            setProperty("limit", exception.limit)
+            setProperty("used", exception.used)
+        }
+
+    @ExceptionHandler
+    fun imageStorageUnavailable(exception: ImageStorageException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.message)
+
     private fun ownBoard(id: String, principal: OAuth2User): Board = boards.ownedBy(id, principal.userId)
 
     private fun currentUser(principal: OAuth2User): User =
@@ -193,7 +220,8 @@ fun linkAccessClosed() = ResponseStatusException(HttpStatus.FORBIDDEN, "The owne
 /** The owner of the [board], who exists as long as the board does. */
 fun UserService.ownerOf(board: Board): User = checkNotNull(find(board.ownerId)) { "Owner of board ${board.id} does not exist" }
 
-private const val TITLE_MAX_LENGTH = 200
+/** The longest title of a board. */
+internal const val TITLE_MAX_LENGTH = 200
 
 data class CreateBoardRequest(
     @field:NotBlank

@@ -9,10 +9,12 @@ export interface CollabConfig {
   jwksUrl: string;
   /** Period of checking the connections of open documents against the access to their boards, in milliseconds. */
   accessCheckInterval: number;
-  /** Period of closing the connections of users whom an administrator blocked, in milliseconds. */
-  blockedCheckInterval: number;
+  /** Period of closing the connections of users who were blocked or deleted their accounts, in milliseconds. */
+  userCheckInterval: number;
   /** The largest a board document may grow, in bytes. */
   documentSizeLimit: number;
+  /** How long changes and cursors of a document gather before they go out to its participants together, in milliseconds. */
+  broadcastDelay: number;
   logFormat: LogFormat;
 }
 
@@ -23,8 +25,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollabConfig {
     internalToken: required(env, "CODRAW_INTERNAL_TOKEN"),
     jwksUrl: required(env, "BACKEND_JWKS_URL"),
     accessCheckInterval: positiveInteger(env, "ACCESS_CHECK_INTERVAL_MS", 60_000),
-    blockedCheckInterval: positiveInteger(env, "BLOCKED_CHECK_INTERVAL_MS", 10_000),
+    userCheckInterval: positiveInteger(env, "USER_CHECK_INTERVAL_MS", 10_000),
     documentSizeLimit: positiveInteger(env, "DOCUMENT_SIZE_LIMIT_BYTES", DOCUMENT_SIZE_LIMIT),
+    broadcastDelay: nonNegativeInteger(env, "BROADCAST_DELAY_MS", 0),
     logFormat: logFormat(env),
   };
 }
@@ -43,6 +46,16 @@ function positiveInteger(env: NodeJS.ProcessEnv, name: string, defaultValue: num
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number <= 0) {
     throw new Error(`Environment variable ${name} must be a positive integer, got "${value}"`);
+  }
+  return number;
+}
+
+function nonNegativeInteger(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
+  const value = env[name]?.trim();
+  if (!value) return defaultValue;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new Error(`Environment variable ${name} must be a non-negative integer, got "${value}"`);
   }
   return number;
 }

@@ -23,6 +23,13 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   schemaImport: false,
   issues: false,
   adminRetentionDays: 365,
+  backupRetentionDays: null,
+  backupOffsite: false,
+  signInProviders: [
+    { name: 'GitHub', corporate: false },
+    { name: 'Google', corporate: false },
+  ],
+  guests: true,
   ...changes,
 })
 
@@ -155,7 +162,40 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
     )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Копия доски, которую сделал её участник, переносит в его новую доску документ с изображениями, а с ним имена тех, кто менял элементы, писал стикеры и ставил статусы; их видят участники копии',
+    )
+    expect(retention).toHaveTextContent('Копия доски хранится как отдельная доска того, кто её сделал, со своими изображениями и не зависит от оригинала')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+    const account = screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })
+    expect(account).toHaveTextContent('«Скачать мои данные» собирает архив ZIP')
+    expect(account).toHaveTextContent('сохраняются без автора — с подписью «Удалённый пользователь»')
+    expect(account).toHaveTextContent('Новый вход через того же провайдера — GitHub, Google или корпоративный — создаёт новую пустую учётную запись')
+  })
+
+  it('names the sign-in providers of the installation, the corporate one as chosen by the operator', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent('При входе через GitHub или Google — имя, адрес картинки профиля и идентификатор')
+    expect(data).not.toHaveTextContent('выбрал оператор')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'GitHub и Google узнают о входе через них по своим правилам.',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal({ signInProviders: [{ name: 'Keycloak компании', corporate: true }], guests: false }) } })
+    renderRoutes(routes, '/privacy')
+    const corporate = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(corporate).toHaveTextContent(
+      'При входе через Keycloak компании — провайдера входа, которого выбрал оператор установки, — CoDraw получает от провайдера идентификатор пользователя, имя, адрес картинки профиля, адрес электронной почты и группы',
+    )
+    expect(corporate).toHaveTextContent('почту и группы CoDraw только сверяет при входе с ограничениями, которые задал оператор, и не хранит')
+    expect(corporate).not.toHaveTextContent('GitHub или Google')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Провайдер входа, которого выбрал оператор, — Keycloak компании — узнаёт о входе и выходе через него по правилам оператора.',
+    )
   })
 
   it('names the reports, the journal of administrators and their retention of the installation', async () => {
@@ -195,6 +235,38 @@ describe('legal pages', () => {
     expect(await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })).not.toHaveTextContent('Задачи GitHub')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'после сохранения. Больше никому данные не передаются и не продаются.',
+    )
+  })
+
+  it('names backups, their retention and the storage outside the server only when the installation makes them', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ backupRetentionDays: 28, backupOffsite: true }) } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const retention = await screen.findByRole('region', { name: 'Сколько хранятся данные' })
+    expect(retention).toHaveTextContent(
+      'Резервные копии базы и изображений — до 28 дней: данные, которые вы удалили, остаются в копиях, пока копии не удалятся по этому сроку. Копии хранятся на сервере установки и в хранилище файлов, которое выбрал оператор.',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'оператор хранит и у поставщика хранилища файлов, которого выбрал сам; копии могут быть зашифрованы. Больше никому',
+    )
+    expect(screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })).toHaveTextContent(
+      'В резервных копиях удалённые данные остаются до 28 дней',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal({ backupRetentionDays: 7 }) } })
+    const local = renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'пока копии не удалятся по этому сроку. Копии хранятся на сервере установки.',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).not.toHaveTextContent('Резервные копии')
+    local.unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Сколько хранятся данные' })).not.toHaveTextContent('Резервные копии')
+    expect(screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })).not.toHaveTextContent(
+      'резервных копиях',
     )
   })
 

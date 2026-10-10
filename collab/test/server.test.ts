@@ -98,6 +98,31 @@ describe("collab server", () => {
     expect(title(other)).toBeUndefined();
   });
 
+  it("delivers cursors of participants to the others", async () => {
+    await startServer();
+    const first = await connect(board);
+    const second = await connect(board);
+
+    first.provider.awareness!.setLocalStateField("cursor", { x: 10, y: 20 });
+
+    await waitFor(() => second.provider.awareness!.getStates().get(first.document.clientID)?.cursor !== undefined);
+    expect(second.provider.awareness!.getStates().get(first.document.clientID)?.cursor).toEqual({ x: 10, y: 20 });
+  });
+
+  it("holds changes and cursors for the broadcast delay and sends them together", async () => {
+    await startServer({ broadcastDelay: 300 });
+    const first = await connect(board);
+    const second = await connect(board);
+
+    first.document.getMap("meta").set("title", "Batched");
+    first.provider.awareness!.setLocalStateField("cursor", { x: 1, y: 2 });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(title(second)).toBeUndefined();
+    await waitFor(() => title(second) === "Batched");
+    await waitFor(() => second.provider.awareness!.getStates().get(first.document.clientID)?.cursor !== undefined);
+  });
+
   it("loads the stored document when a participant connects", async () => {
     const stored = new Y.Doc();
     stored.getMap("meta").set("title", "Stored");
@@ -440,6 +465,21 @@ describe("collab server", () => {
       await expect(bobClosed).resolves.toBe("access-changed");
     });
 
+    it("closes the sockets of a user whose account was deleted at the next check", async () => {
+      await startServer({ userCheckInterval: 100 });
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const bobClosed = closeReasonOf(bob);
+      const ownerClosed = vi.fn();
+      owner.provider.on("close", ownerClosed);
+
+      // Bob deleted his account on another device; the link of the board still lets anybody edit it.
+      backend.missingUsers.add(BOB);
+
+      await expect(bobClosed).resolves.toBe("account-deleted");
+      expect(ownerClosed).not.toHaveBeenCalled();
+    });
+
     it("closes the connection of a member taken out of the workspace of the board at the next check", async () => {
       await startServer({ accessCheckInterval: 100 });
       backend.access.set(board, {
@@ -480,8 +520,16 @@ describe("collab server", () => {
       await expect(connect(board, token)).rejects.toThrow("user-blocked");
     });
 
+    it("rejects a user whose account was deleted after the token was issued", async () => {
+      await startServer();
+      const token = await backend.issueToken(board, { subject: BOB });
+      backend.missingUsers.add(BOB);
+
+      await expect(connect(board, token)).rejects.toThrow("account-deleted");
+    });
+
     it("closes the connections of a blocked user to all documents at the next check, and keeps the others", async () => {
-      await startServer({ blockedCheckInterval: 100 });
+      await startServer({ userCheckInterval: 100 });
       const owner = await connect(board);
       const onBoard = await connect(board, () => backend.issueToken(board, { subject: BOB }));
       const onOther = await connect(otherBoard, () => backend.issueToken(otherBoard, { subject: BOB }));
@@ -502,19 +550,19 @@ describe("collab server", () => {
       ]);
       expect(ownerClosed).not.toHaveBeenCalled();
       // One request about all connected users at a time.
-      expect(backend.blockedChecks.at(-1)?.slice().sort()).toEqual([ALICE, BOB].sort());
+      expect(backend.userChecks.at(-1)?.slice().sort()).toEqual([ALICE, BOB].sort());
     });
 
     it("keeps the connections when the backend cannot tell who is blocked", async () => {
-      await startServer({ blockedCheckInterval: 50 });
+      await startServer({ userCheckInterval: 50 });
       const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
       const closed = vi.fn();
       bob.provider.on("close", closed);
-      const checks = backend.blockedChecks.length;
-      backend.failingBlockedChecks = 1_000;
+      const checks = backend.userChecks.length;
+      backend.failingUserChecks = 1_000;
       backend.blocked.add(BOB);
 
-      await waitFor(() => backend.blockedChecks.length > checks + 1);
+      await waitFor(() => backend.userChecks.length > checks + 1);
       expect(closed).not.toHaveBeenCalled();
     });
   });

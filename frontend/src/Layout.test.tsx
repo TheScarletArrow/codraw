@@ -107,6 +107,15 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'Администрирование' })).toBeNull()
   })
 
+  it('links the account of the user in the header, of a guest too', async () => {
+    mockFetch({ 'GET /api/me': { body: { ...ALICE, guest: true } }, 'GET /api/boards': { body: [] }, ...unreadCount })
+
+    renderRoutes(routes)
+
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByRole('link', { name: 'Учётная запись' })).toHaveAttribute('href', '/settings/account')
+  })
+
   it('shows in the header what the page puts there, out of the page', async () => {
     mockFetch({ 'GET /api/me': { body: ALICE }, ...unreadCount })
 
@@ -194,6 +203,25 @@ describe('Layout', () => {
 
     expect(await screen.findByText('Страница входа')).toBeInTheDocument()
     await waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+    expect(findLocalCopy(ALICE.id, boardId)).toBeNull()
+  })
+
+  it('signs out at the provider when the installation signs out there too', async () => {
+    await storeCopy(ALICE.id, boardId)
+    const logoutUrl = 'https://sso.example.com/realms/acme/protocol/openid-connect/logout?id_token_hint=t'
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    mockFetch({
+      'GET /api/me': { body: ALICE },
+      'GET /api/boards': { body: [] },
+      'POST /api/logout': { body: { logoutUrl } },
+      ...unreadCount,
+    })
+    renderRoutes(routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Выйти' }))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(logoutUrl))
     expect(findLocalCopy(ALICE.id, boardId)).toBeNull()
   })
 

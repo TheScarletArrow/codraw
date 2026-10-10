@@ -14,6 +14,7 @@ import java.util.UUID
 enum class AdminActionKind(@get:JsonValue val value: String) {
     BLOCK_USER("block-user"),
     UNBLOCK_USER("unblock-user"),
+    DELETE_USER("delete-user"),
     BLOCK_SHARING("block-sharing"),
     UNBLOCK_SHARING("unblock-sharing"),
     TRASH_BOARD("trash-board"),

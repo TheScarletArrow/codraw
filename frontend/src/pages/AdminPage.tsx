@@ -6,6 +6,7 @@ import {
   adminKey,
   blockSharing,
   blockUser,
+  deleteUser,
   fetchActions,
   fetchAdminBoard,
   fetchReports,
@@ -23,7 +24,7 @@ import {
   type BoardReport,
 } from '../api/admin.ts'
 import type { LinkAccess } from '../api/boards.ts'
-import { isForbidden } from '../api/http.ts'
+import { HttpError, isForbidden } from '../api/http.ts'
 import { REPORT_REASONS } from '../admin/reports.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
@@ -50,6 +51,7 @@ const LINK_ACCESS: Record<LinkAccess, string> = {
 const ACTIONS: Record<AdminActionKind, string> = {
   'block-user': 'Заблокировать',
   'unblock-user': 'Разблокировать',
+  'delete-user': 'Удалить учётную запись',
   'block-sharing': 'Закрыть доступ по ссылке',
   'unblock-sharing': 'Снять запрет доступа',
   'trash-board': 'В корзину',
@@ -215,12 +217,23 @@ function Users() {
     mutationFn: ({ user, block }: { user: AdminUser; block: boolean }) => (block ? blockUser(user.id) : unblockUser(user.id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKey() }),
   })
+  const remove = useMutation({
+    mutationFn: (user: AdminUser) => deleteUser(user.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKey() }),
+  })
   return (
     <>
       <Search label="Имя, id или id у GitHub и Google" onSearch={setText} />
       {change.isError && (
         <p role="alert" className="text-sm text-destructive">
           Не удалось изменить блокировку
+        </p>
+      )}
+      {remove.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {remove.error instanceof HttpError && remove.error.problem?.reason === 'sole-workspace-owner'
+            ? 'Пользователь — единственный владелец пространства с другими участниками: сначала нужно передать роль владельца.'
+            : 'Не удалось удалить учётную запись'}
         </p>
       )}
       <Loaded query={users} empty="Никого не нашлось">
@@ -237,7 +250,7 @@ function Users() {
                 </span>
                 {user.admin && <Badge>Администратор</Badge>}
                 {user.blockedAt && <Badge>Заблокирован(а) {at(user.blockedAt)}</Badge>}
-                <span className="ml-auto">
+                <span className="ml-auto flex gap-2">
                   {user.admin ? null : user.blockedAt ? (
                     <Button
                       type="button"
@@ -258,6 +271,20 @@ function Users() {
                       onConfirm={() => change.mutate({ user, block: true })}
                     >
                       {user.name} не сможет войти, а открытые сеансы и подключения к доскам закроются. Доски останутся.
+                    </ConfirmedAction>
+                  )}
+                  {!user.admin && (
+                    <ConfirmedAction
+                      label="Удалить"
+                      title={`Удалить учётную запись ${user.name}?`}
+                      confirmLabel="Удалить навсегда"
+                      variant="ghost"
+                      disabled={remove.isPending}
+                      onConfirm={() => remove.mutate(user)}
+                    >
+                      Учётная запись и все личные доски пользователя удалятся навсегда, в том числе доски, с которыми
+                      работают другие. Его комментарии и решения на чужих досках останутся с подписью «Удалённый
+                      пользователь».
                     </ConfirmedAction>
                   )}
                 </span>

@@ -1,14 +1,17 @@
 package io.github.thescarletarrow.codraw.admin
 
+import io.github.thescarletarrow.codraw.account.SoleWorkspaceOwnerException
 import io.github.thescarletarrow.codraw.board.BoardIds
 import io.github.thescarletarrow.codraw.embed.EmbedController
 import io.github.thescarletarrow.codraw.embed.EmbedService
 import io.github.thescarletarrow.codraw.user.User
 import org.springframework.http.HttpStatus
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -60,6 +63,21 @@ class AdminController(
     @DeleteMapping("/users/{id}/block")
     fun unblock(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): AdminUser =
         userResponse(admin.unblock(access.require(principal), uuid(id)))
+
+    /** 204 once the account is gone; 409 with the workspaces in the way when the user is their only owner. */
+    @DeleteMapping("/users/{id}")
+    fun delete(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<Void> {
+        admin.deleteUser(access.require(principal), uuid(id))
+        return ResponseEntity.noContent().build()
+    }
+
+    @ExceptionHandler
+    fun soleWorkspaceOwner(exception: SoleWorkspaceOwnerException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.message).apply {
+            title = "Sole workspace owner"
+            setProperty("reason", "sole-workspace-owner")
+            setProperty("workspaces", exception.workspaces)
+        }
 
     @GetMapping("/boards")
     fun boards(@RequestParam(defaultValue = "") query: String, @AuthenticationPrincipal principal: OAuth2User): List<AdminBoard> {

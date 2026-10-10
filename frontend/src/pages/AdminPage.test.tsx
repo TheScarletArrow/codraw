@@ -116,6 +116,28 @@ describe('AdminPage', () => {
     expect(screen.getByRole('button', { name: 'Разблокировать' })).toBeInTheDocument()
   })
 
+  it('deletes an account once the administrator confirms it, and says why it cannot when a workspace needs its owner', async () => {
+    const fetchMock = renderPage({
+      'GET /api/admin/users': [{ body: [bob] }, { body: [] }],
+      'DELETE /api/admin/users/bob': [
+        { status: 409, body: { reason: 'sole-workspace-owner' } },
+        { status: 204 },
+      ],
+    })
+    await userEvent.click(await screen.findByRole('tab', { name: 'Пользователи' }))
+    const users = await screen.findByRole('list', { name: 'Пользователи' })
+
+    await userEvent.click(within(users).getByRole('button', { name: 'Удалить' }))
+    await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Удалить учётную запись Боб?' })).getByRole('button', { name: 'Удалить навсегда' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('единственный владелец пространства')
+    await userEvent.click(within(users).getByRole('button', { name: 'Удалить' }))
+    await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Удалить учётную запись Боб?' })).getByRole('button', { name: 'Удалить навсегда' }))
+
+    await waitFor(() => expect(calls(fetchMock, 'DELETE', '/api/admin/users/bob')).toHaveLength(2))
+    expect(await screen.findByText('Никого не нашлось')).toBeInTheDocument()
+  })
+
   it('offers no blocking of an administrator', async () => {
     renderPage({ 'GET /api/admin/users': { body: [{ ...bob, admin: true }] } })
     await userEvent.click(await screen.findByRole('tab', { name: 'Пользователи' }))

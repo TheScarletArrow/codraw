@@ -70,6 +70,14 @@ export interface BoardAccess {
   workspace?: WorkspaceBoardAccess | null;
 }
 
+/** Which of the users that collab asked about may connect no more. */
+export interface UserChecks {
+  /** Users who are gone, e.g. deleted their accounts. */
+  missing: string[];
+  /** Users whom an administrator of the installation blocked. */
+  blocked: string[];
+}
+
 /** Who may do what with the draft of a proposal of changes now. */
 export interface DraftAccess {
   /** The author edits the draft while the proposal is open and the board gives them a role. */
@@ -102,8 +110,11 @@ export interface BackendClient {
    */
   storeDraft(proposalId: string, state: Uint8Array): Promise<void>;
   loadDraftAccess(proposalId: string): Promise<DraftAccess>;
-  /** Those of the users `userIds` whom an administrator of the installation blocked; at most 1000 users at once. */
-  blockedUsers(userIds: readonly string[]): Promise<string[]>;
+  /**
+   * Of the users `userIds`, those who are gone, e.g. deleted their accounts, and those whom an administrator of the
+   * installation blocked; one request about all of them, nothing without users.
+   */
+  checkUsers(userIds: readonly string[]): Promise<UserChecks>;
 }
 
 export interface BackendClientOptions {
@@ -231,16 +242,17 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
       return (await response.json()) as DraftAccess;
     },
 
-    async blockedUsers(userIds) {
-      const response = await fetch(new URL("/internal/users/blocked", baseUrl), {
+    async checkUsers(userIds) {
+      if (userIds.length === 0) return { missing: [], blocked: [] };
+      const response = await fetch(new URL("/internal/users/check", baseUrl), {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ userIds }),
       });
       if (!response.ok) {
-        throw new Error(`Checking for blocked users failed: backend responded with ${response.status}`);
+        throw new Error(`Checking users failed: backend responded with ${response.status}`);
       }
-      return ((await response.json()) as { blocked: string[] }).blocked;
+      return (await response.json()) as UserChecks;
     },
   };
 }

@@ -110,7 +110,11 @@ describe('WorkspacePage', () => {
     await screen.findByRole('link', { name: 'Общая схема' })
     expect(screen.queryByRole('button', { name: 'Создать доску' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Новый проект' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Меню доски «Общая схема»' })).not.toBeInTheDocument()
+    // A viewer copies a board into their own boards, and does nothing else with it.
+    await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Общая схема»' }))
+    const menu = screen.getByRole('menu', { name: 'Доска «Общая схема»' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Создать копию'])
+    await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('combobox', { name: 'Роль: Боб' })).not.toBeInTheDocument()
     expect(screen.queryByText('Пригласить по ссылке')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Покинуть пространство' })).toBeInTheDocument()
@@ -194,6 +198,19 @@ describe('WorkspacePage', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true))
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
     expect(JSON.parse(String(put?.[1]?.body))).toEqual({ workspaceId: ID, projectId: 'p1' })
+  })
+
+  it('copies a board from its menu and opens the copy', async () => {
+    const fetchMock = mockFetch({
+      'POST /api/boards/b2/copy': { status: 201, body: { id: 'copy', title: 'Общая схема (копия)' } },
+    })
+    const { router } = renderRoutes(routes, `/workspaces/${ID}`)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Меню доски «Общая схема»' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Создать копию' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/boards/copy'))
+    expect(fetchMock.mock.calls.some(([url, init]) => init?.method === 'POST' && String(url) === '/api/boards/b2/copy')).toBe(true)
   })
 
   it('deletes the workspace after a confirmation and goes to the main page', async () => {

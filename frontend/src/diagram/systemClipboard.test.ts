@@ -71,6 +71,32 @@ describe('clipboard format', () => {
     expect(pastedEdge!.getTerminal(false)).toBe(pastedService)
   })
 
+  it('carries the shadow, the rounded corners and the gradient of copied shapes', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const editor = createDiagramEditor(container, doc)
+    const service = editor.addShape('rectangle', { x: 100, y: 100 })!
+    editor.graph.setSelectionCell(service)
+    editor.setShapeEffects({ shadow: true, rounded: true })
+    editor.setShapeEffects({ arcSize: 30, gradient: '#dae8fc', gradientDirection: 'east' })
+
+    const text = clipboardText(editor.graph.cloneCells([service], false))
+    editor.destroy()
+
+    expect(decodeURIComponent(text)).toContain('shadow=1;rounded=1;arcSize=30;gradientColor=#dae8fc;gradientDirection=east;')
+    const content = await readClipboardText(text)
+    const [pasted] = content?.kind === 'cells' ? content.cells : []
+    expect(pasted!.getStyle()).toMatchObject({
+      shadow: true,
+      rounded: true,
+      arcSize: 30,
+      gradientColor: '#dae8fc',
+      gradientDirection: 'east',
+    })
+  })
+
   it('writes the link of a copied element as draw.io does, and reads links of draw.io, but no unsafe one', async () => {
     const linked = dataToCells([
       { id: 'a', kind: 'vertex', parent: '1', order: 'a0', value: 'Payments', geometry: { x: 0, y: 0, width: 120, height: 60 }, source: null, target: null, style: { link: 'data:page/id,containers' } },

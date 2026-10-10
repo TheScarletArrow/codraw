@@ -4,7 +4,7 @@ groups:
   - name: codraw
     rules:
       - alert: CodrawServiceDown
-        expr: up{job=~"backend|collab"} == 0
+        expr: up{job=~"backend|collab|backup"} == 0
         for: 2m
         labels:
           severity: critical
@@ -28,6 +28,16 @@ groups:
         annotations:
           summary: "collab не смог сохранить документы досок: изменения пока только в памяти"
 
+      # collab is one process of Node.js: past about 80 % of a core the delivery of edits slows down quickly
+      # (docs/load-testing.md).
+      - alert: CodrawCollabBusy
+        expr: rate(process_cpu_seconds_total{job="collab"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "collab 10 минут занимает больше 80% ядра: правки скоро начнут доходить с задержкой"
+
       - alert: CodrawDatabaseConnectionsPending
         expr: max(hikaricp_connections_pending{job="backend"}) > 0
         for: 5m
@@ -42,3 +52,20 @@ groups:
           severity: warning
         annotations:
           summary: "Больше 20 ошибок в браузерах участников за 10 минут"
+
+      - alert: CodrawBackupFailed
+        expr: codraw_backup_last_run_success == 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Последняя резервная копия не удалась: причина — в журнале сервиса backup"
+
+      # A day and two hours for the daily schedule; with another CODRAW_BACKUP_SCHEDULE change the threshold too. The
+      # wait lets the first backup of a new installation finish.
+      - alert: CodrawBackupMissing
+        expr: time() - codraw_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Удачной резервной копии нет больше 26 часов"
