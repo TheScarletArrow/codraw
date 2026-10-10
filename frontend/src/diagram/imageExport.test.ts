@@ -127,7 +127,8 @@ describe('image export', () => {
 
     const image = new DOMParser().parseFromString(svg, 'image/svg+xml')
     const gradient = image.querySelector('linearGradient')!
-    expect(gradient.getAttribute('x2')).toBe('100%')
+    // In fractions of the shape, which the PDF renderer reads as browsers do.
+    expect([gradient.getAttribute('x1'), gradient.getAttribute('x2')]).toEqual(['0', '1'])
     expect([...gradient.querySelectorAll('stop')].map((stop) => stop.getAttribute('style') ?? stop.getAttribute('stop-color'))).toEqual([
       expect.stringContaining('#ffffff'),
       expect.stringContaining('#dae8fc'),
@@ -136,6 +137,16 @@ describe('image export', () => {
     expect(body!.getAttribute('fill')).toBe(`url(#${gradient.id})`)
     expect(shadow!.getAttribute('transform')).toBe('translate(2,3)')
     expect(Number(body!.getAttribute('rx'))).toBeGreaterThan(0)
+  })
+
+  it('draws a gradient without a direction from the top down, as draw.io does', () => {
+    const { editor } = open()
+    editor.graph.setSelectionCell(shape(editor, 0, 0, 'Сервис'))
+    editor.setShapeEffects({ gradient: '#dae8fc' })
+
+    const gradient = new DOMParser().parseFromString(editor.exportSvg()!.svg, 'image/svg+xml').querySelector('linearGradient')!
+
+    expect([gradient.getAttribute('x2'), gradient.getAttribute('y2')]).toEqual(['0', '1'])
   })
 
   it('leaves the background out of a transparent image', () => {

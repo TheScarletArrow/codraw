@@ -188,6 +188,8 @@ describe('PDF of images', () => {
     expect(plain.raw).not.toMatch(/\/ShadingType 2/)
     expect(plain.raw).not.toMatch(/\/ca 0\.25/)
     expect(styled.raw).toMatch(/\/ShadingType 2/)
+    // Across the shape, from its left to its right side, not a hundred times wider.
+    expect(styled.raw).toMatch(/\/Coords \[0\.? 0\.? 1\.? 0\.?\]/)
     expect(styled.raw).toMatch(/\/ca 0\.25/)
     const curves = (streams: string[]) => streams.join('\n').match(/ c\n/g)?.length ?? 0
     expect(curves(styled.streams)).toBeGreaterThan(curves(plain.streams))

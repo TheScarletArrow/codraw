@@ -6198,6 +6198,8 @@ function configureStyles(graph: Graph) {
     strokeColor: DEFAULT_LINE_COLOR,
     fontColor: DEFAULT_LINE_COLOR,
     fontSize: 13,
+    // A gradient without a direction goes from the top down, as in draw.io; maxGraph would draw it from the left.
+    gradientDirection: 'south',
   })
   Object.assign(stylesheet.getDefaultEdgeStyle(), {
     edgeStyle: 'orthogonalEdgeStyle',
