@@ -21,6 +21,11 @@ describe('searching shapes', () => {
     expect(labels('строки столбцы')).toEqual(['Сетка таблицы'])
     expect(labels('exclusive gateway')).toEqual(['Шлюз'])
     expect(labels('блок-схема условие')).toEqual(['Условие'])
+    expect(labels('прецедент')).toEqual(['Вариант использования'])
+    expect(labels('use case')).toEqual(['Актёр', 'Вариант использования', 'Граница системы UML'])
+    expect(labels('актер')).toEqual(['Актёр'])
+    expect(labels('роль')).toEqual(['Актёр'])
+    expect(labels('uml граница')).toEqual(['Граница системы UML'])
   })
 
   it('takes upper and lower case and «ё» and «е» alike', () => {

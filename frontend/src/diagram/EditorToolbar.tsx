@@ -33,7 +33,8 @@ import type { PlanView } from './plan.ts'
 import { PlanViewPicker } from './PlanViewPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
 import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionLock, SelectionText, TextAlign } from './editor.ts'
-import { EDGE_MARKERS } from './extensions.ts'
+import { EDGE_MARKERS } from './edgeMarkers.ts'
+import { UML_RELATIONS, type UmlRelation } from './useCase.ts'
 import { FONT_FAMILIES } from './fonts.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
 import { LineStylePicker } from './LineStylePicker.tsx'
@@ -241,6 +242,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     tableBase,
     tableView,
     edgeMarkers,
+    edgeRelation,
     colors,
     line,
     text,
@@ -313,6 +315,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             <MarkerSelect label="Начало" end="start" value={edgeMarkers.start} editor={editor} />
             <MarkerSelect label="Конец" end="end" value={edgeMarkers.end} editor={editor} />
+            {edgeRelation && <RelationSelect value={edgeRelation.value} editor={editor} />}
           </>
         )}
       </fieldset>
@@ -546,6 +549,28 @@ function FontSelect({ value, editor }: { value: string | null; editor: DiagramEd
         </option>
       ))}
     </select>
+  )
+}
+
+/** The relation of use cases of the selected edges; empty when they differ or some look like none. */
+function RelationSelect({ value, editor }: { value: UmlRelation | null; editor: DiagramEditor | null }) {
+  return (
+    <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      Отношение
+      <select
+        aria-label="Отношение связи"
+        className="h-8 rounded-md border bg-background px-2 text-foreground"
+        value={value ?? ''}
+        onChange={(event) => editor?.setEdgeRelation(event.target.value as UmlRelation)}
+      >
+        {value === null && <option value="">—</option>}
+        {UML_RELATIONS.map((relation) => (
+          <option key={relation.value} value={relation.value}>
+            {relation.label}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 

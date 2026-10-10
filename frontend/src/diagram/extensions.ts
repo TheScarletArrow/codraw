@@ -691,18 +691,6 @@ const lifelinePerimeter: PerimeterFunction = (bounds, vertex, next) => {
   return new Point(bounds.getCenterX(), Math.min(bounds.y + bounds.height, Math.max(bounds.y + size, next.y)))
 }
 
-/** Marker values for the ends of an edge, as draw.io names them. */
-export const EDGE_MARKERS = [
-  { value: 'classic', label: 'Стрелка' },
-  { value: 'none', label: 'Без маркера' },
-  { value: 'ERone', label: 'Один' },
-  { value: 'ERmandOne', label: 'Обязательно один' },
-  { value: 'ERmany', label: 'Много' },
-  { value: 'ERoneToMany', label: 'Один или много' },
-  { value: 'ERzeroToOne', label: 'Ноль или один' },
-  { value: 'ERzeroToMany', label: 'Ноль или много' },
-] as const
-
 interface CrowsFoot {
   /** Distances of the bars («one») from the end of the edge, in marker units. */
   bars?: number[]

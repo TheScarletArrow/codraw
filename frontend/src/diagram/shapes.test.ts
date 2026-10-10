@@ -55,6 +55,7 @@ describe('shape presets', () => {
       ],
       ['Клиенты', ['Веб-браузер', 'Мобильное приложение', 'Десктоп-приложение', 'IoT-устройство']],
       ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка', 'Диаграмма последовательности']],
+      ['UML: варианты использования', ['Актёр', 'Вариант использования', 'Граница системы UML']],
       [
         'C4',
         [
@@ -72,6 +73,8 @@ describe('shape presets', () => {
       ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
     expect(new Set(SHAPES.map((shape) => shape.id)).size).toBe(SHAPES.length)
+    // A name tells one shape: the search of shapes lists them by it.
+    expect(new Set(SHAPES.map((shape) => shape.label)).size).toBe(SHAPES.length)
     // The legend of two sections is one shape of the palette.
     expect(SHAPES.filter((shape) => shape.id === 'legend')).toHaveLength(1)
   })
@@ -161,6 +164,18 @@ describe('shape presets', () => {
     expect(findShape('bpmn-pool')!.style).toMatchObject({ shape: 'codraw.bpmnPool', lanes: 3, pointerEvents: false })
   })
 
+  it('draw use cases in the notation of UML, as the UML shapes of draw.io do', () => {
+    expect(findShape('uml-actor')).toMatchObject({ value: 'Актёр', style: { shape: 'umlActor', verticalLabelPosition: 'bottom' } })
+    expect(findShape('uml-use-case')).toMatchObject({
+      value: 'Вариант использования',
+      style: { shape: 'ellipse', perimeter: 'ellipsePerimeter', whiteSpace: 'wrap' },
+    })
+    // The name of a subject is at the top in the middle, and its line is solid.
+    expect(findShape('uml-system-boundary')).toMatchObject({ value: 'Система', style: { verticalAlign: 'top' } })
+    expect(findShape('uml-system-boundary')!.style.align).toBeUndefined()
+    expect(findShape('uml-system-boundary')!.style.dashed).toBeUndefined()
+  })
+
   it('let clicks inside a boundary reach the shapes under it', () => {
     for (const id of ['boundary', 'c4-boundary', 'kubernetes-cluster']) {
       expect(findShape(id)!.style).toMatchObject({ fillColor: 'none', dashed: true, pointerEvents: false })
@@ -168,6 +183,7 @@ describe('shape presets', () => {
     expect(findShape('bpmn-pool')!.style).toMatchObject({ fillColor: 'none', pointerEvents: false })
     // A node of deployment is a frame of solid lines.
     expect(findShape('c4-deployment-node')!.style).toMatchObject({ fillColor: 'none', dashed: false, pointerEvents: false })
+    expect(findShape('uml-system-boundary')!.style).toMatchObject({ fillColor: 'none', pointerEvents: false })
   })
 })
 
@@ -220,6 +236,7 @@ describe('shape groups', () => {
       'system',
       'system',
       'uml',
+      'usecase',
       'c4',
       'system',
     ])
@@ -236,6 +253,7 @@ describe('shape groups', () => {
       'kubernetes-cluster',
       'c4-boundary',
       'c4-deployment-node',
+      'uml-system-boundary',
     ])
     for (const section of SHAPE_SECTIONS) {
       for (const shape of section.shapes) {
@@ -263,6 +281,7 @@ describe('shape groups', () => {
     expect(system).toContain('iot-device')
     expect(system).not.toContain('boundary')
     expect(system).not.toContain('kubernetes-cluster')
+    expect(ids(groupShapes('usecase'))).toEqual(['uml-actor', 'uml-use-case'])
     expect(ids(groupShapes('c4'))).not.toContain('c4-boundary')
     expect(ids(groupShapes('c4'))).not.toContain('c4-deployment-node')
   })
@@ -285,6 +304,11 @@ describe('shape groups', () => {
     expect(shapeOf({ shape: 'ellipse' })?.id).toBe('ellipse')
     expect(shapeOf({ shape: 'cylinder' })?.id).toBe('database')
     expect(shapeOf({ shape: 'component' })?.id).toBe('uml-component')
+    // An actor of draw.io is the actor of use cases; an ellipse stays the basic one.
+    expect(shapeOf(drawio('shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;'))?.id).toBe(
+      'uml-actor',
+    )
+    expect(shapeOf(drawio('ellipse;whiteSpace=wrap;html=1;'))?.id).toBe('ellipse')
     expect(shapeOf({ shape: 'mxgraph.c4.person2' })?.id).toBe('c4-person')
     expect(shapeOf(drawio('swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;html=1;'))?.id).toBe(
       'table',

@@ -10,7 +10,8 @@ import {
   type Shape,
 } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
-import { crowsFoot, EDGE_MARKERS, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
+import { EDGE_MARKERS } from './edgeMarkers.ts'
+import { crowsFoot, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
 import { LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_SHAPE } from './sequence.ts'
 import { SHAPES } from './shapes.ts'
@@ -54,8 +55,9 @@ describe('diagram extensions', () => {
 
     expect(ShapeRegistry.get('document')).toBeDefined()
     expect(ShapeRegistry.get('mxgraph.c4.person2')).toBeDefined()
-    for (const { value } of EDGE_MARKERS.filter((marker) => marker.value.startsWith('ER'))) {
-      expect(EdgeMarkerRegistry.get(value)).toBeDefined()
+    // Those of maxGraph too: the open arrow and the triangle of UML.
+    for (const { arrow } of EDGE_MARKERS.filter((marker) => marker.arrow !== 'none')) {
+      expect(EdgeMarkerRegistry.get(arrow)).toBeDefined()
     }
   })
 

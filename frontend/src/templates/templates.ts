@@ -1,10 +1,11 @@
-import type { CellData } from '../diagram/model.ts'
+import type { CellData, StyleValue } from '../diagram/model.ts'
 import { sequenceCells } from '../diagram/sequence.ts'
+import { relationChanges, type UmlRelation } from '../diagram/useCase.ts'
 import type { DrawioPage } from '../drawio/parse.ts'
 import { parseMermaid } from '../mermaid/parseMermaid.ts'
 import { DiagramBuilder } from './builder.ts'
 
-export type TemplateId = 'er' | 'c4-containers' | 'microservices' | 'kubernetes' | 'oauth-login'
+export type TemplateId = 'er' | 'c4-containers' | 'microservices' | 'kubernetes' | 'oauth-login' | 'use-cases'
 
 export interface BoardTemplate {
   id: TemplateId
@@ -131,6 +132,39 @@ function oauthLogin(): CellData[] {
   return sequenceCells(diagram.diagram, { x: 40, y: 40 })
 }
 
+/** Use cases of an online store: actors, the system boundary and every relation of use cases. */
+function useCases(): CellData[] {
+  const diagram = new DiagramBuilder()
+  // The frame first, so that the use cases are drawn over it.
+  diagram.shape('uml-system-boundary', 400, 0, { value: 'Интернет-магазин', width: 520, height: 480 })
+  const useCase = (value: string, x: number, y: number) => diagram.shape('uml-use-case', x, y, { value })
+  const find = useCase('Найти товар', 440, 50)
+  const order = useCase('Оформить заказ', 440, 200)
+  const pay = useCase('Оплатить заказ', 440, 350)
+  const login = useCase('Войти в систему', 720, 120)
+  const coupon = useCase('Применить промокод', 720, 280)
+  // The names of actors are under them: the generalization comes from the side, not through a name, and the long
+  // name of the first actor stays right of the left edge of the page.
+  const actor = (value: string, x: number, y: number) => diagram.shape('uml-actor', x, y, { value })
+  const customer = actor('Покупатель', 260, 210)
+  const regular = actor('Постоянный покупатель', 80, 210)
+  const payments = actor('Платёжная система', 1020, 360)
+  // Straight lines, as relations of use cases are drawn, with the keys that «Отношение» gives them.
+  const relate = (source: string, target: string, relation: UmlRelation) => {
+    const { style, label } = relationChanges(relation, '')
+    const keys = Object.entries(style).filter((entry): entry is [string, StyleValue] => entry[1] !== undefined)
+    diagram.edge(source, target, { value: label, style: { ...Object.fromEntries(keys), edgeStyle: 'none' } })
+  }
+  relate(customer, find, 'association')
+  relate(customer, order, 'association')
+  relate(customer, pay, 'association')
+  relate(payments, pay, 'association')
+  relate(order, login, 'include')
+  relate(coupon, order, 'extend')
+  relate(regular, customer, 'generalization')
+  return diagram.build()
+}
+
 export const BOARD_TEMPLATES: BoardTemplate[] = [
   {
     id: 'er',
@@ -161,6 +195,12 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     title: 'Вход через OAuth',
     description: 'Диаграмма последовательности: перенаправление, код, токен и ошибка входа',
     build: oauthLogin,
+  },
+  {
+    id: 'use-cases',
+    title: 'Варианты использования',
+    description: 'Актёры и варианты использования интернет-магазина: «include», «extend» и обобщение',
+    build: useCases,
   },
 ]
 

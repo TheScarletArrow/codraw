@@ -233,6 +233,40 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('combobox', { name: 'Конец связи' })).toHaveValue('')
   })
 
+  it('offers the open arrow and the hollow triangle of UML for both ends', async () => {
+    act(() => editor.setState({ edgeMarkers: { start: 'open', end: 'blockHollow' } }))
+
+    expect(screen.getByRole('combobox', { name: 'Начало связи' })).toHaveValue('open')
+    expect(screen.getByRole('combobox', { name: 'Конец связи' })).toHaveDisplayValue('Полый треугольник')
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Начало связи' }), 'Полый треугольник')
+    expect(editor.setEdgeMarker).toHaveBeenCalledWith('start', 'blockHollow')
+  })
+
+  it('shows the relation of use cases of the selected edges and changes it', async () => {
+    act(() => editor.setState({ edgeMarkers: { start: 'none', end: 'none' }, edgeRelation: { value: 'association' } }))
+
+    const relation = screen.getByRole('combobox', { name: 'Отношение связи' })
+    expect(relation).toHaveDisplayValue('Ассоциация')
+    expect(within(relation).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Ассоциация',
+      'Включение «include»',
+      'Расширение «extend»',
+      'Обобщение',
+    ])
+
+    await userEvent.selectOptions(relation, 'Включение «include»')
+    expect(editor.setEdgeRelation).toHaveBeenCalledWith('include')
+  })
+
+  it('shows an empty relation for different ones, and none for edges of no use cases', () => {
+    act(() => editor.setState({ edgeMarkers: { start: 'none', end: null }, edgeRelation: { value: null } }))
+    expect(screen.getByRole('combobox', { name: 'Отношение связи' })).toHaveValue('')
+
+    act(() => editor.setState({ edgeMarkers: { start: 'none', end: 'classic' }, edgeRelation: null }))
+    expect(screen.queryByRole('combobox', { name: 'Отношение связи' })).toBeNull()
+  })
+
   it('offers fill, line and text colors for selected shapes and applies them', async () => {
     act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, hasShapes: true } }))
 
