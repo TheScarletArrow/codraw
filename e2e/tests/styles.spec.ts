@@ -175,3 +175,65 @@ test('the transparency of a fill reaches the other participant', async ({ browse
   await expect.poll(async () => (await styleOf(bob, shape))?.fillOpacity).toBeUndefined()
   await close()
 })
+
+test('the shadow, the rounded corners and the gradient of a shape reach the other participant and survive a .drawio file', async ({
+  browser,
+}) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const shape = await addShape(alice, 'Прямоугольник')
+  await select(alice, shape)
+
+  await alice.getByRole('button', { name: 'Цвет заливки' }).click()
+  const gradient = alice.getByRole('group', { name: 'Градиент' })
+  await gradient.getByRole('checkbox', { name: 'Градиент' }).check()
+  await gradient.getByRole('button', { name: 'Вправо' }).click()
+  await expect.poll(() => styleOf(bob, shape)).toMatchObject({ gradientColor: '#dae8fc', gradientDirection: 'east' })
+  await alice.keyboard.press('Escape')
+
+  await alice.getByRole('button', { name: 'Стиль линии' }).click()
+  const panel = alice.getByRole('dialog', { name: 'Стиль линии' })
+  await panel.getByRole('checkbox', { name: 'Тень' }).check()
+  await panel.getByRole('checkbox', { name: 'Скругление' }).check()
+  const radius = panel.getByRole('spinbutton', { name: 'Радиус скругления, %' })
+  await expect(radius).toHaveValue('15')
+  await radius.fill('30')
+  await radius.press('Enter')
+  await expect.poll(() => styleOf(bob, shape)).toMatchObject({ shadow: true, rounded: true, arcSize: 30 })
+  // Bob sees them drawn: a shadow under the shape and its fill a gradient.
+  const drawn = bob.getByTestId('diagram-canvas').locator('svg rect[fill^="url(#mx-gradient"]')
+  await expect(drawn).toHaveCount(1)
+  await expect(drawn).toHaveAttribute('rx', /^[1-9]/)
+  await expect(bob.getByTestId('diagram-canvas').locator('svg rect[transform^="translate(2"]')).toHaveCount(1)
+
+  // Each change is a step of undo: the radius first, then the corners.
+  await alice.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+  await expect(alice.getByRole('button', { name: 'Стиль линии' })).toBeFocused()
+  await select(alice, shape)
+  await alice.keyboard.press('Control+Z')
+  await expect.poll(async () => (await styleOf(bob, shape))?.arcSize).toBeUndefined()
+  await alice.keyboard.press('Control+Z')
+  await expect.poll(async () => (await styleOf(bob, shape))?.rounded).toBeUndefined()
+  await alice.keyboard.press('Control+Shift+Z')
+  await alice.keyboard.press('Control+Shift+Z')
+  await expect.poll(() => styleOf(bob, shape)).toMatchObject({ rounded: true, arcSize: 30 })
+
+  const download = alice.waitForEvent('download')
+  await alice.getByRole('button', { name: 'Экспорт в .drawio' }).click()
+  const xml = await readFile((await (await download).path())!, 'utf8')
+  expect(xml).toContain('shadow=1;')
+  const carol = await userPage(browser, 'Ева')
+  await carol.goto('/')
+  await carol.getByLabel('Файл draw.io').setInputFiles({ name: 'effects.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
+  await expect(carol.getByRole('status')).toHaveText('Синхронизировано')
+  await expect.poll(async () => (await vertices(carol)).length).toBe(1)
+  expect(await styleOf(carol, shape)).toMatchObject({
+    shadow: true,
+    rounded: true,
+    arcSize: 30,
+    gradientColor: '#dae8fc',
+    gradientDirection: 'east',
+  })
+
+  await Promise.all([close(), carol.context().close()])
+})

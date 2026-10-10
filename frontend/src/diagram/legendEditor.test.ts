@@ -195,6 +195,21 @@ describe('legends in the editor', () => {
     expect(empty.editor.exportSvg()!.svg).toContain('Нет фигур и связей')
   })
 
+  it('draws the shadow, the corners and the gradient of a shape into its sample', () => {
+    const { editor } = open()
+    const service = editor.addShape('service', { x: 0, y: 0 })!
+    editor.addShape('legend', { x: 400, y: 0 })
+    editor.graph.setSelectionCell(service)
+    editor.setShapeEffects({ shadow: true, gradient: '#ffffff', arcSize: 40 })
+
+    const svg = editor.exportSvg()!.svg
+
+    // The shape and its sample, each with its shadow under it.
+    expect(svg.match(/fill="url\(#mx-gradient-[^"]+\)"/g)).toHaveLength(2)
+    expect(svg.match(/transform="translate\(2,3\)" opacity="0.25"/g)).toHaveLength(2)
+    expect(svg.match(/<rect [^>]*rx="[1-9][^"]*"[^>]*fill="url\(#mx-gradient/g)).toHaveLength(2)
+  })
+
   it('is no element and offers no properties of one', () => {
     const { editor } = open()
     editor.addShape('legend', { x: 0, y: 0 })
