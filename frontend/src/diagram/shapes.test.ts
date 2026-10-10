@@ -55,7 +55,7 @@ describe('shape presets', () => {
       ],
       ['Клиенты', ['Веб-браузер', 'Мобильное приложение', 'Десктоп-приложение', 'IoT-устройство']],
       ['UML', ['Компонент', 'Интерфейс', 'Пакет', 'Заметка', 'Диаграмма последовательности']],
-      ['UML: варианты использования', ['Актёр', 'Вариант использования', 'Граница системы']],
+      ['UML: варианты использования', ['Актёр', 'Вариант использования', 'Граница системы UML']],
       [
         'C4',
         [
@@ -73,6 +73,8 @@ describe('shape presets', () => {
       ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
     expect(new Set(SHAPES.map((shape) => shape.id)).size).toBe(SHAPES.length)
+    // A name tells one shape: the search of shapes lists them by it.
+    expect(new Set(SHAPES.map((shape) => shape.label)).size).toBe(SHAPES.length)
     // The legend of two sections is one shape of the palette.
     expect(SHAPES.filter((shape) => shape.id === 'legend')).toHaveLength(1)
   })

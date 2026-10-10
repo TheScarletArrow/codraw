@@ -674,7 +674,8 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
       },
       {
         id: 'uml-system-boundary',
-        label: 'Граница системы',
+        // Apart from the boundary of a system of C4: the palette, its search and the legend name each shape once.
+        label: 'Граница системы UML',
         width: 320,
         height: 360,
         value: 'Система',
