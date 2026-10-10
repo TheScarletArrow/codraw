@@ -49,6 +49,14 @@ export interface CollabServerOptions {
   accessCheckInterval?: number;
   /** The largest a board document may grow, in bytes; changes that only delete pass beyond it. */
   documentSizeLimit?: number;
+  /**
+   * How long the changes and cursor moves of a document gather before they go to its participants in one message, in
+   * milliseconds. 0 sends what arrived in one turn of the event loop together and adds no delay. On a board of many
+   * participants every cursor move goes to all of them: a delay of a few tens of milliseconds sends fewer, larger
+   * messages and halves the processor time of collab there, at the cost of that delay for every change
+   * (docs/load-testing.md).
+   */
+  broadcastDelay?: number;
   /** Where the server counts what it does; `GET /metrics` gives them in the Prometheus format. */
   metrics?: Metrics;
   /**
@@ -75,6 +83,7 @@ export function createCollabServer({
   stopOnSignals = true,
   accessCheckInterval = 60_000,
   documentSizeLimit = DOCUMENT_SIZE_LIMIT,
+  broadcastDelay = 0,
   metrics = createMetrics(),
   searchTextBackfillInterval = 60 * 60_000,
 }: CollabServerOptions): Server {
@@ -148,6 +157,7 @@ export function createCollabServer({
     maxDebounce,
     // Store pending changes as soon as the last participant leaves.
     unloadImmediately: true,
+    flushDelay: broadcastDelay,
     // A message that cannot fit into a document is refused before it is read into memory: ws closes with 1009.
     websocketOptions: { maxPayload: documentSizeLimit + MESSAGE_OVERHEAD },
     extensions: [

@@ -128,8 +128,15 @@ describe("config", () => {
       jwksUrl: "http://backend:8080/.well-known/jwks.json",
       accessCheckInterval: 5000,
       documentSizeLimit: 16 * 1024 * 1024,
+      broadcastDelay: 0,
       logFormat: "text",
     });
+  });
+
+  it("sends changes at once unless a delay of the broadcast is set", () => {
+    expect(loadConfig({ ...env, BROADCAST_DELAY_MS: "25" }).broadcastDelay).toBe(25);
+    expect(loadConfig({ ...env, BROADCAST_DELAY_MS: "0" }).broadcastDelay).toBe(0);
+    expect(() => loadConfig({ ...env, BROADCAST_DELAY_MS: "-5" })).toThrow("BROADCAST_DELAY_MS");
   });
 
   it("defaults the port to 1234, the access check to once a minute and the document size to 16 MiB", () => {

@@ -1,0 +1,19 @@
+{
+  "name": "@codraw/load",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "load": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "^4.7.0",
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3",
+    "yjs": "^13.6.33"
+  }
+}

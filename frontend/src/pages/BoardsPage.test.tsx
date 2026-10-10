@@ -193,7 +193,7 @@ describe('BoardsPage', () => {
     expect(within(section).getByRole('link', { name: 'Платежи' })).toHaveAttribute('href', '/boards/x')
     expect(within(section).getByText('Боб')).toBeInTheDocument()
     const menu = await openMenu('Платежи')
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Теги', 'Переместить в папку'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Создать копию', 'Теги', 'Переместить в папку'])
   })
 
   it('shows the role of the user on each shared board, and a board of a member that was never opened', async () => {
@@ -226,6 +226,31 @@ describe('BoardsPage', () => {
 
     await screen.findByRole('link', { name: 'Своя' })
     expect(screen.queryByRole('region', { name: 'Общие со мной' })).not.toBeInTheDocument()
+  })
+
+  it('copies a board from its menu and opens the copy', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/boards': [{ body: [board('a', 'Платежи')] }, { body: [board('copy', 'Платежи (копия)'), board('a', 'Платежи')] }],
+      'POST /api/boards/a/copy': { status: 201, body: board('copy', 'Платежи (копия)') },
+    })
+    const { router } = renderRoutes(routes)
+
+    await userEvent.click(within(await openMenu('Платежи')).getByRole('menuitem', { name: 'Создать копию' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/boards/copy'))
+    expect(fetchMock.mock.calls.filter(([input, init]) => init?.method === 'POST' && input.toString() === '/api/boards/a/copy')).toHaveLength(1)
+  })
+
+  it('tells why a board was not copied', async () => {
+    mockFetch({
+      'GET /api/boards': { body: [board('a', 'Платежи')] },
+      'POST /api/boards/a/copy': { status: 503, body: { title: 'Service Unavailable' } },
+    })
+    renderRoutes(routes)
+
+    await userEvent.click(within(await openMenu('Платежи')).getByRole('menuitem', { name: 'Создать копию' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Хранилище изображений недоступно. Повторите позже.')
   })
 
   it('renames a board from its menu with Enter', async () => {

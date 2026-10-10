@@ -89,6 +89,14 @@ export function renderSvg(
       const state = view.getState(cell)
       if (state) painter.drawState(state, canvas)
     }
+    // maxGraph writes the ends of gradients in percent of the shape; the PDF renderer reads `100%` as 100 shapes and
+    // stretches the gradient out of sight. Fractions mean the same to browsers.
+    for (const gradient of Array.from(root.getElementsByTagNameNS(SVG_NS, 'linearGradient'))) {
+      for (const name of ['x1', 'y1', 'x2', 'y2']) {
+        const value = gradient.getAttribute(name)
+        if (value?.endsWith('%')) gradient.setAttribute(name, String(Number(value.slice(0, -1)) / 100))
+      }
+    }
     // maxGraph writes the address as `xlink:href`, which old programs read; SVG 2 and the PDF renderer read `href`.
     for (const anchor of Array.from(content.getElementsByTagNameNS(SVG_NS, 'a'))) {
       anchor.setAttribute('href', anchor.getAttributeNS(XLINK_NS, 'href') ?? '')

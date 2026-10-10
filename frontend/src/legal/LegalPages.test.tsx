@@ -154,6 +154,10 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
     )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Копия доски, которую сделал её участник, переносит в его новую доску документ с изображениями, а с ним имена тех, кто менял элементы, писал стикеры и ставил статусы; их видят участники копии',
+    )
+    expect(retention).toHaveTextContent('Копия доски хранится как отдельная доска того, кто её сделал, со своими изображениями и не зависит от оригинала')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
     const account = screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })
     expect(account).toHaveTextContent('«Скачать мои данные» собирает архив ZIP')

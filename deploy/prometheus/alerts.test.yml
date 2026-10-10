@@ -51,6 +51,23 @@ tests:
 
   - interval: 1m
     input_series:
+      # 54 seconds of processor time in every minute: 90 % of a core.
+      - series: 'process_cpu_seconds_total{job="collab", instance="collab:1234"}'
+        values: "0+54x30"
+      - series: 'process_cpu_seconds_total{job="backend", instance="backend:8080"}'
+        values: "0+54x30"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: CodrawCollabBusy
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CodrawCollabBusy
+        exp_alerts:
+          - exp_labels: { severity: warning, job: collab, instance: "collab:1234" }
+            exp_annotations: { summary: "collab 10 минут занимает больше 80% ядра: правки скоро начнут доходить с задержкой" }
+
+  - interval: 1m
+    input_series:
       - series: 'hikaricp_connections_pending{job="backend", instance="backend:8080", pool="HikariPool-1"}'
         values: "0 2 2 2 2 2 2 2"
     alert_rule_test:
