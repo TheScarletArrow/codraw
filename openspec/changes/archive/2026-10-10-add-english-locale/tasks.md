@@ -13,17 +13,17 @@
 
 ## 2. Перенос строк фронтенда
 
-- [ ] 2.1 frontend: `diagram/` — палитра, фигуры, меню холста, цвета, легенда, горячие клавиши, панели и инструменты
-- [ ] 2.2 frontend: `board/`, `boardList/`
-- [ ] 2.3 frontend: `pages/`, `workspaces/`, `theme/`, `Layout.tsx`
-- [ ] 2.4 frontend: импорты и экспорт — `sql/`, `infra/`, `architecture/`, `apiSpec/`, `mermaid/`, `drawio/`, `image/`
-- [ ] 2.5 frontend: `decisions/`, `elements/`, `templates/`, `comments/`
-- [ ] 2.6 frontend: `issues/`, `links/`, `views/`, `notifications/`, `proposals/`, `checks/`, `edgeApi/`,
+- [x] 2.1 frontend: `diagram/` — палитра, фигуры, меню холста, цвета, легенда, горячие клавиши, панели и инструменты
+- [x] 2.2 frontend: `board/`, `boardList/`
+- [x] 2.3 frontend: `pages/`, `workspaces/`, `theme/`, `Layout.tsx`
+- [x] 2.4 frontend: импорты и экспорт — `sql/`, `infra/`, `architecture/`, `apiSpec/`, `mermaid/`, `drawio/`, `image/`
+- [x] 2.5 frontend: `decisions/`, `elements/`, `templates/`, `comments/`
+- [x] 2.6 frontend: `issues/`, `links/`, `views/`, `notifications/`, `proposals/`, `checks/`, `edgeApi/`,
   `libraries/`, `lib/` (относительное время), `embed/`, `offline/`, `errors/`
-- [ ] 2.7 frontend: «Что нового» — новинки на двух языках, даты по языку; проверка: `whatsNew.test.ts`
-- [ ] 2.8 frontend: правовые страницы `*.ru.tsx`/`*.en.tsx`, язык в политике конфиденциальности; проверка:
+- [x] 2.7 frontend: «Что нового» — новинки на двух языках, даты по языку; проверка: `whatsNew.test.ts`
+- [x] 2.8 frontend: правовые страницы `*.ru.tsx`/`*.en.tsx`, язык в политике конфиденциальности; проверка:
   `LegalPages.test.tsx`
-- [ ] 2.9 frontend: сторож без замечаний — все строки в словарях или в исключениях с причиной
+- [x] 2.9 frontend: сторож без замечаний — все строки в словарях или в исключениях с причиной
 
 ## 3. Backend
 
@@ -38,6 +38,6 @@
 
 ## 4. Документация и проверка
 
-- [ ] 4.1 e2e: английский интерфейс по языку браузера и переключатель «Язык»
-- [ ] 4.2 README (возможности, раздел «Языки интерфейса», пункт плана), «Что нового» 0.31.0, версия фронтенда 0.31.0
-- [ ] 4.3 Проверки: backend, typecheck, lint, vitest, сборка frontend и collab, e2e, `openspec validate --strict`
+- [x] 4.1 e2e: английский интерфейс по языку браузера и переключатель «Язык»
+- [x] 4.2 README (возможности, раздел «Языки интерфейса», пункт плана), «Что нового» 0.31.0, версия фронтенда 0.31.0
+- [x] 4.3 Проверки: backend, typecheck, lint, vitest, сборка frontend и collab, e2e, `openspec validate --strict`

@@ -29,6 +29,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.31.0',
+    date: '2026-10-10',
+    items: [
+      {
+        ru: {
+          title: 'CoDraw по-английски',
+          text: 'CoDraw говорит по-русски и по-английски: интерфейс открывается на языке браузера, а кнопка «Язык» рядом с «Темой» в шапке переключает его и запоминает выбор. На выбранном языке — всё приложение, ошибки, уведомления, «Что нового», даты и правовые страницы, а письма и сообщения уведомлений в чат приходят на языке, в котором вы пользуетесь CoDraw. Подписи на досках не переводятся: их написали люди.',
+        },
+        en: {
+          title: 'CoDraw in English',
+          text: 'CoDraw speaks Russian and English: the interface opens in the language of your browser, and the “Language” button next to “Theme” in the header switches it and remembers your choice. The whole app, errors, notifications, “What’s new”, dates and the legal pages follow the chosen language, and notification emails and chat messages come in the language you use CoDraw in. Labels on boards are not translated: people wrote them.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.30.0',
     date: '2026-10-10',
     items: [
