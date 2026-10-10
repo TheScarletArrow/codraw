@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.issue.IssueProperties
 import io.github.thescarletarrow.codraw.notification.NotificationProperties
 import io.github.thescarletarrow.codraw.schemaimport.SchemaImportProperties
+import io.github.thescarletarrow.codraw.security.CodrawClientRegistrations
 import io.github.thescarletarrow.codraw.user.GuestLoginController
 import io.github.thescarletarrow.codraw.user.GuestProperties
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -56,6 +57,16 @@ data class LegalResponse(
     val backupRetentionDays: Long?,
     /** Whether backups are kept outside the server too, at a provider of storage of the operator. */
     val backupOffsite: Boolean,
+    /** The providers that users of this installation sign in through: they learn of every sign-in. */
+    val signInProviders: List<LegalSignInProvider>,
+    /** Whether «Продолжить без входа» creates guests. */
+    val guests: Boolean,
+)
+
+data class LegalSignInProvider(
+    val name: String,
+    /** A provider of OpenID Connect that the operator chose, not GitHub or Google. */
+    val corporate: Boolean,
 )
 
 @RestController
@@ -66,6 +77,7 @@ class LegalController(
     private val limits: LimitProperties,
     private val schemaImport: SchemaImportProperties,
     private val issues: IssueProperties,
+    private val registrations: CodrawClientRegistrations,
 ) {
 
     /** Open without a sign-in: the privacy policy and the terms of use are read before signing in. */
@@ -83,6 +95,8 @@ class LegalController(
         issues = issues.github.apiUrl.isNotBlank(),
         backupRetentionDays = backupRetentionDays(),
         backupOffsite = backupRetentionDays() != null && legal.backupStorage.isNotBlank(),
+        signInProviders = registrations.providers.map { LegalSignInProvider(it.name, it.corporate) },
+        guests = guests.enabled,
     )
 
     /** An archive stays while it is the last of its day younger than the days, or of its week younger than the weeks. */

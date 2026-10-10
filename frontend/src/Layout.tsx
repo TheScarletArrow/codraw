@@ -69,7 +69,13 @@ function UserMenu({ user }: { user: CurrentUser }) {
   const queryClient = useQueryClient()
   const signOut = useMutation({
     mutationFn: logout,
-    onSuccess: async () => {
+    onSuccess: async (logoutUrl) => {
+      if (logoutUrl) {
+        await deleteLocalCopiesOf(user.id)
+        // The provider ends its session too and sends the browser back to the login page.
+        window.location.assign(logoutUrl)
+        return
+      }
       await navigate('/login', { replace: true })
       // Nothing of the previous user stays in the cache, nor in the browser.
       queryClient.clear()

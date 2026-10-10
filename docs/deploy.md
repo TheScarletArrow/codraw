@@ -50,6 +50,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY` | нет | прежний ключ на время смены ключа |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | нет | OAuth-приложение GitHub |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | нет | OAuth-приложение Google |
+| `CODRAW_OIDC_ISSUER_URI`, `CODRAW_OIDC_CLIENT_ID`, `CODRAW_OIDC_CLIENT_SECRET`, `CODRAW_OIDC_NAME` | нет | корпоративный провайдер входа OpenID Connect (Keycloak, Entra ID, Okta): issuer, клиент и название на кнопке «Войти через …», см. «Корпоративный вход» ниже |
 | `CODRAW_HTTP_PORT` | нет | порт приложения на сервере, по умолчанию `8080` |
 | `CODRAW_VERSION` | нет | тег образов, по умолчанию `latest` |
 | `CODRAW_IMAGE_PREFIX` | нет | реестр и префикс имён образов, по умолчанию `ghcr.io/thescarletarrow/codraw-` |
@@ -61,6 +62,12 @@ CI публикует образы при каждом пуше в `main`:
 
 | Переменная | По умолчанию | Что |
 |---|---|---|
+| `CODRAW_GUESTS_ENABLED` | `true` | «Продолжить без входа»; `false` — гостей нет, `POST /api/guest` отвечает 403, а прежние гости доживают свой срок |
+| `CODRAW_OIDC_SCOPES` | `openid,profile,email` | scope корпоративного провайдера; `openid` добавляется сам |
+| `CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS` | пусто | домены почты через запятую, с которыми корпоративный провайдер пускает в CoDraw; пусто — всех его пользователей |
+| `CODRAW_OIDC_ALLOWED_GROUPS` | пусто | группы через запятую, хотя бы в одной из которых должен быть пользователь; пусто — без проверки групп |
+| `CODRAW_OIDC_GROUPS_CLAIM` | `groups` | claim, в котором провайдер перечисляет группы пользователя |
+| `CODRAW_OIDC_LOGOUT` | `false` | `true` — «Выйти» завершает и сеанс у провайдера (RP-initiated logout) |
 | `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
 | `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
 | `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
@@ -117,8 +124,8 @@ cookie, сроки хранения этой установки, получат�
 пришедший на `CODRAW_LEGAL_CONTACT_EMAIL`, можно ответить ссылкой на неё. Удалённая учётная запись не
 восстанавливается, а её следы в резервных копиях базы уходят вместе с ними, по сроку их хранения.
 
-Без обязательной переменной Docker Compose не запустит стек и назовёт её. Без OAuth-приложений работает только вход
-гостем: кнопки «Войти через GitHub» и «Войти через Google» ведут на ошибку провайдера.
+Без обязательной переменной Docker Compose не запустит стек и назовёт её. Страница входа показывает только
+настроенные способы входа: без OAuth-приложений GitHub и Google и без корпоративного провайдера остаётся вход гостем.
 
 Ключ подписи:
 
@@ -239,9 +246,58 @@ CODRAW_ISSUES_GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
 `backend` принимает только события с подписью `X-Hub-Signature-256` этим секретом и меняет только уже привязанные
 задачи: название, статус, перенос в другой репозиторий, удаление. Повторное или запоздавшее событие ничего не меняет.
 
+### Корпоративный вход
+
+Сотрудники входят через провайдер удостоверений компании, если он говорит OpenID Connect: Keycloak, Microsoft Entra ID,
+Okta, Authentik, ADFS. Решение — [ADR-0011](adr/0011-corporate-sign-in.md).
+
+1. Создайте у провайдера конфиденциальный клиент (client) с потоком «authorization code» и адресом возврата
+   `https://codraw.example.com/api/login/oauth2/code/corp`, где `corp` — id провайдера в настройках CoDraw. Если
+   включаете выход у провайдера, разрешите адрес после выхода `https://codraw.example.com/login`.
+2. Задайте `CODRAW_OIDC_ISSUER_URI` — issuer провайдера, по которому открываются его метаданные
+   `<issuer>/.well-known/openid-configuration`, — `CODRAW_OIDC_CLIENT_ID`, `CODRAW_OIDC_CLIENT_SECRET` и название
+   кнопки `CODRAW_OIDC_NAME`, например «Keycloak компании». Без issuer или client id кнопки нет.
+3. По желанию ограничьте вход доменами почты (`CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS`) и группами
+   (`CODRAW_OIDC_ALLOWED_GROUPS`). Не прошедший проверку возвращается на страницу входа с сообщением, что вход в эту
+   установку ему не разрешён, и учётная запись не создаётся.
+
+**Пример для Keycloak.** В realm `acme` создайте клиент `codraw`: Client authentication — On, Standard flow — On,
+Valid redirect URIs — `https://codraw.example.com/api/login/oauth2/code/corp`, Valid post logout redirect URIs —
+`https://codraw.example.com/login`; секрет — на вкладке Credentials. Для ограничения по группам добавьте клиенту
+mapper «Group Membership» с Token Claim Name `groups` и выключенным Full group path. Затем в `.env.prod`:
+
+```bash
+CODRAW_OIDC_ISSUER_URI=https://sso.example.com/realms/acme
+CODRAW_OIDC_CLIENT_ID=codraw
+CODRAW_OIDC_CLIENT_SECRET=…
+CODRAW_OIDC_NAME=Keycloak компании
+CODRAW_OIDC_ALLOWED_GROUPS=codraw-users
+CODRAW_OIDC_LOGOUT=true
+```
+
+Для Entra ID issuer — `https://login.microsoftonline.com/<id каталога>/v2.0` (не `/common`), а группы приходят
+идентификаторами: их и указывайте. Ограничение по домену почты надёжно только с issuer одного каталога: Entra ID не
+отдаёт `email_verified`, и в мультитенантном приложении claim `email` задаёт администратор чужого каталога, так что
+он может указать любой домен. Для приложения, в которое входят из нескольких каталогов, ограничивайте вход группами
+или условиями доступа в самом Entra ID. Для Okta — адрес сервера авторизации, например `https://acme.okta.com`.
+
+Учётная запись CoDraw связана с парой issuer и идентификатора пользователя у провайдера (`sub`): смена почты или имени
+её не теряет, а пользователи разных провайдеров — разные учётные записи. Поэтому issuer должен оставаться прежним: новый
+адрес Keycloak или другой каталог Entra ID — это новые учётные записи. Метаданные провайдера `backend` читает при
+первом входе через него и помнит до перезапуска; если провайдер недоступен, `backend` работает, а вход через провайдера
+возвращает на страницу входа с ошибкой и пишет причину в журнал.
+
+`docker-compose.prod.yml` передаёт одного провайдера с id `corp`. Второй и следующие добавьте в `environment` сервиса
+`backend` (например, в `docker-compose.override.yml`) переменными `CODRAW_AUTH_OIDC_<ID>_ISSUER_URI`, `…_CLIENT_ID`,
+`…_CLIENT_SECRET`, `…_NAME`, `…_SCOPES`, `…_ALLOWED_EMAIL_DOMAINS`, `…_ALLOWED_GROUPS`, `…_GROUPS_CLAIM`, `…_LOGOUT`;
+id — строчные латинские буквы и цифры, кроме `github`, `google` и `guest`.
+
+**Закрытая установка.** Чтобы оставить только корпоративный вход, не задавайте `GITHUB_*` и `GOOGLE_*` и выключите
+гостей: `CODRAW_GUESTS_ENABLED=false`. Политика конфиденциальности сама назовёт провайдера, которого вы выбрали.
+
 ## 2. OAuth
 
-Создайте OAuth-приложения GitHub и Google, как описано в README («Вход через GitHub и Google»), с адресами возврата
+Если нужен вход через GitHub и Google, создайте их OAuth-приложения, как описано в README («Вход через GitHub и Google»), с адресами возврата
 `https://codraw.example.com/api/login/oauth2/code/github` и `https://codraw.example.com/api/login/oauth2/code/google`.
 `backend` строит эти адреса по схеме и домену, которые передаёт прокси, поэтому за TLS-прокси они получаются
 с `https`.

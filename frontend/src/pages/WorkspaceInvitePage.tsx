@@ -1,10 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { Button } from '@/components/ui/button'
-import { loginUrl } from '../api/auth.ts'
 import { isNotFound } from '../api/http.ts'
 import { acceptWorkspaceInvite, isAccountRequired, workspaceKey, workspaceLimitOf, WORKSPACES_QUERY_KEY } from '../api/workspaces.ts'
+import { SignInButtons } from '../auth/SignInButtons.tsx'
 import { counted } from '../board/members.ts'
 import { workspacePath } from '../workspaces/workspaces.ts'
 
@@ -18,7 +17,7 @@ function limitMessage(error: unknown): string | null {
 }
 
 /**
- * An invitation link into a workspace: a user signed in through GitHub or Google accepts it and lands on the workspace
+ * An invitation link into a workspace: a user signed in through a provider accepts it and lands on the workspace
  * with its role. A guest is offered to sign in, since workspaces need an account.
  */
 export function WorkspaceInvitePage() {
@@ -49,16 +48,11 @@ export function WorkspaceInvitePage() {
         <>
           <h2 className="text-2xl font-semibold">Нужен вход</h2>
           <p className="text-muted-foreground">
-            Командные пространства доступны после входа через GitHub или Google. Войдите и снова откройте
+            Командные пространства доступны после входа. Войдите и снова откройте
             ссылку-приглашение — ваши доски гостя останутся с вами.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <a href={loginUrl('github')}>Войти через GitHub</a>
-            </Button>
-            <Button asChild variant="outline">
-              <a href={loginUrl('google')}>Войти через Google</a>
-            </Button>
+            <SignInButtons />
           </div>
         </>
       ) : isNotFound(accept.error) ? (

@@ -31,12 +31,19 @@ describe('WorkspaceInvitePage', () => {
   })
 
   it('offers a guest to sign in through a provider', async () => {
-    mockFetch({ [acceptUrl]: { status: 403, body: { title: 'Account required' } } })
+    mockFetch({
+      [acceptUrl]: { status: 403, body: { title: 'Account required' } },
+      'GET /api/auth/providers': { body: { providers: [{ id: 'corp', name: 'Keycloak компании' }], guests: false } },
+    })
 
     renderRoutes(routes, `/workspace-invite/${token}`)
 
     expect(await screen.findByRole('heading', { name: 'Нужен вход' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Войти через GitHub' })).toHaveAttribute('href', '/api/oauth2/authorization/github')
+    expect(await screen.findByRole('link', { name: 'Войти через Keycloak компании' })).toHaveAttribute(
+      'href',
+      '/api/oauth2/authorization/corp',
+    )
+    expect(screen.queryByRole('link', { name: 'Войти через GitHub' })).toBeNull()
   })
 
   it('says that a revoked invitation is not valid', async () => {

@@ -1,0 +1,79 @@
+{
+  "realm": "acme",
+  "enabled": true,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "codraw",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "codraw-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "*"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "name": "codraw-users"
+    }
+  ],
+  "users": [
+    {
+      "id": "6d1f0c4e-0000-4000-8000-00000000a11c",
+      "username": "alice",
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Liddell",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "groups": [
+        "/codraw-users"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "6d1f0c4e-0000-4000-8000-000000000b0b",
+      "username": "bob",
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "Stranger",
+      "email": "bob@other.org",
+      "emailVerified": true,
+      "groups": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
