@@ -26,6 +26,9 @@ export interface ConnectionContext {
 /** Closes the socket of a participant whose access changed; the client reconnects and gets its new access. */
 export const ACCESS_CHANGED = { code: 4403, reason: "access-changed" };
 
+/** Closes the socket of a user whose account was deleted; the client finds itself signed out. */
+export const ACCOUNT_DELETED = { code: 4401, reason: "account-deleted" };
+
 /** Closes the connections of a deleted board; the client shows that the board does not exist. */
 export const BOARD_DELETED = { code: 4404, reason: BOARD_NOT_FOUND };
 
@@ -173,5 +176,31 @@ export function createAccessChecks(
         running.delete(document.name);
       }
     })();
+  };
+}
+
+/**
+ * Closes the sockets of users who are gone, e.g. deleted their accounts on another device: the access of a board does
+ * not name everybody it lets in, e.g. through its link, so the backend is asked about the users of all connections at
+ * once. A check that fails leaves the connections to the next one.
+ */
+export function createAccountChecks(backend: Pick<BackendClient, "missingUsers">, metrics?: Pick<Metrics, "rejected">) {
+  return async (documents: Iterable<Document>): Promise<void> => {
+    const connections = Array.from(documents).flatMap((document) => document.getConnections());
+    const userIds = new Set(connections.map((connection) => (connection.context as ConnectionContext).user.id));
+    if (userIds.size === 0) return;
+    let missing: Set<string>;
+    try {
+      missing = new Set(await backend.missingUsers(Array.from(userIds)));
+    } catch (error) {
+      log.error("Failed to check the users of the connections", error);
+      return;
+    }
+    for (const connection of connections) {
+      if (!missing.has((connection.context as ConnectionContext).user.id)) continue;
+      // The whole socket: it is the user's, and so are all the documents on it.
+      connection.webSocket.close(ACCOUNT_DELETED.code, ACCOUNT_DELETED.reason);
+      metrics?.rejected("account-deleted");
+    }
   };
 }

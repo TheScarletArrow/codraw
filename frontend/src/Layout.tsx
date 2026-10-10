@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plug } from 'lucide-react'
+import { Plug, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -82,6 +82,11 @@ function UserMenu({ user }: { user: CurrentUser }) {
       {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-7 rounded-full" />}
       <span>{user.name}</span>
       <ThemeMenu />
+      <Button asChild variant="ghost" size="icon-sm">
+        <Link to="/settings/account" aria-label="Учётная запись" title="Учётная запись: скачать данные или удалить">
+          <UserCog />
+        </Link>
+      </Button>
       {!user.guest && (
         <Button asChild variant="ghost" size="icon-sm">
           <Link to="/settings/connections" aria-label="Подключения" title="Подключения: GitHub">

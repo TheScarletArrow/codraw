@@ -30,6 +30,11 @@ export function LoginPage() {
       <section className="flex w-full max-w-sm flex-col gap-4 rounded-lg border p-6">
         <h1 className="text-2xl font-bold">CoDraw</h1>
         <p className="text-muted-foreground">Войдите, чтобы работать со своими досками.</p>
+        {(location.state as { accountDeleted?: unknown } | null)?.accountDeleted === true && (
+          <p role="status" className="text-sm">
+            Учётная запись удалена. Новый вход создаст новую пустую учётную запись.
+          </p>
+        )}
         {/* The backend sends the user back here with `?error` when the provider did not sign them in. */}
         {params.has('error') && (
           <p role="alert" className="text-destructive">

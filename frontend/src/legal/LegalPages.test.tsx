@@ -155,6 +155,10 @@ describe('legal pages', () => {
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
     )
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
+    const account = screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })
+    expect(account).toHaveTextContent('«Скачать мои данные» собирает архив ZIP')
+    expect(account).toHaveTextContent('сохраняются без автора — с подписью «Удалённый пользователь»')
+    expect(account).toHaveTextContent('Новый вход через тот же GitHub или Google создаёт новую пустую учётную запись')
   })
 
   it('names the token of GitHub and linked issues only when the installation links issues', async () => {

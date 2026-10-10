@@ -38,6 +38,7 @@ enum class Limit(val tag: String) {
     WORKSPACE_INVITES("workspace-invites"),
     WORKSPACE_PROJECTS("workspace-projects"),
     WORKSPACE_BOARDS("workspace-boards"),
+    ACCOUNT_EXPORTS("account-exports"),
 }
 
 /** How an attempt to send a message of a notification to a channel ended; the tag of [CodrawMetrics.notificationDelivery]. */
@@ -106,6 +107,10 @@ class CodrawMetrics(registry: MeterRegistry) {
         .description("Guests created by continuing without a sign-in")
         .register(registry)
 
+    private val accountsDeleted = Counter.builder("codraw.accounts.deleted")
+        .description("Accounts deleted by their users or by administrators")
+        .register(registry)
+
     private val documentsStored = DistributionSummary.builder("codraw.documents.stored")
         .description("Sizes of the board documents that collab stored")
         .baseUnit(BaseUnits.BYTES)
@@ -162,6 +167,8 @@ class CodrawMetrics(registry: MeterRegistry) {
     fun boardCreated() = boardsCreated.increment()
 
     fun guestCreated() = guestsCreated.increment()
+
+    fun accountDeleted() = accountsDeleted.increment()
 
     fun documentStored(size: Int) = documentsStored.record(size.toDouble())
 
