@@ -1475,6 +1475,28 @@ describe('BoardPage', () => {
       expect(screen.getByRole('list', { name: 'Участники' })).toBeInTheDocument()
     })
 
+    it('keeps the tools of a narrow screen behind «Инструменты» and the palette behind «Фигуры», which a selection closes', async () => {
+      const editor = await openEditor()
+      const tools = screen.getByRole('button', { name: 'Инструменты' })
+      // The styles of a narrow screen hide them; a wide one shows them whatever the button says.
+      const toolbarLine = screen.getByRole('toolbar', { name: 'Инструменты' }).parentElement!
+      expect(tools).toHaveAttribute('aria-expanded', 'false')
+      expect(toolbarLine).toHaveClass('max-lg:hidden')
+      await userEvent.click(tools)
+      expect(tools).toHaveAttribute('aria-expanded', 'true')
+      expect(toolbarLine).not.toHaveClass('max-lg:hidden')
+
+      const shapes = screen.getByRole('button', { name: 'Фигуры' })
+      const palette = screen.getByRole('complementary', { name: 'Фигуры' }).parentElement!
+      expect(palette).toHaveClass('max-md:hidden')
+      await userEvent.click(shapes)
+      expect(shapes).toHaveAttribute('aria-expanded', 'true')
+      expect(palette).not.toHaveClass('max-md:hidden')
+      act(() => editor.select(['shape-1']))
+      expect(shapes).toHaveAttribute('aria-expanded', 'false')
+      expect(palette).toHaveClass('max-md:hidden')
+    })
+
     it('disables the palette and the toolbar until the canvas is ready', async () => {
       await openBoard()
 

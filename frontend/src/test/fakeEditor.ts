@@ -210,6 +210,7 @@ export function createFakeEditor({
     setEdgeRelation: vi.fn(),
     setColor: vi.fn(),
     setFillOpacity: vi.fn(),
+    setShapeEffects: vi.fn(),
     setFontSize: vi.fn(),
     stepFontSize: vi.fn(),
     toggleFontStyle: vi.fn(),

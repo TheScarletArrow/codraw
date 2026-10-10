@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { addShape, createBoard, openBoard, storedVertexCount, userPage, vertices } from './helpers.ts'
+import { devices, expect, test, type Page } from '@playwright/test'
+import { addShape, createBoard, openBoard, signIn, storedVertexCount, userPage, vertices } from './helpers.ts'
 
 /** A PNG of a solid color, drawn by the browser of the page. */
 async function picture(page: Page, width: number, height: number): Promise<Buffer> {
@@ -74,4 +74,26 @@ test('a copy of a board keeps its shapes and picture apart from the original, an
   expect(Buffer.from((await download(alice, image.style.image as string)) as number[])).toEqual(png)
   expect(await download(alice, `/api/boards/${originalId}/images/${(image.style.image as string).split('/').pop()}`)).toBe(404)
   await alice.context().close()
+})
+
+test('a phone copies a board from the menu of the board too', async ({ browser }) => {
+  // The device of Playwright without its browser: the tests run in Chromium, which emulates the screen.
+  const { defaultBrowserType: _browser, ...iPhone } = devices['iPhone 14']
+  const context = await browser.newContext({ ...iPhone, viewport: { width: 390, height: 844 } })
+  await signIn(context.request, 'Копия на телефоне')
+  const phone = await context.newPage()
+  await createBoard(phone)
+  const originalId = boardIdOf(phone)
+
+  await phone.getByRole('button', { name: 'Меню доски «Новая доска»' }).click()
+  const item = phone.getByRole('menuitem', { name: 'Создать копию' })
+  await expect(item).toBeVisible()
+  const box = (await item.boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(390)
+  await item.tap()
+
+  await expect(phone.getByRole('heading', { name: 'Новая доска (копия)', level: 2 })).toBeVisible()
+  expect(boardIdOf(phone)).not.toBe(originalId)
+  await context.close()
 })

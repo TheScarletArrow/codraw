@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { SIDE_PANEL_CLASS } from '@/lib/panels'
 import type { CommentThread } from '../api/comments.ts'
 import {
   addDecision,
@@ -206,7 +207,7 @@ export function DecisionsPanel({
   ]
 
   return (
-    <aside aria-label="Решения" className="flex w-80 shrink-0 flex-col border-l bg-background">
+    <aside aria-label="Решения" className={cn(SIDE_PANEL_CLASS, 'w-80')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <ScrollText className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">Решения</h3>

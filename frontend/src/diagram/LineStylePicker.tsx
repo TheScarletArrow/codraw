@@ -3,7 +3,17 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { MAX_LINE_WIDTH, MIN_LINE_WIDTH, type EdgeShape, type LineDash, type SelectionLine } from './editor.ts'
+import {
+  MAX_ARC_SIZE,
+  MAX_LINE_WIDTH,
+  MIN_ARC_SIZE,
+  MIN_LINE_WIDTH,
+  type EdgeShape,
+  type LineDash,
+  type SelectionLine,
+  type SelectionShapeEffects,
+  type ShapeEffectsChanges,
+} from './editor.ts'
 import { NumberField } from './NumberField.tsx'
 
 const DASHES: { value: LineDash; label: string; pattern?: string }[] = [
@@ -21,10 +31,15 @@ const EDGE_SHAPES: { value: EdgeShape; label: string; path: string }[] = [
 interface LineStylePickerProps {
   line: SelectionLine
   onChange: (changes: { width?: number; dash?: LineDash; edgeShape?: EdgeShape }) => void
+  /** Sets the shadow and the corners of the selected shapes; without it there are none, e.g. for the pencil. */
+  onShapeEffects?: (changes: ShapeEffectsChanges) => void
 }
 
-/** Width and dash of the lines of the selected objects, and the shape of the selected edges. */
-export function LineStylePicker({ line, onChange }: LineStylePickerProps) {
+/**
+ * Width and dash of the lines of the selected objects, the shape of the selected edges, and the shadow and the rounded
+ * corners of the selected shapes.
+ */
+export function LineStylePicker({ line, onChange, onShapeEffects }: LineStylePickerProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -75,8 +90,52 @@ export function LineStylePicker({ line, onChange }: LineStylePickerProps) {
             ))}
           </Options>
         )}
+        {line.shapes && onShapeEffects && <ShapeEffects shapes={line.shapes} onChange={onShapeEffects} />}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** The shadow of the selected shapes, and their rounded corners with the radius when some of them can round them. */
+function ShapeEffects({ shapes, onChange }: { shapes: SelectionShapeEffects; onChange: (changes: ShapeEffectsChanges) => void }) {
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={shapes.shadow}
+          className="accent-primary"
+          onChange={(event) => onChange({ shadow: event.target.checked })}
+        />
+        Тень
+      </label>
+      {shapes.canRound && (
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shapes.rounded}
+              className="accent-primary"
+              onChange={(event) => onChange({ rounded: event.target.checked })}
+            />
+            Скругление
+          </label>
+          <span className="flex items-center gap-1">
+            <NumberField
+              label="Радиус скругления, %"
+              title="Радиус скругления в процентах от короткой стороны"
+              value={shapes.rounded ? shapes.arcSize : null}
+              min={MIN_ARC_SIZE}
+              max={MAX_ARC_SIZE}
+              disabled={!shapes.rounded}
+              className="w-14 text-center"
+              onCommit={(arcSize) => onChange({ arcSize })}
+            />
+            <span aria-hidden>%</span>
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
