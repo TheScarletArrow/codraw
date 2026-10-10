@@ -3,10 +3,11 @@ import { Plug } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
-import { logout, type CurrentUser } from './api/auth.ts'
+import { logout, saveLanguage, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 import { HeaderSlotProvider } from './headerSlot.tsx'
+import { locale } from './i18n/i18n.ts'
 import { LanguageMenu } from './i18n/LanguageMenu.tsx'
 import { layoutMessages as m } from './messages.ts'
 import { NotificationBell } from './notifications/NotificationBell.tsx'
@@ -29,6 +30,11 @@ export function Layout() {
   useEffect(() => {
     if (userId) void keepLocalCopiesOf(userId)
   }, [userId])
+  // Letters and messages of notifications go in the language the user sees CoDraw in.
+  const language = user.data?.language
+  useEffect(() => {
+    if (language && language !== locale()) saveLanguage(locale()).catch(() => {})
+  }, [language])
 
   if (isUnauthorized(user.error)) {
     // A board may be shown to anybody: its page for reading without a session sends to the login page any other.

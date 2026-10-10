@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.notification
 
 import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.user.Language
 import org.springframework.stereotype.Component
 import java.net.URLEncoder
 
@@ -14,8 +15,9 @@ data class NotificationMessage(
 )
 
 /**
- * Words of letters and of messages in chats. They are those of the bell of the app (`notifications/notifications.ts`
- * of the frontend) and do not depend on the gender of the actor: «Аня: упоминание», not «Аня упомянула».
+ * Words of letters and of messages in chats, in the language of the recipient. They are those of the bell of the app
+ * (`notifications/messages.ts` of the frontend) and do not depend on the gender of the actor: «Аня: упоминание», not
+ * «Аня упомянула».
  */
 @Component
 class NotificationMessages(private val properties: NotificationProperties) {
@@ -27,61 +29,55 @@ class NotificationMessages(private val properties: NotificationProperties) {
     val settingsLink: String
         get() = "$appUrl$SETTINGS_PATH"
 
-    /** The [notification] as its recipient may see it now. */
-    fun of(notification: Notification): NotificationMessage {
-        val label = LABELS.getValue(notification.kind)
+    /** The [notification] as its recipient may see it now, in their [language]. */
+    fun of(notification: Notification, language: Language = Language.RU): NotificationMessage {
+        val words = WORDS.getValue(language)
+        val label = words.labels.getValue(notification.kind)
         val link = appUrl + path(notification)
-        if (!notification.access) return NotificationMessage(label, "Доска недоступна", link)
-        val board = "«${notification.boardTitle}»"
-        val editing = notification.role == MemberRole.EDITOR
-        val (action, detail) = when (notification.kind) {
-            NotificationKind.MENTION -> "упоминание в $board" to notification.snippet
-            NotificationKind.REPLY -> "ответ в ветке на $board" to notification.snippet
-            NotificationKind.ASSIGNED -> "вам назначена ветка в $board" to notification.snippet
-            NotificationKind.ACCESS_REQUEST ->
-                "запрос доступа к $board" to if (editing) "Просит редактирование" else "Просит просмотр"
-            NotificationKind.ACCESS_GRANTED ->
-                "доступ к $board" to if (editing) "Теперь можно редактировать" else "Теперь можно смотреть"
-            NotificationKind.ACCESS_DECLINED ->
-                "отказ в доступе к $board" to if (editing) "Вы просили редактирование" else "Вы просили просмотр"
-            NotificationKind.OWNERSHIP -> "передача владения $board" to "Теперь вы владелец доски"
-            NotificationKind.PROPOSAL_CREATED -> "предложение изменений к $board" to notification.snippet
-            NotificationKind.PROPOSAL_ACCEPTED -> "ваше предложение к $board принято" to notification.snippet
-            NotificationKind.PROPOSAL_DECLINED -> "ваше предложение к $board отклонено" to notification.snippet
-            NotificationKind.REVIEW_REQUEST -> "запрос ревью на $board" to "Элемент отмечен «Нужно ревью»"
+        if (!notification.access) return NotificationMessage(label, words.boardUnavailable, link)
+        val action = words.action(notification.kind, notification.boardTitle.orEmpty())
+        val detail = when (notification.kind) {
+            NotificationKind.ACCESS_REQUEST, NotificationKind.ACCESS_GRANTED, NotificationKind.ACCESS_DECLINED,
+            NotificationKind.OWNERSHIP, NotificationKind.REVIEW_REQUEST,
+            -> words.detail(notification.kind, notification.role == MemberRole.EDITOR)
+            else -> notification.snippet
         }
-        val actor = notification.actor?.name ?: "Удалённый пользователь"
+        val actor = notification.actor?.name ?: words.deletedUser
         return NotificationMessage("$actor: $action", detail, link)
     }
 
-    /** The letter about the [message], which came through the [event] the user chose. */
-    fun email(to: String, message: NotificationMessage, event: NotificationEvent): Email = Email(
-        to = to,
-        subject = oneLine(message.title),
-        text = buildString {
-            appendLine(message.title)
-            message.detail?.let { appendLine().appendLine(it) }
-            appendLine().appendLine("Открыть в CoDraw: ${message.link}")
-            appendLine().appendLine("—")
-            appendLine("Письмо пришло, потому что в CoDraw включены письма о событиях «${EVENT_NAMES.getValue(event)}».")
-            appendLine("Настроить или отключить уведомления: $settingsLink")
-            append("Не присылать уведомления об одной доске: меню доски → «Не присылать уведомления».")
-        },
-        unsubscribeUrl = settingsLink,
-    )
+    /** The letter about the [message], which came through the [event] the user chose, in their [language]. */
+    fun email(to: String, message: NotificationMessage, event: NotificationEvent, language: Language = Language.RU): Email {
+        val words = WORDS.getValue(language)
+        return Email(
+            to = to,
+            subject = oneLine(message.title),
+            text = buildString {
+                appendLine(message.title)
+                message.detail?.let { appendLine().appendLine(it) }
+                appendLine().appendLine(words.open(message.link))
+                appendLine().appendLine("—")
+                appendLine(words.why(words.events.getValue(event)))
+                appendLine(words.settings(settingsLink))
+                append(words.mute)
+            },
+            unsubscribeUrl = settingsLink,
+        )
+    }
 
-    /** The letter with the link that confirms the address [to]. */
-    fun confirmation(to: String, token: String): Email = Email(
-        to = to,
-        subject = "Подтвердите адрес для уведомлений CoDraw",
-        text = buildString {
-            appendLine("Этот адрес указали в CoDraw, чтобы получать на него уведомления о досках.")
-            appendLine().appendLine("Подтвердить адрес: $settingsLink?confirm=${encode(token)}")
-            appendLine().appendLine("Ссылка действует ${hours(properties.email.confirmationTtl.toHours())}.")
-            append("Если вы не указывали этот адрес, просто не открывайте ссылку: писем больше не будет.")
-        },
-        unsubscribeUrl = settingsLink,
-    )
+    /** The letter with the link that confirms the address [to], in the [language] of the user. */
+    fun confirmation(to: String, token: String, language: Language = Language.RU): Email {
+        val words = WORDS.getValue(language)
+        return Email(
+            to = to,
+            subject = words.confirmSubject,
+            text = words.confirmText(
+                "$settingsLink?confirm=${encode(token)}",
+                words.hours(properties.email.confirmationTtl.toHours()),
+            ),
+            unsubscribeUrl = settingsLink,
+        )
+    }
 
     /** The message about the [message] in a chat. */
     fun chat(message: NotificationMessage): String = buildString {
@@ -90,9 +86,8 @@ class NotificationMessages(private val properties: NotificationProperties) {
         append(message.link)
     }
 
-    /** The message that «Проверить» posts to a webhook. */
-    fun chatTest(): String =
-        "CoDraw: уведомления будут приходить сюда. Настроить или отключить их: $settingsLink"
+    /** The message that «Проверить» posts to a webhook, in the [language] of the user. */
+    fun chatTest(language: Language = Language.RU): String = WORDS.getValue(language).chatTest(settingsLink)
 
     /** Where the [notification] leads in the app, as in the bell. */
     private fun path(notification: Notification): String {
@@ -114,43 +109,10 @@ class NotificationMessages(private val properties: NotificationProperties) {
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)
 
-    /** «1 час», «24 часа», «48 часов». */
-    private fun hours(count: Long): String {
-        val word = when {
-            count % 100 in 11..14 -> "часов"
-            count % 10 == 1L -> "час"
-            count % 10 in 2..4 -> "часа"
-            else -> "часов"
-        }
-        return "$count $word"
-    }
-
     companion object {
         const val SETTINGS_PATH = "/settings/notifications"
 
-        /** What happened, as a notification about a board the user can no longer open says it. */
-        private val LABELS = mapOf(
-            NotificationKind.MENTION to "Упоминание",
-            NotificationKind.REPLY to "Ответ в ветке",
-            NotificationKind.ASSIGNED to "Назначение ветки",
-            NotificationKind.ACCESS_REQUEST to "Запрос доступа",
-            NotificationKind.ACCESS_GRANTED to "Доступ к доске",
-            NotificationKind.ACCESS_DECLINED to "Отказ в доступе",
-            NotificationKind.OWNERSHIP to "Передача владения",
-            NotificationKind.PROPOSAL_CREATED to "Предложение изменений",
-            NotificationKind.PROPOSAL_ACCEPTED to "Предложение принято",
-            NotificationKind.PROPOSAL_DECLINED to "Предложение отклонено",
-            NotificationKind.REVIEW_REQUEST to "Запрос ревью",
-        )
-
-        /** The names of the events in the settings. */
-        val EVENT_NAMES = mapOf(
-            NotificationEvent.MENTIONS to "Упоминания",
-            NotificationEvent.REPLIES to "Ответы в ветках",
-            NotificationEvent.ASSIGNMENTS to "Назначенные ветки",
-            NotificationEvent.ACCESS to "Доступ к доскам",
-            NotificationEvent.REVIEWS to "Ревью",
-        )
+        private val WORDS = mapOf(Language.RU to NotificationWords.RU, Language.EN to NotificationWords.EN)
 
         /** The kinds of notifications about a thread, which lead to it. */
         private val THREAD_KINDS = setOf(NotificationKind.MENTION, NotificationKind.REPLY, NotificationKind.ASSIGNED)

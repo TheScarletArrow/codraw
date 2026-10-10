@@ -29,7 +29,8 @@ class GuestLoginController(
     fun login(authentication: Authentication?, request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<*> {
         if (authentication == null) {
             limiter.acquire(request.remoteAddr)?.let { wait -> return tooManyGuests(wait) }
-            signInToSession(users.createGuest(), ProviderProfile.GUEST, request, response)
+            val language = Language.ofAcceptLanguage(request.getHeader(HttpHeaders.ACCEPT_LANGUAGE))
+            signInToSession(users.createGuest(language), ProviderProfile.GUEST, request, response)
             request.getSession(false)!!.maxInactiveInterval = SESSION_TIMEOUT.toSeconds().toInt()
             // Spring Session makes the session cookie persistent, so that the guest comes back after closing the browser.
             request.setAttribute(SpringSessionRememberMeServices.REMEMBER_ME_LOGIN_ATTR, true)

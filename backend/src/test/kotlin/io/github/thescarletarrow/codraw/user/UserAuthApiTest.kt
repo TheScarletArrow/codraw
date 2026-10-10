@@ -21,8 +21,10 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import org.springframework.web.util.UriComponentsBuilder
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Sign-in and access to the API. Session and CSRF cookies are covered by `SessionCookieTest` over real HTTP. */
 @IntegrationTest
@@ -57,7 +59,40 @@ class UserAuthApiTest(
             jsonPath("$.name") { value("Alice") }
             jsonPath("$.avatarUrl") { value("https://avatars.example.com/Alice.png") }
             jsonPath("$.guest") { value(false) }
+            jsonPath("$.language") { value("ru") }
         }
+    }
+
+    @Test
+    fun `remembers the language of the interface of the user`() {
+        mockMvc.put("/api/me/language") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"language": "en"}"""
+        }.andExpect { status { isNoContent() } }
+
+        mockMvc.get("/api/me") { with(alice.session()) }.andExpect { jsonPath("$.language") { value("en") } }
+        assertEquals(Language.EN, users.find(alice.id)!!.language)
+        mockMvc.put("/api/me/language") {
+            with(alice.session())
+            with(csrf())
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"language": "de"}"""
+        }.andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `names a new guest in the language of the browser`() {
+        mockMvc.post("/api/guest") {
+            with(csrf())
+            header("Accept-Language", "en-GB,en;q=0.9")
+        }.andExpect { status { isNoContent() } }
+
+        val guest = jdbcClient.sql("SELECT name, language FROM users WHERE provider = 'guest' ORDER BY created_at DESC LIMIT 1")
+            .query { rs, _ -> rs.getString("name") to rs.getString("language") }.single()
+        assertTrue(guest.first.matches(Regex("Guest \\d{1,3}")), guest.first)
+        assertEquals("EN", guest.second)
     }
 
     @Test

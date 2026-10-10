@@ -93,6 +93,22 @@ describe('Layout', () => {
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
   })
 
+  it('tells the backend the language of the interface when the user had another one', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/me': { body: { ...ALICE, language: 'en' } },
+      'PUT /api/me/language': { status: 204 },
+      'GET /api/boards': { body: [] },
+      ...unreadCount,
+    })
+
+    renderRoutes(routes)
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/me/language', expect.objectContaining({ body: '{"language":"ru"}' })),
+    )
+    expect(screen.getByRole('button', { name: 'Язык: Русский' })).toBeInTheDocument()
+  })
+
   it('shows in the header what the page puts there, out of the page', async () => {
     mockFetch({ 'GET /api/me': { body: ALICE }, ...unreadCount })
 

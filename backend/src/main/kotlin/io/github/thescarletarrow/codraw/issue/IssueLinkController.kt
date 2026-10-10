@@ -4,7 +4,9 @@ import io.github.thescarletarrow.codraw.board.BoardIds
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.notification.NotificationProperties
+import io.github.thescarletarrow.codraw.user.Language
 import io.github.thescarletarrow.codraw.user.userId
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
@@ -64,6 +67,7 @@ class IssueLinkController(
         @PathVariable id: String,
         @RequestBody request: CreateIssueRequest,
         @AuthenticationPrincipal principal: OAuth2User,
+        @RequestHeader(HttpHeaders.ACCEPT_LANGUAGE, required = false) acceptLanguage: String?,
     ): ResponseEntity<IssueLink> {
         val (board, role) = boards.participated(id, principal.userId)
         val target = target(request.pageId, request.cellId, request.threadId)
@@ -71,7 +75,9 @@ class IssueLinkController(
         if (title.length !in 1..TITLE_MAX_LENGTH) badRequest("A title has 1 to $TITLE_MAX_LENGTH characters")
         if (request.description.length > DESCRIPTION_MAX_LENGTH) badRequest("A description has at most $DESCRIPTION_MAX_LENGTH characters")
         val label = request.elementLabel?.trim()?.take(LABEL_MAX_LENGTH)
-        val backLink = BackLink.of(appUrl(), board, target, label.takeIf { target.element })
+        // The link back speaks the language of the author of the issue.
+        val language = Language.ofAcceptLanguage(acceptLanguage)
+        val backLink = BackLink.of(appUrl(), board, target, label.takeIf { target.element }, language)
         val (link, created) = links.create(
             board, role, principal.userId, target, request.requestId, repository(request.repository), title, request.description, backLink,
         )

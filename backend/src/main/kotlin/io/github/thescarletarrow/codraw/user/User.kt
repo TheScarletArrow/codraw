@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.user
 
 import org.springframework.data.annotation.Id
+import org.springframework.data.jdbc.repository.query.Modifying
 import org.springframework.data.jdbc.repository.query.Query
 import org.springframework.data.relational.core.mapping.Table
 import org.springframework.data.repository.Repository
@@ -15,6 +16,8 @@ data class User(
     val name: String,
     val avatarUrl: String?,
     val createdAt: Instant,
+    /** The language of the interface of the user, in which their letters and messages of notifications go. */
+    val language: Language = Language.RU,
 )
 
 /** The user works without a sign-in provider. */
@@ -38,4 +41,8 @@ interface UserRepository : Repository<User, UUID> {
         """,
     )
     fun upsert(provider: String, providerUserId: String, name: String, avatarUrl: String?, createdAt: Instant): User
+
+    @Modifying
+    @Query("UPDATE users SET language = :language WHERE id = :id")
+    fun updateLanguage(id: UUID, language: String): Int
 }
