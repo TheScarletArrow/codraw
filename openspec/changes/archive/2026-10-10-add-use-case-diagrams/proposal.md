@@ -48,7 +48,7 @@
 - `frontend`: `diagram/shapes.ts` (раздел и группа `usecase`), `diagram/useCase.ts` (отношения UML),
   `diagram/extensions.ts` (`EDGE_MARKERS`), `diagram/editor.ts` (маркеры с заливкой, `edgeRelation`,
   `setEdgeRelation`, ассоциация у новых связей), `EditorToolbar.tsx` («Отношение»), `ShapeIcon.tsx`, `shapeSearch.ts`,
-  `legend.ts`, `templates/templates.ts`; «Что нового» 0.29.0, README, e2e.
+  `legend.ts`, `templates/templates.ts`; «Что нового» 0.30.0, README, e2e.
 - `backend` и `collab` не меняются: документ доски хранит стили как есть.
 - Вне рамок: диаграммы классов (агрегация, композиция, реализация), точки расширения внутри эллипса, импорт PlantUML и
   текстовых описаний — в Mermaid такого вида диаграмм нет.

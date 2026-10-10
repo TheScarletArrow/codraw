@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { PETSTORE_YAML } from '../apiSpec/testDocuments.ts'
+import { SHOP_DSL } from '../architecture/testArchitecture.ts'
 import { c4Page } from '../architecture/testPages.ts'
 import type { CellData } from '../diagram/model.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, writeCell } from '../diagram/model.ts'
@@ -144,6 +145,7 @@ describe('SqlMenu', () => {
     expect(screen.queryByRole('button', { name: 'Импорт Kubernetes…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Gradle…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Импорт Terraform…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Импорт архитектуры как кода…' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Архитектура как код…' })).toBeEnabled()
   })
 
@@ -412,6 +414,27 @@ describe('SqlMenu', () => {
       codrawShape: 'load-balancer',
       codrawSource: 'terraform:node:aws_lb.web',
     })
+    expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
+  })
+
+  it('adds the architecture of a workspace of Structurizr to the right of the page', async () => {
+    const user = userEvent.setup()
+    const { editor } = renderMenu()
+    await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
+    await user.click(screen.getByRole('button', { name: 'Импорт архитектуры как кода…' }))
+
+    expect(screen.getByRole('heading', { name: 'Импорт архитектуры как кода' })).toBeInTheDocument()
+    await user.upload(screen.getByLabelText('Файлы архитектуры'), new File([SHOP_DSL], 'workspace.dsl'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Элементов: 4, границ: 1, связей: 3'))
+    await user.click(screen.getByRole('button', { name: 'Добавить на страницу' }))
+
+    await waitFor(() => expect(editor.insertCells).toHaveBeenCalledTimes(1))
+    const cells = vi.mocked(editor.insertCells).mock.lastCall![0] as CellData[]
+    expect(cells.find((cell) => cell.value === 'API\n[Container: Spring Boot]\nЗаказы')!.style).toMatchObject({
+      codrawShape: 'c4-container',
+      codrawSource: 'architecture:node:api',
+    })
+    expect(cells.find((cell) => cell.value === 'Магазин\n[Software System]')!.style).toMatchObject({ codrawShape: 'c4-boundary', codrawKind: 'c4-system' })
     expect(Math.min(...cells.filter((cell) => cell.kind === 'vertex').map((cell) => cell.geometry!.x))).toBe(700)
   })
 
