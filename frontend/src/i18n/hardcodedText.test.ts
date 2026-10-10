@@ -14,7 +14,8 @@ const sources = import.meta.glob(['/src/**/*.{ts,tsx}', '!/src/**/*.test.{ts,tsx
 
 const CYRILLIC = /[А-Яа-яЁё]/
 
-const isDictionary = (path: string) => /\/(messages|[^/]*\.messages)\.tsx?$/.test(path) || path.endsWith('.ru.tsx')
+const isDictionary = (path: string) =>
+  /\/(messages|[^/]*\.messages)\.tsx?$/.test(path) || path.endsWith('.ru.tsx') || path.endsWith('/i18n/allowedRussian.ts')
 
 /** The texts of a source in Russian: its string literals, templates and text of JSX, not its comments. */
 function russianTexts(path: string, source: string): string[] {

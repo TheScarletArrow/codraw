@@ -15,6 +15,12 @@ export const ALLOWED_RUSSIAN: Record<string, readonly string[] | 'all'> = {
   'diagram/canvasSearch.ts': ['/ё/g', 'е'],
   // The search in the list of boards finds «ё» as «е».
   'boardList/boardList.ts': ['/ё/g', 'е'],
+  // Russian synonyms of the search of shapes: data of the search, which finds shapes in any language of the interface.
+  'diagram/shapeSearch.ts': 'all',
+  // Words of the search for which the palette offers «Изображение», in both languages.
+  'diagram/ShapePalette.tsx': ['изображение', 'картинка', 'рисунок', 'фото', 'скриншот', 'логотип'],
+  // Names of technologies in labels: Cyrillic letters in their keys and «и» between them («Kotlin и Spring»).
+  'diagram/techIcons.ts': ['/[^a-z0-9а-яё]/g', String.raw`/\s*(?:[,;/|]|\s\+\s|\sи\s|\sand\s)\s*/i`],
   // The search for duplicates compares names with «ё» as «е».
   'checks/checks.ts': ['/ё/g', 'е'],
   // Placeholders of C4 in labels of shapes of boards drawn in Russian, which the properties read as empty.
