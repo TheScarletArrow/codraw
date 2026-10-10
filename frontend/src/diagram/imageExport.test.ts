@@ -118,6 +118,26 @@ describe('image export', () => {
     expect(image.svg).toMatch(/rotate\(90[ ,]/)
   })
 
+  it('draws the shadow, the rounded corners and the gradient of a shape, with gradients of the image itself', () => {
+    const { editor } = open()
+    editor.graph.setSelectionCell(shape(editor, 0, 0, 'Сервис'))
+    editor.setShapeEffects({ shadow: true, rounded: true, gradient: '#dae8fc', gradientDirection: 'east' })
+
+    const { svg } = editor.exportSvg()!
+
+    const image = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    const gradient = image.querySelector('linearGradient')!
+    expect(gradient.getAttribute('x2')).toBe('100%')
+    expect([...gradient.querySelectorAll('stop')].map((stop) => stop.getAttribute('style') ?? stop.getAttribute('stop-color'))).toEqual([
+      expect.stringContaining('#ffffff'),
+      expect.stringContaining('#dae8fc'),
+    ])
+    const [shadow, body] = [...image.querySelectorAll('rect[rx]')]
+    expect(body!.getAttribute('fill')).toBe(`url(#${gradient.id})`)
+    expect(shadow!.getAttribute('transform')).toBe('translate(2,3)')
+    expect(Number(body!.getAttribute('rx'))).toBeGreaterThan(0)
+  })
+
   it('leaves the background out of a transparent image', () => {
     const { editor } = open()
     shape(editor, 0, 0, 'Сервис')

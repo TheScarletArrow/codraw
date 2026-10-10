@@ -268,7 +268,7 @@ describe('EditorToolbar', () => {
   })
 
   it('offers fill, line and text colors for selected shapes and applies them', async () => {
-    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, hasShapes: true } }))
+    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true } }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
     await userEvent.click(screen.getByRole('button', { name: 'Розовый' }))
@@ -283,7 +283,7 @@ describe('EditorToolbar', () => {
   })
 
   it('shows the transparency of the fill and changes it by the slider and by the field', async () => {
-    act(() => editor.setState({ colors: { fill: '#dae8fc', stroke: '#1f2328', font: '#1f2328', fillOpacity: 60, hasShapes: true } }))
+    act(() => editor.setState({ colors: { fill: '#dae8fc', stroke: '#1f2328', font: '#1f2328', fillOpacity: 60, gradient: 'none', gradientDirection: null, hasShapes: true } }))
     await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
     const slider = screen.getByRole('slider', { name: 'Прозрачность заливки' })
     const field = screen.getByRole('spinbutton', { name: 'Прозрачность заливки, %' })
@@ -299,7 +299,7 @@ describe('EditorToolbar', () => {
   })
 
   it('shows no transparency when the selected shapes have different ones', async () => {
-    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: null, hasShapes: true } }))
+    act(() => editor.setState({ colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: null, gradient: 'none', gradientDirection: null, hasShapes: true } }))
     await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
 
     expect(screen.getByRole('spinbutton', { name: 'Прозрачность заливки, %' })).toHaveValue(null)
@@ -307,8 +307,96 @@ describe('EditorToolbar', () => {
     expect(screen.queryByRole('slider', { name: /Прозрачность/ })).toBeNull()
   })
 
+  it('turns the gradient of the fill on with a second color that shows, and changes its color and direction', async () => {
+    act(() =>
+      editor.setState({
+        colors: { fill: '#ffffff', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
+    const gradient = screen.getByRole('group', { name: 'Градиент' })
+    expect(within(gradient).getByRole('button', { name: 'Вправо' })).toBeDisabled()
+    expect(within(gradient).getByLabelText('Второй цвет градиента')).toBeDisabled()
+
+    await userEvent.click(within(gradient).getByRole('checkbox', { name: 'Градиент' }))
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ gradient: '#dae8fc' })
+
+    act(() =>
+      editor.setState({
+        colors: { fill: '#dae8fc', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, gradient: '#ffffff', gradientDirection: 'south', hasShapes: true },
+      }),
+    )
+    expect(within(gradient).getByRole('checkbox', { name: 'Градиент' })).toBeChecked()
+    expect(within(gradient).getByRole('button', { name: 'Вниз' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(gradient).getByRole('button', { name: 'Вправо' }))
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ gradientDirection: 'east' })
+    fireEvent.change(within(gradient).getByLabelText('Второй цвет градиента'), { target: { value: '#ff0000' } })
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ gradient: '#ff0000' })
+    // The window stays open for the next change.
+    expect(screen.getByRole('group', { name: 'Градиент' })).toBeInTheDocument()
+
+    await userEvent.click(within(gradient).getByRole('checkbox', { name: 'Градиент' }))
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ gradient: 'none' })
+    expect(editor.setColor).not.toHaveBeenCalled()
+  })
+
+  it('starts a gradient of a colored fill with white and shows none when the shapes differ', async () => {
+    act(() =>
+      editor.setState({
+        colors: { fill: '#f8cecc', stroke: '#1f2328', font: '#1f2328', fillOpacity: 100, gradient: null, gradientDirection: null, hasShapes: true },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Цвет заливки' }))
+    const checkbox = screen.getByRole('checkbox', { name: 'Градиент' })
+    expect(checkbox).not.toBeChecked()
+    await userEvent.click(checkbox)
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ gradient: '#ffffff' })
+  })
+
+  it('sets the shadow and the rounded corners of the selected shapes in the line style', async () => {
+    act(() =>
+      editor.setState({
+        line: { width: 1, dash: 'solid', edgeShape: null, hasEdges: false, shapes: { shadow: false, rounded: false, arcSize: null, canRound: true } },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
+    const panel = screen.getByRole('dialog', { name: 'Стиль линии' })
+    expect(within(panel).getByRole('spinbutton', { name: 'Радиус скругления, %' })).toBeDisabled()
+
+    await userEvent.click(within(panel).getByRole('checkbox', { name: 'Тень' }))
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ shadow: true })
+    await userEvent.click(within(panel).getByRole('checkbox', { name: 'Скругление' }))
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ rounded: true })
+
+    act(() =>
+      editor.setState({
+        line: { width: 1, dash: 'solid', edgeShape: null, hasEdges: false, shapes: { shadow: true, rounded: true, arcSize: 15, canRound: true } },
+      }),
+    )
+    expect(within(panel).getByRole('checkbox', { name: 'Тень' })).toBeChecked()
+    const radius = within(panel).getByRole('spinbutton', { name: 'Радиус скругления, %' })
+    expect(radius).toHaveValue(15)
+    await userEvent.clear(radius)
+    await userEvent.type(radius, '80{Enter}')
+    expect(editor.setShapeEffects).toHaveBeenLastCalledWith({ arcSize: 50 })
+  })
+
+  it('offers no rounding for shapes without corners, and neither shadow nor rounding for edges', async () => {
+    act(() =>
+      editor.setState({
+        line: { width: 1, dash: 'solid', edgeShape: null, hasEdges: false, shapes: { shadow: false, rounded: false, arcSize: null, canRound: false } },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
+    expect(screen.getByRole('checkbox', { name: 'Тень' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Скругление' })).toBeNull()
+
+    act(() => editor.setState({ line: { width: 1, dash: 'solid', edgeShape: 'orthogonal', hasEdges: true, shapes: null } }))
+    expect(screen.queryByRole('checkbox', { name: 'Тень' })).toBeNull()
+  })
+
   it('offers no fill when only edges are selected', () => {
-    act(() => editor.setState({ colors: { fill: null, stroke: '#1f2328', font: '#1f2328', fillOpacity: null, hasShapes: false } }))
+    act(() => editor.setState({ colors: { fill: null, stroke: '#1f2328', font: '#1f2328', fillOpacity: null, gradient: 'none', gradientDirection: null, hasShapes: false } }))
 
     expect(screen.queryByRole('button', { name: 'Цвет заливки' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Цвет линии' })).toBeInTheDocument()
@@ -316,7 +404,7 @@ describe('EditorToolbar', () => {
   })
 
   it('changes the width, the dash and the edge shape of the selected lines', async () => {
-    act(() => editor.setState({ line: { width: 2, dash: 'dashed', edgeShape: 'orthogonal', hasEdges: true } }))
+    act(() => editor.setState({ line: { width: 2, dash: 'dashed', edgeShape: 'orthogonal', hasEdges: true, shapes: null } }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
     const panel = screen.getByRole('dialog', { name: 'Стиль линии' })
@@ -336,7 +424,7 @@ describe('EditorToolbar', () => {
   })
 
   it('offers no edge shape when no edge is selected, and no value where the selection differs', async () => {
-    act(() => editor.setState({ line: { width: null, dash: null, edgeShape: null, hasEdges: false } }))
+    act(() => editor.setState({ line: { width: null, dash: null, edgeShape: null, hasEdges: false, shapes: null } }))
 
     await userEvent.click(screen.getByRole('button', { name: 'Стиль линии' }))
     const panel = screen.getByRole('dialog', { name: 'Стиль линии' })
@@ -550,8 +638,8 @@ describe('EditorToolbar', () => {
   it('turns the pencil on in place of the other tools of the canvas, and shows its line instead of the selection', async () => {
     act(() =>
       editor.setState({
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
-        line: { width: 1, dash: 'solid', edgeShape: null, hasEdges: false },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
+        line: { width: 1, dash: 'solid', edgeShape: null, hasEdges: false, shapes: null },
       }),
     )
     const pencil = screen.getByRole('button', { name: 'Карандаш' })
@@ -592,7 +680,7 @@ describe('EditorToolbar', () => {
     act(() =>
       editor.setState({
         lock: { all: false, canLock: true, locks: [] },
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
       }),
     )
 
@@ -608,7 +696,7 @@ describe('EditorToolbar', () => {
       editor.setState({
         lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },
         tableSelected: true,
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
         geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true, canSetWidth: true, rotation: 0, canRotate: true },
         arrange: 2,
@@ -635,7 +723,7 @@ describe('EditorToolbar', () => {
     act(() =>
       editor.setState({
         lock: { all: false, canLock: true, locks: [] },
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
         canCopyStyle: true,
       }),
     )
@@ -655,7 +743,7 @@ describe('EditorToolbar', () => {
     act(() =>
       editor.setState({
         lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
         canCopyStyle: true,
       }),
     )
@@ -679,7 +767,7 @@ describe('EditorToolbar', () => {
         canUndo: true,
         tableSelected: true,
         edgeMarkers: { start: 'none', end: 'classic' },
-        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, hasShapes: true },
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
         text: { ...plainText, fontSize: 12, autoWidth: false },
         geometry: { x: 0, y: 0, width: 120, height: 60, canSetHeight: true, canSetWidth: true, rotation: 0, canRotate: true },
         lock: { all: true, canLock: false, locks: [{ cellId: 'cell', lockedBy: 'Алиса' }] },

@@ -179,6 +179,20 @@ describe('PDF of images', () => {
     expect(x - Number(start)).toBeCloseTo(22.5, -0.5)
   })
 
+  it('draws the gradient as a shading, the shadow translucent and the rounded corners as curves', async () => {
+    const plain = await pdfText(await imagesToPdf([image(['Сервис'])]))
+    const styled = await pdfText(
+      await imagesToPdf([image(['Сервис'], { gradientColor: '#ffffff', gradientDirection: 'east', shadow: 1, rounded: 1, arcSize: 30 })]),
+    )
+
+    expect(plain.raw).not.toMatch(/\/ShadingType 2/)
+    expect(plain.raw).not.toMatch(/\/ca 0\.25/)
+    expect(styled.raw).toMatch(/\/ShadingType 2/)
+    expect(styled.raw).toMatch(/\/ca 0\.25/)
+    const curves = (streams: string[]) => streams.join('\n').match(/ c\n/g)?.length ?? 0
+    expect(curves(styled.streams)).toBeGreaterThan(curves(plain.streams))
+  })
+
   it('makes an element with a link to an address a link of the page', async () => {
     const pdf = await imagesToPdf([image(['Документация'], { link: 'https://docs.example.com/payments' }, { links: true })])
 
