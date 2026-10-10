@@ -24,6 +24,8 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.closedProposalsPerBoard") { value(20) }
             jsonPath("$.schemaImport") { value(false) }
             jsonPath("$.issues") { value(true) }
+            jsonPath("$.backupRetentionDays") { value(null) }
+            jsonPath("$.backupOffsite") { value(false) }
         }
     }
 }
@@ -35,6 +37,9 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
         "codraw.legal.contact-email=privacy@example.com",
         "codraw.guests.board-retention=14d",
         "codraw.notifications.retention=60d",
+        "codraw.legal.backup-keep-daily=7",
+        "codraw.legal.backup-keep-weekly=5",
+        "codraw.legal.backup-storage=https://s3.example.com",
     ],
 )
 class LegalApiWithOperatorTest(@Autowired private val mockMvc: MockMvc) {
@@ -47,6 +52,8 @@ class LegalApiWithOperatorTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.contactEmail") { value("privacy@example.com") }
             jsonPath("$.guestBoardRetentionDays") { value(14) }
             jsonPath("$.notificationRetentionDays") { value(60) }
+            jsonPath("$.backupRetentionDays") { value(35) }
+            jsonPath("$.backupOffsite") { value(true) }
         }
     }
 }

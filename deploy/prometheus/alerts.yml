@@ -4,7 +4,7 @@ groups:
   - name: codraw
     rules:
       - alert: CodrawServiceDown
-        expr: up{job=~"backend|collab"} == 0
+        expr: up{job=~"backend|collab|backup"} == 0
         for: 2m
         labels:
           severity: critical
@@ -52,3 +52,20 @@ groups:
           severity: warning
         annotations:
           summary: "Больше 20 ошибок в браузерах участников за 10 минут"
+
+      - alert: CodrawBackupFailed
+        expr: codraw_backup_last_run_success == 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Последняя резервная копия не удалась: причина — в журнале сервиса backup"
+
+      # A day and two hours for the daily schedule; with another CODRAW_BACKUP_SCHEDULE change the threshold too. The
+      # wait lets the first backup of a new installation finish.
+      - alert: CodrawBackupMissing
+        expr: time() - codraw_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Удачной резервной копии нет больше 26 часов"

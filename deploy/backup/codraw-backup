@@ -1,0 +1,170 @@
+#!/bin/sh
+# Backups of CoDraw (docs/deploy.md, «Резервные копии»):
+#   codraw-backup schedule                     checks the settings, serves the metrics, makes the first backup if there
+#                                              is none, then backs up on CODRAW_BACKUP_SCHEDULE (the default command)
+#   codraw-backup now                          makes a backup now
+#   codraw-backup list [--remote]              lists the archives on the server or in the storage outside of it
+#   codraw-backup restore [NAME|latest] [--remote]
+#                                              restores the database and the images from an archive; backend and
+#                                              collab must be stopped
+#   codraw-backup rclone ARGS...               rclone with the storages of the settings: images:, offsite: and sealed:
+. /usr/local/lib/codraw-backup/lib.sh
+
+# Archives of a store: the volume, or the storage outside the server with --remote.
+list_archives() {
+  if [ "$1" = --remote ]; then
+    [ -n "$OFFSITE" ] || fail "CODRAW_BACKUP_S3_ENDPOINT is not set: there is no storage of backups outside the server"
+    rclone lsf --files-only "$OFFSITE" | archives | sort
+  else
+    ls -1 "$BACKUP_DIR" | archives | sort
+  fi
+}
+
+# Makes the archive $1 (without its suffix) in the volume: the dump of the database first, then the images.
+make_archive() {
+  set -e
+  set -o pipefail
+  mkdir -p "$WORK_DIR/images"
+  rm -f "$WORK_DIR/database.dump" "$WORK_DIR/manifest.txt" "$WORK_DIR"/*.partial*
+  log "dumping the database $PGDATABASE"
+  pg_dump --format=custom --file="$WORK_DIR/database.dump"
+  log "copying the images of the bucket $CODRAW_IMAGES_S3_BUCKET"
+  # A mirror in the volume: each backup downloads only the images that are new since the last one.
+  rclone sync "images:$CODRAW_IMAGES_S3_BUCKET" "$WORK_DIR/images"
+  {
+    echo "created $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "database $PGDATABASE"
+    echo "images-bucket $CODRAW_IMAGES_S3_BUCKET"
+    echo "images $(find "$WORK_DIR/images" -type f | wc -l)"
+  } > "$WORK_DIR/manifest.txt"
+  # Written next to the archives under another name and renamed when complete: a broken run leaves no archive.
+  if [ "$SUFFIX" = .tar.bin ]; then
+    tar -cf - -C "$WORK_DIR" manifest.txt database.dump images | rclone rcat "sealed:${WORK_DIR#/}/$1.partial"
+    mv "$WORK_DIR/$1.partial.bin" "$BACKUP_DIR/$1$SUFFIX"
+  else
+    tar -cf "$WORK_DIR/$1.partial" -C "$WORK_DIR" manifest.txt database.dump images
+    mv "$WORK_DIR/$1.partial" "$BACKUP_DIR/$1$SUFFIX"
+  fi
+  rm -f "$WORK_DIR/database.dump" "$WORK_DIR/manifest.txt"
+  log "made $1$SUFFIX, $(stat -c %s "$BACKUP_DIR/$1$SUFFIX") bytes"
+  if [ -n "$OFFSITE" ]; then
+    log "copying $1$SUFFIX to the storage of backups"
+    rclone mkdir "$OFFSITE"
+    rclone copyto "$BACKUP_DIR/$1$SUFFIX" "$OFFSITE/$1$SUFFIX"
+  fi
+  now=$(date +%s)
+  doomed=$(list_archives | retention_plan "$now" "$CODRAW_BACKUP_KEEP_DAILY" "$CODRAW_BACKUP_KEEP_WEEKLY")
+  for name in $doomed; do
+    log "deleting $name by the rule of retention"
+    rm -f "$BACKUP_DIR/$name"
+  done
+  if [ -n "$OFFSITE" ]; then
+    doomed=$(list_archives --remote | retention_plan "$now" "$CODRAW_BACKUP_KEEP_DAILY" "$CODRAW_BACKUP_KEEP_WEEKLY")
+    for name in $doomed; do
+      log "deleting $name from the storage of backups by the rule of retention"
+      rclone deletefile "$OFFSITE/$name"
+    done
+  fi
+}
+
+backup_now() {
+  exec 9> "$BACKUP_DIR/.lock"
+  flock 9
+  start=$(date +%s)
+  name=codraw-$(date -u -d "@$start" +%Y-%m-%dT%H%M%SZ)
+  log "backup $name started"
+  (make_archive "$name")
+  status=$?
+  finish=$(date +%s)
+  if [ "$status" = 0 ]; then
+    write_metrics "$finish" "$start" 1 "$(stat -c %s "$BACKUP_DIR/$name$SUFFIX")" $((finish - start))
+    log "backup $name succeeded"
+  else
+    rm -f "$WORK_DIR"/*.partial* "$WORK_DIR/database.dump"
+    write_metrics "$(metric codraw_backup_last_success_timestamp_seconds)" "$start" 0 \
+      "$(metric codraw_backup_last_size_bytes)" $((finish - start))
+    log "backup $name failed"
+  fi
+  exec 9>&-
+  return "$status"
+}
+
+restore() {
+  target=latest
+  store=
+  for arg in "$@"; do
+    case "$arg" in
+      --remote) store=--remote ;;
+      -*) fail "unknown option $arg" ;;
+      *) target=$arg ;;
+    esac
+  done
+  exec 9> "$BACKUP_DIR/.lock"
+  flock 9
+  others=$(psql -XAtc 'SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()') ||
+    fail "cannot connect to the database $PGDATABASE"
+  [ "$others" = 0 ] ||
+    fail "$others other connections to the database $PGDATABASE: stop backend and collab, then restore (docs/deploy.md)"
+  if [ "$target" = latest ]; then
+    target=$(list_archives $store | tail -n 1)
+    [ -n "$target" ] || fail "there are no archives to restore"
+  fi
+  [ -n "$(printf '%s\n' "$target" | archives)" ] || fail "$target is not the name of an archive"
+  rm -rf "$RESTORE_DIR"
+  mkdir -p "$RESTORE_DIR/archive"
+  set -e
+  set -o pipefail
+  if [ -n "$store" ]; then
+    log "downloading $target from the storage of backups"
+    rclone copyto "$OFFSITE/$target" "$RESTORE_DIR/$target"
+    source=$RESTORE_DIR/$target
+  else
+    source=$BACKUP_DIR/$target
+    [ -f "$source" ] || fail "there is no $target in $BACKUP_DIR"
+  fi
+  case "$target" in
+    *.bin)
+      [ -n "${CODRAW_BACKUP_ENCRYPTION_PASSWORD:-}" ] ||
+        fail "$target is encrypted: set CODRAW_BACKUP_ENCRYPTION_PASSWORD to the password it was made with"
+      # The crypt remote names the file without the suffix .bin that it adds.
+      plain=${source%.bin}
+      rclone cat "sealed:${plain#/}" | tar -xf - -C "$RESTORE_DIR/archive"
+      ;;
+    *) tar -xf "$source" -C "$RESTORE_DIR/archive" ;;
+  esac
+  log "restoring the database $PGDATABASE from $target"
+  pg_restore --clean --if-exists --no-owner --single-transaction --dbname="$PGDATABASE" "$RESTORE_DIR/archive/database.dump"
+  log "restoring the images into the bucket $CODRAW_IMAGES_S3_BUCKET"
+  rclone mkdir "images:$CODRAW_IMAGES_S3_BUCKET"
+  rclone sync "$RESTORE_DIR/archive/images" "images:$CODRAW_IMAGES_S3_BUCKET"
+  rm -rf "$RESTORE_DIR"
+  log "restored $target"
+}
+
+schedule() {
+  printf '%s codraw-backup now\n' "$CODRAW_BACKUP_SCHEDULE" > /tmp/crontab
+  supercronic -test /tmp/crontab > /dev/null 2>&1 || fail "CODRAW_BACKUP_SCHEDULE is not a cron schedule"
+  [ -f "$METRICS_FILE" ] || write_metrics 0
+  rclone serve http "$METRICS_DIR" --addr ":$METRICS_PORT" &
+  last=$(metric codraw_backup_last_success_timestamp_seconds)
+  if [ "${last:-0}" = 0 ]; then
+    log "there is no backup yet: making the first one"
+    # In a subshell, so that its lock is not passed on to supercronic.
+    (backup_now) || true
+  fi
+  log "backing up on the schedule $CODRAW_BACKUP_SCHEDULE (UTC)"
+  exec supercronic /tmp/crontab
+}
+
+check_settings
+configure_rclone
+command=${1:-schedule}
+[ $# -gt 0 ] && shift
+case "$command" in
+  schedule) schedule ;;
+  now) backup_now ;;
+  list) list_archives "$@" ;;
+  restore) restore "$@" ;;
+  rclone) exec rclone "$@" ;;
+  *) fail "unknown command $command: schedule, now, list, restore or rclone" ;;
+esac

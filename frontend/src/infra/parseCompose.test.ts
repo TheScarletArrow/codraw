@@ -104,7 +104,7 @@ describe('parseCompose', () => {
   it('reads the docker-compose.prod.yml of CoDraw', async () => {
     const services = await parse(codrawProduction, 'docker-compose.prod.yml')
 
-    expect(services.map((service) => service.name)).toEqual(['postgres', 's3', 'backend', 'collab', 'frontend', 'prometheus'])
+    expect(services.map((service) => service.name)).toEqual(['postgres', 's3', 'backend', 'collab', 'frontend', 'backup', 'prometheus'])
     const frontend = services.find((service) => service.name === 'frontend')!
     expect(frontend).toMatchObject({ ports: ['8080'], dependsOn: ['backend', 'collab'], image: 'ghcr.io/thescarletarrow/codraw-frontend:latest' })
   })

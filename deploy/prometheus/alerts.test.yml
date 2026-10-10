@@ -92,3 +92,46 @@ tests:
         exp_alerts:
           - exp_labels: { severity: warning }
             exp_annotations: { summary: "Больше 20 ошибок в браузерах участников за 10 минут" }
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="backup", instance="backup:9187"}'
+        values: "1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: CodrawServiceDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: backup, instance: "backup:9187" }
+            exp_annotations: { summary: "backup не отвечает Prometheus 2 минуты" }
+
+  - interval: 1m
+    input_series:
+      - series: 'codraw_backup_last_run_success{job="backup", instance="backup:9187"}'
+        values: "1 1 0 0 1"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CodrawBackupFailed
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: CodrawBackupFailed
+        exp_alerts:
+          - exp_labels: { severity: critical, job: backup, instance: "backup:9187" }
+            exp_annotations: { summary: "Последняя резервная копия не удалась: причина — в журнале сервиса backup" }
+      - eval_time: 4m
+        alertname: CodrawBackupFailed
+        exp_alerts: []
+
+  # The last success at the start of the test, so 26 hours later there is no backup for longer than a day and two hours.
+  - interval: 1m
+    input_series:
+      - series: 'codraw_backup_last_success_timestamp_seconds{job="backup", instance="backup:9187"}'
+        values: "0x1700"
+    alert_rule_test:
+      - eval_time: 25h
+        alertname: CodrawBackupMissing
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: CodrawBackupMissing
+        exp_alerts:
+          - exp_labels: { severity: critical, job: backup, instance: "backup:9187" }
+            exp_annotations: { summary: "Удачной резервной копии нет больше 26 часов" }

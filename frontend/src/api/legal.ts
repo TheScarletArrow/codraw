@@ -18,6 +18,10 @@ export interface LegalInfo {
   schemaImport: boolean
   /** Whether users may connect GitHub with a token of theirs and link its issues to elements and threads of boards. */
   issues: boolean
+  /** The most days that deleted data stays in backups, `null` when the installation makes none. */
+  backupRetentionDays: number | null
+  /** Whether backups are kept outside the server too, at a provider of storage of the operator. */
+  backupOffsite: boolean
 }
 
 export function fetchLegal(): Promise<LegalInfo> {
