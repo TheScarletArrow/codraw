@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonValue
 import io.github.thescarletarrow.codraw.board.Board
 import io.github.thescarletarrow.codraw.board.LinkAccess
 import io.github.thescarletarrow.codraw.board.MemberRole
+import io.github.thescarletarrow.codraw.board.WorkspaceAccess
+import io.github.thescarletarrow.codraw.workspace.WorkspaceRole
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -64,6 +66,8 @@ data class StoredNotification(
     val board: Board,
     /** The role of the recipient as a member of the board, `null` when they are not one. */
     val memberRole: MemberRole?,
+    /** The role of the recipient in the workspace of the board, `null` when they are not its member or there is none. */
+    val workspaceRole: WorkspaceRole?,
     val commentId: UUID?,
     val threadId: UUID?,
     /** The page of the thread, or of the element of a request for a review. */
@@ -384,8 +388,12 @@ class Notifications(private val jdbc: JdbcClient) {
             createdAt = instant("board_created_at")!!,
             updatedAt = instant("board_updated_at")!!,
             linkAccess = LinkAccess.valueOf(getString("link_access")),
+            workspaceId = getObject("workspace_id", UUID::class.java),
+            projectId = getObject("project_id", UUID::class.java),
+            workspaceAccess = WorkspaceAccess.valueOf(getString("workspace_access")),
         ),
         memberRole = getString("member_role")?.let(MemberRole::valueOf),
+        workspaceRole = getString("workspace_role")?.let(WorkspaceRole::valueOf),
         commentId = getObject("comment_id", UUID::class.java),
         threadId = getObject("thread_id", UUID::class.java),
         pageId = getString("page_id"),
@@ -415,12 +423,14 @@ class Notifications(private val jdbc: JdbcClient) {
             SELECT n.id, n.user_id, n.kind, n.comment_id, n.proposal_id, n.role, n.created_at, n.read_at,
                    b.id AS board_id, b.title, b.owner_id, b.created_at AS board_created_at,
                    b.updated_at AS board_updated_at, b.link_access, m.role AS member_role,
+                   b.workspace_id, b.project_id, b.workspace_access, w.role AS workspace_role,
                    a.id AS actor_id, a.name AS actor_name, a.avatar_url AS actor_avatar_url,
                    t.id AS thread_id, coalesce(t.page_id, n.page_id) AS page_id, n.cell_id,
                    left(coalesce(c.body, f.body, p.title), :snippetLength + 1) AS body
             FROM notifications n
             JOIN boards b ON b.id = n.board_id
             LEFT JOIN board_members m ON m.board_id = n.board_id AND m.user_id = n.user_id
+            LEFT JOIN workspace_members w ON w.workspace_id = b.workspace_id AND w.user_id = n.user_id
             LEFT JOIN users a ON a.id = n.actor_id
             LEFT JOIN comments c ON c.id = n.comment_id
             LEFT JOIN comment_threads t ON t.id = coalesce(c.thread_id, n.thread_id)

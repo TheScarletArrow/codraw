@@ -4,7 +4,6 @@ import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.board.BoardIds
-import io.github.thescarletarrow.codraw.board.BoardMembers
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.proposal.DraftStore
 import io.github.thescarletarrow.codraw.proposal.ProposalService
@@ -29,7 +28,7 @@ import java.util.UUID
 class ProposalDraftController(
     private val proposals: ProposalService,
     private val boards: BoardService,
-    private val members: BoardMembers,
+    private val accesses: BoardAccesses,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
 ) {
@@ -69,8 +68,7 @@ class ProposalDraftController(
     fun access(@PathVariable id: String): ResponseEntity<DraftAccessResponse> {
         val draft = BoardIds.parse(id)?.let(proposals::draftAccess) ?: return ResponseEntity.notFound().build()
         val board = boards.find(draft.boardId) ?: return ResponseEntity.notFound().build()
-        val boardAccess = BoardAccess(board.ownerId, board.linkAccess, members.roles(draft.boardId))
-        return ResponseEntity.ok(DraftAccessResponse(draft.authorId, draft.open, boardAccess))
+        return ResponseEntity.ok(DraftAccessResponse(draft.authorId, draft.open, accesses.of(board)))
     }
 }
 

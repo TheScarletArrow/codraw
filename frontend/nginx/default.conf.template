@@ -25,6 +25,19 @@ map $http_host $host_port {
     default                    80;
 }
 
+# Boards that their links show to anybody are read in frames of other sites, e.g. wikis: /view/… may be framed by any
+# of them, the rest of the app by none. The address is the one requested, before try_files gives index.html.
+map $request_uri $frame_ancestors {
+    ~^/view/ "*";
+    default  "'none'";
+}
+
+# An empty value sends no header.
+map $request_uri $frame_options {
+    ~^/view/ "";
+    default  "DENY";
+}
+
 server {
     listen 8080;
     server_name _;

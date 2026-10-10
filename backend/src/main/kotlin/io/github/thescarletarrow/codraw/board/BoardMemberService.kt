@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.Tokens
 import io.github.thescarletarrow.codraw.notification.NotificationService
+import io.github.thescarletarrow.codraw.workspace.Workspaces
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -21,6 +22,7 @@ class BoardMemberService(
     private val members: BoardMembers,
     private val invites: BoardInvites,
     private val boards: BoardService,
+    private val workspaces: Workspaces,
     private val notifications: NotificationService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
@@ -30,20 +32,24 @@ class BoardMemberService(
     /** The owner of the [board] first, then its members in the order they joined. */
     fun participants(board: Board): List<Participant> = members.participants(board.boardId, board.ownerId)
 
-    /** Users who opened the [board] through its link and are not its members, most recently first. */
+    /**
+     * Users who opened the [board] through its link and are not its members, most recently first; members of its
+     * workspace opened it as such, not through its link.
+     */
     fun visitors(board: Board): List<Visitor> = members.visitors(board.boardId, board.ownerId, VISITORS_LIMIT)
 
     /**
      * Gives the user [userId] the [role] on the [board]: a member gets it, and a user who opened the board through its
-     * link becomes a member with it. Throws [MemberNotFoundException] for anybody else, the owner included: the owner
-     * cannot put an arbitrary user among the boards shared with them.
+     * link, or a member of the workspace of the board, becomes a member with it. Throws [MemberNotFoundException] for
+     * anybody else, the owner included: the owner cannot put an arbitrary user among the boards shared with them.
      */
     @Transactional
     fun putMember(board: Board, userId: UUID, role: MemberRole): Participant {
         val boardId = board.boardId
         if (userId == board.ownerId) throw MemberNotFoundException()
         members.lockBoard(boardId)
-        if (members.roleOf(boardId, userId) == null && !members.visited(boardId, userId)) {
+        val inWorkspace = board.workspaceId?.let { workspaces.roleOf(it, userId) } != null
+        if (members.roleOf(boardId, userId) == null && !members.visited(boardId, userId) && !inWorkspace) {
             throw MemberNotFoundException()
         }
         return give(board, userId, role)

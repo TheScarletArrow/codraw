@@ -60,8 +60,17 @@ test('the app comes with the security headers, and its files are cached for a ye
   expect(csp).toContain("default-src 'self'")
   expect(csp).toContain("script-src 'self'")
   expect(csp).toContain("frame-ancestors 'none'")
+  expect(page.headers()['x-frame-options']).toBe('DENY')
   expect(page.headers()['x-content-type-options']).toBe('nosniff')
   expect(page.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin')
+
+  // The reading of a board shown to anybody is embedded into other sites, the rest of the app is not.
+  const view = await request.get('/view/0199a000-0000-7000-8000-000000000001?page=page-1')
+  expect(view.status()).toBe(200)
+  expect(view.headers()['content-type']).toContain('text/html')
+  expect(view.headers()['content-security-policy']).toContain('frame-ancestors *')
+  expect(view.headers()['content-security-policy']).toContain("script-src 'self'")
+  expect(view.headers()['x-frame-options']).toBeUndefined()
 
   const script = /src="(\/assets\/[^"]+\.js)"/.exec(await page.text())![1]!
   const asset = await request.get(script)

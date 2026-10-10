@@ -8,6 +8,7 @@ import {
   type BackendClient,
   type BoardAccess,
   type DraftAccess,
+  type WorkspaceBoardAccess,
 } from "./backend-client.js";
 import { documentOf, type CollabDocument } from "./documents.js";
 import { log } from "./log.js";
@@ -49,14 +50,26 @@ export class NoAccessError extends Error {
 
 /**
  * The access the user has to the document of a board now, or `null` when they have none. Like the role on the board
- * that the backend gives: the owner edits, anybody else gets the higher of their role as a member and what the link
- * gives.
+ * that the backend gives: the owner edits, anybody else gets the highest of their role as a member, what the link gives
+ * and what the workspace of the board gives them.
  */
-export function accessOf({ ownerId, linkAccess, members }: BoardAccess, userId: string): DocumentAccess | null {
+export function accessOf({ ownerId, linkAccess, members, workspace }: BoardAccess, userId: string): DocumentAccess | null {
   const member = members[userId];
-  if (userId === ownerId || member === "editor" || linkAccess === "edit") return "edit";
-  if (member === "viewer" || linkAccess === "view") return "view";
+  const inherited = workspace ? inheritedAccessOf(workspace, userId) : null;
+  if (userId === ownerId || member === "editor" || linkAccess === "edit" || inherited === "edit") return "edit";
+  if (member === "viewer" || linkAccess === "view" || linkAccess === "public" || inherited === "view") return "view";
   return null;
+}
+
+/**
+ * What the workspace of a board gives the user on it: owners and administrators of the workspace manage its boards,
+ * editors and viewers get what the access of the board to the workspace says.
+ */
+function inheritedAccessOf({ access, roles }: WorkspaceBoardAccess, userId: string): DocumentAccess | null {
+  const role = roles[userId];
+  if (role === "owner" || role === "admin") return "edit";
+  if (!role || access === "none") return null;
+  return access === "edit" && role === "editor" ? "edit" : "view";
 }
 
 /**

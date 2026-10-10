@@ -22,6 +22,11 @@ interface BoardActionsProps {
    */
   folder?: (close: () => void) => ReactNode
   /**
+   * The choice of a workspace to bring the board into, which «Перенести в пространство» opens in the menu, given what
+   * closes the menu; without it there is no such item.
+   */
+  workspace?: (close: () => void) => ReactNode
+  /**
    * Whether the notifications of the board go to the email and the chat of the user, and what turns them off or on;
    * without it, as for a guest or a user without such channels, there is no such item.
    */
@@ -30,7 +35,7 @@ interface BoardActionsProps {
 }
 
 /** What the menu shows: its items, the confirmation of the deletion, the tags or the folder of the board. */
-type View = 'items' | 'confirm' | 'tags' | 'folder'
+type View = 'items' | 'confirm' | 'tags' | 'folder' | 'workspace'
 
 /**
  * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions, in the list of boards the
@@ -45,6 +50,7 @@ export function BoardActions({
   onDelete,
   tags,
   folder,
+  workspace,
   notifications,
   disabled = false,
 }: BoardActionsProps) {
@@ -79,6 +85,7 @@ export function BoardActions({
       >
         {view === 'tags' && tags?.()}
         {view === 'folder' && folder?.(() => setOpen(false))}
+        {view === 'workspace' && workspace?.(() => setOpen(false))}
         {view === 'confirm' && (
           <div role="alertdialog" aria-label="Удаление доски" className="flex flex-col gap-2 p-2">
             <p className="text-sm">Переместить доску «{title}» в корзину? Её можно восстановить в течение 30 дней.</p>
@@ -139,6 +146,18 @@ export function BoardActions({
                 onClick={() => setView('folder')}
               >
                 Переместить в папку
+              </Button>
+            )}
+            {workspace && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                onClick={() => setView('workspace')}
+              >
+                Перенести в пространство
               </Button>
             )}
             {onHistory && (

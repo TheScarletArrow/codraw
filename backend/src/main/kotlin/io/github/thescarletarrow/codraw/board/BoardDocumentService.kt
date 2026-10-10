@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.board
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
+import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
@@ -21,6 +22,9 @@ class BoardDocumentService(
         }
         return documents.findState(boardId)?.let { StoredDocument.State(it) } ?: StoredDocument.Empty
     }
+
+    /** When the document of the board [boardId] was stored last; `null` before its first store. */
+    fun storedAt(boardId: UUID): Instant? = documents.stamp(boardId)?.updatedAt
 
     /**
      * Saves the document state, which the users [editors] changed since the previous save, and marks the board as

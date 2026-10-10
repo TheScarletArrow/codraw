@@ -35,21 +35,39 @@ export class ProposalClosedError extends Error {
   }
 }
 
-/** What a link to a board gives to users other than its owner and its members. */
-export type LinkAccess = "none" | "view" | "edit";
+/**
+ * What a link to a board gives to users other than its owner and its members; `public` shows the board to anybody
+ * without a sign-in too, who never connect here.
+ */
+export type LinkAccess = "none" | "view" | "public" | "edit";
 
 /** The role that the owner of a board gives a member of it. */
 export type MemberRole = "editor" | "viewer";
 
+/** The role of a member of a team workspace. */
+export type WorkspaceRole = "owner" | "admin" | "editor" | "viewer";
+
 /**
- * Who may do what with the document of a board now: its owner edits, anybody else gets the higher of their role as a
- * member and what its link gives.
+ * What the workspace of a board gives its members on the board: owners and administrators of the workspace always
+ * edit; with `edit` its editors edit and its viewers view, with `view` both view, with `none` neither gets anything.
+ */
+export interface WorkspaceBoardAccess {
+  access: "none" | "view" | "edit";
+  /** The roles of the members of the workspace by their ids. */
+  roles: Record<string, WorkspaceRole>;
+}
+
+/**
+ * Who may do what with the document of a board now: its owner edits, anybody else gets the highest of their role as a
+ * member, what its link gives and, on a board of a workspace, what the workspace gives them.
  */
 export interface BoardAccess {
   ownerId: string;
   linkAccess: LinkAccess;
   /** The roles of the members by their ids. */
   members: Record<string, MemberRole>;
+  /** What the workspace of the board gives its members; `null` or missing for a personal board. */
+  workspace?: WorkspaceBoardAccess | null;
 }
 
 /** Who may do what with the draft of a proposal of changes now. */

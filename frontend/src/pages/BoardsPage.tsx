@@ -56,6 +56,11 @@ import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { TemplateCards } from '../templates/TemplateCards.tsx'
 import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
 import { templatePage, type BoardTemplate } from '../templates/templates.ts'
+import { moveBoardToWorkspace, WORKSPACES_QUERY_KEY, workspaceLimitOf } from '../api/workspaces.ts'
+import { useCurrentUser } from '../auth/session.ts'
+import { counted } from '../board/members.ts'
+import { WorkspacePicker } from '../workspaces/WorkspacePicker.tsx'
+import { WorkspacesSection } from '../workspaces/WorkspacesSection.tsx'
 
 export const NEW_BOARD_TITLE = 'Новая доска'
 
@@ -209,6 +214,8 @@ export function BoardsPage() {
             : (boardLimitMessage(open.error) ?? 'Не удалось создать доску из файла')}
         </p>
       )}
+
+      <WorkspacesSection />
 
       {(hasBoards || folderList.length > 0) && (
         <>
@@ -429,9 +436,13 @@ function BoardRow({ children, aside }: { children: ReactNode; aside: ReactNode }
   )
 }
 
-/** A board of the user: it opens, and its menu renames it, gives it tags, puts it into a folder or deletes it. */
+/**
+ * A board of the user: it opens, and its menu renames it, gives it tags, puts it into a folder, brings it into a
+ * workspace or deletes it.
+ */
 function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowContext }) {
   const queryClient = useQueryClient()
+  const user = useCurrentUser()
   const [renaming, setRenaming] = useState(false)
   // The list changes at once; then it catches up with the server, where a renamed board moves to the top.
   const updateList = (change: (boards: ListedBoard[]) => ListedBoard[]) => {
@@ -456,15 +467,31 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
       ])
     },
   })
+  // The board leaves the personal boards for the workspace, with all it has.
+  const toWorkspace = useMutation({
+    mutationFn: (workspaceId: string) => moveBoardToWorkspace(board.id, workspaceId),
+    onSuccess: (moved) => {
+      queryClient.setQueryData(['boards', board.id], moved)
+      return Promise.all([
+        updateList((boards) => boards.filter((other) => other.id !== board.id)),
+        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+      ])
+    },
+  })
   const organization = useOrganizationMenu(OWN_BOARDS_QUERY_KEY, board, context)
   const title = rename.isPending ? rename.variables : board.title
+  const workspaceLimit = workspaceLimitOf(toWorkspace.error)
   const error = rename.isError
     ? 'Не удалось переименовать'
     : remove.isError
       ? 'Не удалось удалить'
       : organization.moveFailed
         ? 'Не удалось переместить доску'
-        : null
+        : toWorkspace.isError
+          ? workspaceLimit === null
+            ? 'Не удалось перенести доску'
+            : `В пространстве уже ${counted(workspaceLimit.limit, ['доска', 'доски', 'досок'])}`
+          : null
 
   return (
     <BoardRow
@@ -483,6 +510,20 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
             onRename={() => setRenaming(true)}
             tags={organization.tags}
             folder={organization.folder}
+            workspace={
+              user.data && !user.data.guest
+                ? (close) => (
+                    <WorkspacePicker
+                      title={board.title}
+                      disabled={toWorkspace.isPending}
+                      onPick={(workspace) => {
+                        close()
+                        toWorkspace.mutate(workspace.id)
+                      }}
+                    />
+                  )
+                : undefined
+            }
             onDelete={() => remove.mutate()}
           />
         </>

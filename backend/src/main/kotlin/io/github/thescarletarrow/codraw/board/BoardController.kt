@@ -39,7 +39,7 @@ class BoardController(
         @AuthenticationPrincipal principal: OAuth2User,
     ): ResponseEntity<BoardResponse> {
         val user = currentUser(principal)
-        val board = boards.create(request.title.trim(), user.id).toResponse(user, BoardRole.OWNER)
+        val board = boards.create(request.title.trim(), user.id).toResponse(user, BoardRole.OWNER, null)
         return ResponseEntity.created(URI.create("/api/boards/${board.id}")).body(board)
     }
 
@@ -77,7 +77,8 @@ class BoardController(
         return boards.sharedWith(principal.userId).mapNotNull { shared ->
             val board = shared.board
             val id = checkNotNull(board.id)
-            val role = board.roleOf(principal.userId, shared.memberRole) ?: return@mapNotNull null
+            // Boards of the workspaces of the user are in their workspaces, not here: no role in a workspace counts.
+            val role = board.roleOf(principal.userId, shared.memberRole, null) ?: return@mapNotNull null
             SharedBoardResponse(
                 id = id,
                 title = board.title,
@@ -101,10 +102,10 @@ class BoardController(
     fun get(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse {
         val (board, role) = boards.participated(id, principal.userId)
         boards.recordVisit(board, principal.userId)
-        return board.toResponse(owner(board), role)
+        return board.toResponse(owner(board), role, boards.workspaceOf(board))
     }
 
-    /** Renames the board or changes what its link gives, or both. */
+    /** Renames the board or changes what its link or its workspace gives, or any of them. */
     @PatchMapping("/{id}")
     fun update(
         @PathVariable id: String,
@@ -112,8 +113,11 @@ class BoardController(
         @AuthenticationPrincipal principal: OAuth2User,
     ): BoardResponse {
         val board = ownBoard(id, principal)
-        if (request.title == null && request.linkAccess == null) {
+        if (request.title == null && request.linkAccess == null && request.workspaceAccess == null) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Nothing to change")
+        }
+        if (request.workspaceAccess != null && board.workspaceId == null) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "A personal board has no workspace to give access")
         }
         val title = request.title?.trim()
         if (title != null && title.length !in 1..TITLE_MAX_LENGTH) {
@@ -121,8 +125,9 @@ class BoardController(
         }
         var updated = board
         if (request.linkAccess != null) updated = boards.changeLinkAccess(updated, request.linkAccess)
+        if (request.workspaceAccess != null) updated = boards.changeWorkspaceAccess(updated, request.workspaceAccess)
         if (title != null) updated = boards.rename(updated, title)
-        return updated.toResponse(owner(board), BoardRole.OWNER)
+        return updated.toResponse(owner(board), BoardRole.OWNER, boards.workspaceOf(updated))
     }
 
     @DeleteMapping("/{id}")
@@ -131,16 +136,25 @@ class BoardController(
         return ResponseEntity.noContent().build()
     }
 
+    /** Boards in the trash that the user restores: their own, and those of the workspaces they manage. */
     @GetMapping("/trash")
     fun trash(@AuthenticationPrincipal principal: OAuth2User): List<TrashedBoardResponse> =
         boards.trash(principal.userId).map { board ->
             val at = checkNotNull(board.deletedAt)
-            TrashedBoardResponse(checkNotNull(board.id), board.title, at, at.plus(BoardService.TRASH_RETENTION))
+            TrashedBoardResponse(
+                checkNotNull(board.id),
+                board.title,
+                at,
+                at.plus(BoardService.TRASH_RETENTION),
+                boards.workspaceOf(board),
+            )
         }
 
     @PostMapping("/trash/{id}/restore")
-    fun restore(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse =
-        boards.restore(ownTrashedBoard(id, principal)).toResponse(currentUser(principal), BoardRole.OWNER)
+    fun restore(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): BoardResponse {
+        val board = boards.restore(ownTrashedBoard(id, principal))
+        return board.toResponse(owner(board), checkNotNull(boards.roleOf(board, principal.userId)), boards.workspaceOf(board))
+    }
 
     @DeleteMapping("/trash/{id}")
     fun purge(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<Void> {
@@ -151,7 +165,9 @@ class BoardController(
     private fun ownTrashedBoard(id: String, principal: OAuth2User): Board {
         val board = BoardIds.parse(id)?.let(boards::deleted)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found in trash")
-        if (board.ownerId != principal.userId) throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change the board")
+        if (!boards.managesTrashed(board, principal.userId)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change the board")
+        }
         return board
     }
 
@@ -185,13 +201,28 @@ data class CreateBoardRequest(
     val title: String,
 )
 
-data class TrashedBoardResponse(val id: UUID, val title: String, val deletedAt: Instant, val expiresAt: Instant)
+data class TrashedBoardResponse(
+    val id: UUID,
+    val title: String,
+    val deletedAt: Instant,
+    val expiresAt: Instant,
+    /** The workspace that the board belongs to; `null` for a personal board. */
+    val workspace: BoardWorkspace?,
+)
 
 /** At least one of the fields; a missing field stays as it is. */
 data class UpdateBoardRequest(
     /** Checked for length after trimming. */
     val title: String? = null,
     val linkAccess: LinkAccess? = null,
+    /** Only for a board of a workspace. */
+    val workspaceAccess: WorkspaceAccess? = null,
+)
+
+/** The workspace of a board, as the board names it. */
+data class BoardWorkspace(
+    val id: UUID,
+    val name: String,
 )
 
 data class BoardOwner(
@@ -209,6 +240,12 @@ data class BoardResponse(
     val owner: BoardOwner,
     /** The role of the user who asks. */
     val role: BoardRole,
+    /** The workspace that the board belongs to; `null` for a personal board. */
+    val workspace: BoardWorkspace?,
+    /** The project of the workspace that the board is in; `null` for none. */
+    val projectId: UUID?,
+    /** What the workspace gives its editors and viewers on the board. */
+    val workspaceAccess: WorkspaceAccess,
 )
 
 /** A board of the user in their list of boards. */
@@ -244,8 +281,8 @@ data class SharedBoardResponse(
     val folderId: UUID?,
 )
 
-/** The board as the user with the [role] on it sees it. */
-fun Board.toResponse(owner: User, role: BoardRole) = BoardResponse(
+/** The board of the [workspace], `null` for a personal one, as the user with the [role] on it sees it. */
+fun Board.toResponse(owner: User, role: BoardRole, workspace: BoardWorkspace?) = BoardResponse(
     id = checkNotNull(id) { "Persisted board must have an id" },
     title = title,
     createdAt = createdAt,
@@ -253,4 +290,7 @@ fun Board.toResponse(owner: User, role: BoardRole) = BoardResponse(
     linkAccess = linkAccess,
     owner = BoardOwner(owner.id, owner.name, owner.avatarUrl),
     role = role,
+    workspace = workspace,
+    projectId = projectId,
+    workspaceAccess = workspaceAccess,
 )

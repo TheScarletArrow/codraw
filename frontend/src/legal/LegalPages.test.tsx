@@ -69,6 +69,9 @@ describe('legal pages', () => {
     )
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent('Участие в досках')
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'кто в каком пространстве участник и с какой ролью',
+    )
+    expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'кто какой реакцией отметил комментарий и кто назначен ответственным за ветку',
     )
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
@@ -148,6 +151,9 @@ describe('legal pages', () => {
       'имя и идентификатор участника, который написал текст стикера',
     )
     expect(copies).toHaveTextContent('Тему оформления, выбранную в меню «Тема», — «Светлая» или «Тёмная» — браузер тоже помнит')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
+    )
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 
@@ -206,5 +212,8 @@ describe('legal pages', () => {
     expect(await screen.findByText(/Оператор этой установки CoDraw не указал свои данные/)).toBeInTheDocument()
     const service = screen.getByRole('region', { name: 'Сервис' })
     expect(within(service).getByRole('link', { name: 'политику конфиденциальности' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('region', { name: 'Содержимое досок' })).toHaveTextContent(
+      'режим «Все, у кого есть ссылка, без входа» открывает доску для просмотра и без входа',
+    )
   })
 })

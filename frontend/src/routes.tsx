@@ -8,12 +8,20 @@ import { ConnectionsPage } from './pages/ConnectionsPage.tsx'
 import { InvitePage } from './pages/InvitePage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage.tsx'
+import { WorkspaceInvitePage } from './pages/WorkspaceInvitePage.tsx'
+import { WorkspacePage } from './pages/WorkspacePage.tsx'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <AppError /> },
   // Read before signing in, so outside of the pages of a signed-in user.
   { path: '/privacy', element: <PrivacyPage />, errorElement: <AppError /> },
   { path: '/terms', element: <TermsPage />, errorElement: <AppError /> },
+  {
+    // A board that its link shows to anybody, read without a session and in frames of other sites.
+    path: '/view/:boardId',
+    errorElement: <AppError />,
+    lazy: async () => ({ Component: (await import('./pages/PublicBoardPage.tsx')).PublicBoardPage }),
+  },
   {
     path: '/',
     element: <Layout />,
@@ -22,6 +30,9 @@ export const routes: RouteObject[] = [
       { index: true, element: <BoardsPage /> },
       // An invitation needs a signed-in user: a visitor without a session comes back here from the login page.
       { path: 'invite/:token', element: <InvitePage /> },
+      // Workspaces need an account of GitHub or Google: the page tells a guest to sign in.
+      { path: 'workspace-invite/:token', element: <WorkspaceInvitePage /> },
+      { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
       // The link of a letter that confirms an address comes here too, with `?confirm=`.
       { path: 'settings/notifications', element: <NotificationSettingsPage /> },
       { path: 'settings/connections', element: <ConnectionsPage /> },
