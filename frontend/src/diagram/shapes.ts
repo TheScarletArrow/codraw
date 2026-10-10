@@ -62,6 +62,9 @@ export type ShapeId =
   | 'uml-package'
   | 'uml-note'
   | 'sequence'
+  | 'uml-actor'
+  | 'uml-use-case'
+  | 'uml-system-boundary'
   | 'c4-person'
   | 'c4-system'
   | 'c4-container'
@@ -115,7 +118,7 @@ export interface ShapePreset {
 }
 
 /** Notation of a shape: quick connect offers only shapes of the same notation. */
-export type ShapeGroup = 'basic' | 'elements' | 'tables' | 'flowchart' | 'bpmn' | 'system' | 'uml' | 'c4'
+export type ShapeGroup = 'basic' | 'elements' | 'tables' | 'flowchart' | 'bpmn' | 'system' | 'uml' | 'usecase' | 'c4'
 
 export interface ShapeSection {
   title: string
@@ -648,6 +651,40 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
     ],
   },
   {
+    title: 'UML: варианты использования',
+    group: 'usecase',
+    shapes: [
+      {
+        id: 'uml-actor',
+        label: 'Актёр',
+        width: 30,
+        height: 60,
+        value: 'Актёр',
+        // The stick figure of draw.io, not the silhouette of «Пользователь»: UML draws actors this way.
+        style: { shape: 'umlActor', ...captionBelow },
+      },
+      {
+        id: 'uml-use-case',
+        label: 'Вариант использования',
+        width: 160,
+        height: 80,
+        value: 'Вариант использования',
+        // The words of a long name wrap inside the ellipse instead of running out of it.
+        style: { shape: 'ellipse', perimeter: 'ellipsePerimeter', whiteSpace: 'wrap' },
+      },
+      {
+        id: 'uml-system-boundary',
+        label: 'Граница системы',
+        width: 320,
+        height: 360,
+        value: 'Система',
+        // The subject of UML: a frame of a solid line named at the top in the middle; clicks inside reach the shapes
+        // under it, as with the other frames.
+        style: { fillColor: 'none', verticalAlign: 'top', spacingTop: 6, pointerEvents: false },
+      },
+    ],
+  },
+  {
     title: 'C4',
     group: 'c4',
     shapes: [
@@ -746,6 +783,7 @@ export const UNGROUPED_SHAPES: ReadonlySet<ShapeId> = new Set<ShapeId>([
   'kubernetes-cluster',
   'c4-boundary',
   'c4-deployment-node',
+  'uml-system-boundary',
 ])
 
 const GROUPS = new Map<ShapeId, ShapeGroup>(

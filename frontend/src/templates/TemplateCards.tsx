@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Boxes, Network, Ship, Table2, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, Boxes, Network, PersonStanding, Ship, Table2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BOARD_TEMPLATES, type BoardTemplate, type TemplateId } from './templates.ts'
 
@@ -8,6 +8,7 @@ const ICONS: Record<TemplateId, LucideIcon> = {
   microservices: Network,
   kubernetes: Ship,
   'oauth-login': ArrowRightLeft,
+  'use-cases': PersonStanding,
 }
 
 interface TemplateCardsProps {

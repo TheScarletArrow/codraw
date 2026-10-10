@@ -4,6 +4,7 @@ import { createDiagramEditor, type DiagramEditor } from '../diagram/editor.ts'
 import { elementProperties } from '../diagram/elementProps.ts'
 import { ELEMENT_KEY, getElements, initializeDocument, LAYER_CELL_ID, type CellData } from '../diagram/model.ts'
 import { TABLE_HEADER_HEIGHT } from '../diagram/shapes.ts'
+import { relationOf } from '../diagram/useCase.ts'
 import { DiagramBuilder } from './builder.ts'
 import { BOARD_TEMPLATES, templatePage, type TemplateId } from './templates.ts'
 
@@ -151,5 +152,32 @@ describe('inserting a template', () => {
     ])
     expect(parts.filter((cell) => cell.style.codrawSeq === 'frame').map((cell) => cell.style.codrawSeqFrame)).toEqual(['alt'])
     expect(parts.filter((cell) => cell.style.codrawSeq === 'message')).toHaveLength(11)
+  })
+
+  it('draws use cases of an online store with actors, the system boundary and every relation', () => {
+    const cells = template('use-cases').build()
+    const byId = new Map(cells.map((cell) => [cell.id, cell]))
+    const values = (shape: string) => cells.filter((cell) => cell.style.codrawShape === shape).map((cell) => cell.value)
+    const name = (id: string | null) => byId.get(id!)!.value
+
+    expect(values('uml-system-boundary')).toEqual(['Интернет-магазин'])
+    expect(values('uml-actor')).toEqual(['Покупатель', 'Постоянный покупатель', 'Платёжная система'])
+    expect(values('uml-use-case')).toEqual(['Найти товар', 'Оформить заказ', 'Оплатить заказ', 'Войти в систему', 'Применить промокод'])
+    // The boundary first, under the use cases.
+    expect(cells[0]!.style.codrawShape).toBe('uml-system-boundary')
+    const relations = cells
+      .filter((cell) => cell.kind === 'edge')
+      .map((edge) => [name(edge.source), name(edge.target), relationOf(edge.style, edge.value)])
+    expect(relations).toEqual([
+      ['Покупатель', 'Найти товар', 'association'],
+      ['Покупатель', 'Оформить заказ', 'association'],
+      ['Покупатель', 'Оплатить заказ', 'association'],
+      ['Платёжная система', 'Оплатить заказ', 'association'],
+      ['Оформить заказ', 'Войти в систему', 'include'],
+      ['Применить промокод', 'Оформить заказ', 'extend'],
+      ['Постоянный покупатель', 'Покупатель', 'generalization'],
+    ])
+    const include = cells.find((cell) => cell.kind === 'edge' && cell.value === '«include»')!
+    expect(include.style).toMatchObject({ dashed: true, endArrow: 'open', edgeStyle: 'none' })
   })
 })

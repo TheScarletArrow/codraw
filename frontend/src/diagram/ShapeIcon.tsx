@@ -140,6 +140,19 @@ export function ShapeIcon({ shape }: { shape: ShapeId }) {
           <path d="M4.5 10H15M12.5 8 15 10 12.5 12" fill="none" />
         </>
       )}
+      {shape === 'uml-actor' && (
+        <>
+          <circle cx="10" cy="3.5" r="2.5" />
+          <path d="M10 6V11.5M5 8H15M10 11.5 6 17M10 11.5 14 17" fill="none" />
+        </>
+      )}
+      {shape === 'uml-use-case' && <ellipse cx="10" cy="9" rx="8.5" ry="5" />}
+      {shape === 'uml-system-boundary' && (
+        <>
+          <rect x="1.5" y="1.5" width="17" height="15" />
+          <path d="M6.5 4.5H13.5" />
+        </>
+      )}
       {shape === 'legend' && (
         <>
           <rect x="1.5" y="1.5" width="17" height="15" rx="1" />

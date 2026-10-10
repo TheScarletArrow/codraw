@@ -118,6 +118,26 @@ describe('the items of a legend', () => {
     ])
   })
 
+  it('names the open arrow and the hollow triangle of relations of use cases, apart from a filled triangle', () => {
+    const items = legendItems([
+      edge('association', { endArrow: 'none' }),
+      edge('generalization', { endArrow: 'block', endFill: false, endSize: 16 }),
+      edge('include', { dashed: true, endArrow: 'open', endSize: 12 }),
+      edge('extend', { dashed: true, endArrow: 'open', endSize: 12 }),
+      edge('filled', { endArrow: 'block' }),
+      edge('hollow', { endArrow: 'block', endFill: 0 }),
+    ])
+
+    expect(items.map((item) => [item.cellId, item.name])).toEqual([
+      ['filled', 'Связь'],
+      ['association', 'Связь, без стрелки'],
+      ['generalization', 'Связь, полый треугольник'],
+      ['include', 'Связь, пунктир, открытая стрелка'],
+    ])
+    // A filled and a hollow triangle are two kinds; the sizes of the markers are not.
+    expect(new Set(items.map((item) => item.key)).size).toBe(4)
+  })
+
   it('orders the items the same whatever the order of the cells', () => {
     const records = [shape('a', 'queue'), edge('e', { dashed: 1 }), shape('b', 'user'), edge('f'), shape('c', 'service', { fillColor: '#dae8fc' })]
     expect(legendItems([...records].reverse()).map((item) => item.key)).toEqual(legendItems(records).map((item) => item.key))

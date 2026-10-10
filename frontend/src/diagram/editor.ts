@@ -34,7 +34,6 @@ import {
   type CellStyle,
   type EventObject,
   type InternalMouseEvent,
-  type StyleArrowValue,
   VisibleChange,
 } from '@maxgraph/core'
 import * as Y from 'yjs'
@@ -141,13 +140,9 @@ import { listPages } from './pages.ts'
 import { detachView as detachPageView, isViewPage, showOnView, viewContents, viewOf, writeViewRule } from './modelViews.ts'
 import { COMPUTED_KEY, type ViewRule } from './viewRule.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
-import {
-  DEFAULT_END_ARROW,
-  LEGEND_KEY,
-  legendSettings,
-  legendSettingsValue,
-  type LegendItem,
-} from './legend.ts'
+import { LEGEND_KEY, legendSettings, legendSettingsValue, type LegendItem } from './legend.ts'
+import { DEFAULT_END_ARROW, markerChanges, markerOf, type EdgeEnd } from './edgeMarkers.ts'
+import { isAssociationPair, isUseCaseRelation, relationChanges, relationOf, type UmlRelation } from './useCase.ts'
 import {
   configureLegends,
   graphLegendItems,
@@ -322,12 +317,18 @@ export interface Box {
   height: number
 }
 
-export type EdgeEnd = 'start' | 'end'
+export type { EdgeEnd } from './edgeMarkers.ts'
 
 /** Markers of the selected edges; `null` for an end where the edges have different markers. */
 export interface EdgeMarkers {
   start: string | null
   end: string | null
+}
+
+/** The relation of use cases of the selected edges; see `useCase.ts`. */
+export interface SelectionRelation {
+  /** The relation of all the selected edges, or `null` when they differ or some look like none. */
+  value: UmlRelation | null
 }
 
 export type ColorTarget = 'fill' | 'stroke' | 'font'
@@ -725,6 +726,11 @@ export interface EditorState {
   tableView: TableView | null
   /** Markers of the selected edges, or `null` when no edge is selected. */
   edgeMarkers: EdgeMarkers | null
+  /**
+   * The relation of use cases of the selected edges, or `null` when none of them ends at an actor or a use case or is
+   * an inclusion, an extension or a generalization.
+   */
+  edgeRelation: SelectionRelation | null
   /** Colors of the selection, or `null` when nothing is selected. */
   colors: SelectionColors | null
   /** Lines of the selection, or `null` when nothing is selected. */
@@ -1091,6 +1097,8 @@ export interface DiagramEditor {
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
   setEdgeMarker(end: EdgeEnd, marker: string): void
+  /** Makes the selected edges the relation of use cases — their line, markers and label — as one undo step. */
+  setEdgeRelation(relation: UmlRelation): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
   setColor(target: ColorTarget, color: string): void
   /**
@@ -1675,6 +1683,7 @@ const CHANGING_COMMANDS = [
   'editLabel',
   'deleteSelection',
   'setEdgeMarker',
+  'setEdgeRelation',
   'setColor',
   'setFillOpacity',
   'setFontSize',
@@ -2143,9 +2152,22 @@ export function createDiagramEditor(
     const source = quickConnectSource()
     return source ? { cellId: source.cell.getId()!, shapes: groupShapes(source.group).map((shape) => shape.id) } : null
   }
-  const markerOf = (edge: Cell, end: EdgeEnd) =>
-    String(graph.getCellStyle(edge)[end === 'start' ? 'startArrow' : 'endArrow'] ?? 'none')
-  const sameMarker = (edges: Cell[], end: EdgeEnd) => same(edges.map((edge) => markerOf(edge, end)))
+  // The own style of an edge: the merged one drops `none`, so it cannot tell an end without a marker from the default.
+  const sameMarker = (edges: Cell[], end: EdgeEnd) => same(edges.map((edge) => markerOf(edge.getStyle(), end)))
+  const labelOf = (cell: Cell) => String(cell.getValue() ?? '')
+  const isUseCaseShape = (cell: Cell | null) => !!cell && shapeGroupOf(cell.getStyle() as ShapeStyle) === 'usecase'
+  /** The selected edges that connect shapes; lines drawn by hand are no relations. */
+  const selectedConnectors = () => selectedEdges().filter(isConnector)
+  const selectionRelation = (): SelectionRelation | null => {
+    const edges = selectedConnectors()
+    const fits = edges.some(
+      (edge) =>
+        isUseCaseShape(edge.getTerminal(true)) ||
+        isUseCaseShape(edge.getTerminal(false)) ||
+        isUseCaseRelation(edge.getStyle(), labelOf(edge)),
+    )
+    return fits ? { value: same(edges.map((edge) => relationOf(edge.getStyle(), labelOf(edge)))) } : null
+  }
   // The stored color, or the default of shapes or edges; the merged style drops `none`, so it cannot tell.
   const colorOf = (cell: Cell, target: ColorTarget) => {
     const stylesheet = graph.getStylesheet()
@@ -2793,6 +2815,7 @@ export function createDiagramEditor(
       tableBase: selectedTableBase(),
       tableView: selectedTableView(),
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
+      edgeRelation: selectionRelation(),
       colors: selectionColors(),
       line: selectionLine(),
       text: selectionText(),
@@ -4115,7 +4138,8 @@ export function createDiagramEditor(
       let cell: Cell
       try {
         cell = insertShape(shape, parent, x, y)
-        graph.insertEdge({ parent, value: '', source, target: cell })
+        const style = isAssociationPair(source.getStyle(), cell.getStyle()) ? ASSOCIATION_STYLE : undefined
+        graph.insertEdge({ parent, value: '', source, target: cell, style })
       } finally {
         model.endUpdate()
       }
@@ -4631,7 +4655,21 @@ export function createDiagramEditor(
       const edges = unlocked(selectedEdges())
       if (edges.length === 0) return
       graph.stopEditing(false)
-      graph.setCellStyles(end === 'start' ? 'startArrow' : 'endArrow', marker as StyleArrowValue, edges)
+      // The marker and its fill in one change of the model: a hollow triangle is `block` without a fill.
+      const changes = markerChanges(marker, end)
+      model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, changes)))
+    },
+    setEdgeRelation(relation) {
+      const edges = unlocked(selectedConnectors())
+      if (edges.length === 0) return
+      graph.stopEditing(false)
+      model.batchUpdate(() => {
+        for (const edge of edges) {
+          const changes = relationChanges(relation, labelOf(edge))
+          setStyleKeys(edge, changes.style)
+          if (changes.label !== labelOf(edge)) model.setValue(edge, changes.label)
+        }
+      })
     },
     setColor(target, color) {
       if (target === 'stroke') editor.setPencilLine({ color })
@@ -5835,7 +5873,15 @@ function configureConnections(graph: Graph) {
     const bounds = icon.bounds!
     return new GraphPoint(state.x + state.width, state.getCenterY() - bounds.height / 2)
   }
+  const insertEdge = handler.insertEdge.bind(handler)
+  handler.insertEdge = (parent, id, value, source, target, style) => {
+    const association = isAssociationPair(source?.getStyle() ?? null, target?.getStyle() ?? null)
+    return insertEdge(parent, id, value, source, target, association ? { ...style, ...ASSOCIATION_STYLE } : style)
+  }
 }
+
+/** A new edge between an actor and a use case: an association of UML, a line without markers. */
+const ASSOCIATION_STYLE: CellStyle = { endArrow: 'none' }
 
 /**
  * Locked cells, and the cells inside them, cannot change: maxGraph asks {@link Graph.isCellLocked} before it moves,

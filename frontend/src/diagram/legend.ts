@@ -1,4 +1,5 @@
 import { DEFAULT_FILL_COLOR, DEFAULT_LINE_COLOR, PALETTE } from './colors.ts'
+import { HOLLOW_TRIANGLE, markerOf } from './edgeMarkers.ts'
 import {
   FRAME_SHAPES,
   INTERACTION_KEY,
@@ -18,6 +19,7 @@ import { findShape, isStickyStyle, isTableStyle, SHAPES, shapeOf, type ShapeId, 
 import { DEFAULT_FONT_SIZE, LINE_HEIGHT, numeric, type LabelStyle } from './textMeasure.ts'
 
 export { isLegendStyle, LEGEND_KEY, LEGEND_PART_KEY, LEGEND_PRESET, LEGEND_SHAPE } from './legendKeys.ts'
+export { DEFAULT_END_ARROW } from './edgeMarkers.ts'
 
 /**
  * A legend lists what its page has, so it never drifts apart from it: the kinds of shapes — by the shape of the palette,
@@ -27,9 +29,6 @@ export { isLegendStyle, LEGEND_KEY, LEGEND_PART_KEY, LEGEND_PRESET, LEGEND_SHAPE
  * every participant lists the items of the page anew, the canvas from its model, a file from the document. The items
  * and the layout are data, without maxGraph, so that a `.drawio` file lays a legend out as the canvas does.
  */
-
-/** The end marker of edges without one of their own, as the default style of the editor sets it. */
-export const DEFAULT_END_ARROW = 'classic'
 
 /** A cell of a page as a legend reads it: from the document or from the model of the canvas. */
 export interface LegendRecord {
@@ -112,8 +111,9 @@ function edgeItem(record: LegendRecord): LegendItem | null {
   const style = record.style
   if (isFreehandStyle(style)) return null
   const dashed = isOn(style.dashed)
-  const start = String(style.startArrow ?? 'none') || 'none'
-  const end = String(style.endArrow ?? DEFAULT_END_ARROW) || 'none'
+  // A hollow triangle is a marker of its own, apart from a filled one.
+  const start = markerOf(style, 'start')
+  const end = markerOf(style, 'end')
   const stroke = style.strokeColor === undefined || style.strokeColor === null ? null : colorKey(style.strokeColor)
   const ownStroke = stroke !== null && stroke !== '' && stroke !== DEFAULT_LINE_COLOR ? stroke : null
   const interaction = isInteraction(style[INTERACTION_KEY]) ? style[INTERACTION_KEY] : null
@@ -122,6 +122,9 @@ function edgeItem(record: LegendRecord): LegendItem | null {
   if (dashed) notes.push('пунктир')
   if (start === 'none' && end === 'none') notes.push('без стрелки')
   else if (start !== 'none' && end !== 'none') notes.push('в обе стороны')
+  // The markers of UML tell relations of use cases apart.
+  if (start === 'open' || end === 'open') notes.push('открытая стрелка')
+  if (start === HOLLOW_TRIANGLE || end === HOLLOW_TRIANGLE) notes.push('полый треугольник')
   if (ownStroke) notes.push(ownStroke === 'none' ? 'без линии' : colorWord(ownStroke))
   const head = interaction ? `${INTERACTION_LABELS[interaction]} связь` : 'Связь'
   return {
