@@ -15,8 +15,11 @@ describe('ThemeMenu', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Тема: Как в системе' }))
 
     const menu = screen.getByRole('dialog', { name: 'Тема' })
-    const values = within(menu).getAllByRole('radio').map((radio) => radio.getAttribute('value'))
+    const themes = within(menu).getByRole('group', { name: 'Тема' })
+    const values = within(themes).getAllByRole('radio').map((radio) => radio.getAttribute('value'))
     expect(values).toEqual(['system', 'light', 'dark'])
+    // A phone has no room for «Язык» in the header: the languages are here too.
+    expect(within(menu).getByRole('group', { name: 'Язык' })).toBeInTheDocument()
     expect(within(menu).getByRole('radio', { name: 'Как в системе' })).toBeChecked()
   })
 

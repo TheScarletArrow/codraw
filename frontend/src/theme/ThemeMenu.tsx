@@ -2,6 +2,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { LanguageChoices } from '../i18n/LanguageMenu.tsx'
 import { themeMessages as m } from './messages.ts'
 import { setThemeChoice, THEME_CHOICES, themeChoiceLabel, useThemeChoice, type ThemeChoice } from './theme.ts'
 
@@ -54,6 +55,10 @@ export function ThemeMenu({ className }: { className?: string }) {
             )
           })}
         </fieldset>
+        {/* A phone has no room for «Язык» in the header. */}
+        <div className="mt-1 border-t pt-1 sm:hidden">
+          <LanguageChoices />
+        </div>
       </PopoverContent>
     </Popover>
   )
