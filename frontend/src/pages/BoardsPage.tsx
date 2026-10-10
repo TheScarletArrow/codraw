@@ -489,8 +489,8 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
         ? m.moveFailed
         : toWorkspace.isError
           ? workspaceLimit === null
-            ? 'Не удалось перенести доску'
-            : `В пространстве уже ${counted(workspaceLimit.limit, ['доска', 'доски', 'досок'])}`
+            ? m.toWorkspaceFailed
+            : m.workspaceBoardsLimit(workspaceLimit.limit)
           : copy.error
 
   return (
@@ -505,7 +505,7 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
           <BoardTime board={board} sort={context.sort} />
           <BoardActions
             title={board.title}
-            deleteLabel="Удалить"
+            deleteLabel={m.delete}
             disabled={remove.isPending || copy.pending}
             onRename={() => setRenaming(true)}
             onCopy={copy.copy}
@@ -557,7 +557,7 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
 function SharedBoardItem({ board, context }: { board: SharedBoard; context: RowContext }) {
   const organization = useOrganizationMenu(SHARED_BOARDS_QUERY_KEY, board, context)
   const copy = useCopyBoard(board.id)
-  const error = organization.moveFailed ? 'Не удалось переместить доску' : copy.error
+  const error = organization.moveFailed ? m.moveFailed : copy.error
   return (
     <BoardRow
       aside={

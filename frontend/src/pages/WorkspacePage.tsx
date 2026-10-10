@@ -32,7 +32,6 @@ import { useCurrentUser } from '../auth/session.ts'
 import { BoardActions } from '../board/BoardActions.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
 import { useCopyBoard } from '../board/copyBoard.ts'
-import { counted } from '../board/members.ts'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { ProjectBar } from '../workspaces/ProjectBar.tsx'
@@ -331,7 +330,7 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
         ? m.takeOutFailed
         : m.ownBoardsLimit(limit)
       : remove.isError
-        ? 'Не удалось удалить'
+        ? m.boardDeleteFailed
         : copy.error
   const at = board.updatedAt
 
@@ -474,7 +473,7 @@ function WorkspaceBoardMenu({ title, projects, current, disabled, onCopy, onMove
         {view === 'delete' &&
           confirm(m.trashQuestion(title), m.delete, onDelete)}
         {view === 'items' && (
-          <div role="menu" aria-label={`Доска «${title}»`} className="flex flex-col">
+          <div role="menu" aria-label={m.board(title)} className="flex flex-col">
             <Button
               type="button"
               role="menuitem"
@@ -486,7 +485,7 @@ function WorkspaceBoardMenu({ title, projects, current, disabled, onCopy, onMove
                 onCopy()
               }}
             >
-              Создать копию
+              {m.copy}
             </Button>
             <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={() => setView('project')}>
               {m.moveToProject}

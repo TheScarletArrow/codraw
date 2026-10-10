@@ -52,7 +52,7 @@ export function VersionHistory({ boardId, document, selectedId, onSelect, onClos
   })
 
   return (
-    <aside aria-label="История версий" className={cn(SIDE_PANEL_CLASS, 'w-72')}>
+    <aside aria-label={m.history} className={cn(SIDE_PANEL_CLASS, 'w-72')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <History className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">{m.history}</h3>

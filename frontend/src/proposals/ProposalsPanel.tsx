@@ -37,7 +37,7 @@ export function ProposalsPanel({ boardId, proposals, failed, selectedId, onSelec
   const closed = proposals?.filter((proposal) => !isOpen(proposal)) ?? []
 
   return (
-    <aside aria-label="Предложения" className={cn(SIDE_PANEL_CLASS, 'w-72')}>
+    <aside aria-label={m.proposals} className={cn(SIDE_PANEL_CLASS, 'w-72')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <GitPullRequestArrow className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">{m.proposals}</h3>

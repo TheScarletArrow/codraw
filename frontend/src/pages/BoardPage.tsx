@@ -587,7 +587,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         {board.workspace && (
           <Link
             to={workspacePath(board.workspace.id)}
-            title={`Пространство «${board.workspace.name}»`}
+            title={m.workspace(board.workspace.name)}
             className={cn('max-w-32 shrink truncate text-sm text-muted-foreground hover:underline', narrowTool)}
           >
             {board.workspace.name}

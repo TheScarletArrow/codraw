@@ -99,7 +99,7 @@ function UserMenu({ user }: { user: CurrentUser }) {
       <LanguageMenu />
       <ThemeMenu />
       <Button asChild variant="ghost" size="icon-sm">
-        <Link to="/settings/account" aria-label="Учётная запись" title="Учётная запись: скачать данные или удалить">
+        <Link to="/settings/account" aria-label={m.account} title={m.accountHint}>
           <UserCog />
         </Link>
       </Button>

@@ -2,12 +2,14 @@ package io.github.thescarletarrow.codraw.board
 
 import io.github.thescarletarrow.codraw.image.ImageQuotaReachedException
 import io.github.thescarletarrow.codraw.image.ImageStorageException
+import io.github.thescarletarrow.codraw.user.Language
 import io.github.thescarletarrow.codraw.user.User
 import io.github.thescarletarrow.codraw.user.UserService
 import io.github.thescarletarrow.codraw.user.userId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
@@ -144,9 +147,13 @@ class BoardController(
      * its images, see [BoardCopyService.copy].
      */
     @PostMapping("/{id}/copy")
-    fun copy(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<BoardResponse> {
+    fun copy(
+        @PathVariable id: String,
+        @AuthenticationPrincipal principal: OAuth2User,
+        @RequestHeader(HttpHeaders.ACCEPT_LANGUAGE, required = false) acceptLanguage: String?,
+    ): ResponseEntity<BoardResponse> {
         val (original, _) = boards.participated(id, principal.userId)
-        val copy = copies.copy(original, principal.userId)
+        val copy = copies.copy(original, principal.userId, Language.ofAcceptLanguage(acceptLanguage))
         val response = copy.toResponse(currentUser(principal), BoardRole.OWNER, boards.workspaceOf(copy))
         return ResponseEntity.created(URI.create("/api/boards/${response.id}")).body(response)
     }

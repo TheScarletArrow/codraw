@@ -50,6 +50,10 @@ export const pickerMessages = defineMessages({
       noRotation: 'Таблицы и группы не поворачиваются',
     },
     lineStyle: {
+      shadow: 'Тень',
+      rounded: 'Скругление',
+      arcSize: 'Радиус скругления, %',
+      arcSizeHint: 'Радиус скругления в процентах от короткой стороны',
       solid: 'Сплошная',
       dashed: 'Пунктир',
       dotted: 'Точки',
@@ -133,6 +137,10 @@ export const pickerMessages = defineMessages({
       noRotation: 'Tables and groups do not rotate',
     },
     lineStyle: {
+      shadow: 'Shadow',
+      rounded: 'Rounding',
+      arcSize: 'Rounding radius, %',
+      arcSizeHint: 'Rounding radius in percent of the short side',
       solid: 'Solid',
       dashed: 'Dashed',
       dotted: 'Dotted',

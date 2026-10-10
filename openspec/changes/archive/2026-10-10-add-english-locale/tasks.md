@@ -27,7 +27,7 @@
 
 ## 3. Backend
 
-- [x] 3.1 backend: миграция V28/U28 `users.language`; проверка: `UserLanguageMigrationTest`
+- [x] 3.1 backend: миграция V29/U29 `users.language`; проверка: `UserLanguageMigrationTest`
 - [x] 3.2 backend: `Language`, `language` в `/api/me`, `PUT /api/me/language`, имя гостя по `Accept-Language`;
   проверка: `LanguageTest`, `UserAuthApiTest`
 - [x] 3.3 backend: `NotificationWords`, язык получателя в `NotificationDelivery` и `NotificationSettingsService`;
@@ -39,5 +39,5 @@
 ## 4. Документация и проверка
 
 - [x] 4.1 e2e: английский интерфейс по языку браузера и переключатель «Язык»
-- [x] 4.2 README (возможности, раздел «Языки интерфейса», пункт плана), «Что нового» 0.31.0, версия фронтенда 0.31.0
+- [x] 4.2 README (возможности, раздел «Языки интерфейса», пункт плана), «Что нового» 0.38.0, версия фронтенда 0.38.0
 - [x] 4.3 Проверки: backend, typecheck, lint, vitest, сборка frontend и collab, e2e, `openspec validate --strict`

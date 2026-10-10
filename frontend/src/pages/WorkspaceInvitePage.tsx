@@ -4,7 +4,6 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { isNotFound } from '../api/http.ts'
 import { acceptWorkspaceInvite, isAccountRequired, workspaceKey, workspaceLimitOf, WORKSPACES_QUERY_KEY } from '../api/workspaces.ts'
 import { SignInButtons } from '../auth/SignInButtons.tsx'
-import { counted } from '../board/members.ts'
 import { workspacePath } from '../workspaces/workspaces.ts'
 import { workspaceInviteMessages as m } from './WorkspaceInvitePage.messages.ts'
 
@@ -49,8 +48,7 @@ export function WorkspaceInvitePage() {
         <>
           <h2 className="text-2xl font-semibold">{m.signInRequired}</h2>
           <p className="text-muted-foreground">
-            Командные пространства доступны после входа. Войдите и снова откройте
-            ссылку-приглашение — ваши доски гостя останутся с вами.
+            {m.signInHint}
           </p>
           <div className="flex flex-wrap gap-2">
             <SignInButtons />

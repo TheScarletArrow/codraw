@@ -2,19 +2,20 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { copyBoard, OWN_BOARDS_QUERY_KEY, type Board } from '../api/boards.ts'
 import { HttpError } from '../api/http.ts'
+import { boardMessages as m } from './board.messages.ts'
 
 /** Why a copy of a board failed, in words for the user. */
 export function copyErrorMessage(error: unknown): string {
   if (error instanceof HttpError) {
     if (error.status === 409 && error.problem?.title === 'Image quota reached') {
-      return 'Изображения доски не помещаются в квоту копии'
+      return m.copyQuota
     }
     if (error.status === 409 && error.problem?.limit !== undefined) {
-      return `Достигнут лимит ${error.problem.limit} досок. Переместите ненужную доску в корзину и повторите.`
+      return m.copyLimit(error.problem.limit)
     }
-    if (error.status === 503) return 'Хранилище изображений недоступно. Повторите позже.'
+    if (error.status === 503) return m.imagesUnavailable
   }
-  return 'Не удалось создать копию'
+  return m.copyFailed
 }
 
 /**

@@ -45,7 +45,7 @@ export function ColorPicker({
   noneLabel,
   onChange,
   opacity = null,
-  opacityName = 'Прозрачность',
+  opacityName = m.transparency,
   onOpacityChange,
   gradient = null,
   gradientDirection = null,
@@ -111,7 +111,7 @@ export function ColorPicker({
  * closed, not on every `input` while the user moves through it: each change is a step of undo.
  */
 function CustomColor({
-  label = 'Свой цвет',
+  label = m.customColor,
   value,
   disabled,
   onPick,
@@ -204,11 +204,11 @@ function Transparency({
   )
 }
 
-const GRADIENT_DIRECTIONS: { value: GradientDirection; label: string; icon: LucideIcon }[] = [
-  { value: 'south', label: 'Вниз', icon: ArrowDown },
-  { value: 'north', label: 'Вверх', icon: ArrowUp },
-  { value: 'east', label: 'Вправо', icon: ArrowRight },
-  { value: 'west', label: 'Влево', icon: ArrowLeft },
+const GRADIENT_DIRECTIONS: { value: GradientDirection; icon: LucideIcon }[] = [
+  { value: 'south', icon: ArrowDown },
+  { value: 'north', icon: ArrowUp },
+  { value: 'east', icon: ArrowRight },
+  { value: 'west', icon: ArrowLeft },
 ]
 
 /** The second color a gradient turned on starts with: white, or light blue over a white fill, where white shows nothing. */
@@ -233,7 +233,7 @@ function Gradient({
 }) {
   const on = gradient !== null && gradient !== NONE
   return (
-    <div role="group" aria-label="Градиент" className="flex flex-col gap-1.5 text-sm">
+    <div role="group" aria-label={m.gradient} className="flex flex-col gap-1.5 text-sm">
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -241,25 +241,25 @@ function Gradient({
           className="accent-primary"
           onChange={(event) => onChange({ gradient: event.target.checked ? startingGradient(color) : NONE })}
         />
-        Градиент
+        {m.gradient}
       </label>
       {/* The picker starts anew with the color of the gradient, which another participant may change. */}
       <CustomColor
         key={on ? gradient : NONE}
-        label="Второй цвет градиента"
+        label={m.gradientColor}
         value={on ? gradient : null}
         disabled={!on}
         onPick={(next) => onChange({ gradient: next })}
       />
-      <div role="group" aria-label="Направление градиента" className="grid grid-cols-4 gap-1">
-        {GRADIENT_DIRECTIONS.map(({ value, label, icon: Icon }) => (
+      <div role="group" aria-label={m.gradientDirection} className="grid grid-cols-4 gap-1">
+        {GRADIENT_DIRECTIONS.map(({ value, icon: Icon }) => (
           <Button
             key={value}
             type="button"
             variant="outline"
             size="sm"
-            aria-label={label}
-            title={label}
+            aria-label={m.directions[value]}
+            title={m.directions[value]}
             aria-pressed={on && direction === value}
             disabled={!on}
             className={cn(on && direction === value && 'bg-accent text-accent-foreground')}

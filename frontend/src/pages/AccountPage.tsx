@@ -15,12 +15,10 @@ import {
 import { HttpError, isTooManyRequests } from '../api/http.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { deleteLocalCopiesOf } from '../offline/localCopies.ts'
+import { accountMessages as m } from './AccountPage.messages.ts'
 
 const inputClass =
   'h-8 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
-
-/** The word that confirms the deletion: a name of a guest or of GitHub is awkward to type, a word is not. */
-const CONFIRMATION_WORD = 'удалить'
 
 /** State that the login page gets after the deletion, to say so. */
 const ACCOUNT_DELETED_STATE = { accountDeleted: true }
@@ -35,8 +33,8 @@ export function AccountPage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 overflow-y-auto p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Учётная запись</h1>
-        <p className="text-sm text-muted-foreground">Ваши данные в CoDraw: скачайте их или удалите учётную запись.</p>
+        <h1 className="text-xl font-semibold">{m.title}</h1>
+        <p className="text-sm text-muted-foreground">{m.intro}</p>
       </div>
       <ExportSection />
       {user.data && <DeletionSection user={user.data} />}
@@ -51,22 +49,19 @@ function ExportSection() {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border p-4">
       <h2 id={id} className="font-semibold">
-        Мои данные
+        {m.myData}
       </h2>
       <p className="text-sm text-muted-foreground">
-        Архив ZIP: профиль, ваши доски в формате draw.io с изображениями, комментарии, реакции, решения, предложения,
-        библиотеки фигур, шаблоны, папки и теги, участие в досках и пространствах, настройки уведомлений — в JSON.
+        {m.archive}
       </p>
       <div>
         <Button type="button" variant="outline" onClick={() => download.mutate()} disabled={download.isPending}>
-          {download.isPending ? 'Собираем архив…' : 'Скачать мои данные'}
+          {download.isPending ? m.building : m.download}
         </Button>
       </div>
       {download.isError && (
         <p role="alert" className="text-sm text-destructive">
-          {isTooManyRequests(download.error)
-            ? 'Слишком много выгрузок за сутки. Попробуйте позже.'
-            : 'Не удалось собрать архив. Попробуйте ещё раз.'}
+          {isTooManyRequests(download.error) ? m.tooManyDownloads : m.downloadFailed}
         </p>
       )}
     </section>
@@ -89,23 +84,20 @@ function DeletionSection({ user }: { user: CurrentUser }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border border-destructive/40 p-4">
       <h2 id={id} className="font-semibold">
-        Удаление учётной записи
+        {m.deletion}
       </h2>
       <p className="text-sm text-muted-foreground">
-        Удаление необратимо. Удаляются профиль, ваши доски без других участников и доски в корзине с изображениями,
-        участие в досках и пространствах, библиотеки фигур, шаблоны, папки, теги, уведомления и их настройки
-        {user.guest ? '' : ', подключение GitHub'}. Ваши комментарии, решения и правки на досках других людей остаются
-        с подписью «Удалённый пользователь». Все сеансы завершаются.
+        {m.deletionText(!user.guest)}
       </p>
       {!user.guest && (
         <p className="text-sm text-muted-foreground">
-          Токен GitHub CoDraw удалит у себя; отозвать его можно в настройках GitHub.
+          {m.githubToken}
         </p>
       )}
-      {preview.isPending && <p className="text-sm text-muted-foreground">Загрузка…</p>}
+      {preview.isPending && <p className="text-sm text-muted-foreground">{m.loading}</p>}
       {preview.isError && (
         <p role="alert" className="text-sm text-destructive">
-          Не удалось узнать, что станет с вашими досками
+          {m.previewFailed}
         </p>
       )}
       {preview.data && <DeletionForm user={user} preview={preview.data} />}
@@ -135,19 +127,17 @@ function DeletionForm({ user, preview }: { user: CurrentUser; preview: DeletionP
   })
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (decided && !blocked && confirmation.trim().toLowerCase() === CONFIRMATION_WORD) remove.mutate()
+    if (decided && !blocked && confirmation.trim().toLowerCase() === m.confirmationWord) remove.mutate()
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
       <p className="text-sm">
-        {preview.deletedBoards > 0
-          ? `Удалятся досок без других участников и из корзины: ${preview.deletedBoards}.`
-          : 'Досок без других участников у вас нет.'}
+        {preview.deletedBoards > 0 ? m.deletedBoards(preview.deletedBoards) : m.noDeletedBoards}
       </p>
       {blocked && (
         <div role="alert" className="flex flex-col gap-1 text-sm text-destructive">
-          <p>Вы единственный владелец пространств, где есть другие участники. Сначала передайте роль владельца:</p>
+          <p>{m.blockingWorkspaces}</p>
           <ul className="list-disc pl-5">
             {preview.blockingWorkspaces.map((workspace) => (
               <li key={workspace.id}>
@@ -161,7 +151,7 @@ function DeletionForm({ user, preview }: { user: CurrentUser; preview: DeletionP
       )}
       {preview.sharedBoards.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm">С этими досками работают другие люди. Решите, что с ними будет:</p>
+          <p className="text-sm">{m.sharedBoards}</p>
           {preview.sharedBoards.map((board) => (
             <SharedBoardChoice
               key={board.id}
@@ -173,7 +163,7 @@ function DeletionForm({ user, preview }: { user: CurrentUser; preview: DeletionP
         </div>
       )}
       <label htmlFor={confirmationId} className="text-sm">
-        Чтобы подтвердить, введите слово «{CONFIRMATION_WORD}»
+        {m.confirm(m.confirmationWord)}
       </label>
       <input
         id={confirmationId}
@@ -186,9 +176,9 @@ function DeletionForm({ user, preview }: { user: CurrentUser; preview: DeletionP
         <Button
           type="submit"
           className="bg-destructive text-white hover:bg-destructive/90"
-          disabled={!decided || blocked || confirmation.trim().toLowerCase() !== CONFIRMATION_WORD || remove.isPending}
+          disabled={!decided || blocked || confirmation.trim().toLowerCase() !== m.confirmationWord || remove.isPending}
         >
-          Удалить учётную запись
+          {m.deleteAccount}
         </Button>
       </div>
       {remove.isError && (
@@ -208,18 +198,17 @@ function SharedBoardChoice({ board, choice, onChoose }: { board: SharedBoard; ch
         {board.title}
       </label>
       <select id={id} className={inputClass} value={choice} onChange={(event) => onChoose(event.target.value)}>
-        <option value="">Выберите…</option>
+        <option value="">{m.choose}</option>
         {board.members.map((member) => (
           <option key={member.id} value={`transfer:${member.id}`}>
-            {`Передать: ${member.name}`}
+            {m.transfer(member.name)}
           </option>
         ))}
-        <option value="delete">Удалить доску</option>
+        <option value="delete">{m.deleteBoard}</option>
       </select>
       {board.members.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          Доску открывали по ссылке ({board.visitors}). Передать её можно только участнику: добавьте человека в
-          участники в окне «Поделиться».
+          {m.visitorsOnly(board.visitors)}
         </p>
       )}
     </div>
@@ -229,9 +218,9 @@ function SharedBoardChoice({ board, choice, onChoose }: { board: SharedBoard; ch
 function deletionErrorMessage(error: unknown): string {
   if (error instanceof HttpError && error.status === 409) {
     if (error.problem?.limit !== undefined) {
-      return `У нового владельца уже ${error.problem.limit} досок — больше нельзя. Выберите другого участника или удалите доску.`
+      return m.ownerLimit(error.problem.limit)
     }
-    return 'Пока вы решали, что-то изменилось. Проверьте доски и пространства ещё раз.'
+    return m.changed
   }
-  return 'Не удалось удалить учётную запись. Попробуйте ещё раз.'
+  return m.deletionFailed
 }

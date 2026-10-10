@@ -49,8 +49,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Свои данные: скачать или удалить',
-        text: 'Значок «Учётная запись» рядом с вашим именем открывает страницу, где «Скачать мои данные» сохраняет архив: ваши доски в draw.io с изображениями, комментарии, решения, библиотеки фигур, шаблоны и всё остальное, что CoDraw о вас хранит. Там же можно удалить учётную запись: доски, с которыми работают другие, вы передаёте участнику или удаляете, а ваши комментарии на чужих досках остаются с подписью «Удалённый пользователь».',
+        ru: {
+          title: 'Свои данные: скачать или удалить',
+          text: 'Значок «Учётная запись» рядом с вашим именем открывает страницу, где «Скачать мои данные» сохраняет архив: ваши доски в draw.io с изображениями, комментарии, решения, библиотеки фигур, шаблоны и всё остальное, что CoDraw о вас хранит. Там же можно удалить учётную запись: доски, с которыми работают другие, вы передаёте участнику или удаляете, а ваши комментарии на чужих досках остаются с подписью «Удалённый пользователь».',
+        },
+        en: {
+          title: 'Your data: download or delete',
+          text: 'The “Account” icon next to your name opens a page where “Download my data” saves an archive: your boards in draw.io with images, comments, decisions, shape libraries, templates and everything else CoDraw keeps about you. There you can also delete the account: you hand the boards other people work with over to a member or delete them, and your comments on other boards stay signed “Deleted user”.',
+        },
       },
     ],
   },
@@ -59,8 +65,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Вход через корпоративную учётную запись',
-        text: 'Если администратор подключил вход вашей компании — например, Keycloak, Microsoft Entra ID или Okta, — на странице входа появится кнопка «Войти через …» с его названием. Вы попадаете в свою учётную запись CoDraw, даже если у вас сменились почта или имя, а «Выйти» может завершить и сеанс у провайдера. Страница входа показывает только те способы входа, которые включены в установке.',
+        ru: {
+          title: 'Вход через корпоративную учётную запись',
+          text: 'Если администратор подключил вход вашей компании — например, Keycloak, Microsoft Entra ID или Okta, — на странице входа появится кнопка «Войти через …» с его названием. Вы попадаете в свою учётную запись CoDraw, даже если у вас сменились почта или имя, а «Выйти» может завершить и сеанс у провайдера. Страница входа показывает только те способы входа, которые включены в установке.',
+        },
+        en: {
+          title: 'Sign in with a corporate account',
+          text: 'If the administrator has connected your company’s sign-in — for example, Keycloak, Microsoft Entra ID or Okta — the sign-in page shows a “Sign in with …” button with its name. You get into your CoDraw account even if your email or name has changed, and “Sign out” can end the session at the provider too. The sign-in page shows only the ways to sign in that the installation has turned on.',
+        },
       },
     ],
   },
@@ -69,8 +81,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Резервные копии',
-        text: 'Сервер теперь сам регулярно сохраняет резервную копию досок с их историей и изображениями, чтобы после сбоя их можно было вернуть. Политика конфиденциальности говорит, сколько хранятся копии и где.',
+        ru: {
+          title: 'Резервные копии',
+          text: 'Сервер теперь сам регулярно сохраняет резервную копию досок с их историей и изображениями, чтобы после сбоя их можно было вернуть. Политика конфиденциальности говорит, сколько хранятся копии и где.',
+        },
+        en: {
+          title: 'Backups',
+          text: 'The server now regularly saves a backup of boards with their history and images, so that they can be brought back after a failure. The privacy policy says how long backups are kept and where.',
+        },
       },
     ],
   },
@@ -79,8 +97,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Копия доски',
-        text: '«Создать копию» в меню доски — в списке досок, в пространстве и на самой доске — делает новую доску «<название> (копия)» со всеми страницами, слоями, фигурами, связями, легендой, свойствами и изображениями. Копия ваша: правки в ней не трогают оригинал, а изображения остаются, даже если оригинал удалят навсегда. Участники, комментарии, история версий и предложения изменений в копию не переходят. Копию может сделать и тот, кто только смотрит доску; копия доски пространства остаётся в том же проекте, если вы можете создавать там доски.',
+        ru: {
+          title: 'Копия доски',
+          text: '«Создать копию» в меню доски — в списке досок, в пространстве и на самой доске — делает новую доску «<название> (копия)» со всеми страницами, слоями, фигурами, связями, легендой, свойствами и изображениями. Копия ваша: правки в ней не трогают оригинал, а изображения остаются, даже если оригинал удалят навсегда. Участники, комментарии, история версий и предложения изменений в копию не переходят. Копию может сделать и тот, кто только смотрит доску; копия доски пространства остаётся в том же проекте, если вы можете создавать там доски.',
+        },
+        en: {
+          title: 'A copy of a board',
+          text: '“Make a copy” in the board menu — in the list of boards, in a workspace and on the board itself — makes a new board “<title> (copy)” with all pages, layers, shapes, connectors, the legend, properties and images. The copy is yours: edits in it do not touch the original, and the images stay even if the original is deleted for good. Members, comments, the version history and change proposals do not go to the copy. Someone who can only view the board can make a copy too; a copy of a workspace board stays in the same project if you can create boards there.',
+        },
       },
     ],
   },
@@ -89,8 +113,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Доска на телефоне и планшете',
-        text: 'Доску из уведомления или по ссылке без входа удобно смотреть и обсуждать с телефона. Палец двигает холст, два пальца приближают и отдаляют его, а страница при этом не увеличивается; двойное касание приближает. Палец, задержанный на элементе, открывает то же меню, что правый щелчок, — оттуда «Комментировать», «Задачи…» и остальное. На узком экране инструменты прячутся за кнопкой «Инструменты», фигуры — за кнопкой «Фигуры», а комментарии выезжают снизу.',
+        ru: {
+          title: 'Доска на телефоне и планшете',
+          text: 'Доску из уведомления или по ссылке без входа удобно смотреть и обсуждать с телефона. Палец двигает холст, два пальца приближают и отдаляют его, а страница при этом не увеличивается; двойное касание приближает. Палец, задержанный на элементе, открывает то же меню, что правый щелчок, — оттуда «Комментировать», «Задачи…» и остальное. На узком экране инструменты прячутся за кнопкой «Инструменты», фигуры — за кнопкой «Фигуры», а комментарии выезжают снизу.',
+        },
+        en: {
+          title: 'A board on a phone and a tablet',
+          text: 'A board from a notification or a link without signing in is easy to view and discuss on a phone. A finger moves the canvas, two fingers zoom it in and out while the page itself does not zoom, and a double tap zooms in. A finger held on an element opens the same menu as a right click — with “Comment”, “Issues…” and the rest. On a narrow screen the tools hide behind the “Tools” button, the shapes behind the “Shapes” button, and comments slide up from the bottom.',
+        },
       },
     ],
   },
@@ -99,8 +129,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Таблицы и списки, которые заполняются',
-        text: 'В разделе «Структуры» каждая ячейка «Сетки таблицы» открывается для правки двойным щелчком, а её текст видят другие участники и он остаётся после повторного открытия доски. В «Списке» и «Нумерованном списке» Enter сам ставит следующий маркер или номер — сколько бы пунктов вы ни добавили, — номера ниже сдвигаются, а Enter в пустом пункте завершает список. Тип выделенного списка меняют кнопки «Маркированный список» и «Нумерованный список» на панели текста.',
+        ru: {
+          title: 'Таблицы и списки, которые заполняются',
+          text: 'В разделе «Структуры» каждая ячейка «Сетки таблицы» открывается для правки двойным щелчком, а её текст видят другие участники и он остаётся после повторного открытия доски. В «Списке» и «Нумерованном списке» Enter сам ставит следующий маркер или номер — сколько бы пунктов вы ни добавили, — номера ниже сдвигаются, а Enter в пустом пункте завершает список. Тип выделенного списка меняют кнопки «Маркированный список» и «Нумерованный список» на панели текста.',
+        },
+        en: {
+          title: 'Tables and lists you can fill in',
+          text: 'In the “Structures” section, every cell of the “Grid table” opens for editing with a double click, other members see its text, and it stays after the board is opened again. In “List” and “Numbered list”, Enter puts the next bullet or number by itself — however many items you add — the numbers below shift, and Enter in an empty item ends the list. The “Bulleted list” and “Numbered list” buttons on the text toolbar change the type of the selected list.',
+        },
       },
     ],
   },
@@ -109,8 +145,14 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Тень, скругление и градиент',
-        text: 'Фигурам можно дать тень, скруглить углы и сделать заливку градиентом. «Градиент» — в окне «Заливка»: второй цвет и направление, куда заливка в него переходит. «Тень» и «Скругление» с радиусом — в окне «Стиль». Оформление видят все участники, его отменяет «Отменить», переносит «Вставить стиль» (кроме скругления — оно остаётся у фигуры своим), оно сохраняется в PNG, SVG, PDF, живой картинке и файлах draw.io, а тени видны и в тёмной теме.',
+        ru: {
+          title: 'Тень, скругление и градиент',
+          text: 'Фигурам можно дать тень, скруглить углы и сделать заливку градиентом. «Градиент» — в окне «Заливка»: второй цвет и направление, куда заливка в него переходит. «Тень» и «Скругление» с радиусом — в окне «Стиль». Оформление видят все участники, его отменяет «Отменить», переносит «Вставить стиль» (кроме скругления — оно остаётся у фигуры своим), оно сохраняется в PNG, SVG, PDF, живой картинке и файлах draw.io, а тени видны и в тёмной теме.',
+        },
+        en: {
+          title: 'Shadow, rounded corners and gradient',
+          text: 'Shapes can get a shadow, rounded corners and a gradient fill. “Gradient” is in the “Fill” window: the second color and the direction in which the fill turns into it. “Shadow” and “Rounding” with a radius are in the “Style” window. All members see the look, “Undo” takes it back, “Paste style” carries it over (except rounding, which stays the shape’s own), and it is kept in PNG, SVG, PDF, the live image and draw.io files; shadows are visible in the dark theme too.',
+        },
       },
     ],
   },

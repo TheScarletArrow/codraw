@@ -132,7 +132,7 @@ export function ShareButton({
         >
           <Link2 />
           {/* A phone keeps the icon only, and the line of the board its room. */}
-          <span className="max-sm:sr-only">Поделиться</span>
+          <span className="max-sm:sr-only">{m.share}</span>
           {waiting > 0 && (
             <span
               aria-hidden

@@ -27,9 +27,9 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <h2 id="privacy-data">What data we process</h2>
         <ul>
           <li>
-            <strong>Account.</strong> When you sign in with GitHub or Google: the name, the address of the profile
-            picture and the identifier of the user at that service. CoDraw does not ask for an email address and does
-            not receive the password of GitHub or Google. The account also stores the language of the interface — the
+            <strong>Account.</strong> {publicAccount(legal)}
+            {corporateAccount(legal)}
+            The account also stores the language of the interface — the
             one chosen in the “Language” menu or, if you have not chosen one, the language of the browser at sign-in — so
             that emails and messages of notifications arrive in it.
           </li>
@@ -223,7 +223,7 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
       <section aria-labelledby="privacy-retention">
         <h2 id="privacy-retention">How long the data is kept</h2>
         <ul>
-          <li>The account and boards — until you delete the boards or ask to delete the account.</li>
+          <li>The account and boards — until you delete the boards or the account on the “Account” page.</li>
           <li>
             A guest who has not returned for {legalMessages.days(legal.guestSessionDays)} can no longer return; their boards are
             deleted when no one has worked with them for {legalMessages.days(legal.guestBoardRetentionDays)}, and then the guest
@@ -236,7 +236,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           <li>The live image of a page — until the owner turns it off, and no longer than the board.</li>
           <li>
             Images of a board — as long as the board exists, even if they are no longer on the board: versions, change
-            proposals and undoing edits show them again. Deleting a board moves it together with its images to the trash
+            proposals and undoing edits show them again. A copy of a board is kept as a separate board of the one who
+            made it, with its own images, and does not depend on the original. Deleting a board moves it together with its images to the trash
             for 30 days. The owner can restore it or delete it permanently; when the period ends, the data is deleted.
           </li>
           <li>
@@ -300,6 +301,13 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           {legal.schemaImport && (
             <li>Database credentials — only for the time of one connection to it; they are not stored.</li>
           )}
+          {legal.backupRetentionDays !== null && (
+            <li>
+              Backups of the database and images — up to {legalMessages.days(legal.backupRetentionDays)}: data you
+              deleted stays in the backups until they are deleted after this period. Backups are kept on the server of
+              the installation{legal.backupOffsite && ' and in the file storage chosen by the operator'}.
+            </li>
+          )}
           <li>Server logs — as long as the operator keeps them.</li>
         </ul>
       </section>
@@ -307,7 +315,7 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
       <section aria-labelledby="privacy-recipients">
         <h2 id="privacy-recipients">Who receives the data</h2>
         <p className="mt-2">
-          GitHub and Google learn about sign-ins through them under their own rules.{' '}
+          {signInRecipients(legal)}
           {legal.schemaImport &&
             'The address, the name of the database, the user and the password you enter to load the schema of a database are passed by the CoDraw server only to that database. '}
           The members of a board see its content with images — the server gives the images of a board only to those
@@ -326,14 +334,46 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           even when access to the board is closed; turning it off deletes the image. If the owner has chosen the link
           access “Anyone with the link, without signing in”, the board — its pages with labels, images, statuses of
           elements and who changed the elements — is seen by anyone who has the link, without signing in, including on
-          other websites where it is embedded; they do not see comments, members and presence. If you have set up
+          other websites where it is embedded; they do not see comments, members and presence. A copy of a board made
+          by its member takes the document with images to their new board, and with it the names of those who changed
+          elements, wrote stickies and set statuses; the members of the copy see them. Members, comments, the version
+          history and change proposals do not go to the copy. If you have set up
           notifications outside CoDraw, the text of a notification — who did what, the title of the board, the
           beginning of the comment and a link — goes to the mail server of this installation for your address and to
           the chat service whose webhook address you entered; CoDraw does not show the webhook address to anyone,
           including you, after it is saved.{' '}
           {legal.issues &&
             'If you have connected GitHub, the CoDraw server calls GitHub with your token when you search for, link or create an issue, and to update the status of the issues you linked; a created issue gets its title, description and a link to the element or thread with the title of the board and the label of the element. The number, title and status of a linked issue, including one from a private repository, and the name of the one who linked it are seen by everyone who has access to the board. '}
+          {legal.backupRetentionDays !== null &&
+            legal.backupOffsite &&
+            'The operator also keeps backups of the database and images with all this data at the provider of file storage of their choice; backups may be encrypted. '}
           The data is not passed or sold to anyone else.
+        </p>
+      </section>
+
+      <section aria-labelledby="privacy-account">
+        <h2 id="privacy-account">Downloading your data and deleting the account</h2>
+        <p className="mt-2">
+          On the “Account” page (the icon next to your name), “Download my data” builds a ZIP archive: the profile,
+          your boards in <code>.drawio</code> with images, your comments, reactions, architecture decisions, change
+          proposals, shape libraries, personal templates, folders and tags, membership in boards and workspaces, access
+          requests, notifications and their settings — in JSON; the GitHub token is not included. The archive is
+          built in your browser; it can be downloaded several times a day.
+        </p>
+        <p className="mt-2">
+          There you also delete the account yourself — at once and without the possibility to restore it. Deleted are
+          the profile, your boards without other members and the boards in the trash with their images, membership in
+          boards and workspaces, access requests, visits, tags, folders, shape libraries, personal templates,
+          notifications, the email address and the webhook for notifications, the GitHub token (the token itself can
+          be revoked in the GitHub settings), reactions and your change proposals. Before deleting, you hand the
+          boards that other people work with over to one of their members or delete them; boards of team workspaces
+          stay with the workspace. Your comments, architecture decisions, issues you linked and the authorship of
+          versions on the boards that stay are kept without an author — signed “Deleted user”; your name that members
+          have already seen in the “Changed” marks and pins of elements and in mentions in other people’s comments
+          stays part of the content of those boards. All your sessions end. A new sign-in with the same provider —
+          GitHub, Google or a corporate one — creates a new empty account.
+          {legal.backupRetentionDays !== null &&
+            ` In backups, deleted data stays up to ${legalMessages.days(legal.backupRetentionDays)}, until the backups are deleted after that period.`}
         </p>
       </section>
 
@@ -341,7 +381,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <h2 id="privacy-rights">Your rights</h2>
         <p className="mt-2">
           You can find out what data about you is stored, correct it, get a copy of it or demand its deletion, and also
-          withdraw your consent to processing, by writing to the operator. You delete your boards yourself, and the
+          withdraw your consent to processing. You get a copy of your data and delete the account yourself on the
+          “Account” page, and the rest by writing to the operator. You delete your boards yourself, and the
           content of any board can be exported to <code>.drawio</code>. Copies of boards in the browser are deleted by
           signing out of CoDraw or by clearing the site data in the browser.
         </p>
@@ -354,5 +395,39 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         </p>
       </section>
     </>
+  )
+}
+
+/** “GitHub”, “GitHub or Google”, “A, B or C” of the providers of the installation; empty for none. */
+function providerNames(legal: LegalInfo, corporate: boolean, conjunction = 'or'): string {
+  const names = legal.signInProviders.filter((provider) => provider.corporate === corporate).map((provider) => provider.name)
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} ${conjunction} ${names.at(-1)}` : (names[0] ?? '')
+}
+
+/** What GitHub and Google give CoDraw, when the installation signs in through them. */
+function publicAccount(legal: LegalInfo): string {
+  const names = providerNames(legal, false)
+  return names
+    ? `When you sign in with ${names}: the name, the address of the profile picture and the identifier of the user at that service. CoDraw does not ask them for an email address and does not receive the password of ${names}. `
+    : ''
+}
+
+/** What the provider that the operator chose gives CoDraw, and what of it CoDraw keeps. */
+function corporateAccount(legal: LegalInfo): string {
+  const names = providerNames(legal, true)
+  return names
+    ? `When you sign in with ${names}, the sign-in provider chosen by the operator of the installation, CoDraw receives from the provider the identifier of the user, the name, the address of the profile picture, the email address and the groups. Stored are the identifier together with the address of the provider, the name and the address of the picture; CoDraw only checks the email and the groups at sign-in against the restrictions set by the operator and does not store them. CoDraw does not receive the password of the provider account. `
+    : ''
+}
+
+/** Who learns of signing in. */
+function signInRecipients(legal: LegalInfo): string {
+  const names = providerNames(legal, false, 'and')
+  const corporate = providerNames(legal, true)
+  return (
+    (names ? `${names} learn about sign-ins through them under their own rules. ` : '') +
+    (corporate
+      ? `The sign-in provider chosen by the operator, ${corporate}, learns about sign-ins and sign-outs through it under the rules of the operator. `
+      : '')
   )
 }

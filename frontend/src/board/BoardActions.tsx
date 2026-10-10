@@ -136,13 +136,13 @@ export function BoardActions({
                 variant="ghost"
                 size="sm"
                 className={item}
-                title="Новая доска с теми же страницами и изображениями, без участников, комментариев и истории"
+                title={m.copyHint}
                 onClick={() => {
                   setOpen(false)
                   onCopy()
                 }}
               >
-                Создать копию
+                {m.copy}
               </Button>
             )}
             {tags && (

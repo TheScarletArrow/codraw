@@ -208,7 +208,7 @@ export function DecisionsPanel({
   ]
 
   return (
-    <aside aria-label="Решения" className={cn(SIDE_PANEL_CLASS, 'w-80')}>
+    <aside aria-label={m.decisions} className={cn(SIDE_PANEL_CLASS, 'w-80')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <ScrollText className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">{m.decisions}</h3>

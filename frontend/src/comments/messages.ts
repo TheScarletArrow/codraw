@@ -29,7 +29,7 @@ export const commentsMessages = defineMessages({
       assigned: 'Назначены мне',
     },
     empty: {
-      open: 'Открытых веток нет. Щёлкните правой кнопкой по элементу или по пустому месту и выберите «Комментировать».',
+      open: 'Открытых веток нет. Щёлкните правой кнопкой или задержите палец на элементе или на пустом месте и выберите «Комментировать».',
       resolved: 'Решённых веток нет.',
       mentions: 'Вас пока никто не упомянул.',
       assigned: 'Вам пока не назначено ни одной ветки.',
@@ -116,7 +116,7 @@ export const commentsMessages = defineMessages({
       assigned: 'Assigned to me',
     },
     empty: {
-      open: 'No open threads. Right-click an element or an empty spot and choose “Comment”.',
+      open: 'No open threads. Right-click or hold a finger on an element or an empty spot and choose “Comment”.',
       resolved: 'No resolved threads.',
       mentions: 'Nobody has mentioned you yet.',
       assigned: 'No threads are assigned to you yet.',

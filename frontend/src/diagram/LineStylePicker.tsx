@@ -110,7 +110,7 @@ function ShapeEffects({ shapes, onChange }: { shapes: SelectionShapeEffects; onC
           className="accent-primary"
           onChange={(event) => onChange({ shadow: event.target.checked })}
         />
-        Тень
+        {m.shadow}
       </label>
       {shapes.canRound && (
         <div className="flex items-center justify-between gap-2">
@@ -121,12 +121,12 @@ function ShapeEffects({ shapes, onChange }: { shapes: SelectionShapeEffects; onC
               className="accent-primary"
               onChange={(event) => onChange({ rounded: event.target.checked })}
             />
-            Скругление
+            {m.rounded}
           </label>
           <span className="flex items-center gap-1">
             <NumberField
-              label="Радиус скругления, %"
-              title="Радиус скругления в процентах от короткой стороны"
+              label={m.arcSize}
+              title={m.arcSizeHint}
               value={shapes.rounded ? shapes.arcSize : null}
               min={MIN_ARC_SIZE}
               max={MAX_ARC_SIZE}
