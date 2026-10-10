@@ -1080,7 +1080,7 @@ describe('BoardPage', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
       const menu = screen.getByRole('menu', { name: 'Доска «Архитектура»' })
-      expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['История версий'])
+      expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Создать копию', 'История версий'])
       await userEvent.click(within(menu).getByRole('menuitem', { name: 'История версий' }))
 
       const history = screen.getByRole('complementary', { name: 'История версий' })
@@ -1100,7 +1100,9 @@ describe('BoardPage', () => {
       act(() => provider.emitStateless(BOARD_CHANGED))
 
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'История версий' })).toBeNull())
-      expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      const menu = screen.getByRole('menu', { name: 'Доска «Архитектура»' })
+      expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Создать копию'])
     })
   })
 
@@ -1291,12 +1293,41 @@ describe('BoardPage', () => {
       await waitFor(() => expect(findLocalCopy(ALICE.id, boardId)).toBeNull())
     })
 
-    it('shows a participant who does not own the board its title only', async () => {
+    it('shows a participant who does not own the board its title, with a menu that only copies it', async () => {
       await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
 
       expect(screen.getByRole('heading', { name: 'Архитектура', level: 2 })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Архитектура' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Меню доски «Архитектура»' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      const menu = screen.getByRole('menu', { name: 'Доска «Архитектура»' })
+      expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Создать копию'])
+    })
+
+    it('lets a viewer copy the board and opens the copy', async () => {
+      const copy = { ...boardToView, id: 'copy-1', title: 'Архитектура (копия)', role: 'owner' }
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: { body: boardToView },
+        [`POST ${boardUrl}/copy`]: { status: 201, body: copy },
+        'GET /api/boards/copy-1': { body: copy },
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Создать копию' }))
+
+      await waitFor(() => expect(provider.router.state.location.pathname).toBe('/boards/copy-1'))
+      expect(requests(provider.fetchMock, 'POST', `${boardUrl}/copy`)).toHaveLength(1)
+    })
+
+    it('tells why a copy failed when the user owns as many boards as allowed', async () => {
+      await openBoard({
+        [`GET ${boardUrl}`]: { body: boardToView },
+        [`POST ${boardUrl}/copy`]: { status: 409, body: { title: 'Board limit reached', limit: 100 } },
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Создать копию' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Достигнут лимит 100 досок')
     })
 
     it('lets a viewer with an email for notifications stop and restart those of the board from its menu', async () => {

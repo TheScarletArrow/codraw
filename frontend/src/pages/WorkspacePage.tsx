@@ -29,7 +29,9 @@ import {
   type WorkspaceProject,
 } from '../api/workspaces.ts'
 import { useCurrentUser } from '../auth/session.ts'
+import { BoardActions } from '../board/BoardActions.tsx'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
+import { useCopyBoard } from '../board/copyBoard.ts'
 import { counted } from '../board/members.ts'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
@@ -319,6 +321,7 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
       return Promise.all([refresh(), deleteLocalCopiesOfBoard(board.id)])
     },
   })
+  const copy = useCopyBoard(board.id)
   const project = showProject ? projects.find((one) => one.id === board.projectId) : undefined
   const manages = board.role === 'owner'
   const limit = boardLimitOf(takeOut.error)
@@ -330,7 +333,7 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
         : `У вас уже ${counted(limit, ['доска', 'доски', 'досок'])} — больше нельзя`
       : remove.isError
         ? 'Не удалось удалить'
-        : null
+        : copy.error
   const at = board.updatedAt
 
   return (
@@ -362,16 +365,19 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
         <time dateTime={at} className="whitespace-nowrap text-muted-foreground" title="Изменена">
           {dateFormat.format(new Date(at))}
         </time>
-        {manages && (
+        {manages ? (
           <WorkspaceBoardMenu
             title={board.title}
             projects={projects}
             current={board.projectId}
-            disabled={move.isPending || takeOut.isPending || remove.isPending}
+            disabled={move.isPending || takeOut.isPending || remove.isPending || copy.pending}
+            onCopy={copy.copy}
             onMove={(projectId) => move.mutate(projectId)}
             onTakeOut={managesWorkspace(workspace.role) ? () => takeOut.mutate() : undefined}
             onDelete={() => remove.mutate()}
           />
+        ) : (
+          <BoardActions title={board.title} disabled={copy.pending} onCopy={copy.copy} />
         )}
       </div>
     </li>
@@ -384,6 +390,8 @@ interface WorkspaceBoardMenuProps {
   /** The project the board is in; `null` for none. */
   current: string | null
   disabled: boolean
+  /** Copies the board, into this workspace as the user creates boards in it. */
+  onCopy: () => void
   onMove: (projectId: string | null) => void
   /** Takes the board out of the workspace into the personal boards of the user; only for who manages the workspace. */
   onTakeOut?: () => void
@@ -393,8 +401,8 @@ interface WorkspaceBoardMenuProps {
 
 type MenuView = 'items' | 'project' | 'take-out' | 'delete'
 
-/** Menu of a board of a workspace for who manages the board: its project, taking it out, deleting it. */
-function WorkspaceBoardMenu({ title, projects, current, disabled, onMove, onTakeOut, onDelete }: WorkspaceBoardMenuProps) {
+/** Menu of a board of a workspace for who manages the board: copying it, its project, taking it out, deleting it. */
+function WorkspaceBoardMenu({ title, projects, current, disabled, onCopy, onMove, onTakeOut, onDelete }: WorkspaceBoardMenuProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<MenuView>('items')
   const item = 'justify-start font-normal'
@@ -468,6 +476,19 @@ function WorkspaceBoardMenu({ title, projects, current, disabled, onMove, onTake
           confirm(`Переместить доску «${title}» в корзину? Её можно восстановить в течение 30 дней.`, 'Удалить', onDelete)}
         {view === 'items' && (
           <div role="menu" aria-label={`Доска «${title}»`} className="flex flex-col">
+            <Button
+              type="button"
+              role="menuitem"
+              variant="ghost"
+              size="sm"
+              className={item}
+              onClick={() => {
+                setOpen(false)
+                onCopy()
+              }}
+            >
+              Создать копию
+            </Button>
             <Button type="button" role="menuitem" variant="ghost" size="sm" className={item} onClick={() => setView('project')}>
               Переместить в проект
             </Button>

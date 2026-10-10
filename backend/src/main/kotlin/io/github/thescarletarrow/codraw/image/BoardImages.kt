@@ -80,6 +80,28 @@ class BoardImages(private val jdbc: JdbcClient) {
         .query { rs, _ -> rs.toImage() }
         .list()
 
+    /**
+     * Gives the board [to] a copy of each image of the board [from], with the same bytes and a new id; returns the id of
+     * each copy by the id of its image. The bytes are copied in the storage by the caller.
+     */
+    fun copyAll(from: UUID, to: UUID, at: Instant): Map<UUID, UUID> = jdbc.sql(
+        """
+        WITH copied AS (
+            INSERT INTO board_images (board_id, sha256, content_type, size, width, height, created_at)
+            SELECT :to, sha256, content_type, size, width, height, :at FROM board_images WHERE board_id = :from
+            RETURNING id, sha256
+        )
+        -- The same file is stored once per board, so its hash names the image of the copy.
+        SELECT i.id AS original_id, c.id AS copy_id FROM copied c JOIN board_images i ON i.board_id = :from AND i.sha256 = c.sha256
+        """,
+    )
+        .param("from", from)
+        .param("to", to)
+        .param("at", at.atOffset(ZoneOffset.UTC))
+        .query { rs, _ -> rs.getObject("original_id", UUID::class.java) to rs.getObject("copy_id", UUID::class.java) }
+        .list()
+        .toMap()
+
     /** Up to [limit] images whose boards are deleted. */
     fun ofDeletedBoards(limit: Int): List<BoardImage> = jdbc.sql(
         """
