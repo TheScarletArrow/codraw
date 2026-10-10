@@ -46,6 +46,8 @@ function initialLocale(): Locale {
 
 let current: Locale = initialLocale()
 const listeners = new Set<() => void>()
+// `index.html` names Russian; the page speaks the language of the browser or of the choice.
+if (typeof document !== 'undefined') document.documentElement.lang = current
 
 /** The language of the interface now. */
 export const locale = (): Locale => current
