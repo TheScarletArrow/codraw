@@ -39,7 +39,13 @@ describe('line and text styles', () => {
 
     expect(styleOf(doc, a.getId()!)).toMatchObject({ strokeWidth: 4, dashed: true, dashPattern: '1 2' })
     expect(styleOf(doc, edge.getId()!)).toMatchObject({ strokeWidth: 4, dashed: true, dashPattern: '1 2' })
-    expect(editor.getState().line).toEqual({ width: 4, dash: 'dotted', edgeShape: 'orthogonal', hasEdges: true })
+    expect(editor.getState().line).toEqual({
+      width: 4,
+      dash: 'dotted',
+      edgeShape: 'orthogonal',
+      hasEdges: true,
+      shapes: { shadow: false, rounded: false, arcSize: null, canRound: true },
+    })
   })
 
   it('removes the keys of the default width and dash', () => {
@@ -191,6 +197,111 @@ describe('line and text styles', () => {
     expect(styleOf(doc, b.getId()!)).not.toHaveProperty('fillOpacity')
     expect(styleOf(doc, a.getId()!)).not.toHaveProperty('fillOpacity')
     expect(undoSteps(editor)).toBe(3 + 2)
+  })
+
+  it('turns the shadow of the selected shapes on and off, not of edges, as one undo step each', () => {
+    const { doc, editor, a, b, edge } = open()
+    editor.graph.setSelectionCells([a, b, edge])
+
+    editor.setShapeEffects({ shadow: true })
+
+    expect(styleOf(doc, a.getId()!).shadow).toBe(true)
+    expect(styleOf(doc, b.getId()!).shadow).toBe(true)
+    expect(styleOf(doc, edge.getId()!)).not.toHaveProperty('shadow')
+    expect(editor.getState().line?.shapes?.shadow).toBe(true)
+    editor.graph.setSelectionCell(b)
+    editor.setShapeEffects({ shadow: false })
+    expect(styleOf(doc, b.getId()!)).not.toHaveProperty('shadow')
+    editor.graph.setSelectionCells([a, b])
+    expect(editor.getState().line?.shapes?.shadow).toBe(false)
+    expect(undoSteps(editor)).toBe(3 + 2)
+  })
+
+  it('rounds the corners of the shapes that can round them, with a radius in percent', () => {
+    const { doc, editor, a } = open()
+    const ellipse = editor.addShape('ellipse', { x: 600, y: 100 })!
+    editor.graph.setSelectionCells([a, ellipse])
+    expect(editor.getState().line?.shapes).toEqual({ shadow: false, rounded: false, arcSize: null, canRound: true })
+
+    editor.setShapeEffects({ rounded: true })
+    expect(styleOf(doc, a.getId()!).rounded).toBe(true)
+    expect(styleOf(doc, ellipse.getId()!)).not.toHaveProperty('rounded')
+    expect(editor.getState().line?.shapes).toMatchObject({ rounded: true, arcSize: 15 })
+
+    editor.setShapeEffects({ arcSize: 30 })
+    expect(styleOf(doc, a.getId()!).arcSize).toBe(30)
+    editor.setShapeEffects({ arcSize: 90 })
+    expect(styleOf(doc, a.getId()!).arcSize).toBe(50)
+    editor.setShapeEffects({ arcSize: 15 })
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('arcSize')
+
+    editor.setShapeEffects({ arcSize: 25 })
+    editor.setShapeEffects({ rounded: false })
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('rounded')
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('arcSize')
+
+    editor.graph.setSelectionCell(ellipse)
+    expect(editor.getState().line?.shapes?.canRound).toBe(false)
+    expect(undoSteps(editor)).toBe(4 + 6)
+  })
+
+  it('shows the radius of rounded shapes from the palette and from draw.io', () => {
+    const { doc, editor, a, b } = open()
+    const rounded = editor.addShape('rounded', { x: 600, y: 100 })!
+    editor.graph.setSelectionCell(rounded)
+    expect(editor.getState().line?.shapes).toMatchObject({ rounded: true, arcSize: 15 })
+
+    editor.graph.setSelectionCells([a, b])
+    editor.setShapeEffects({ rounded: true })
+    editor.graph.setSelectionCell(b)
+    editor.setShapeEffects({ arcSize: 40 })
+    editor.graph.setSelectionCells([a, b])
+    expect(editor.getState().line?.shapes).toMatchObject({ rounded: true, arcSize: null })
+
+    // A radius in pixels, as draw.io keeps it with absoluteArcSize, is no share of the side.
+    editor.graph.getDataModel().setStyle(a, { ...a.getStyle(), absoluteArcSize: true, arcSize: 24 })
+    editor.graph.setSelectionCell(a)
+    expect(editor.getState().line?.shapes?.arcSize).toBeNull()
+    editor.setShapeEffects({ arcSize: 20 })
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('absoluteArcSize')
+    expect(styleOf(doc, a.getId()!).arcSize).toBe(20)
+  })
+
+  it('sets the gradient of the fill of the selected shapes, its color and direction, one undo step each', () => {
+    const { doc, editor, a, b, edge } = open()
+    editor.graph.setSelectionCells([a, edge])
+    expect(editor.getState().colors).toMatchObject({ gradient: 'none', gradientDirection: null })
+
+    editor.setShapeEffects({ gradient: '#ffffff' })
+    expect(styleOf(doc, a.getId()!).gradientColor).toBe('#ffffff')
+    expect(styleOf(doc, edge.getId()!)).not.toHaveProperty('gradientColor')
+    expect(editor.getState().colors).toMatchObject({ gradient: '#ffffff', gradientDirection: 'south' })
+
+    editor.setShapeEffects({ gradientDirection: 'east' })
+    expect(styleOf(doc, a.getId()!).gradientDirection).toBe('east')
+    editor.setShapeEffects({ gradientDirection: 'south' })
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('gradientDirection')
+
+    editor.graph.setSelectionCells([a, b])
+    expect(editor.getState().colors).toMatchObject({ gradient: null, gradientDirection: null })
+    editor.setShapeEffects({ gradientDirection: 'west' })
+    editor.setShapeEffects({ gradient: 'none' })
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('gradientColor')
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('gradientDirection')
+    expect(undoSteps(editor)).toBe(3 + 5)
+  })
+
+  it('leaves locked shapes as they are', () => {
+    const { doc, editor, a, b } = open()
+    editor.graph.setSelectionCell(a)
+    editor.setLocked(true)
+    editor.graph.setSelectionCells([a, b])
+
+    editor.setShapeEffects({ shadow: true, gradient: '#dae8fc' })
+
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('shadow')
+    expect(styleOf(doc, a.getId()!)).not.toHaveProperty('gradientColor')
+    expect(styleOf(doc, b.getId()!)).toMatchObject({ shadow: true, gradientColor: '#dae8fc' })
   })
 
   it('has no opacity of the fill when only edges are selected', () => {
