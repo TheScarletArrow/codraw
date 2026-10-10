@@ -102,6 +102,8 @@ export interface BackendClient {
    */
   storeDraft(proposalId: string, state: Uint8Array): Promise<void>;
   loadDraftAccess(proposalId: string): Promise<DraftAccess>;
+  /** Of the users `ids`, those who are gone, e.g. deleted their accounts. */
+  missingUsers(ids: readonly string[]): Promise<string[]>;
 }
 
 export interface BackendClientOptions {
@@ -227,6 +229,19 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
         throw new Error(`Loading access to proposal ${proposalId} failed: backend responded with ${response.status}`);
       }
       return (await response.json()) as DraftAccess;
+    },
+
+    async missingUsers(ids) {
+      if (ids.length === 0) return [];
+      const response = await fetch(new URL("/internal/users/missing", baseUrl), {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(ids),
+      });
+      if (!response.ok) {
+        throw new Error(`Checking users failed: backend responded with ${response.status}`);
+      }
+      return (await response.json()) as string[];
     },
   };
 }

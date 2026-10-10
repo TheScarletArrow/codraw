@@ -4,6 +4,7 @@ import {
   accessOnConnect,
   BOARD_DELETED,
   createAccessChecks,
+  createAccountChecks,
   PROPOSAL_DELETED,
   type ConnectionContext,
 } from "./access.js";
@@ -87,6 +88,7 @@ export function createCollabServer({
   searchTextBackfillInterval = 60 * 60_000,
 }: CollabServerOptions): Server {
   const checkAccess = createAccessChecks(backend, metrics);
+  const checkAccounts = createAccountChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
   /** The text for search that the backend has of each open board, as collab sent it last. */
@@ -263,13 +265,17 @@ export function createCollabServer({
       }
     },
     // Participants tell collab about changes of access, but the owner may change it without the board open, and such a
-    // message may be lost: open documents are checked from time to time as well. Boards without a text for search get
-    // theirs at the start and then from time to time.
+    // message may be lost: open documents are checked from time to time as well, and so are the users of all
+    // connections, whose accounts may be gone. Boards without a text for search get theirs at the start and then from
+    // time to time.
     async onListen({ instance: hocuspocus }) {
       instance = hocuspocus;
       metrics.observe(hocuspocus);
       accessChecks = setInterval(
-        () => hocuspocus.documents.forEach((document) => void checkAccess(document)),
+        () => {
+          hocuspocus.documents.forEach((document) => void checkAccess(document));
+          void checkAccounts(hocuspocus.documents.values());
+        },
         accessCheckInterval,
       );
       accessChecks.unref();

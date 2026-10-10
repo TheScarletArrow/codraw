@@ -23,7 +23,8 @@ export type RejectionReason =
   | "proposal-not-found"
   | "error"
   | "document-too-large"
-  | "access-changed";
+  | "access-changed"
+  | "account-deleted";
 
 const STORE_RESULTS: StoreResult[] = ["stored", "failed", "board_deleted", "proposal_closed", "proposal_deleted"];
 const SEARCH_TEXT_RESULTS: SearchTextResult[] = ["stored", "kept", "failed"];
@@ -35,6 +36,7 @@ const REJECTION_REASONS: RejectionReason[] = [
   "error",
   "document-too-large",
   "access-changed",
+  "account-deleted",
 ];
 
 export type Metrics = ReturnType<typeof createMetrics>;

@@ -93,6 +93,15 @@ describe('Layout', () => {
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
   })
 
+  it('links the account of the user in the header, of a guest too', async () => {
+    mockFetch({ 'GET /api/me': { body: { ...ALICE, guest: true } }, 'GET /api/boards': { body: [] }, ...unreadCount })
+
+    renderRoutes(routes)
+
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByRole('link', { name: 'Учётная запись' })).toHaveAttribute('href', '/settings/account')
+  })
+
   it('shows in the header what the page puts there, out of the page', async () => {
     mockFetch({ 'GET /api/me': { body: ALICE }, ...unreadCount })
 

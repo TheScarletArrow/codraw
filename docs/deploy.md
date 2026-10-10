@@ -102,6 +102,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_ISSUES_GITHUB_WEBHOOK_SECRET` | пусто | секрет вебхука задач GitHub, который сразу приносит их изменения; пусто — вебхук выключен |
 | `CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS` | пусто | базы PostgreSQL, схему которых пользователи могут загрузить через `backend` («Подключиться к базе…» в «Импорт SQL»): имена хостов, адреса и сети CIDR через запятую; пусто — функция выключена, см. «Схема из живой базы» ниже |
 | `CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR` | `30` | попыток загрузить схему из базы у одного пользователя в час, неудачные тоже; сверх — 429; счётчик — в памяти `backend` |
+| `CODRAW_LIMITS_EXPORTS_PER_USER_PER_DAY` | `5` | выгрузок «Скачать мои данные» у одного пользователя в сутки; сверх — 429; счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_LIBRARIES_PER_USER` | `20` | больше личных библиотек фигур у пользователя не будет; библиотеки гостя, перешедшие при входе, не ограничиваются; сверх — 409 |
 | `CODRAW_LIMITS_COMPONENTS_PER_LIBRARY` | `200` | больше компонентов в одной библиотеке не будет; сверх — 409 |
 | `CODRAW_LIMITS_LIBRARY_COMPONENT_SIZE` | `4MB` | больше компонент библиотеки — схема с картинками внутри и образцом — не сохранится; сверх — 413; держите ниже 32 МБ, которые пропускает nginx |
@@ -118,6 +119,10 @@ cookie, сроки хранения этой установки, получат�
 `CODRAW_LEGAL_CONTACT_EMAIL`; без них страницы говорят, что оператор не указал свои данные. Перед открытым запуском
 задайте их и покажите тексты своему юристу. Ссылка на политику нужна и Google, чтобы перевести OAuth-приложение из
 режима Testing.
+
+Выгрузку своих данных и удаление учётной записи пользователи делают сами на странице «Учётная запись»; на запрос,
+пришедший на `CODRAW_LEGAL_CONTACT_EMAIL`, можно ответить ссылкой на неё. Удалённая учётная запись не
+восстанавливается, а её следы в резервных копиях базы уходят вместе с ними, по сроку их хранения.
 
 Без обязательной переменной Docker Compose не запустит стек и назовёт её. Страница входа показывает только
 настроенные способы входа: без OAuth-приложений GitHub и Google и без корпоративного провайдера остаётся вход гостем.
@@ -351,9 +356,9 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 | Где | Что |
 |---|---|
-| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component` и `libraries-size`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), удалённые учётные записи (`codraw_accounts_deleted_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component` и `libraries-size`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
 | `backup:9187/metrics.txt` | резервные копии: время и результат последней попытки, время последней удачной копии, размер и длительность (`codraw_backup_*`, см. «Резервные копии») |
-| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
+| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
 каталог `deploy/prometheus` из репозитория:

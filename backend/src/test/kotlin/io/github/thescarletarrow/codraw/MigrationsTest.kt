@@ -1199,6 +1199,21 @@ class MigrationsTest {
         assertEquals(1, flyway("26").migrate().migrationsExecuted)
     }
 
+    @Test
+    fun `V28 indexes who resolved threads, and U28 drops the index`() {
+        flyway("27").migrate()
+
+        assertEquals(1, flyway("28").migrate().migrationsExecuted)
+        assertEquals(1, indexes("comment_threads_resolved_by_idx"))
+
+        revert("U28__claude_issue_155_account_deletion.sql")
+        assertEquals(0, indexes("comment_threads_resolved_by_idx"))
+        assertEquals(1, flyway("28").migrate().migrationsExecuted)
+    }
+
+    private fun indexes(name: String) =
+        jdbcClient.sql("SELECT count(*) FROM pg_indexes WHERE indexname = :name").param("name", name).query(Int::class.java).single()
+
     private fun flyway(target: String = "latest") =
         Flyway.configure().dataSource(dataSource).target(target).load()
 

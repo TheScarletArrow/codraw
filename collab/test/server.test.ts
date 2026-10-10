@@ -465,6 +465,21 @@ describe("collab server", () => {
       await expect(bobClosed).resolves.toBe("access-changed");
     });
 
+    it("closes the sockets of a user whose account was deleted at the next check", async () => {
+      await startServer({ accessCheckInterval: 100 });
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const bobClosed = closeReasonOf(bob);
+      const ownerClosed = vi.fn();
+      owner.provider.on("close", ownerClosed);
+
+      // Bob deleted his account on another device; the link of the board still lets anybody edit it.
+      backend.missingUsers.add(BOB);
+
+      await expect(bobClosed).resolves.toBe("account-deleted");
+      expect(ownerClosed).not.toHaveBeenCalled();
+    });
+
     it("closes the connection of a member taken out of the workspace of the board at the next check", async () => {
       await startServer({ accessCheckInterval: 100 });
       backend.access.set(board, {
