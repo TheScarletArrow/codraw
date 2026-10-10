@@ -136,17 +136,19 @@ function oauthLogin(): CellData[] {
 function useCases(): CellData[] {
   const diagram = new DiagramBuilder()
   // The frame first, so that the use cases are drawn over it.
-  diagram.shape('uml-system-boundary', 200, 0, { value: 'Интернет-магазин', width: 520, height: 480 })
+  diagram.shape('uml-system-boundary', 400, 0, { value: 'Интернет-магазин', width: 520, height: 480 })
   const useCase = (value: string, x: number, y: number) => diagram.shape('uml-use-case', x, y, { value })
-  const find = useCase('Найти товар', 240, 50)
-  const order = useCase('Оформить заказ', 240, 200)
-  const pay = useCase('Оплатить заказ', 240, 350)
-  const login = useCase('Войти в систему', 520, 120)
-  const coupon = useCase('Применить промокод', 520, 280)
+  const find = useCase('Найти товар', 440, 50)
+  const order = useCase('Оформить заказ', 440, 200)
+  const pay = useCase('Оплатить заказ', 440, 350)
+  const login = useCase('Войти в систему', 720, 120)
+  const coupon = useCase('Применить промокод', 720, 280)
+  // The names of actors are under them: the generalization comes from the side, not through a name, and the long
+  // name of the first actor stays right of the left edge of the page.
   const actor = (value: string, x: number, y: number) => diagram.shape('uml-actor', x, y, { value })
-  const customer = actor('Покупатель', 60, 210)
-  const regular = actor('Постоянный покупатель', 60, 400)
-  const payments = actor('Платёжная система', 820, 360)
+  const customer = actor('Покупатель', 260, 210)
+  const regular = actor('Постоянный покупатель', 80, 210)
+  const payments = actor('Платёжная система', 1020, 360)
   // Straight lines, as relations of use cases are drawn, with the keys that «Отношение» gives them.
   const relate = (source: string, target: string, relation: UmlRelation) => {
     const { style, label } = relationChanges(relation, '')
