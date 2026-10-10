@@ -65,6 +65,14 @@ management:
       enabled: false
 
 codraw:
+  admin:
+    # Accounts of the administrators of the installation as <provider>:<id at the provider>, comma-separated, e.g.
+    # "github:583231,google:1098…" (CODRAW_ADMINS); empty means none. Only the deployment names them. See docs/deploy.md.
+    users: ${CODRAW_ADMINS:}
+    # Entries of the journal of administrators and closed reports are deleted once they are this old.
+    retention: 365d
+    # Every hour; "-" turns the cleanup off.
+    cleanup-cron: "0 47 * * * *"
   guests:
     # A board of a guest whose session has expired is deleted once nobody worked on it for this long.
     board-retention: 30d

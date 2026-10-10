@@ -16,6 +16,8 @@ export interface LegalInfo {
   closedProposalsPerBoard: number
   /** Whether users may read schemas of databases through the server, with the user and the password of a database. */
   schemaImport: boolean
+  /** Entries of the journal of administrators and closed reports of boards are deleted once they are this many days old. */
+  adminRetentionDays: number
   /** Whether users may connect GitHub with a token of theirs and link its issues to elements and threads of boards. */
   issues: boolean
 }

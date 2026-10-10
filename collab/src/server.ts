@@ -8,6 +8,7 @@ import {
   type ConnectionContext,
 } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
+import { checkNotBlocked, createBlockedUserChecks } from "./blocked.js";
 import {
   BoardNotFoundError,
   ProposalClosedError,
@@ -55,6 +56,11 @@ export interface CollabServerOptions {
    * server listens. `null` turns filling in off.
    */
   searchTextBackfillInterval?: number | null;
+  /**
+   * Period of closing the connections of users whom an administrator blocked, in milliseconds; it bounds how long a
+   * blocked user keeps working.
+   */
+  blockedCheckInterval?: number;
 }
 
 /** Room for the framing of a message around the largest change. */
@@ -76,13 +82,16 @@ export function createCollabServer({
   documentSizeLimit = DOCUMENT_SIZE_LIMIT,
   metrics = createMetrics(),
   searchTextBackfillInterval = 60 * 60_000,
+  blockedCheckInterval = 10_000,
 }: CollabServerOptions): Server {
   const checkAccess = createAccessChecks(backend, metrics);
+  const closeBlocked = createBlockedUserChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
   /** The text for search that the backend has of each open board, as collab sent it last. */
   const searchTexts = new Map<string, string>();
   let accessChecks: NodeJS.Timeout | undefined;
+  let blockedChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
   let instance: Server["hocuspocus"] | undefined;
   const backfill = createSearchTextBackfill(backend, metrics, (boardId) => instance?.documents.get(boardId));
@@ -200,7 +209,8 @@ export function createCollabServer({
         // Any other name is neither a board nor a draft; the backend is not asked about it.
         const target = targetOf(documentName);
         const user = await verifyToken(token, target);
-        const access = await accessOnConnect(backend, target, user.id);
+        // A token issued before an administrator blocked its user still opens documents for some minutes.
+        const [access] = await Promise.all([accessOnConnect(backend, target, user.id), checkNotBlocked(backend, user.id)]);
         connectionConfig.readOnly = access === "view";
         return { user, access };
       } catch (error) {
@@ -263,6 +273,8 @@ export function createCollabServer({
         accessCheckInterval,
       );
       accessChecks.unref();
+      blockedChecks = setInterval(() => void closeBlocked(hocuspocus), blockedCheckInterval);
+      blockedChecks.unref();
       if (searchTextBackfillInterval !== null) {
         fillInSearchTexts();
         backfills = setInterval(fillInSearchTexts, searchTextBackfillInterval);
@@ -271,6 +283,7 @@ export function createCollabServer({
     },
     async onDestroy() {
       clearInterval(accessChecks);
+      clearInterval(blockedChecks);
       clearInterval(backfills);
       backfill.stop();
     },

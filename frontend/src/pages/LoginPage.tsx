@@ -36,6 +36,12 @@ export function LoginPage() {
             Вход не выполнен. Попробуйте ещё раз.
           </p>
         )}
+        {/* With `?blocked` when an administrator of the installation blocked the user. */}
+        {params.has('blocked') && (
+          <p role="alert" className="text-destructive">
+            Учётная запись заблокирована администратором установки.
+          </p>
+        )}
         <Button asChild>
           <a href={loginUrl('github')}>Войти через GitHub</a>
         </Button>

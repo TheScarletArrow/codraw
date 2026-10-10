@@ -45,6 +45,8 @@ export interface Board {
   projectId?: string | null
   /** What the workspace gives its editors and viewers on the board. */
   workspaceAccess?: WorkspaceAccess
+  /** An administrator of the installation closed the link and the live image; the owner opens neither. */
+  sharingBlocked?: boolean
 }
 
 /** A board in a list of boards of the current user, with how the user organized it: only they see it. */

@@ -89,6 +89,19 @@ describe("backend client", () => {
     await expect(client.storeSearchText(board, "Схема")).rejects.toBeInstanceOf(BoardNotFoundError);
   });
 
+  it("asks which of the users are blocked", async () => {
+    backend.blocked.add("bob");
+
+    await expect(client.blockedUsers(["alice", "bob"])).resolves.toEqual(["bob"]);
+    expect(backend.blockedChecks).toEqual([["alice", "bob"]]);
+  });
+
+  it("fails when the backend cannot tell which users are blocked", async () => {
+    backend.failingBlockedChecks = 1;
+
+    await expect(client.blockedUsers(["alice"])).rejects.toThrow("500");
+  });
+
   it("lists the boards without a text page by page", async () => {
     const boards = ["0199a000-0000-7000-8000-000000000003", "0199a000-0000-7000-8000-000000000004"];
     for (const id of [board, ...boards]) {
@@ -116,6 +129,7 @@ describe("config", () => {
       internalToken: "secret",
       jwksUrl: "http://backend:8080/.well-known/jwks.json",
       accessCheckInterval: 5000,
+      blockedCheckInterval: 10_000,
       documentSizeLimit: 16 * 1024 * 1024,
       logFormat: "text",
     });
@@ -129,6 +143,11 @@ describe("config", () => {
   it("reads the format of the log", () => {
     expect(loadConfig({ ...env, LOG_FORMAT: "json" }).logFormat).toBe("json");
     expect(() => loadConfig({ ...env, LOG_FORMAT: "xml" })).toThrow("LOG_FORMAT");
+  });
+
+  it("reads the period of closing the connections of blocked users", () => {
+    expect(loadConfig({ ...env, BLOCKED_CHECK_INTERVAL_MS: "2000" }).blockedCheckInterval).toBe(2_000);
+    expect(() => loadConfig({ ...env, BLOCKED_CHECK_INTERVAL_MS: "0" })).toThrow("BLOCKED_CHECK_INTERVAL_MS");
   });
 
   it.each(["0", "-1", "1.5", "minute"])("rejects an access check interval of %s", (value) => {

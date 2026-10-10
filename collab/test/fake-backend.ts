@@ -30,6 +30,12 @@ export class FakeBackend {
   readonly requests: { method: string; boardId: string; editors?: string[]; text?: string; onlyIfMissing?: boolean }[] = [];
   /** The texts for search of the boards by their ids, as collab sent them. */
   readonly searchTexts = new Map<string, string>();
+  /** Users whom an administrator blocked. */
+  readonly blocked = new Set<string>();
+  /** The users that collab asked about, one list per request; not among {@link requests}, since every connection asks. */
+  readonly blockedChecks: string[][] = [];
+  /** How many of the next checks for blocked users fail with 500. */
+  failingBlockedChecks = 0;
   /** How many times collab asked for the boards without a text for search. */
   listingsWithoutSearchText = 0;
   /** How many of the next stores fail with 500, as when the database is down. */
@@ -131,6 +137,10 @@ export class FakeBackend {
         response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(missing));
         return;
       }
+      if (url.pathname === "/internal/users/blocked" && request.method === "POST") {
+        await this.handleBlocked(request, response);
+        return;
+      }
       const match = /^\/internal\/boards\/([^/]+)\/(document|access|search-text)$/.exec(request.url ?? "");
       if (!match) {
         response.writeHead(404).end();
@@ -186,6 +196,24 @@ export class FakeBackend {
       response.writeHead(405).end();
     });
     await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
+  }
+
+  private async handleBlocked(request: IncomingMessage, response: ServerResponse) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    if (request.headers["x-internal-token"] !== this.token) {
+      response.writeHead(401).end();
+      return;
+    }
+    const { userIds } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { userIds: string[] };
+    this.blockedChecks.push(userIds);
+    if (this.failingBlockedChecks > 0) {
+      this.failingBlockedChecks--;
+      response.writeHead(500).end();
+      return;
+    }
+    const blocked = userIds.filter((id) => this.blocked.has(id));
+    response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ blocked }));
   }
 
   private async handleSearchText(request: IncomingMessage, response: ServerResponse, boardId: string) {

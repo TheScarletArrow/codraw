@@ -53,6 +53,7 @@ class Backend {
     loadDraftAccess: async () => {
       throw new Error("not used");
     },
+    blockedUsers: async () => [],
   };
 }
 

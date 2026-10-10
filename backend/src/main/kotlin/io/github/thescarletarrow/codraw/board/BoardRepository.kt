@@ -76,8 +76,24 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Query("UPDATE boards SET workspace_access = :workspaceAccess WHERE id = :id AND workspace_id IS NOT NULL AND deleted_at IS NULL")
     fun updateWorkspaceAccess(id: UUID, workspaceAccess: String): Boolean
 
-    /** Changes only the link access, so that a concurrent change of the title or of the document keeps its time. */
+    /**
+     * Changes only the link access, so that a concurrent change of the title or of the document keeps its time. A board
+     * whose sharing an administrator blocked only closes its link: `false` then.
+     */
     @Modifying
-    @Query("UPDATE boards SET link_access = :linkAccess WHERE id = :id AND deleted_at IS NULL")
+    @Query(
+        "UPDATE boards SET link_access = :linkAccess WHERE id = :id AND deleted_at IS NULL " +
+            "AND (sharing_blocked_at IS NULL OR :linkAccess = 'NONE')",
+    )
     fun updateLinkAccess(id: UUID, linkAccess: String): Boolean
+
+    /** Closes the link of the board [id], in the trash too, and keeps its owner from opening it; `false` when it was. */
+    @Modifying
+    @Query("UPDATE boards SET link_access = 'NONE', sharing_blocked_at = :at WHERE id = :id AND sharing_blocked_at IS NULL")
+    fun blockSharing(id: UUID, at: Instant): Boolean
+
+    /** Lets the owner of the board [id] open its link again; `false` when it was not blocked. */
+    @Modifying
+    @Query("UPDATE boards SET sharing_blocked_at = NULL WHERE id = :id AND sharing_blocked_at IS NOT NULL")
+    fun unblockSharing(id: UUID): Boolean
 }

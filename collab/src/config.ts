@@ -9,6 +9,8 @@ export interface CollabConfig {
   jwksUrl: string;
   /** Period of checking the connections of open documents against the access to their boards, in milliseconds. */
   accessCheckInterval: number;
+  /** Period of closing the connections of users whom an administrator blocked, in milliseconds. */
+  blockedCheckInterval: number;
   /** The largest a board document may grow, in bytes. */
   documentSizeLimit: number;
   logFormat: LogFormat;
@@ -21,6 +23,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollabConfig {
     internalToken: required(env, "CODRAW_INTERNAL_TOKEN"),
     jwksUrl: required(env, "BACKEND_JWKS_URL"),
     accessCheckInterval: positiveInteger(env, "ACCESS_CHECK_INTERVAL_MS", 60_000),
+    blockedCheckInterval: positiveInteger(env, "BLOCKED_CHECK_INTERVAL_MS", 10_000),
     documentSizeLimit: positiveInteger(env, "DOCUMENT_SIZE_LIMIT_BYTES", DOCUMENT_SIZE_LIMIT),
     logFormat: logFormat(env),
   };

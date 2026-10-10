@@ -93,6 +93,20 @@ describe('Layout', () => {
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
   })
 
+  it('links the administration in the header for an administrator only', async () => {
+    mockFetch({ 'GET /api/me': { body: { ...ALICE, admin: true } }, 'GET /api/boards': { body: [] }, ...unreadCount })
+    const { unmount } = renderRoutes(routes)
+
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByRole('link', { name: 'Администрирование' })).toHaveAttribute('href', '/admin')
+    unmount()
+
+    mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] }, ...unreadCount })
+    renderRoutes(routes)
+    expect(await within(await screen.findByRole('banner')).findByText('Алиса')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Администрирование' })).toBeNull()
+  })
+
   it('shows in the header what the page puts there, out of the page', async () => {
     mockFetch({ 'GET /api/me': { body: ALICE }, ...unreadCount })
 

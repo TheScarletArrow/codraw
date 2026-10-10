@@ -12,6 +12,9 @@ spring:
             client-secret: e2e
 
 codraw:
+  admin:
+    # The test user «Админ» of the end-to-end tests administers the installation.
+    users: e2e:Админ
   limits:
     # Test users keep the boards of all runs, and every test signs in from the same address.
     boards-per-user: 1000000

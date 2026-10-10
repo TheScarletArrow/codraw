@@ -37,6 +37,11 @@ export const routes: RouteObject[] = [
       { path: 'settings/notifications', element: <NotificationSettingsPage /> },
       { path: 'settings/connections', element: <ConnectionsPage /> },
       {
+        // Only for the administrators of the installation; anybody else sees «Нет доступа».
+        path: 'admin',
+        lazy: async () => ({ Component: (await import('./pages/AdminPage.tsx')).AdminPage }),
+      },
+      {
         path: 'boards/:boardId',
         // The editor pulls in maxGraph, so it is loaded only when a board is opened.
         lazy: async () => ({ Component: (await import('./pages/BoardPage.tsx')).BoardPage }),

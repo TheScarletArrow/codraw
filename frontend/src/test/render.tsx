@@ -11,6 +11,7 @@ export const ALICE: CurrentUser = {
   name: 'Алиса',
   avatarUrl: 'https://avatars.example.com/alice.png',
   guest: false,
+  admin: false,
 }
 
 /** Renders routes in a memory router with a fresh query client, so tests can inspect navigation. */

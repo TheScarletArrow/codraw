@@ -1,5 +1,8 @@
 package io.github.thescarletarrow.codraw.security
 
+import io.github.thescarletarrow.codraw.admin.AdminAuthorizationManager
+import io.github.thescarletarrow.codraw.admin.AdminController
+import io.github.thescarletarrow.codraw.admin.BoardReportController
 import io.github.thescarletarrow.codraw.board.PublicBoardController
 import io.github.thescarletarrow.codraw.clienterror.ClientErrorController
 import io.github.thescarletarrow.codraw.collab.JwksController
@@ -51,6 +54,7 @@ class SecurityConfiguration {
     fun appSecurity(
         http: HttpSecurity,
         oauth2UserService: CodrawOAuth2UserService,
+        adminAuthorization: AdminAuthorizationManager,
         @Value("\${server.servlet.session.timeout:30m}") sessionTimeout: Duration,
     ): SecurityFilterChain {
         http {
@@ -69,6 +73,10 @@ class SecurityConfiguration {
                 // sites, with their images; the controllers check the link of the board, and the images the session too.
                 authorize(HttpMethod.GET, "${PublicBoardController.PATH}/**", permitAll)
                 authorize(HttpMethod.GET, BoardImageController.IMAGE_PATH, permitAll)
+                // Their readers report such boards to the administrators of the installation, without a sign-in too.
+                authorize(HttpMethod.POST, BoardReportController.PATH, permitAll)
+                // Only administrators of the installation, whom the configuration names, before any controller.
+                authorize("${AdminController.PATH}/**", adminAuthorization)
                 // GitHub posts events of issues without a session; they carry the signature of the secret of the webhook.
                 authorize(HttpMethod.POST, GitHubWebhookController.PATH, permitAll)
                 authorize("/error", permitAll)
@@ -81,7 +89,8 @@ class SecurityConfiguration {
                 redirectionEndpoint { baseUri = "/api/login/oauth2/code/*" }
                 userInfoEndpoint { userService = oauth2UserService }
                 authenticationSuccessHandler = ProviderSignInSuccessHandler(sessionTimeout)
-                failureUrl = "/login?error"
+                // A blocked user is told so on the login page; any other failure is an error of the sign-in.
+                authenticationFailureHandler = SignInFailureHandler()
             }
             logout {
                 logoutUrl = "/api/logout"

@@ -102,6 +102,8 @@ export interface BackendClient {
    */
   storeDraft(proposalId: string, state: Uint8Array): Promise<void>;
   loadDraftAccess(proposalId: string): Promise<DraftAccess>;
+  /** Those of the users `userIds` whom an administrator of the installation blocked; at most 1000 users at once. */
+  blockedUsers(userIds: readonly string[]): Promise<string[]>;
 }
 
 export interface BackendClientOptions {
@@ -227,6 +229,18 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
         throw new Error(`Loading access to proposal ${proposalId} failed: backend responded with ${response.status}`);
       }
       return (await response.json()) as DraftAccess;
+    },
+
+    async blockedUsers(userIds) {
+      const response = await fetch(new URL("/internal/users/blocked", baseUrl), {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds }),
+      });
+      if (!response.ok) {
+        throw new Error(`Checking for blocked users failed: backend responded with ${response.status}`);
+      }
+      return ((await response.json()) as { blocked: string[] }).blocked;
     },
   };
 }

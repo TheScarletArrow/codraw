@@ -24,6 +24,7 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.closedProposalsPerBoard") { value(20) }
             jsonPath("$.schemaImport") { value(false) }
             jsonPath("$.issues") { value(true) }
+            jsonPath("$.adminRetentionDays") { value(365) }
         }
     }
 }
@@ -35,6 +36,7 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
         "codraw.legal.contact-email=privacy@example.com",
         "codraw.guests.board-retention=14d",
         "codraw.notifications.retention=60d",
+        "codraw.admin.retention=180d",
     ],
 )
 class LegalApiWithOperatorTest(@Autowired private val mockMvc: MockMvc) {
@@ -47,6 +49,7 @@ class LegalApiWithOperatorTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.contactEmail") { value("privacy@example.com") }
             jsonPath("$.guestBoardRetentionDays") { value(14) }
             jsonPath("$.notificationRetentionDays") { value(60) }
+            jsonPath("$.adminRetentionDays") { value(180) }
         }
     }
 }

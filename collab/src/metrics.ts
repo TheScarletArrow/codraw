@@ -14,7 +14,7 @@ export type SearchTextResult = "stored" | "kept" | "failed";
  * Why collab refused a participant: at connecting (`permission-denied` for a token it does not accept, `no-access`,
  * `board-not-found`, `proposal-not-found`, `error` when the backend could not tell), for a change
  * (`document-too-large`), or by closing their connection after the access to the board or the draft changed
- * (`access-changed`).
+ * (`access-changed`); `user-blocked` both at connecting and for open connections of a user whom an administrator blocked.
  */
 export type RejectionReason =
   | "permission-denied"
@@ -23,7 +23,8 @@ export type RejectionReason =
   | "proposal-not-found"
   | "error"
   | "document-too-large"
-  | "access-changed";
+  | "access-changed"
+  | "user-blocked";
 
 const STORE_RESULTS: StoreResult[] = ["stored", "failed", "board_deleted", "proposal_closed", "proposal_deleted"];
 const SEARCH_TEXT_RESULTS: SearchTextResult[] = ["stored", "kept", "failed"];
@@ -35,6 +36,7 @@ const REJECTION_REASONS: RejectionReason[] = [
   "error",
   "document-too-large",
   "access-changed",
+  "user-blocked",
 ];
 
 export type Metrics = ReturnType<typeof createMetrics>;

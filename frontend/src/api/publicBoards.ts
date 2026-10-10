@@ -14,6 +14,18 @@ export function fetchPublicBoard(id: string): Promise<PublicBoard> {
   return request(publicBoardPath(id))
 }
 
+/** Why a reader reports a board to the administrators of the installation. */
+export type ReportReason = 'spam' | 'illegal' | 'abuse' | 'other'
+
+/** Reports the board to the administrators; 429 when this address sent too many reports. */
+export function reportBoard(id: string, reason: ReportReason, message: string): Promise<void> {
+  return request(`${publicBoardPath(id)}/reports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, message }),
+  })
+}
+
 /**
  * The stored state of the document of the board, empty before its first store. The browser keeps the state and asks
  * again with its tag, so that the state of a board that did not change comes from the cache.

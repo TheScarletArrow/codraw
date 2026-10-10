@@ -25,6 +25,12 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('tells a user whom an administrator blocked why they did not sign in', () => {
+    renderRoutes(routes, '/login?blocked')
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Учётная запись заблокирована администратором установки.')
+  })
+
   it('says that signing in accepts the terms of use and the privacy policy, with links to them', () => {
     renderRoutes(routes, '/login')
 

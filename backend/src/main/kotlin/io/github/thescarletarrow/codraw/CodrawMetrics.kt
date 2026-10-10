@@ -38,6 +38,8 @@ enum class Limit(val tag: String) {
     WORKSPACE_INVITES("workspace-invites"),
     WORKSPACE_PROJECTS("workspace-projects"),
     WORKSPACE_BOARDS("workspace-boards"),
+    REPORTS("reports"),
+    BOARD_REPORTS("board-reports"),
 }
 
 /** How an attempt to send a message of a notification to a channel ended; the tag of [CodrawMetrics.notificationDelivery]. */

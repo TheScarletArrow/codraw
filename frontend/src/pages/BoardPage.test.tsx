@@ -525,6 +525,20 @@ describe('BoardPage', () => {
       expect(provider.disconnected).toBe(true)
     })
 
+    it('connects no more and checks the session when an administrator blocked the user', async () => {
+      const provider = await openBoard({
+        'GET /api/me': [{ body: ALICE }, { status: 401 }],
+        [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }],
+      })
+      act(() => provider.emitSynced())
+
+      act(() => provider.emitClose('user-blocked'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Нет доступа')
+      expect(provider.disconnected).toBe(true)
+      await waitFor(() => expect(requests(provider.fetchMock, 'GET', '/api/me')).toHaveLength(2))
+    })
+
     it('shows "Нет доступа" when the owner closed the link while the participant works on the board', async () => {
       const provider = await openBoard({ [`GET ${boardUrl}`]: [{ body: boardOfAnother }, { status: 403 }] })
       act(() => provider.emitSynced())
