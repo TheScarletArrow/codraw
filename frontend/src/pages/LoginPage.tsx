@@ -64,7 +64,7 @@ export function LoginPage() {
         {/* With `?blocked` when an administrator of the installation blocked the user. */}
         {params.has('blocked') && (
           <p role="alert" className="text-destructive">
-            Учётная запись заблокирована администратором установки.
+            {m.blocked}
           </p>
         )}
         <p className="text-xs text-muted-foreground">

@@ -164,8 +164,7 @@ export function ShareButton({
         </div>
         {board.sharingBlocked && (
           <p role="note" className="rounded-md bg-amber-100 px-2 py-1.5 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
-            Доступ по ссылке закрыт администратором установки: доску открывают только её участники, а живая картинка
-            выключена.
+            {m.sharingBlocked}
           </p>
         )}
         {isOwner ? (

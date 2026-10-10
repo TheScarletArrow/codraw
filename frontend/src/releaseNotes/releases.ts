@@ -49,12 +49,24 @@ export const releases: Release[] = [
     date: '2026-10-10',
     items: [
       {
-        title: 'Пожаловаться на доску',
-        text: 'На странице доски, открытой без входа, есть кнопка «Пожаловаться»: выберите причину — спам, незаконное содержимое, оскорбления или другое, — опишите, что не так, и жалоба уйдёт администраторам этой установки CoDraw. Ваш адрес с жалобой не сохраняется.',
+        ru: {
+          title: 'Пожаловаться на доску',
+          text: 'На странице доски, открытой без входа, есть кнопка «Пожаловаться»: выберите причину — спам, незаконное содержимое, оскорбления или другое, — опишите, что не так, и жалоба уйдёт администраторам этой установки CoDraw. Ваш адрес с жалобой не сохраняется.',
+        },
+        en: {
+          title: 'Report a board',
+          text: 'The page of a board opened without signing in has a “Report” button: choose the reason — spam, illegal content, insults or something else — describe what is wrong, and the report goes to the administrators of this installation of CoDraw. Your address is not stored with the report.',
+        },
       },
       {
-        title: 'Администрирование установки',
-        text: 'Администраторы, которых назначает оператор установки, в том числе из корпоративного входа, видят в шапке «Администрирование»: жалобы читателей, поиск пользователей и досок, сведения о доске с владельцем, размером и доступом. Нарушителя можно заблокировать — он сразу выходит отовсюду и не может войти — или удалить его учётную запись, а у доски закрыть доступ по ссылке и живую картинку или перенести её в корзину. Каждое такое действие записывается в журнал. Владелец доски, у которой администратор закрыл доступ, видит это в окне «Поделиться».',
+        ru: {
+          title: 'Администрирование установки',
+          text: 'Администраторы, которых назначает оператор установки, в том числе из корпоративного входа, видят в шапке «Администрирование»: жалобы читателей, поиск пользователей и досок, сведения о доске с владельцем, размером и доступом. Нарушителя можно заблокировать — он сразу выходит отовсюду и не может войти — или удалить его учётную запись, а у доски закрыть доступ по ссылке и живую картинку или перенести её в корзину. Каждое такое действие записывается в журнал. Владелец доски, у которой администратор закрыл доступ, видит это в окне «Поделиться».',
+        },
+        en: {
+          title: 'Administration of the installation',
+          text: 'Administrators appointed by the operator of the installation, including from the corporate sign-in, see “Administration” in the header: reports of readers, the search for users and boards, information about a board with its owner, size and access. An offender can be blocked — they are signed out everywhere at once and cannot sign in — or their account deleted, and a board can have its link access and live image closed or be moved to the trash. Every such action is written to the journal. The owner of a board whose access an administrator closed sees it in the “Share” window.',
+        },
       },
     ],
   },

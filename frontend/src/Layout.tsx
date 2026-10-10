@@ -100,7 +100,7 @@ function UserMenu({ user }: { user: CurrentUser }) {
       <ThemeMenu />
       {user.admin && (
         <Button asChild variant="ghost" size="icon-sm">
-          <Link to="/admin" aria-label="Администрирование" title="Администрирование установки">
+          <Link to="/admin" aria-label={m.admin} title={m.adminHint}>
             <ShieldCheck />
           </Link>
         </Button>

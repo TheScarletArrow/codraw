@@ -31,6 +31,8 @@ export const shareMessages = defineMessages({
     shareWaiting: (count: number) =>
       `Поделиться (${count} ${pluralRu(count, 'запрос доступа', 'запроса доступа', 'запросов доступа')})`,
     share: 'Поделиться',
+    sharingBlocked:
+      'Доступ по ссылке закрыт администратором установки: доску открывают только её участники, а живая картинка выключена.',
     shareBoard: 'Поделиться доской',
     boardLink: 'Ссылка на доску',
     linkAccessTitle: 'Доступ по ссылке',
@@ -136,6 +138,8 @@ export const shareMessages = defineMessages({
     },
     shareWaiting: (count: number) => `Share (${count} access ${pluralEn(count, 'request', 'requests')})`,
     share: 'Share',
+    sharingBlocked:
+      'Link access is closed by the administrator of the installation: only the members of the board open it, and the live image is off.',
     shareBoard: 'Share board',
     boardLink: 'Link to the board',
     linkAccessTitle: 'Access by the link',

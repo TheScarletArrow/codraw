@@ -129,12 +129,25 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           <li>
             <strong>Technical data.</strong> Cookies (see below), the network address and the browser — in the request
             logs of the server, and the address also for a short time in the memory of the server, to limit the number
-            of new guests and error reports from one address.
+            of new guests, reports and error reports from one address.
           </li>
           <li>
             <strong>Error reports.</strong> If an error of CoDraw happens in the browser, the server receives its text,
             the place in the code, the address of the page without parameters and information about the browser. Error
             reports contain no content of boards.
+          </li>
+          <li>
+            <strong>Reports.</strong> A report on a board opened without signing in: the board, the reason, the text,
+            the time and the account of the sender, if they signed in; the network address of the sender is not stored
+            with the report. When an administrator closes a report, their name and the time are kept.
+          </li>
+          <li>
+            <strong>Journal of administrators.</strong> What the administrators of this installation did: who, what,
+            when and with which account or board — with their names at that moment. An administrator can block an
+            account (signing in closes, sessions and connections to boards end) or delete it, as when the user deletes
+            it, together with all personal boards, close link access to a board and its live image and move the board
+            to the trash; doing so, they see the name, the sign-in provider and the identifier at it, the number of
+            boards of the user, and for a board — the owner, the size and the access settings, but not its content.
           </li>
           {legal.issues && (
             <li>
@@ -161,7 +174,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <h2 id="privacy-purposes">Why</h2>
         <p className="mt-2">
           So that you can sign in, create boards and work on them together with others; to protect the service from
-          abuse and overload; to find and fix errors. We do not use the data for advertising and do not build profiles
+          abuse and overload, to handle reports and to account for the actions of administrators; to find and fix
+          errors. We do not use the data for advertising and do not build profiles
           of users.
         </p>
       </section>
@@ -301,6 +315,11 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           {legal.schemaImport && (
             <li>Database credentials — only for the time of one connection to it; they are not stored.</li>
           )}
+          <li>
+            A report — until an administrator closes it, and no longer than the board; a closed report and the entries
+            of the journal of administrators — {legalMessages.days(legal.adminRetentionDays)}, including after the
+            deletion of the account or the board they are about.
+          </li>
           {legal.backupRetentionDays !== null && (
             <li>
               Backups of the database and images — up to {legalMessages.days(legal.backupRetentionDays)}: data you
@@ -334,7 +353,9 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           even when access to the board is closed; turning it off deletes the image. If the owner has chosen the link
           access “Anyone with the link, without signing in”, the board — its pages with labels, images, statuses of
           elements and who changed the elements — is seen by anyone who has the link, without signing in, including on
-          other websites where it is embedded; they do not see comments, members and presence. A copy of a board made
+          other websites where it is embedded; they do not see comments, members and presence. Reports and the journal of the actions of
+          administrators are seen only by the administrators of this installation, appointed by its operator. A copy of
+          a board made
           by its member takes the document with images to their new board, and with it the names of those who changed
           elements, wrote stickies and set statuses; the members of the copy see them. Members, comments, the version
           history and change proposals do not go to the copy. If you have set up
