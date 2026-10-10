@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { setLocale } from '../i18n/i18n.ts'
 import { loadDocument, MAX_DOCUMENT_SIZE, position } from './loadDocument.ts'
 
 const load = (text: string, name = 'api.yaml') => loadDocument({ name, text })
@@ -18,6 +19,11 @@ describe('loadDocument', () => {
     )
     await expect(load('paths:\n  /a: 1\n  /a: 2\n')).rejects.toThrow('api.yaml: строка 3, столбец 3 — ключ повторяется')
     await expect(load('a: 1\n---\nb: 2\n')).rejects.toThrow(/в файле несколько документов$/)
+  })
+
+  it('names the line, the column and the reason in English', async () => {
+    setLocale('en')
+    await expect(load('paths:\n  /a: 1\n  /a: 2\n')).rejects.toThrow('api.yaml: line 3, column 3 — duplicate key')
   })
 
   it('tells the line of an error of JSON, which JSON.parse does not', async () => {

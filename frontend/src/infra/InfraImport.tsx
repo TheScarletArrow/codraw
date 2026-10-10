@@ -2,16 +2,15 @@ import { ArrowLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { MAX_DOCUMENT_SIZE, type ApiSource } from '../apiSpec/loadDocument.ts'
+import { documentMessages as d } from '../apiSpec/messages.ts'
 import type { CellData } from '../diagram/model.ts'
 import { reportError } from '../errors/reporting.ts'
 import type { InfraFormat } from './formats.ts'
 import { infraCells } from './infraCells.ts'
+import { infraMessages as m } from './messages.tsx'
 
 /** How long the text rests before it is parsed: parsing a large document of YAML takes a while. */
 const PARSE_DELAY = 200
-
-/** The text of the field among the files, as errors name it. */
-const TEXT_SOURCE = 'Текст'
 
 interface InfraImportProps<Parsed> {
   format: InfraFormat<Parsed>
@@ -47,7 +46,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
   const [parsed, setParsed] = useState<Result<Parsed> | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
-  const sources = useMemo(() => (text.trim() === '' ? files : [...files, { name: TEXT_SOURCE, text }]), [files, text])
+  const sources = useMemo(() => (text.trim() === '' ? files : [...files, { name: d.text, text }]), [files, text])
 
   useEffect(() => {
     if (sources.length === 0) return
@@ -59,7 +58,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
         .catch((failure: unknown) => {
           // A file that cannot be imported is an error of its own: this is a fault of CoDraw.
           reportError('error', failure)
-          if (current) setParsed({ sources, parsed: null, errors: ['Не удалось разобрать файлы'] })
+          if (current) setParsed({ sources, parsed: null, errors: [m.parseFailed] })
         })
     }, PARSE_DELAY)
     return () => {
@@ -77,7 +76,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
   )
   const tooLarge = graph ? format.error(graph) : null
   const errors = [...(result?.errors ?? []), ...(tooLarge ? [tooLarge] : []), ...(error ? [error] : [])]
-  const status = graph && result?.parsed ? format.summary(result.parsed, graph) : sources.length === 0 ? format.hint : pending ? 'Разбор…' : null
+  const status = graph && result?.parsed ? format.summary(result.parsed, graph) : sources.length === 0 ? format.hint : pending ? d.parsing : null
   const warnings = graph && result?.parsed && format.warnings ? format.warnings(result.parsed, graph) : []
   const limit = format.maxSize ?? MAX_DOCUMENT_SIZE
 
@@ -91,7 +90,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
   return (
     <>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={onBack}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={d.back} onClick={onBack}>
           <ArrowLeft />
         </Button>
         <h2 className="text-sm font-semibold">{format.title}</h2>
@@ -107,7 +106,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
       />
       <div className="flex items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => input.current?.click()}>
-          Открыть файлы
+          {d.openFiles}
         </Button>
         <input
           ref={input}
@@ -120,25 +119,25 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
         />
         {files.length > 0 && (
           <span className="truncate text-xs text-muted-foreground" title={files.map((file) => file.name).join(', ')}>
-            Файлов: {files.length}
+            {d.fileCount} {files.length}
           </span>
         )}
       </div>
       {format.options.includes('environment') && (
-        <label className="flex items-center gap-2 text-sm" title="Адреса других сервисов в переменных окружения — связями с протоколом">
+        <label className="flex items-center gap-2 text-sm" title={m.environmentTitle}>
           <input type="checkbox" checked={environment} onChange={(event) => setEnvironment(event.target.checked)} />
-          Связи по переменным окружения
+          {m.environment}
         </label>
       )}
       {format.options.includes('c4') && (
-        <label className="flex items-center gap-2 text-sm" title="Фигуры Container и Database нотации C4">
+        <label className="flex items-center gap-2 text-sm" title={m.c4Title}>
           <input type="checkbox" checked={c4} onChange={(event) => setC4(event.target.checked)} />
-          Фигуры C4
+          {m.c4}
         </label>
       )}
       {format.limits && (
         <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer select-none">Ограничения формата</summary>
+          <summary className="cursor-pointer select-none">{m.limits}</summary>
           <ul className="mt-1 flex list-disc flex-col gap-1 pl-4">
             {format.limits.map((line) => (
               <li key={line}>{line}</li>
@@ -152,7 +151,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
         </p>
       )}
       {warnings.length > 0 && (
-        <ul aria-label="Предупреждения" className="flex flex-col gap-1 text-xs text-amber-700 dark:text-amber-400">
+        <ul aria-label={m.warnings} className="flex flex-col gap-1 text-xs text-amber-700 dark:text-amber-400">
           {warnings.map((warning, index) => (
             <li key={index} className="break-words">
               {warning}
@@ -175,7 +174,7 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
         disabled={busy || pending || !graph || tooLarge !== null}
         onClick={() => graph && onAdd((origin) => infraCells(graph, origin, undefined, sourcePrefix))}
       >
-        Добавить на страницу
+        {d.addToPage}
       </Button>
       {onUpdate && (
         <Button
@@ -183,9 +182,9 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
           variant="outline"
           size="sm"
           disabled={busy || pending || !graph || tooLarge !== null}
-          onClick={() => graph && onUpdate(sourceTitle(sources, format.title), format.summary(result!.parsed!, graph), (origin) => infraCells(graph, origin, undefined, sourcePrefix))}
+          onClick={() => graph && onUpdate(sourceTitle(sources, format.source), format.summary(result!.parsed!, graph), (origin) => infraCells(graph, origin, undefined, sourcePrefix))}
         >
-          Обновить через предложение
+          {d.updateViaProposal}
         </Button>
       )}
     </>
@@ -193,4 +192,4 @@ export function InfraImport<Parsed>({ format, onAdd, onUpdate, sourcePrefix = 'i
 }
 
 const sourceTitle = (sources: ApiSource[], fallback: string) =>
-  sources.length === 1 ? sources[0]!.name : sources.length > 1 ? `${sources.length} файлов` : fallback.replace(/^Импорт\s+/, '')
+  sources.length === 1 ? sources[0]!.name : sources.length > 1 ? m.sourceFiles(sources.length) : fallback

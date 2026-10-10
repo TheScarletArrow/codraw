@@ -6,6 +6,7 @@ import { diagramTables } from './erDiagram.ts'
 import type { SqlIndex } from './parseSql.ts'
 import { sameType, widensType } from './sqlTypes.ts'
 import { indexColumnNames, mapIndexColumns, writtenName } from './tableIndex.ts'
+import { sqlMessages } from './messages.ts'
 
 /**
  * A migration of the schema of a database between two states of a board, e.g. from a version to the board now. Tables,
@@ -370,7 +371,7 @@ class Planner {
     const rendered = this.dialect.render(operation)
     return {
       phase: Math.floor(phase),
-      comments: [...(warning ? [`ВНИМАНИЕ: ${warning}`] : []), ...rendered.notes],
+      comments: [...(warning ? [sqlMessages.warning(warning)] : []), ...rendered.notes],
       sql: rendered.sql,
       dangerous: warning !== null,
       unsupported: rendered.unsupported,
@@ -414,7 +415,7 @@ class Planner {
       this.step(
         PHASE.dropColumns,
         { type: 'dropColumn', table: before.name, column: column.name },
-        `столбец ${before.name}.${column.name} удаляется вместе с данными`,
+        sqlMessages.columnDropped(`${before.name}.${column.name}`),
       )
     }
     const renames = columns.pairs.map(([earlier, later]) => ({ from: earlier.name, to: later.name }))
@@ -433,7 +434,7 @@ class Planner {
         PHASE.alterColumns,
         { type: 'alterColumn', table: after.name, from: definition(earlier), to: definition(later), retyped },
         narrowed
-          ? `тип ${after.name}.${later.name} меняется с ${earlier.type} на ${later.type}: значения могут не преобразоваться или обрезаться`
+          ? sqlMessages.typeNarrowed(`${after.name}.${later.name}`, earlier.type, later.type)
           : null,
       )
     }
@@ -551,7 +552,7 @@ class Planner {
         continue
       }
       removed.delete(next)
-      this.step(PHASE.dropTables, { type: 'dropTable', table: next.name }, `таблица ${next.name} удаляется вместе с данными`)
+      this.step(PHASE.dropTables, { type: 'dropTable', table: next.name }, sqlMessages.tableDropped(next.name))
     }
   }
 

@@ -3,6 +3,7 @@ import { addressedHosts } from './addresses.ts'
 import { imageKind, type ImageKind } from './imageKind.ts'
 import { InfraEdges, type InfraGraph, type InfraOptions } from './infraGraph.ts'
 import { MAX_SERVICES, type ComposeService } from './parseCompose.ts'
+import { infraMessages } from './messages.tsx'
 
 /** The image of a service, else where it is built: the directory of the build, or the Dockerfile in it. */
 export function technology(service: ComposeService): string | null {
@@ -67,12 +68,12 @@ export function composeGraph(services: ComposeService[], { environment, c4 }: In
 
 /** What the import adds, for the summary before it. */
 export function composeSummary(graph: InfraGraph): string {
-  return `Сервисов: ${graph.nodes.length}, связей: ${graph.edges.length}, сетей: ${graph.frames.length}`
+  return infraMessages.compose.summary(graph.nodes.length, graph.edges.length, graph.frames.length)
 }
 
 /** Why the graph is too large to add, or `null`. */
 export function composeGraphError(graph: InfraGraph): string | null {
   return graph.nodes.length > MAX_SERVICES
-    ? `Слишком много сервисов: ${graph.nodes.length}, за раз можно добавить не больше ${MAX_SERVICES} — откройте меньше файлов`
+    ? infraMessages.compose.tooMany(graph.nodes.length, MAX_SERVICES)
     : null
 }

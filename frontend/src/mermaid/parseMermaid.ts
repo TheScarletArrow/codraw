@@ -1,5 +1,6 @@
 import type { SqlColumn, SqlTable } from '../sql/parseSql.ts'
 import { parseSequence, type SequenceMermaid } from './sequenceMermaid.ts'
+import { mermaidMessages } from './messages.ts'
 
 /** How a node of a flowchart is drawn, as far as the palette has it. */
 export type NodeShape = 'rectangle' | 'rounded' | 'ellipse' | 'rhombus' | 'database'
@@ -100,9 +101,7 @@ export function parseMermaid(text: string): MermaidDiagram {
   if (/^(flowchart|graph)\b/.test(header)) return parseFlowchart(header, lines.slice(1))
   if (/^erDiagram\b/.test(header)) return parseErDiagram(lines.slice(1))
   if (/^sequenceDiagram\b/.test(header)) return parseSequence(lines.slice(1))
-  throw new MermaidError(
-    'CoDraw рисует из Mermaid блок-схемы (flowchart, graph), ER-диаграммы (erDiagram) и диаграммы последовательности (sequenceDiagram)',
-  )
+  throw new MermaidError(mermaidMessages.unsupportedKind)
 }
 
 /** Text of a label: quotes and Markdown marks away, `<br>` as a new line. */

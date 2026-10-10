@@ -26,11 +26,12 @@ import { isLegendStyle } from '../diagram/legend.ts'
 import { htmlToText } from './labels.ts'
 import { isLegendPart, legendFromFile } from './legendDrawio.ts'
 import { parseStyle } from './style.ts'
+import { drawioMessages } from './messages.ts'
 
 /** The file is not a draw.io diagram. */
 export class DrawioFormatError extends Error {
-  constructor(message = 'Это не файл draw.io', options?: ErrorOptions) {
-    super(message, options)
+  constructor(message?: string, options?: ErrorOptions) {
+    super(message ?? drawioMessages.notDrawio, options)
     this.name = 'DrawioFormatError'
   }
 }
@@ -62,7 +63,7 @@ export async function parseDrawio(text: string): Promise<DrawioPage[]> {
     if (!content) throw new DrawioFormatError()
     root = parseXml(content)
   }
-  if (root.nodeName === 'mxGraphModel') return [readModel(root, null, 'Страница 1')]
+  if (root.nodeName === 'mxGraphModel') return [readModel(root, null, drawioMessages.page(1))]
   if (root.nodeName !== 'mxfile') throw new DrawioFormatError()
 
   const diagrams = childElements(root, 'diagram')
@@ -71,7 +72,7 @@ export async function parseDrawio(text: string): Promise<DrawioPage[]> {
   for (const [index, diagram] of diagrams.entries()) {
     const model = childElements(diagram, 'mxGraphModel')[0] ?? parseXml(await decompress(diagram.textContent ?? ''))
     if (model.nodeName !== 'mxGraphModel') throw new DrawioFormatError()
-    pages.push(readModel(model, diagram.getAttribute('id'), diagram.getAttribute('name') || `Страница ${index + 1}`))
+    pages.push(readModel(model, diagram.getAttribute('id'), diagram.getAttribute('name') || drawioMessages.page(index + 1)))
   }
   return pages
 }

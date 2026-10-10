@@ -6,15 +6,10 @@ import { reportError } from '../errors/reporting.ts'
 import { apiGraph, apiGraphError, apiSpecCells, apiSummary } from './apiSpecCells.ts'
 import { MAX_DOCUMENT_SIZE, type ApiSource } from './loadDocument.ts'
 import { parseApiSpecs, type ApiSpec } from './parseApiSpec.ts'
+import { apiSpecMessages as m, documentMessages as d } from './messages.ts'
 
 /** How long the text rests before it is parsed: parsing a large document of YAML takes a while. */
 const PARSE_DELAY = 200
-
-/** What the window says before it has a document. */
-const HINT = 'OpenAPI 3 или Swagger 2.0, AsyncAPI 2 или 3 — в YAML или JSON'
-
-/** The text of the field among the documents, as errors name it. */
-const TEXT_SOURCE = 'Текст'
 
 interface ApiSpecImportProps {
   /** Adds the cells built for a top-left corner to the page. */
@@ -45,7 +40,7 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
   const [parsed, setParsed] = useState<Parsed | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
-  const sources = useMemo(() => (text.trim() === '' ? files : [...files, { name: TEXT_SOURCE, text }]), [files, text])
+  const sources = useMemo(() => (text.trim() === '' ? files : [...files, { name: d.text, text }]), [files, text])
 
   useEffect(() => {
     if (sources.length === 0) return
@@ -56,7 +51,7 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
         .catch((failure: unknown) => {
           // A document that cannot be imported is an error of its own: this is a fault of CoDraw.
           reportError('error', failure)
-          if (current) setParsed({ sources, specs: [], errors: ['Не удалось разобрать документы'] })
+          if (current) setParsed({ sources, specs: [], errors: [m.parseFailed] })
         })
     }, PARSE_DELAY)
     return () => {
@@ -71,7 +66,7 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
   const graph = useMemo(() => (result && result.specs.length > 0 ? apiGraph(result.specs, { models }) : null), [result, models])
   const tooLarge = graph ? apiGraphError(graph) : null
   const errors = [...(result?.errors ?? []), ...(tooLarge ? [tooLarge] : []), ...(error ? [error] : [])]
-  const status = graph ? apiSummary(graph) : sources.length === 0 ? HINT : pending ? 'Разбор…' : null
+  const status = graph ? apiSummary(graph) : sources.length === 0 ? m.hint : pending ? d.parsing : null
 
   const openFiles = async (list: FileList | null) => {
     if (!list) return
@@ -83,13 +78,13 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
   return (
     <>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={onBack}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={d.back} onClick={onBack}>
           <ArrowLeft />
         </Button>
-        <h2 className="text-sm font-semibold">Импорт OpenAPI / AsyncAPI</h2>
+        <h2 className="text-sm font-semibold">{m.title}</h2>
       </div>
       <textarea
-        aria-label="OpenAPI или AsyncAPI"
+        aria-label={m.textLabel}
         placeholder={'openapi: 3.0.3\ninfo:\n  title: Petstore\npaths:\n  /pets:\n    get: …'}
         rows={8}
         spellCheck={false}
@@ -99,7 +94,7 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
       />
       <div className="flex items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => input.current?.click()}>
-          Открыть файлы
+          {d.openFiles}
         </Button>
         <input
           ref={input}
@@ -107,18 +102,18 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
           accept=".yaml,.yml,.json"
           multiple
           hidden
-          aria-label="Файлы OpenAPI и AsyncAPI"
+          aria-label={m.filesLabel}
           onChange={(event) => void openFiles(event.target.files)}
         />
         {files.length > 0 && (
           <span className="truncate text-xs text-muted-foreground" title={files.map((file) => file.name).join(', ')}>
-            Файлов: {files.length}
+            {d.fileCount} {files.length}
           </span>
         )}
       </div>
-      <label className="flex items-center gap-2 text-sm" title="Схемы данных — таблицами с полем на свойство и связями по $ref">
+      <label className="flex items-center gap-2 text-sm" title={m.modelsTitle}>
         <input type="checkbox" checked={models} onChange={(event) => setModels(event.target.checked)} />
-        Модели таблицами
+        {m.models}
       </label>
       {status && (
         <p role="status" className="text-xs text-muted-foreground">
@@ -140,7 +135,7 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
         disabled={busy || pending || !graph || tooLarge !== null}
         onClick={() => graph && onAdd((origin) => apiSpecCells(graph, origin, undefined, 'api'))}
       >
-        Добавить на страницу
+        {d.addToPage}
       </Button>
       {onUpdate && (
         <Button
@@ -150,7 +145,7 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
           disabled={busy || pending || !graph || tooLarge !== null}
           onClick={() => graph && onUpdate(sourceTitle(sources), apiSummary(graph), (origin) => apiSpecCells(graph, origin, undefined, 'api'))}
         >
-          Обновить через предложение
+          {d.updateViaProposal}
         </Button>
       )}
     </>
@@ -158,4 +153,4 @@ export function ApiSpecImport({ onAdd, onUpdate, onBack, busy, error }: ApiSpecI
 }
 
 const sourceTitle = (sources: ApiSource[]) =>
-  sources.length === 1 ? sources[0]!.name : sources.length > 1 ? `${sources.length} файлов OpenAPI / AsyncAPI` : 'OpenAPI / AsyncAPI'
+  sources.length === 1 ? sources[0]!.name : sources.length > 1 ? m.sourceFiles(sources.length) : 'OpenAPI / AsyncAPI'

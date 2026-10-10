@@ -7,6 +7,7 @@ import { schemaCells, type TableLink } from '../sql/erDiagram.ts'
 import type { SqlColumn, SqlSchema, SqlTable } from '../sql/parseSql.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import type { Cardinality, ErDiagram, Flowchart, MermaidDiagram, NodeShape } from './parseMermaid.ts'
+import { mermaidMessages } from './messages.ts'
 
 const SHAPES: Record<NodeShape, ShapeId> = {
   rectangle: 'rectangle',
@@ -162,12 +163,18 @@ export function mermaidCells(
 /** What the import of a diagram adds, for the summary before it. */
 export function mermaidSummary(diagram: MermaidDiagram): string {
   if (diagram.kind === 'flowchart') {
-    return `Узлов: ${diagram.nodes.length}, связей: ${diagram.edges.length}, рамок: ${diagram.subgraphs.length}, пропущено строк: ${diagram.skipped}`
+    return mermaidMessages.flowchartSummary(diagram.nodes.length, diagram.edges.length, diagram.subgraphs.length, diagram.skipped)
   }
   if (diagram.kind === 'sequence') {
     const { participants, steps } = diagram.diagram
     const count = (type: string) => steps.filter((step) => step.type === type).length
-    return `Участников: ${participants.length}, сообщений: ${count('message')}, рамок: ${count('frame')}, заметок: ${count('note')}, пропущено строк: ${diagram.skipped}`
+    return mermaidMessages.sequenceSummary(
+      participants.length,
+      count('message'),
+      count('frame'),
+      count('note'),
+      diagram.skipped,
+    )
   }
-  return `Таблиц: ${diagram.tables.length}, связей: ${diagram.relations.length}, пропущено строк: ${diagram.skipped}`
+  return mermaidMessages.erSummary(diagram.tables.length, diagram.relations.length, diagram.skipped)
 }

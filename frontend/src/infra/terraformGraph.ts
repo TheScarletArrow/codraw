@@ -2,6 +2,7 @@ import type { ShapeId } from '../diagram/shapes.ts'
 import { InfraEdges, type InfraEdge, type InfraFrame, type InfraGraph, type InfraNode, type InfraOptions } from './infraGraph.ts'
 import { moduleAddress, type TerraformResource, type TerraformStack } from './parseTerraform.ts'
 import { resourceKind } from './resourceKind.ts'
+import { infraMessages } from './messages.tsx'
 
 /** Resources one import adds at most: more would not fit a page that people read. */
 export const MAX_TERRAFORM_RESOURCES = 300
@@ -37,8 +38,8 @@ export function detailsLine(resource: TerraformResource): string | null {
 /** The description of the element: the address, the provider and the safe attributes it has. */
 function description(resource: TerraformResource): string {
   return [
-    `Terraform: ${resource.address}${resource.instances > 1 ? `, экземпляров: ${resource.instances}` : ''}`,
-    ...(resource.provider ? [`Провайдер: ${resource.provider}`] : []),
+    `Terraform: ${resource.address}${resource.instances > 1 ? infraMessages.terraform.instances(resource.instances) : ''}`,
+    ...(resource.provider ? [infraMessages.terraform.provider(resource.provider)] : []),
     ...resource.attributes.map(([name, value]) => `${name} = ${value}`),
   ].join('\n')
 }
@@ -131,11 +132,11 @@ export function terraformGraph(stacks: TerraformStack[], { c4 }: InfraOptions): 
 export function terraformSummary(stacks: TerraformStack[], graph: InfraGraph): string {
   const several = stacks.length > 1
   const modules = graph.frames.length - (several ? stacks.length : 0)
-  return `Ресурсов: ${graph.nodes.length}, связей: ${graph.edges.length}, модулей: ${modules}${several ? `, стеков: ${stacks.length}` : ''}`
+  return infraMessages.terraform.summary(graph.nodes.length, graph.edges.length, modules) + (several ? infraMessages.terraform.stacks(stacks.length) : '')
 }
 
 const listed = (items: string[], most = LISTED) =>
-  items.length > most ? `${items.slice(0, most).join(', ')} и ещё ${items.length - most}` : items.join(', ')
+  items.length > most ? infraMessages.terraform.andMore(items.slice(0, most).join(', '), items.length - most) : items.join(', ')
 
 /**
  * What the participant should know before adding: the types drawn with a universal shape, links to resources the files
@@ -149,17 +150,17 @@ export function terraformWarnings(stacks: TerraformStack[]): string[] {
   const warnings: string[] = []
   if (generic.size > 0) {
     const types = [...generic].map(([type, count]) => (count > 1 ? `${type} ×${count}` : type))
-    warnings.push(`Своей фигуры нет, нарисованы универсальной: ${listed(types, LISTED_TYPES)}`)
+    warnings.push(infraMessages.terraform.generic(listed(types, LISTED_TYPES)))
   }
   for (const stack of stacks) {
-    if (stack.errored) warnings.push(`${stack.name}: план завершился с ошибкой — ресурсов может не хватать`)
+    if (stack.errored) warnings.push(infraMessages.terraform.errored(stack.name))
     if (stack.missing.length > 0) {
-      warnings.push(`${stack.name}: нет в файле, связи не показаны: ${listed(stack.missing.map(([from, to]) => `${from} → ${to}`))}`)
+      warnings.push(infraMessages.terraform.missing(stack.name, listed(stack.missing.map(([from, to]) => `${from} → ${to}`))))
     }
     if (stack.locals.length > 0) {
-      warnings.push(`${stack.name}: план не выводит local.*, связи через них могут отсутствовать: ${listed(stack.locals)}`)
+      warnings.push(infraMessages.terraform.locals(stack.name, listed(stack.locals)))
     }
-    if (stack.deleted.length > 0) warnings.push(`${stack.name}: план удаляет, на схеме их нет: ${listed(stack.deleted)}`)
+    if (stack.deleted.length > 0) warnings.push(infraMessages.terraform.deleted(stack.name, listed(stack.deleted)))
   }
   return warnings
 }
@@ -167,6 +168,6 @@ export function terraformWarnings(stacks: TerraformStack[]): string[] {
 /** Why the graph is too large to add, or `null`. */
 export function terraformGraphError(graph: InfraGraph): string | null {
   return graph.nodes.length > MAX_TERRAFORM_RESOURCES
-    ? `Слишком много ресурсов: ${graph.nodes.length}, за раз можно добавить не больше ${MAX_TERRAFORM_RESOURCES}`
+    ? infraMessages.terraform.tooMany(graph.nodes.length, MAX_TERRAFORM_RESOURCES)
     : null
 }

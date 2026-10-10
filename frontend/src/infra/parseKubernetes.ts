@@ -1,4 +1,5 @@
 import { ApiSpecError, loadDocuments, type ApiSource } from '../apiSpec/loadDocument.ts'
+import { infraMessages } from './messages.tsx'
 
 /** The namespace of an object without one, as `kubectl apply` without `-n` puts it. */
 export const DEFAULT_NAMESPACE = 'default'
@@ -189,13 +190,13 @@ const HELM_TEMPLATE = /\{\{[\s\S]*?\}\}/
  */
 export async function parseKubernetes(source: ApiSource): Promise<KubeObjects> {
   if (HELM_TEMPLATE.test(source.text)) {
-    throw new ApiSpecError(`${source.name}: это шаблон Helm — выполните helm template и откройте результат`)
+    throw new ApiSpecError(infraMessages.kubernetes.helmTemplate(source.name))
   }
   const objects = (await loadDocuments(source))
     .flatMap(objectsOf)
     .filter((object) => typeof object.apiVersion === 'string' && typeof object.kind === 'string')
   if (objects.length === 0) {
-    throw new ApiSpecError(`${source.name}: это не манифесты Kubernetes — нет объектов с apiVersion и kind`)
+    throw new ApiSpecError(infraMessages.kubernetes.notManifests(source.name))
   }
   const result: KubeObjects = { workloads: [], services: [], gateways: [], configMaps: [], namespaces: [] }
   for (const object of objects) {

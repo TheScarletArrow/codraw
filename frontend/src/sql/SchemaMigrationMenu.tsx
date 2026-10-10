@@ -17,6 +17,7 @@ import {
   type MigrationStates,
 } from './migrationFiles.ts'
 import type { SqlFile } from './parseSql.ts'
+import { schemaMigrationMessages as m } from './SchemaMigrationMenu.messages.ts'
 
 /** Two states of a board: the schema as the database has it, and as it is to be. */
 export interface MigrationSources {
@@ -41,8 +42,6 @@ const FORMATS: { id: MigrationFormat; label: string }[] = [
 ]
 
 type Message = 'copied' | 'copy-failed'
-
-const MESSAGES: Record<Message, string> = { copied: 'Скопировано', 'copy-failed': 'Не удалось скопировать' }
 
 const FIELD = 'h-8 min-w-0 rounded-md border bg-background px-2 text-sm text-foreground'
 
@@ -99,7 +98,7 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
         },
       ]
     }
-    return [{ name: fileName(`${boardTitle} — миграция`, 'sql'), text: migrationSql(forward, states) }]
+    return [{ name: fileName(m.fileName(boardTitle), 'sql'), text: migrationSql(forward, states) }]
   })()
 
   const copy = async (text: string) => {
@@ -126,28 +125,28 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
           variant="outline"
           size="sm"
           disabled={disabled}
-          title="Миграция схемы базы данных: SQL, Flyway или Liquibase"
+          title={m.buttonTitle}
         >
           <DatabaseZap />
-          Миграция SQL
+          {m.title}
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Миграция SQL"
+        aria-label={m.title}
         className="flex max-h-[80vh] w-[40rem] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto"
       >
         <div>
-          <h2 className="text-sm font-semibold">Миграция SQL</h2>
+          <h2 className="text-sm font-semibold">{m.title}</h2>
           <p className="text-xs text-muted-foreground">
-            Из «{states.from}» в «{states.to}»
+            {m.fromTo(states.from, states.to)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <label className="flex items-center gap-2">
-            СУБД
+            {m.database}
             <select
-              aria-label="СУБД"
+              aria-label={m.database}
               className={FIELD}
               value={chosen}
               onChange={(event) => {
@@ -163,8 +162,8 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
             </select>
           </label>
           <fieldset className="flex items-center gap-3">
-            <legend className="sr-only">Формат</legend>
-            <span aria-hidden="true">Формат</span>
+            <legend className="sr-only">{m.format}</legend>
+            <span aria-hidden="true">{m.format}</span>
             {FORMATS.map((option) => (
               <label key={option.id} className="flex items-center gap-1">
                 <input
@@ -185,7 +184,7 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
         {format === 'flyway' && (
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
             <label className="flex items-center gap-2">
-              Версия
+              {m.version}
               <input
                 className={`${FIELD} w-28`}
                 value={version}
@@ -195,7 +194,7 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
               />
             </label>
             <label className="flex flex-1 items-center gap-2">
-              Описание
+              {m.description}
               <input className={`${FIELD} flex-1`} value={description} onChange={edit(setDescription)} />
             </label>
           </div>
@@ -203,7 +202,7 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
         {format === 'liquibase' && (
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
             <label className="flex flex-1 items-center gap-2">
-              Автор
+              {m.author}
               <input className={`${FIELD} flex-1`} value={author} onChange={edit(setAuthor)} />
             </label>
             <label className="flex items-center gap-2">
@@ -213,18 +212,18 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
           </div>
         )}
         {!summary ? (
-          <p className="text-sm text-muted-foreground">Состояния доски ещё загружаются</p>
+          <p className="text-sm text-muted-foreground">{m.loading}</p>
         ) : summary.changes === 0 ? (
-          <p className="text-sm text-muted-foreground">Схема таблиц не изменилась — миграция не нужна</p>
+          <p className="text-sm text-muted-foreground">{m.unchanged}</p>
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Изменений: {summary.changes} · опасных: {summary.dangerous}
-              {summary.unsupported > 0 && ` · ${DIALECTS[chosen].label} не умеет: ${summary.unsupported}`}
+              {m.summary(summary.changes, summary.dangerous)}
+              {summary.unsupported > 0 && m.unsupported(DIALECTS[chosen].label, summary.unsupported)}
             </p>
             {format === 'flyway' && !validVersion && (
               <p id={versionHint} role="alert" className="text-sm text-destructive">
-                Версия Flyway — числа через точку или подчёркивание, например 2, 2.1 или 20261007_1
+                {m.badVersion}
               </p>
             )}
             {files.map((file) => (
@@ -232,12 +231,12 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.name}</span>
                   <Button type="button" variant="ghost" size="sm" onClick={() => void copy(file.text)}>
-                    Скопировать
+                    {m.copy}
                   </Button>
                 </div>
                 <textarea
                   readOnly
-                  aria-label={`Текст ${file.name}`}
+                  aria-label={m.fileText(file.name)}
                   rows={Math.min(14, file.text.split('\n').length)}
                   spellCheck={false}
                   wrap="off"
@@ -248,14 +247,14 @@ export function SchemaMigrationMenu({ read, states, boardTitle, disabled = false
             ))}
             {files.length > 0 && (
               <Button type="button" size="sm" className="self-start" onClick={download}>
-                {files.length > 1 ? 'Скачать оба файла' : 'Скачать'}
+                {files.length > 1 ? m.downloadBoth : m.download}
               </Button>
             )}
           </>
         )}
         {message && (
           <p role={message === 'copy-failed' ? 'alert' : undefined} aria-live="polite" className="text-sm text-muted-foreground">
-            {MESSAGES[message]}
+            {message === 'copied' ? m.copied : m.copyFailed}
           </p>
         )}
       </PopoverContent>

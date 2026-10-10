@@ -9,6 +9,7 @@ import { DRAWIO_FILE_TYPES, downloadDrawio } from './files.ts'
 import { importPages } from './importPages.ts'
 import { DrawioFormatError, parseDrawio } from './parse.ts'
 import { exportDrawio } from './serialize.ts'
+import { drawioMessages as m } from './messages.ts'
 
 interface DrawioActionsProps {
   document: Y.Doc | null
@@ -47,7 +48,7 @@ export function DrawioActions({
       const [first] = importPages(document, pages, author)
       if (first) onImported(first)
     } catch (cause) {
-      setError(cause instanceof DrawioFormatError ? cause.message : 'Не удалось импортировать файл')
+      setError(cause instanceof DrawioFormatError ? cause.message : m.importFailed)
     } finally {
       setBusy(false)
     }
@@ -72,7 +73,7 @@ export function DrawioActions({
             ref={input}
             type="file"
             accept={DRAWIO_FILE_TYPES}
-            aria-label="Файл draw.io"
+            aria-label={m.fileInput}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0]
@@ -84,8 +85,8 @@ export function DrawioActions({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Импорт из .drawio"
-            title="Импорт из .drawio: страницы файла добавятся к доске"
+            aria-label={m.importLabel}
+            title={m.importTitle}
             disabled={!document || busy}
             onClick={() => input.current?.click()}
           >
@@ -97,8 +98,8 @@ export function DrawioActions({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Экспорт в .drawio"
-        title="Экспорт в .drawio: все страницы доски"
+        aria-label={m.exportLabel}
+        title={m.exportTitle}
         disabled={!document || busy}
         onClick={() => void exportFile()}
       >

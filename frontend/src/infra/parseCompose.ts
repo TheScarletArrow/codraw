@@ -1,4 +1,5 @@
 import { ApiSpecError, loadDocument, type ApiSource } from '../apiSpec/loadDocument.ts'
+import { infraMessages } from './messages.tsx'
 
 /** How a service is built from sources: the directory of the build and the Dockerfile in it, when it is not the default. */
 export interface ComposeBuild {
@@ -159,7 +160,7 @@ function service(name: string, value: unknown): ComposeService {
 export async function parseCompose(source: ApiSource): Promise<ComposeService[]> {
   const root = await loadDocument(source)
   if (!isObject(root) || !isObject(root.services)) {
-    throw new ApiSpecError(`${source.name}: это не docker-compose — нет раздела services`)
+    throw new ApiSpecError(infraMessages.compose.notCompose(source.name))
   }
   return Object.entries(root.services).map(([name, value]) => service(name, value))
 }

@@ -14,6 +14,7 @@ import {
 } from '../diagram/model.ts'
 import { deletePage, isPageEmpty, listPages } from '../diagram/pages.ts'
 import type { DrawioPage } from './parse.ts'
+import { drawioMessages } from './messages.ts'
 
 /** Origin of imports: like other page operations, an import is not undoable. */
 export const IMPORT_ORIGIN = 'codraw:import'
@@ -53,7 +54,7 @@ export function importPages(doc: Y.Doc, pages: DrawioPage[], author: Author | nu
     for (const [index, page] of pages.entries()) {
       const id = pageIds[index]!
       order = orderBetween(order, null)
-      writePage(doc, id, { name: page.name.trim() || `Страница ${existing.length + index + 1}`, order })
+      writePage(doc, id, { name: page.name.trim() || drawioMessages.page(existing.length + index + 1), order })
       const cells = getCells(doc, id)
       // The first layer of the file takes the place of the main layer that the page got.
       for (const layer of page.layers ?? []) writeCell(cells, layer)

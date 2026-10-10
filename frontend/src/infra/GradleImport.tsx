@@ -2,15 +2,14 @@ import { ArrowLeft } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ApiSpecError, MAX_DOCUMENT_SIZE, type ApiSource } from '../apiSpec/loadDocument.ts'
+import { documentMessages as d } from '../apiSpec/messages.ts'
 import type { CellData } from '../diagram/model.ts'
 import { downloadBlob } from '../lib/download.ts'
 import script from './codraw.gradle?raw'
 import { gradleGraph, gradleGraphError, gradleSummary } from './gradleGraph.ts'
 import { infraCells } from './infraCells.ts'
 import { GRADLE_COMMAND, isGradleFile, parseGradleFolder, parseGradleGraphs, type FolderFile, type GradleBuild } from './parseGradle.ts'
-
-/** The text of the field among the graphs, as errors name it. */
-const TEXT_SOURCE = 'Текст'
+import { infraMessages } from './messages.tsx'
 
 interface GradleImportProps {
   /** Adds the cells built for a top-left corner to the page. */
@@ -55,10 +54,11 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
   const [folder, setFolder] = useState<Folder | null>(null)
   const [tests, setTests] = useState(false)
   const [c4, setC4] = useState(false)
+  const m = infraMessages.gradle
   const graphInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement>(null)
 
-  const graphs = useMemo(() => (text.trim() === '' ? files : [...files, { name: TEXT_SOURCE, text }]), [files, text])
+  const graphs = useMemo(() => (text.trim() === '' ? files : [...files, { name: d.text, text }]), [files, text])
   const result = useMemo(() => readBuild(folder, graphs), [folder, graphs])
   const graph = useMemo(() => (result.build ? gradleGraph(result.build, { tests, c4 }) : null), [result, tests, c4])
   const empty = graph !== null && graph.nodes.length === 0
@@ -86,15 +86,13 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
   return (
     <>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Назад" onClick={onBack}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={d.back} onClick={onBack}>
           <ArrowLeft />
         </Button>
-        <h2 className="text-sm font-semibold">Импорт Gradle</h2>
+        <h2 className="text-sm font-semibold">{m.title}</h2>
       </div>
       <p className="text-xs text-muted-foreground">
-        Точнее всего — граф из скрипта: скачайте <code>codraw.gradle</code>, выполните в корне проекта{' '}
-        <code>{GRADLE_COMMAND} &gt; modules.json</code> и откройте <code>modules.json</code>. Папку проекта CoDraw прочитает и
-        без Gradle, но только типовые записи. Файлы читаются в браузере и никуда не отправляются.
+        {m.intro(<code>codraw.gradle</code>, <code>{GRADLE_COMMAND} &gt; modules.json</code>, <code>modules.json</code>)}
       </p>
       <Button
         type="button"
@@ -103,10 +101,10 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
         className="self-start"
         onClick={() => downloadBlob(new Blob([script], { type: 'text/plain' }), 'codraw.gradle')}
       >
-        Скачать codraw.gradle
+        {m.download}
       </Button>
       <textarea
-        aria-label="Граф модулей"
+        aria-label={m.graphLabel}
         placeholder={'{"format":"codraw-gradle","version":1,"projects":[…]}'}
         rows={4}
         spellCheck={false}
@@ -119,7 +117,7 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
       />
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => graphInput.current?.click()}>
-          Открыть граф…
+          {m.openGraph}
         </Button>
         <input
           ref={graphInput}
@@ -127,11 +125,11 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
           accept=".json"
           multiple
           hidden
-          aria-label="Файлы графа Gradle"
+          aria-label={m.graphFiles}
           onChange={(event) => void openGraphs(event.target.files)}
         />
         <Button type="button" variant="outline" size="sm" onClick={() => folderInput.current?.click()}>
-          Открыть папку проекта…
+          {m.openFolder}
         </Button>
         <input
           ref={(input) => {
@@ -142,31 +140,31 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
           type="file"
           multiple
           hidden
-          aria-label="Папка проекта Gradle"
+          aria-label={m.folderLabel}
           onChange={(event) => void openFolder(event.target.files)}
         />
         {folder ? (
           <span className="truncate text-xs text-muted-foreground" title={folder.files.map((file) => file.path).join('\n')}>
-            Папка {folder.name}: файлов сборки {folder.files.length}
+            {m.folder(folder.name, folder.files.length)}
           </span>
         ) : (
           files.length > 0 && (
             <span className="truncate text-xs text-muted-foreground" title={files.map((file) => file.name).join(', ')}>
-              Файлов: {files.length}
+              {d.fileCount} {files.length}
             </span>
           )
         )}
       </div>
-      <label className="flex items-center gap-2 text-sm" title="testImplementation и другие конфигурации тестов — тоже связями">
+      <label className="flex items-center gap-2 text-sm" title={m.testsTitle}>
         <input type="checkbox" checked={tests} onChange={(event) => setTests(event.target.checked)} />
-        Тестовые зависимости
+        {m.tests}
       </label>
-      <label className="flex items-center gap-2 text-sm" title="Модули — фигурами Component нотации C4">
+      <label className="flex items-center gap-2 text-sm" title={m.c4Title}>
         <input type="checkbox" checked={c4} onChange={(event) => setC4(event.target.checked)} />
-        Фигуры C4
+        {infraMessages.c4}
       </label>
       <p role="status" className="text-xs text-muted-foreground">
-        {graph && result.build ? gradleSummary(result.build, graph) : 'Граф из codraw.gradle или папка проекта Gradle'}
+        {graph && result.build ? gradleSummary(result.build, graph) : m.hint}
       </p>
       {errors.length > 0 && (
         <div role="alert" className="flex flex-col gap-1 text-xs text-destructive">
@@ -183,7 +181,7 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
         disabled={busy || !graph || empty || tooLarge !== null}
         onClick={() => graph && onAdd((origin) => infraCells(graph, origin, undefined, sourcePrefix))}
       >
-        Добавить на страницу
+        {d.addToPage}
       </Button>
       {onUpdate && (
         <Button
@@ -193,7 +191,7 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
           disabled={busy || !graph || empty || tooLarge !== null}
           onClick={() => graph && result.build && onUpdate(sourceTitle(folder, graphs), gradleSummary(result.build, graph), (origin) => infraCells(graph, origin, undefined, sourcePrefix))}
         >
-          Обновить через предложение
+          {d.updateViaProposal}
         </Button>
       )}
     </>
@@ -201,4 +199,4 @@ export function GradleImport({ onAdd, onUpdate, sourcePrefix = 'gradle', onBack,
 }
 
 const sourceTitle = (folder: Folder | null, graphs: ApiSource[]) =>
-  folder ? folder.name : graphs.length === 1 ? graphs[0]!.name : graphs.length > 1 ? `${graphs.length} файлов Gradle` : 'Gradle'
+  folder ? folder.name : graphs.length === 1 ? graphs[0]!.name : graphs.length > 1 ? infraMessages.gradle.sourceFiles(graphs.length) : 'Gradle'

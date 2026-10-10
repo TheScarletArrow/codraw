@@ -3,6 +3,7 @@ import { addressedHosts } from './addresses.ts'
 import { imageKind } from './imageKind.ts'
 import { InfraEdges, type InfraGraph, type InfraNode, type InfraOptions } from './infraGraph.ts'
 import type { KubeObjects, KubeService, KubeWorkload } from './parseKubernetes.ts'
+import { infraMessages } from './messages.tsx'
 
 /** Shapes one import adds at most: more would not fit a page that people read. */
 export const MAX_KUBERNETES_SHAPES = 300
@@ -121,15 +122,18 @@ export function kubernetesGraph(objects: KubeObjects, { environment, c4 }: Infra
 /** What the import adds, for the summary before it. */
 export function kubernetesSummary(objects: KubeObjects, graph: InfraGraph): string {
   const externals = objects.services.filter((service) => service.externalName !== null).length
-  return (
-    `Рабочих нагрузок: ${objects.workloads.length}, шлюзов: ${objects.gateways.length}, внешних сервисов: ${externals}, ` +
-    `связей: ${graph.edges.length}, пространств имён: ${graph.frames.length}`
+  return infraMessages.kubernetes.summary(
+    objects.workloads.length,
+    objects.gateways.length,
+    externals,
+    graph.edges.length,
+    graph.frames.length,
   )
 }
 
 /** Why the graph is too large to add, or `null`. */
 export function kubernetesGraphError(graph: InfraGraph): string | null {
   return graph.nodes.length > MAX_KUBERNETES_SHAPES
-    ? `Слишком много фигур: ${graph.nodes.length}, за раз можно добавить не больше ${MAX_KUBERNETES_SHAPES} — откройте меньше файлов`
+    ? infraMessages.kubernetes.tooMany(graph.nodes.length, MAX_KUBERNETES_SHAPES)
     : null
 }
