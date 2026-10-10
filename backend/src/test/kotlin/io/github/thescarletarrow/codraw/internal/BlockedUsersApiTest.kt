@@ -3,7 +3,7 @@ package io.github.thescarletarrow.codraw.internal
 import io.github.thescarletarrow.codraw.IntegrationTest
 import io.github.thescarletarrow.codraw.gitHubUser
 import io.github.thescarletarrow.codraw.user.UserService
-import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
@@ -19,7 +19,8 @@ class BlockedUsersApiTest(
     @Autowired private val users: UserService,
 ) {
 
-    @BeforeEach
+    /** Other tests sign the same users in: none of them stays blocked. */
+    @AfterEach
     fun unblockAll() {
         jdbcClient.sql("UPDATE users SET blocked_at = NULL").update()
     }

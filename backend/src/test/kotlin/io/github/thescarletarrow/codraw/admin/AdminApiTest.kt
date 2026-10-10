@@ -12,6 +12,7 @@ import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsInAnyOrder
 import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.not
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -56,6 +57,12 @@ class AdminApiTest(
         admin = users.gitHubUser(IntegrationTest.ADMIN)
         alice = users.gitHubUser("Alice")
         bob = users.gitHubUser("Bob")
+    }
+
+    /** Other tests sign the same users in: none of them stays blocked. */
+    @AfterEach
+    fun unblockAll() {
+        jdbcClient.sql("UPDATE users SET blocked_at = NULL").update()
     }
 
     @Test

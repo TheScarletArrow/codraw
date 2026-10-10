@@ -65,6 +65,8 @@ class OAuth2LoginTest(
     @AfterEach
     fun signOut() {
         SecurityContextHolder.clearContext()
+        // Other tests sign users in: none of them stays blocked.
+        jdbcClient.sql("UPDATE users SET blocked_at = NULL").update()
     }
 
     @Test
