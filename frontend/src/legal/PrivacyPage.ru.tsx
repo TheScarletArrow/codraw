@@ -1,6 +1,7 @@
 import type { LegalInfo } from '../api/legal.ts'
 import { LOCAL_COPY_LIMIT } from '../offline/localCopies.ts'
-import { days, Operator } from './LegalPage.tsx'
+import { Operator } from './LegalPage.tsx'
+import { legalMessages } from './messages.ts'
 
 /** The privacy policy in Russian, the version that prevails. */
 export function PrivacyRu({ legal }: { legal: LegalInfo }) {
@@ -159,7 +160,7 @@ export function PrivacyRu({ legal }: { legal: LegalInfo }) {
         <p className="mt-2">CoDraw ставит только cookie, без которых сервис не работает:</p>
         <ul>
           <li>
-            <code>SESSION</code> — сеанс: помнит, что вы вошли. У гостя хранится {days(legal.guestSessionDays)} с
+            <code>SESSION</code> — сеанс: помнит, что вы вошли. У гостя хранится {legalMessages.days(legal.guestSessionDays)} с
             последнего обращения.
           </li>
           <li>
@@ -211,8 +212,8 @@ export function PrivacyRu({ legal }: { legal: LegalInfo }) {
         <ul>
           <li>Учётная запись и доски — пока вы не удалите доски или не попросите удалить учётную запись.</li>
           <li>
-            Гость, который не возвращался {days(legal.guestSessionDays)}, вернуться уже не может; его доски
-            удаляются, когда с ними {days(legal.guestBoardRetentionDays)} никто не работал, а затем удаляется и сам
+            Гость, который не возвращался {legalMessages.days(legal.guestSessionDays)}, вернуться уже не может; его доски
+            удаляются, когда с ними {legalMessages.days(legal.guestBoardRetentionDays)} никто не работал, а затем удаляется и сам
             гость.
           </li>
           <li>
@@ -257,7 +258,7 @@ export function PrivacyRu({ legal }: { legal: LegalInfo }) {
             автора.
           </li>
           <li>
-            Уведомления — не дольше {days(legal.notificationRetentionDays)} и не больше{' '}
+            Уведомления — не дольше {legalMessages.days(legal.notificationRetentionDays)} и не больше{' '}
             {legal.notificationsPerUser} последних у пользователя, прочитанные и нет; уведомление удаляется вместе с
             доской, комментарием, веткой, предложением и учётной записью, о которых оно.
           </li>

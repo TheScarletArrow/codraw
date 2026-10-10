@@ -1,7 +1,8 @@
 import type { LegalInfo } from '../api/legal.ts'
 import { pluralEn } from '../i18n/i18n.ts'
 import { LOCAL_COPY_LIMIT } from '../offline/localCopies.ts'
-import { days, Operator } from './LegalPage.tsx'
+import { Operator } from './LegalPage.tsx'
+import { legalMessages } from './messages.ts'
 
 /** The privacy policy in English: a translation of the Russian one, which prevails. */
 export function PrivacyEn({ legal }: { legal: LegalInfo }) {
@@ -171,7 +172,7 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <ul>
           <li>
             <code>SESSION</code> — the session: remembers that you are signed in. For a guest it is kept for{' '}
-            {days(legal.guestSessionDays)} after the last request.
+            {legalMessages.days(legal.guestSessionDays)} after the last request.
           </li>
           <li>
             <code>XSRF-TOKEN</code> — protection against forged requests from other websites.
@@ -224,8 +225,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <ul>
           <li>The account and boards — until you delete the boards or ask to delete the account.</li>
           <li>
-            A guest who has not returned for {days(legal.guestSessionDays)} can no longer return; their boards are
-            deleted when no one has worked with them for {days(legal.guestBoardRetentionDays)}, and then the guest
+            A guest who has not returned for {legalMessages.days(legal.guestSessionDays)} can no longer return; their boards are
+            deleted when no one has worked with them for {legalMessages.days(legal.guestBoardRetentionDays)}, and then the guest
             itself is deleted.
           </li>
           <li>
@@ -277,7 +278,7 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
             of the author.
           </li>
           <li>
-            Notifications — no longer than {days(legal.notificationRetentionDays)} and no more than the last{' '}
+            Notifications — no longer than {legalMessages.days(legal.notificationRetentionDays)} and no more than the last{' '}
             {legal.notificationsPerUser} of a user, read or not; a notification is deleted together with the board,
             comment, thread, proposal and account it is about.
           </li>

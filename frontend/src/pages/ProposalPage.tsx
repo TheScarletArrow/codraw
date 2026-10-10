@@ -51,7 +51,8 @@ import { SaveToLibraryDialog } from '../libraries/SaveToLibraryDialog.tsx'
 import { useLibraries } from '../libraries/useLibraries.ts'
 import { LinkDialog } from '../links/LinkDialog.tsx'
 import { ShapeLinks } from '../links/ShapeLinks.tsx'
-import { proposalKey, proposalsKey, reviewPath, STATUS_LABELS } from '../proposals/proposals.ts'
+import { proposalKey, proposalsKey, reviewPath } from '../proposals/proposals.ts'
+import { proposalMessages } from '../proposals/messages.ts'
 import { applySchemaUpdate, takePendingSchemaImportUpdate } from '../proposals/schemaImportUpdate.ts'
 import { useDraftConnection } from '../proposals/useDraftConnection.ts'
 import { SqlMenu } from '../sql/SqlMenu.tsx'
@@ -432,7 +433,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
 /** What the page of a draft is, as the line under its header says it. */
 function banner(proposal: Proposal, board: Board, mine: boolean): string {
   if (proposal.status !== 'open') {
-    return m.closed(proposal.title, STATUS_LABELS[proposal.status].toLowerCase())
+    return m.closed(proposal.title, proposalMessages.statuses[proposal.status].toLowerCase())
   }
   if (mine) return m.mine(proposal.title)
   return m.others(proposal.title, board.title, proposal.author.name)

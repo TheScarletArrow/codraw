@@ -5,9 +5,6 @@ import { fetchLegal, type LegalInfo } from '../api/legal.ts'
 import { perLocale } from '../i18n/i18n.ts'
 import { legalMessages as m } from './messages.ts'
 
-/** «1 день», «3 дня», «30 дней»; `30 days` in English. */
-export const days = (count: number): string => m.days(count)
-
 const dayFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long', year: 'numeric' }))
 
 /** `9 октября 2026 г.` or `October 9, 2026` for `2026-10-09`. */

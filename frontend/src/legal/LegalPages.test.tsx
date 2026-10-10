@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LegalInfo } from '../api/legal.ts'
 import { setLocale } from '../i18n/i18n.ts'
 import { mockFetch, renderRoutes } from '../test/render.tsx'
-import { days } from './LegalPage.tsx'
+import { legalMessages } from './messages.ts'
 import { PrivacyPage } from './PrivacyPage.tsx'
 import { TermsPage } from './TermsPage.tsx'
 
@@ -32,12 +32,12 @@ describe('legal pages', () => {
   })
 
   it('writes days in Russian', () => {
-    expect([1, 2, 5, 14, 21, 22, 30].map(days)).toEqual(['1 день', '2 дня', '5 дней', '14 дней', '21 день', '22 дня', '30 дней'])
+    expect([1, 2, 5, 14, 21, 22, 30].map(legalMessages.days)).toEqual(['1 день', '2 дня', '5 дней', '14 дней', '21 день', '22 дня', '30 дней'])
   })
 
   it('writes days in English in the English interface', () => {
     setLocale('en')
-    expect([1, 2, 21].map(days)).toEqual(['1 day', '2 days', '21 days'])
+    expect([1, 2, 21].map(legalMessages.days)).toEqual(['1 day', '2 days', '21 days'])
   })
 
   it('names the operator and states the data, cookies and retention of the installation', async () => {
