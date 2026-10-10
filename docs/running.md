@@ -74,7 +74,8 @@ GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… ./gradlew bootRun          # Windo
 
 Переменные `GITHUB_*` и `GOOGLE_*` — client id и secret OAuth-приложений, через которые входят в CoDraw
 (см. [README](../README.md#вход-через-github-и-google)). Достаточно одного провайдера. Без них backend
-запускается, но работает только режим гостя.
+запускается, а страница входа предлагает только режим гостя. Корпоративный провайдер OpenID Connect (Keycloak и
+другие) задают переменные `CODRAW_AUTH_OIDC_<ID>_*` — см. [README](../README.md#корпоративный-вход).
 
 Первый запуск дольше: Gradle скачивает себя и зависимости. Backend готов, когда в логе появится
 `Started CodrawApplicationKt`. Таблицы в базе создаются при старте автоматически (миграции Flyway).
@@ -391,8 +392,14 @@ cd backend && SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/codraw ./gr
 в Test users. Подробности — в логе backend.
 
 **Backend не стартует: `Client id of registration 'github' must not be empty`.**
-Backend запущен не в профиле `dev`, а там переменные OAuth-приложений обязательны. Задайте `GITHUB_*`
-и `GOOGLE_*` или запускайте через `./gradlew bootRun`.
+Переменная `GITHUB_CLIENT_ID` или `GOOGLE_CLIENT_ID` задана пустой строкой. Задайте её или уберите совсем: без неё
+провайдер выключен, и его кнопки на странице входа нет.
+
+**Кнопка корпоративного входа возвращает на страницу входа с сообщением «Вход не выполнен».**
+Backend не прочитал метаданные провайдера по `<issuer>/.well-known/openid-configuration` — в логе backend есть
+`Cannot read the metadata of the sign-in provider` с причиной — или провайдер не подтвердил вход. Проверьте issuer
+(для Keycloak — `https://<хост>/realms/<realm>`), client id и secret и адрес возврата
+`http://localhost:5173/api/login/oauth2/code/<id>`.
 
 **Картинка не добавляется: «Не удалось загрузить изображение».**
 Не запущено хранилище изображений: `docker compose up -d s3`. В логе backend тогда есть `The storage of images is not

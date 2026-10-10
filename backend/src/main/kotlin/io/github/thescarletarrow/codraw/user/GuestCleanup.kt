@@ -15,6 +15,8 @@ import java.time.ZoneOffset
 data class GuestProperties(
     /** A board of a guest who can no longer come back is deleted once nobody worked on it for this long. */
     val boardRetention: Duration = Duration.ofDays(30),
+    /** «Продолжить без входа» creates guests; a closed installation turns it off, see docs/deploy.md. */
+    val enabled: Boolean = true,
 )
 
 /**

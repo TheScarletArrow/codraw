@@ -19,15 +19,20 @@ class GuestLoginController(
     private val users: UserService,
     private val limiter: NewGuestLimiter,
     private val metrics: CodrawMetrics,
+    private val guests: GuestProperties,
 ) {
 
     /**
      * Continues without a provider as a new guest. A request that already has a session keeps it. An address that
-     * created as many guests in the last hour as the limit allows gets 429.
+     * created as many guests in the last hour as the limit allows gets 429. An installation without guests answers 403.
      */
     @PostMapping(PATH)
     fun login(authentication: Authentication?, request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<*> {
         if (authentication == null) {
+            if (!guests.enabled) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Guests are off in this installation"))
+            }
             limiter.acquire(request.remoteAddr)?.let { wait -> return tooManyGuests(wait) }
             signInToSession(users.createGuest(), ProviderProfile.GUEST, request, response)
             request.getSession(false)!!.maxInactiveInterval = SESSION_TIMEOUT.toSeconds().toInt()

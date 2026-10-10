@@ -18,6 +18,16 @@ export interface LegalInfo {
   schemaImport: boolean
   /** Whether users may connect GitHub with a token of theirs and link its issues to elements and threads of boards. */
   issues: boolean
+  /** The providers that users of this installation sign in through. */
+  signInProviders: LegalSignInProvider[]
+  /** Whether «Продолжить без входа» creates guests. */
+  guests: boolean
+}
+
+export interface LegalSignInProvider {
+  name: string
+  /** A provider of OpenID Connect that the operator chose, not GitHub or Google. */
+  corporate: boolean
 }
 
 export function fetchLegal(): Promise<LegalInfo> {

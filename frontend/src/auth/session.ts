@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { fetchMe } from '../api/auth.ts'
+import { fetchLoginOptions, fetchMe, LOGIN_OPTIONS_QUERY_KEY } from '../api/auth.ts'
 
 export const ME_QUERY_KEY = ['me'] as const
 
@@ -12,4 +12,9 @@ export function useCurrentUser() {
 /** Checks the session again, e.g. after a request got 401: once it has ended, the layout opens the login page. */
 export function recheckSession(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY })
+}
+
+/** The ways to sign in of this installation: they change only with its settings. */
+export function useLoginOptions() {
+  return useQuery({ queryKey: LOGIN_OPTIONS_QUERY_KEY, queryFn: fetchLoginOptions, staleTime: Infinity })
 }

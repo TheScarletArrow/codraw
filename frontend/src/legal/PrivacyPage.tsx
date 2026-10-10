@@ -1,3 +1,4 @@
+import type { LegalInfo } from '../api/legal.ts'
 import { LOCAL_COPY_LIMIT } from '../offline/localCopies.ts'
 import { days, LegalPage, Operator } from './LegalPage.tsx'
 
@@ -22,9 +23,8 @@ export function PrivacyPage() {
             <h2 id="privacy-data">Какие данные мы обрабатываем</h2>
             <ul>
               <li>
-                <strong>Учётная запись.</strong> При входе через GitHub или Google — имя, адрес картинки профиля и
-                идентификатор пользователя у этого сервиса. Адрес электронной почты CoDraw не запрашивает, пароль от
-                GitHub или Google не получает.
+                <strong>Учётная запись.</strong> {publicAccount(legal)}
+                {corporateAccount(legal)}
               </li>
               <li>
                 <strong>Гостевая учётная запись.</strong> При работе без входа — имя вида «Гость 12», без личных данных.
@@ -279,7 +279,7 @@ export function PrivacyPage() {
           <section aria-labelledby="privacy-recipients">
             <h2 id="privacy-recipients">Кому передаются данные</h2>
             <p className="mt-2">
-              GitHub и Google узнают о входе через них по своим правилам.{' '}
+              {signInRecipients(legal)}
               {legal.schemaImport &&
                 'Адрес, имя базы, пользователя и пароль, которые вы вводите, чтобы загрузить схему базы данных, сервер CoDraw передаёт только этой базе. '}
               Участники доски видят её содержимое с изображениями — сервер отдаёт изображение доски только тем, кому
@@ -328,5 +328,39 @@ export function PrivacyPage() {
         </>
       )}
     </LegalPage>
+  )
+}
+
+/** «GitHub», «GitHub или Google», «A, B или C» of the providers of the installation; empty for none. */
+function providerNames(legal: LegalInfo, corporate: boolean, conjunction = 'или'): string {
+  const names = legal.signInProviders.filter((provider) => provider.corporate === corporate).map((provider) => provider.name)
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} ${conjunction} ${names.at(-1)}` : (names[0] ?? '')
+}
+
+/** What GitHub and Google give CoDraw, when the installation signs in through them. */
+function publicAccount(legal: LegalInfo): string {
+  const names = providerNames(legal, false)
+  return names
+    ? `При входе через ${names} — имя, адрес картинки профиля и идентификатор пользователя у этого сервиса. Адрес электронной почты CoDraw у них не запрашивает, пароль от ${names} не получает. `
+    : ''
+}
+
+/** What the provider that the operator chose gives CoDraw, and what of it CoDraw keeps. */
+function corporateAccount(legal: LegalInfo): string {
+  const names = providerNames(legal, true)
+  return names
+    ? `При входе через ${names} — провайдера входа, которого выбрал оператор установки, — CoDraw получает от провайдера идентификатор пользователя, имя, адрес картинки профиля, адрес электронной почты и группы. Хранятся идентификатор вместе с адресом провайдера, имя и адрес картинки; почту и группы CoDraw только сверяет при входе с ограничениями, которые задал оператор, и не хранит. Пароль от учётной записи провайдера CoDraw не получает.`
+    : ''
+}
+
+/** Who learns of signing in. */
+function signInRecipients(legal: LegalInfo): string {
+  const names = providerNames(legal, false, 'и')
+  const corporate = providerNames(legal, true)
+  return (
+    (names ? `${names} узнают о входе через них по своим правилам. ` : '') +
+    (corporate
+      ? `Провайдер входа, которого выбрал оператор, — ${corporate} — узнаёт о входе и выходе через него по правилам оператора. `
+      : '')
   )
 }

@@ -71,9 +71,9 @@ codraw:
   авторизации, токена, userinfo, JWKS и `end_session_endpoint`. Удача кэшируется навсегда (до перезапуска), неудача —
   нет: следующий вход попробует снова, а в журнал пишется предупреждение. Так недоступный провайдер не мешает
   `backend` стартовать, и GitHub, Google и гости работают.
-- `OidcDiscoveryFailureFilter` перед `OAuth2AuthorizationRequestRedirectFilter`: запрос
-  `/api/oauth2/authorization/<id>` к провайдеру OIDC, метаданные которого прочитать не удалось, отправляется на
-  `/login?error`, а не получает 500 от фильтра Spring Security.
+- `SignInProviderFailureFilter` перед `OAuth2AuthorizationRequestRedirectFilter`: запрос
+  `/api/oauth2/authorization/<id>` к выключенному провайдеру или к провайдеру OIDC, метаданные которого прочитать не
+  удалось, отправляется на `/login?error`, а не получает 500 от фильтра Spring Security.
 
 ### Сервис пользователя OIDC и связь по `iss` + `sub`
 
