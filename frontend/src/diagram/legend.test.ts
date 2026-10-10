@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { setLocale } from '../i18n/i18n.ts'
 import { INTERACTION_KEY, TECHNOLOGY_KEY } from './elementKinds.ts'
 import { FREEHAND_KEY } from './freehand.ts'
 import {
@@ -209,5 +210,22 @@ describe('the rows and the layout of a legend', () => {
     expect(tall.height).toBe(LEGEND_SAMPLE.height)
     expect(tall.width).toBe(LEGEND_SAMPLE.height / 2)
     expect(tall.y).toBe(10 + (30 - LEGEND_SAMPLE.height) / 2)
+  })
+})
+
+describe('a legend in English', () => {
+  it('names edges, colors and the rows beyond the limit in English', () => {
+    setLocale('en')
+    expect(colorWord('#b85450')).toBe('red')
+    expect(colorWord('none')).toBe('no fill')
+    const items = Array.from({ length: MAX_LEGEND_ROWS + 2 }, (_, index) => ({
+      key: `k${index}`,
+      type: 'shape' as const,
+      name: `n${index}`,
+      cellId: `c${index}`,
+      ratio: 1,
+    }))
+    expect(legendRows(items, { names: {}, hidden: [] }).at(-1)!.label).toBe('…and 2 more')
+    expect(legendRows([], { names: {}, hidden: [] })[0]!.label).toBe('No shapes or connectors')
   })
 })

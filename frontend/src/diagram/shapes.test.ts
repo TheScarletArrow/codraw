@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { setLocale } from '../i18n/i18n.ts'
 import { parseStyle } from '../drawio/style.ts'
 import { fromStyle } from './binding.ts'
 import {
@@ -321,5 +322,17 @@ describe('shape groups', () => {
     expect(shapeGroupOf(findShape('boundary')!.style)).toBeNull()
     expect(shapeGroupOf(drawio('swimlane;startSize=23;'))).toBeNull()
     expect(shapeGroupOf(drawio('shape=mxgraph.aws4.lambda_function;'))).toBeNull()
+  })
+})
+
+describe('shape presets in English', () => {
+  it('name the shapes and give new shapes their text in the language of the interface', () => {
+    setLocale('en')
+    expect(findShape('text')).toMatchObject({ label: 'Text', value: 'Text' })
+    expect(findShape('flow-decision')).toMatchObject({ label: 'Decision', value: 'Condition?' })
+    expect(findShape('c4-container')!.value.split('\n')).toEqual(['Container', '[Container: technology]', 'Description'])
+    expect(SHAPE_SECTIONS[0]!.title).toBe('Basic')
+    // A name still tells one shape.
+    expect(new Set(SHAPES.map((shape) => shape.label)).size).toBe(SHAPES.length)
   })
 })

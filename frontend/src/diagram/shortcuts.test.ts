@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { setLocale } from '../i18n/i18n.ts'
 import { KEY_BINDINGS } from './editor.ts'
 import { formatKeys, SHORTCUT_GROUPS, shortcutGroups } from './shortcuts.ts'
 
@@ -76,5 +77,14 @@ describe('shortcuts', () => {
     expect(actions).not.toContain('Карандаш')
     expect(actions).not.toContain('Добавить стикер')
     expect(shortcutGroups(true).map((group) => group.title)).not.toContain('Текст')
+  })
+})
+
+describe('shortcuts in English', () => {
+  it('names the actions and the mouse in English', () => {
+    setLocale('en')
+    expect(formatKeys('Mod+Wheel', false)).toBe('Ctrl+wheel')
+    expect(formatKeys('Alt+Drag', true)).toBe('⌥+drag')
+    expect(shortcutGroups(true).flatMap((group) => group.entries.map((entry) => entry.action))).toContain('Copy style')
   })
 })

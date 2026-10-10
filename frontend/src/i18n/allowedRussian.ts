@@ -13,6 +13,8 @@ export const ALLOWED_RUSSIAN: Record<string, readonly string[] | 'all'> = {
   'comments/threads.ts': ['ё', 'е'],
   // The search on the canvas finds «ё» as «е».
   'diagram/canvasSearch.ts': ['/ё/g', 'е'],
+  // The search in the list of boards finds «ё» as «е».
+  'boardList/boardList.ts': ['/ё/g', 'е'],
   // The search for duplicates compares names with «ё» as «е».
   'checks/checks.ts': ['/ё/g', 'е'],
   // Placeholders of C4 in labels of shapes of boards drawn in Russian, which the properties read as empty.
