@@ -16,6 +16,7 @@ import {
   type PerimeterFunction,
   type ShapeConstructor,
 } from '@maxgraph/core'
+import { SHADOW_OPACITY_KEY } from './canvasTheme.ts'
 import { IMAGE_PLACEHOLDER } from './images.ts'
 import { BROWSER_BAR_HEIGHT } from './shapes.ts'
 
@@ -795,12 +796,28 @@ const SHADOW_COLOR = '#000000'
 const SHADOW_OPACITY = 0.25
 
 /**
+ * maxGraph draws every shadow with the opacity of its defaults; a shape whose drawn style has
+ * {@link SHADOW_OPACITY_KEY}, e.g. on the dark canvas, gets its own. Patched once.
+ */
+function drawOwnShadowOpacity() {
+  const configureCanvas = Shape.prototype.configureCanvas
+  if ((configureCanvas as { codraw?: boolean }).codraw) return
+  const patched = function (this: Shape, c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+    configureCanvas.call(this, c, x, y, w, h)
+    const opacity = (this.style as Record<string, unknown> | null)?.[SHADOW_OPACITY_KEY]
+    if (this.isShadow && typeof opacity === 'number') c.setShadowAlpha(opacity)
+  }
+  Shape.prototype.configureCanvas = Object.assign(patched, { codraw: true })
+}
+
+/**
  * Adds shapes and edge markers of draw.io that maxGraph does not have, and draws shadows as draw.io does. Safe to call
  * more than once.
  */
 export function registerDiagramExtensions() {
   StyleDefaultsConfig.shadowColor = SHADOW_COLOR
   StyleDefaultsConfig.shadowOpacity = SHADOW_OPACITY
+  drawOwnShadowOpacity()
   ShapeRegistry.add('rectangle', ClickThroughRectangleShape)
   ShapeRegistry.add('image', PictureShape)
   ShapeRegistry.add('document', DocumentShape)

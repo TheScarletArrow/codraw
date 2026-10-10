@@ -36,6 +36,29 @@ class SvgSanitizerTest {
     }
 
     @Test
+    fun `keeps gradients, shadows and rounded corners of shapes as maxGraph draws them`() {
+        val clean = SvgSanitizer.sanitize(
+            svg(
+                """
+                <defs><linearGradient x1="0%" y1="0%" x2="100%" y2="0%" id="mx-gradient-ffffff-1-dae8fc-1-e-1">
+                  <stop offset="0%" style="stop-color:#ffffff"/><stop offset="100%" style="stop-color:#dae8fc"/>
+                </linearGradient></defs>
+                <rect x="10.5" y="10.5" width="120" height="60" rx="9" ry="9" fill="#000000" stroke="#000000" transform="translate(2,3)" opacity="0.25"/>
+                <rect x="10.5" y="10.5" width="120" height="60" rx="9" ry="9" fill="url(#mx-gradient-ffffff-1-dae8fc-1-e-1)" stroke="#1f2328"/>
+                """,
+            ),
+        )
+
+        assertContains(clean, "<linearGradient")
+        assertContains(clean, "x2=\"100%\"")
+        assertContains(clean, "style=\"stop-color:#dae8fc\"")
+        assertContains(clean, "fill=\"url(#mx-gradient-ffffff-1-dae8fc-1-e-1)\"")
+        assertContains(clean, "transform=\"translate(2,3)\"")
+        assertContains(clean, "opacity=\"0.25\"")
+        assertContains(clean, "rx=\"9\"")
+    }
+
+    @Test
     fun `keeps labels in HTML inside foreignObject`() {
         val clean = SvgSanitizer.sanitize(
             svg(

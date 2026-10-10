@@ -30,6 +30,7 @@ import {
   VertexHandler,
   eventUtils,
   getDefaultPlugins,
+  type AbstractCanvas2D,
   type CellState,
   type CellStyle,
   type EventObject,
@@ -341,6 +342,13 @@ export interface SelectionColors {
   font: string | null
   /** Opacity of the fill of the selected shapes, 0–100; `null` when it differs between them or no shapes are selected. */
   fillOpacity: number | null
+  /**
+   * The second color of the gradient of the fill of the selected shapes, `none` without a gradient; `null` when it
+   * differs between them or no shapes are selected.
+   */
+  gradient: string | null
+  /** Where the fill turns into the second color; `null` when it differs, or without a gradient or shapes. */
+  gradientDirection: GradientDirection | null
   /** Shapes are selected, so the fill can be changed; edges have no fill. */
   hasShapes: boolean
 }
@@ -371,6 +379,42 @@ export interface SelectionLine {
    */
   edgeShape: EdgeShape | null
   hasEdges: boolean
+  /** The shadow and the corners of the selected shapes; `null` when no shapes are selected. */
+  shapes: SelectionShapeEffects | null
+}
+
+/** Where a gradient of draw.io turns the fill into its second color: `south` from the top down, the default. */
+export type GradientDirection = 'south' | 'north' | 'east' | 'west'
+
+/** Corners of shapes are rounded by this share of their shorter side, in percent, without `arcSize`. */
+export const DEFAULT_ARC_SIZE = 15
+export const MIN_ARC_SIZE = 1
+export const MAX_ARC_SIZE = 50
+
+/** The shadow and the corners of the selected shapes. */
+export interface SelectionShapeEffects {
+  /** Every selected shape has a shadow. */
+  shadow: boolean
+  /** Every selected shape that can round its corners has them rounded. */
+  rounded: boolean
+  /**
+   * The radius of the rounded corners in percent of the shorter side; `null` when it differs, when not all of them are
+   * rounded, or when a shape has it in pixels (`absoluteArcSize` of draw.io).
+   */
+  arcSize: number | null
+  /** Some selected shape can round its corners: a rectangle, a rhombus, a table; an ellipse cannot. */
+  canRound: boolean
+}
+
+/** Changes of {@link DiagramEditor.setShapeEffects}; what is not given stays. */
+export interface ShapeEffectsChanges {
+  shadow?: boolean
+  rounded?: boolean
+  /** In percent of the shorter side, {@link MIN_ARC_SIZE}–{@link MAX_ARC_SIZE}. */
+  arcSize?: number
+  /** The second color of the gradient; `none` removes the gradient. */
+  gradient?: string
+  gradientDirection?: GradientDirection
 }
 
 /** Text of the selected objects. */
@@ -1107,6 +1151,11 @@ export interface DiagramEditor {
    * 100 is the default.
    */
   setFillOpacity(opacity: number): void
+  /**
+   * Sets the shadow, the rounded corners and their radius, or the gradient of the fill of the selected shapes as one
+   * undo step; corners only of the shapes that can round them. Defaults are kept without their keys.
+   */
+  setShapeEffects(changes: ShapeEffectsChanges): void
   /** Sets the text size of the selected objects and of the fields of selected tables as one undo step. */
   setFontSize(size: number): void
   /** Makes the text of each object {@link setFontSize} would change one size of the row larger or smaller. */
@@ -1700,6 +1749,7 @@ const CHANGING_COMMANDS = [
   'setEdgeRelation',
   'setColor',
   'setFillOpacity',
+  'setShapeEffects',
   'setFontSize',
   'setFontFamily',
   'stepFontSize',
@@ -2198,6 +2248,8 @@ export function createDiagramEditor(
       stroke: same(cells.map((cell) => colorOf(cell, 'stroke'))),
       font: same(cells.map((cell) => colorOf(cell, 'font'))),
       fillOpacity: shapes.length > 0 ? same(shapes.map(fillOpacityOf)) : null,
+      gradient: shapes.length > 0 ? same(shapes.map(gradientOf)) : null,
+      gradientDirection: shapes.length > 0 ? same(shapes.map(gradientDirectionOf)) : null,
       hasShapes: shapes.length > 0,
     }
   }
@@ -2474,6 +2526,23 @@ export function createDiagramEditor(
       dash: same(cells.map(lineDashOf)),
       edgeShape: edges.length > 0 ? same(edges.map(edgeShapeOf)) : null,
       hasEdges: edges.length > 0,
+      shapes: selectionShapeEffects(cells.filter((cell) => cell.isVertex())),
+    }
+  }
+  /** Shapes whose form rounds its corners with `rounded`, as maxGraph draws them: a rectangle does, an ellipse does not. */
+  const canRound = (cell: Cell) => {
+    const shape = graph.getView().getState(cell)?.shape
+    return !!shape && shape.isRoundable(null as unknown as AbstractCanvas2D, 0, 0, 1, 1)
+  }
+  const selectionShapeEffects = (shapes: Cell[]): SelectionShapeEffects | null => {
+    if (shapes.length === 0) return null
+    const roundable = shapes.filter(canRound)
+    const rounded = roundable.length > 0 && roundable.every((cell) => isOn(cell.getStyle().rounded))
+    return {
+      shadow: shapes.every((cell) => isOn(cell.getStyle().shadow)),
+      rounded,
+      arcSize: rounded ? same(roundable.map(arcSizeOf)) : null,
+      canRound: roundable.length > 0,
     }
   }
   const selectionGeometry = (): SelectionGeometry | null => {
@@ -4729,6 +4798,37 @@ export function createDiagramEditor(
       // The default is kept by removing the key, as draw.io does.
       setStyleValue(shapes, 'fillOpacity', value === 100 ? undefined : value)
     },
+    setShapeEffects({ shadow, rounded, arcSize, gradient, gradientDirection }) {
+      const shapes = unlocked(graph.getSelectionCells()).filter((cell) => cell.isVertex())
+      if (shapes.length === 0) return
+      const roundable = shapes.filter(canRound)
+      graph.stopEditing(false)
+      // Default values are kept by removing their keys, as draw.io does.
+      model.batchUpdate(() => {
+        if (shadow !== undefined) setStyleValue(shapes, 'shadow', shadow ? true : undefined)
+        if (rounded !== undefined) {
+          setStyleValue(roundable, 'rounded', rounded ? true : undefined)
+          if (!rounded) {
+            setStyleValue(roundable, 'arcSize', undefined)
+            setStyleValue(roundable, 'absoluteArcSize', undefined)
+          }
+        }
+        if (arcSize !== undefined && Number.isFinite(arcSize)) {
+          const size = Math.min(MAX_ARC_SIZE, Math.max(MIN_ARC_SIZE, Math.round(arcSize)))
+          // The radius means a share of the shorter side for every shape, not pixels for some of them.
+          setStyleValue(roundable, 'absoluteArcSize', undefined)
+          setStyleValue(roundable, 'arcSize', size === DEFAULT_ARC_SIZE ? undefined : size)
+        }
+        if (gradient !== undefined) {
+          const off = gradient === 'none' || gradient === ''
+          setStyleValue(shapes, 'gradientColor', off ? undefined : gradient)
+          if (off) setStyleValue(shapes, 'gradientDirection', undefined)
+        }
+        if (gradientDirection !== undefined) {
+          setStyleValue(shapes, 'gradientDirection', gradientDirection === 'south' ? undefined : gradientDirection)
+        }
+      })
+    },
     setFontSize(size) {
       applyFontSizes(unlocked(textCells()), () => clampFontSize(size))
     },
@@ -5441,6 +5541,32 @@ export function createDiagramEditor(
 
 const COLOR_KEYS = { fill: 'fillColor', stroke: 'strokeColor', font: 'fontColor' } as const
 
+/** A flag of draw.io in any of its spellings: it writes 1, CoDraw keeps `true`. */
+const isOn = (value: unknown) => value === true || value === 1 || value === '1'
+
+/** The second color of the gradient of a shape, `none` without one; draw.io writes `none` and `default` too. */
+function gradientOf(cell: Cell): string {
+  const color = cell.getStyle().gradientColor
+  return typeof color === 'string' && color !== '' && color !== 'default' ? color : 'none'
+}
+
+const GRADIENT_DIRECTIONS: readonly GradientDirection[] = ['south', 'north', 'east', 'west']
+
+/** Where the gradient of a shape goes, `null` without a gradient; draw.io goes from the top down without the key. */
+function gradientDirectionOf(cell: Cell): GradientDirection | null {
+  if (gradientOf(cell) === 'none') return null
+  const direction = cell.getStyle().gradientDirection
+  return GRADIENT_DIRECTIONS.find((value) => value === direction) ?? 'south'
+}
+
+/** The radius of the rounded corners of a shape in percent, `null` when it is in pixels; see {@link DEFAULT_ARC_SIZE}. */
+function arcSizeOf(cell: Cell): number | null {
+  const style = cell.getStyle()
+  if (isOn(style.absoluteArcSize)) return null
+  const size = Number(style.arcSize ?? DEFAULT_ARC_SIZE)
+  return Number.isFinite(size) ? size : DEFAULT_ARC_SIZE
+}
+
 /** Opacity of the fill of a shape, 0–100; draw.io stores it as `fillOpacity`, opaque without it. */
 function fillOpacityOf(cell: Cell): number {
   const opacity = Number(cell.getStyle().fillOpacity ?? 100)
@@ -6116,6 +6242,8 @@ function configureStyles(graph: Graph) {
     strokeColor: DEFAULT_LINE_COLOR,
     fontColor: DEFAULT_LINE_COLOR,
     fontSize: 13,
+    // A gradient without a direction goes from the top down, as in draw.io; maxGraph would draw it from the left.
+    gradientDirection: 'south',
   })
   Object.assign(stylesheet.getDefaultEdgeStyle(), {
     edgeStyle: 'orthogonalEdgeStyle',
