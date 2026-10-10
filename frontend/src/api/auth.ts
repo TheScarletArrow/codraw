@@ -11,7 +11,20 @@ export interface CurrentUser {
   language?: Locale
 }
 
-export type LoginProvider = 'github' | 'google'
+/** A way to sign in that the installation offers: GitHub, Google or a provider of OpenID Connect of the operator. */
+export interface LoginProvider {
+  id: string
+  /** Shown as «Войти через {name}». */
+  name: string
+}
+
+export interface LoginOptions {
+  providers: LoginProvider[]
+  /** Whether «Продолжить без входа» creates guests. */
+  guests: boolean
+}
+
+export const LOGIN_OPTIONS_QUERY_KEY = ['login-options'] as const
 
 export function fetchMe(): Promise<CurrentUser> {
   return request('/api/me')
@@ -31,11 +44,21 @@ export function saveLanguage(language: Locale): Promise<void> {
   })
 }
 
-export function logout(): Promise<void> {
-  return request('/api/logout', { method: 'POST' })
+/** The ways to sign in of this installation; open without a sign-in. */
+export function fetchLoginOptions(): Promise<LoginOptions> {
+  return request('/api/auth/providers')
+}
+
+/**
+ * Ends the session. For a provider that signs out at its side too, gives the address of its page that does it and
+ * comes back to the login page.
+ */
+export async function logout(): Promise<string | null> {
+  const response = await request<{ logoutUrl?: string } | undefined>('/api/logout', { method: 'POST' })
+  return response?.logoutUrl ?? null
 }
 
 /** Where the browser goes to sign in: the backend sends it on to the provider and back to the app. */
-export function loginUrl(provider: LoginProvider) {
-  return `/api/oauth2/authorization/${provider}`
+export function loginUrl(providerId: string) {
+  return `/api/oauth2/authorization/${encodeURIComponent(providerId)}`
 }

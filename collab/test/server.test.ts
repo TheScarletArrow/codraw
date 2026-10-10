@@ -98,6 +98,31 @@ describe("collab server", () => {
     expect(title(other)).toBeUndefined();
   });
 
+  it("delivers cursors of participants to the others", async () => {
+    await startServer();
+    const first = await connect(board);
+    const second = await connect(board);
+
+    first.provider.awareness!.setLocalStateField("cursor", { x: 10, y: 20 });
+
+    await waitFor(() => second.provider.awareness!.getStates().get(first.document.clientID)?.cursor !== undefined);
+    expect(second.provider.awareness!.getStates().get(first.document.clientID)?.cursor).toEqual({ x: 10, y: 20 });
+  });
+
+  it("holds changes and cursors for the broadcast delay and sends them together", async () => {
+    await startServer({ broadcastDelay: 300 });
+    const first = await connect(board);
+    const second = await connect(board);
+
+    first.document.getMap("meta").set("title", "Batched");
+    first.provider.awareness!.setLocalStateField("cursor", { x: 1, y: 2 });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(title(second)).toBeUndefined();
+    await waitFor(() => title(second) === "Batched");
+    await waitFor(() => second.provider.awareness!.getStates().get(first.document.clientID)?.cursor !== undefined);
+  });
+
   it("loads the stored document when a participant connects", async () => {
     const stored = new Y.Doc();
     stored.getMap("meta").set("title", "Stored");
@@ -438,6 +463,21 @@ describe("collab server", () => {
       backend.access.set(board, { ownerId: ALICE, linkAccess: "none", members: {} });
 
       await expect(bobClosed).resolves.toBe("access-changed");
+    });
+
+    it("closes the sockets of a user whose account was deleted at the next check", async () => {
+      await startServer({ accessCheckInterval: 100 });
+      const owner = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const bobClosed = closeReasonOf(bob);
+      const ownerClosed = vi.fn();
+      owner.provider.on("close", ownerClosed);
+
+      // Bob deleted his account on another device; the link of the board still lets anybody edit it.
+      backend.missingUsers.add(BOB);
+
+      await expect(bobClosed).resolves.toBe("account-deleted");
+      expect(ownerClosed).not.toHaveBeenCalled();
     });
 
     it("closes the connection of a member taken out of the workspace of the board at the next check", async () => {

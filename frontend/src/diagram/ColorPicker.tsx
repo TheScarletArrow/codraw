@@ -1,11 +1,12 @@
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { colorPickerMessages as m } from './ColorPicker.messages.ts'
 import { PALETTE } from './colors.ts'
+import type { GradientDirection } from './editor.ts'
 import { NumberField } from './NumberField.tsx'
-
 
 const NONE = 'none'
 
@@ -27,10 +28,29 @@ interface ColorPickerProps {
   /** Accessible name of the transparency, e.g. «Прозрачность заливки». */
   opacityName?: string
   onOpacityChange?: (opacity: number) => void
+  /**
+   * The second color of the gradient, `none` without one, `null` when the objects have different ones. Without
+   * `onGradientChange` there is no gradient.
+   */
+  gradient?: string | null
+  gradientDirection?: GradientDirection | null
+  onGradientChange?: (changes: { gradient?: string; gradientDirection?: GradientDirection }) => void
 }
 
 /** A toolbar button that shows the current color and opens the palette. */
-export function ColorPicker({ label, name, value, noneLabel, onChange, opacity = null, opacityName = m.transparency, onOpacityChange }: ColorPickerProps) {
+export function ColorPicker({
+  label,
+  name,
+  value,
+  noneLabel,
+  onChange,
+  opacity = null,
+  opacityName = 'Прозрачность',
+  onOpacityChange,
+  gradient = null,
+  gradientDirection = null,
+  onGradientChange,
+}: ColorPickerProps) {
   const [open, setOpen] = useState(false)
   const pick = (color: string) => {
     onChange(color)
@@ -78,6 +98,9 @@ export function ColorPicker({ label, name, value, noneLabel, onChange, opacity =
             onCommit={(transparency) => onOpacityChange(100 - transparency)}
           />
         )}
+        {onGradientChange && (
+          <Gradient color={value} gradient={gradient} direction={gradientDirection} onChange={onGradientChange} />
+        )}
       </PopoverContent>
     </Popover>
   )
@@ -87,7 +110,17 @@ export function ColorPicker({ label, name, value, noneLabel, onChange, opacity =
  * Any color through the color picker of the browser. The color is applied on `change`, when the picker is
  * closed, not on every `input` while the user moves through it: each change is a step of undo.
  */
-function CustomColor({ value, onPick }: { value: string | null; onPick: (color: string) => void }) {
+function CustomColor({
+  label = 'Свой цвет',
+  value,
+  disabled,
+  onPick,
+}: {
+  label?: string
+  value: string | null
+  disabled?: boolean
+  onPick: (color: string) => void
+}) {
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -99,13 +132,14 @@ function CustomColor({ value, onPick }: { value: string | null; onPick: (color: 
 
   return (
     <label className="flex items-center justify-between gap-2 text-sm">
-      {m.customColor}
+      {label}
       <input
         ref={input}
         type="color"
-        aria-label={m.customColor}
+        aria-label={label}
+        disabled={disabled}
         defaultValue={value && /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'}
-        className="h-8 w-12 cursor-pointer rounded border bg-background"
+        className="h-8 w-12 cursor-pointer rounded border bg-background disabled:cursor-default disabled:opacity-50"
       />
     </label>
   )
@@ -166,6 +200,75 @@ function Transparency({
         onChange={(event) => setDragged(Number(event.target.value))}
         className="w-full accent-primary"
       />
+    </div>
+  )
+}
+
+const GRADIENT_DIRECTIONS: { value: GradientDirection; label: string; icon: LucideIcon }[] = [
+  { value: 'south', label: 'Вниз', icon: ArrowDown },
+  { value: 'north', label: 'Вверх', icon: ArrowUp },
+  { value: 'east', label: 'Вправо', icon: ArrowRight },
+  { value: 'west', label: 'Влево', icon: ArrowLeft },
+]
+
+/** The second color a gradient turned on starts with: white, or light blue over a white fill, where white shows nothing. */
+function startingGradient(fill: string | null): string {
+  return fill?.toLowerCase() === '#ffffff' ? '#dae8fc' : '#ffffff'
+}
+
+/**
+ * The gradient of the fill: turned on or off, its second color through the color picker of the browser and where the
+ * fill turns into it. Each change is a step of undo; the window stays open.
+ */
+function Gradient({
+  color,
+  gradient,
+  direction,
+  onChange,
+}: {
+  color: string | null
+  gradient: string | null
+  direction: GradientDirection | null
+  onChange: (changes: { gradient?: string; gradientDirection?: GradientDirection }) => void
+}) {
+  const on = gradient !== null && gradient !== NONE
+  return (
+    <div role="group" aria-label="Градиент" className="flex flex-col gap-1.5 text-sm">
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={on}
+          className="accent-primary"
+          onChange={(event) => onChange({ gradient: event.target.checked ? startingGradient(color) : NONE })}
+        />
+        Градиент
+      </label>
+      {/* The picker starts anew with the color of the gradient, which another participant may change. */}
+      <CustomColor
+        key={on ? gradient : NONE}
+        label="Второй цвет градиента"
+        value={on ? gradient : null}
+        disabled={!on}
+        onPick={(next) => onChange({ gradient: next })}
+      />
+      <div role="group" aria-label="Направление градиента" className="grid grid-cols-4 gap-1">
+        {GRADIENT_DIRECTIONS.map(({ value, label, icon: Icon }) => (
+          <Button
+            key={value}
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label={label}
+            title={label}
+            aria-pressed={on && direction === value}
+            disabled={!on}
+            className={cn(on && direction === value && 'bg-accent text-accent-foreground')}
+            onClick={() => onChange({ gradientDirection: value })}
+          >
+            <Icon />
+          </Button>
+        ))}
+      </div>
     </div>
   )
 }

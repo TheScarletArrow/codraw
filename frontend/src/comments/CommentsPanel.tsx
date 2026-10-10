@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { SIDE_PANEL_CLASS } from '@/lib/panels'
 import { startThread, type CommentText, type CommentThread, type ThreadPoint } from '../api/comments.ts'
 import { CommentComposer } from './CommentComposer.tsx'
 import { commentsMessages as m } from './messages.ts'
@@ -32,7 +33,19 @@ export interface ThreadDraft {
 const draftKey = ({ pageId, cellId, point }: ThreadDraft) =>
   `${pageId}:${cellId !== null ? `cell:${cellId}` : point ? 'point' : 'page'}`
 
-const FILTERS: ThreadFilter[] = ['open', 'resolved', 'mentions', 'assigned']
+const FILTERS: [ThreadFilter, string][] = [
+  ['open', 'Открытые'],
+  ['resolved', 'Решённые'],
+  ['mentions', 'Упоминают меня'],
+  ['assigned', 'Назначены мне'],
+]
+
+const EMPTY: Record<ThreadFilter, string> = {
+  open: 'Открытых веток нет. Щёлкните правой кнопкой или задержите палец на элементе или на пустом месте и выберите «Комментировать».',
+  resolved: 'Решённых веток нет.',
+  mentions: 'Вас пока никто не упомянул.',
+  assigned: 'Вам пока не назначено ни одной ветки.',
+}
 
 interface CommentsPanelProps {
   boardId: string
@@ -110,7 +123,7 @@ export function CommentsPanel({
   const draftTarget = draft && threadTarget(draft, draft.cellId === null ? null : cellInfo(draft.pageId, draft.cellId))
 
   return (
-    <aside aria-label={m.comments} className="flex w-80 shrink-0 flex-col border-l bg-background">
+    <aside aria-label="Комментарии" className={cn(SIDE_PANEL_CLASS, 'w-80')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <MessageSquare className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">{m.comments}</h3>

@@ -1,6 +1,8 @@
 package io.github.thescarletarrow.codraw.board
 
 import com.fasterxml.jackson.annotation.JsonValue
+import io.github.thescarletarrow.codraw.user.DELETED_USER_ID
+import io.github.thescarletarrow.codraw.user.DELETED_USER_NAME
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -195,7 +197,10 @@ class BoardVersions(private val jdbc: JdbcClient) {
             .update()
     }
 
-    /** The users [ids] as authors, in the order of the ids; repeated ids show once, users who are gone not at all. */
+    /**
+     * The users [ids] as authors, in the order of the ids; repeated ids show once, deleted accounts as one deleted user,
+     * guests who are gone not at all.
+     */
     fun authors(ids: List<UUID>): List<VersionAuthor> {
         val users = users(ids.toSet())
         return ids.distinct().mapNotNull(users::get)
@@ -215,10 +220,15 @@ class BoardVersions(private val jdbc: JdbcClient) {
         }
     }
 
-    /** The users [ids] who are still there, by their ids. */
+    /** The users [ids] who are still there, by their ids, and a deleted user for [DELETED_USER_ID]. */
     private fun users(ids: Set<UUID>): Map<UUID, VersionAuthor> {
         if (ids.isEmpty()) return emptyMap()
-        return jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = ANY (:ids::uuid[])")
+        val deleted = if (DELETED_USER_ID in ids) {
+            mapOf(DELETED_USER_ID to VersionAuthor(DELETED_USER_ID, DELETED_USER_NAME, null))
+        } else {
+            emptyMap()
+        }
+        return deleted + jdbc.sql("SELECT id, name, avatar_url FROM users WHERE id = ANY (:ids::uuid[])")
             .param("ids", ids.toTypedArray())
             .query { rs, _ ->
                 VersionAuthor(rs.getObject("id", UUID::class.java), rs.getString("name"), rs.getString("avatar_url"))

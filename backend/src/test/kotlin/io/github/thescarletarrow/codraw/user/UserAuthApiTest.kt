@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
+import org.springframework.test.json.JsonCompareMode
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -132,6 +133,19 @@ class UserAuthApiTest(
         }.andExpect { status { isForbidden() } }
 
         assertEquals(0, jdbcClient.sql("SELECT count(*) FROM boards").query(Int::class.java).single())
+    }
+
+    @Test
+    fun `offers the ways to sign in of the installation without a sign-in`() {
+        mockMvc.get("/api/auth/providers").andExpect {
+            status { isOk() }
+            content {
+                json(
+                    """{"providers": [{"id": "github", "name": "GitHub"}, {"id": "google", "name": "Google"}], "guests": true}""",
+                    JsonCompareMode.STRICT,
+                )
+            }
+        }
     }
 
     @Test

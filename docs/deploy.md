@@ -1,7 +1,8 @@
 # Развёртывание CoDraw на сервере
 
-CoDraw разворачивается из готовых образов пятью контейнерами: `frontend` (nginx), `backend`, `collab`, PostgreSQL
-и `s3` — S3-совместимое хранилище картинок досок RustFS ([ADR-0006](adr/0006-image-storage.md)). Наружу открыт один
+CoDraw разворачивается из готовых образов шестью контейнерами: `frontend` (nginx), `backend`, `collab`, PostgreSQL,
+`s3` — S3-совместимое хранилище картинок досок RustFS ([ADR-0006](adr/0006-image-storage.md)) — и `backup`, который
+снимает резервные копии по расписанию (см. «Резервные копии»). Наружу открыт один
 порт — порт приложения: nginx отдаёт приложение и с того же адреса передаёт API в `backend`, а синхронизацию — в
 `collab`. Картинки браузеры получают через `backend`, хранилище снаружи недоступно. TLS завершает прокси перед этим
 портом.
@@ -10,11 +11,13 @@ CoDraw разворачивается из готовых образов пят�
 браузер ──https──▶ TLS-прокси ──http──▶ frontend :8080 ──/api/──▶ backend :8080 ──▶ PostgreSQL
                                                      │                        └──▶ s3 :9000 (картинки досок)
                                                      └─/collab─▶ collab :1234 ──▶ backend (внутренний API)
+backup ──по расписанию──▶ PostgreSQL, s3 ──▶ том backups и хранилище копий вне сервера
 ```
 
 ## Что нужно
 
-- Сервер с Docker и Docker Compose v2 (`docker compose version`), 2 ГБ памяти и больше.
+- Сервер с Docker и Docker Compose v2 (`docker compose version`), 2 ГБ памяти и больше; сколько процессора и памяти
+  нужно под ваше число досок — в разделе «Ресурсы» ниже.
 - Домен, который указывает на сервер, например `codraw.example.com`.
 - TLS-прокси: ниже — пример для [Caddy](https://caddyserver.com), который сам получает сертификат Let's Encrypt.
   Подойдёт любой прокси, который передаёт заголовки `Host` и `X-Forwarded-Proto`.
@@ -26,6 +29,7 @@ CI публикует образы при каждом пуше в `main`:
 - `ghcr.io/thescarletarrow/codraw-backend`
 - `ghcr.io/thescarletarrow/codraw-collab`
 - `ghcr.io/thescarletarrow/codraw-frontend`
+- `ghcr.io/thescarletarrow/codraw-backup`
 
 с тегом полного хеша коммита, а когда прошли все проверки CI этого коммита, — и с тегом `latest`. Если пакеты
 репозитория закрыты, войдите в реестр токеном с правом `read:packages`: `docker login ghcr.io`. Собрать образы
@@ -46,6 +50,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY` | нет | прежний ключ на время смены ключа |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | нет | OAuth-приложение GitHub |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | нет | OAuth-приложение Google |
+| `CODRAW_OIDC_ISSUER_URI`, `CODRAW_OIDC_CLIENT_ID`, `CODRAW_OIDC_CLIENT_SECRET`, `CODRAW_OIDC_NAME` | нет | корпоративный провайдер входа OpenID Connect (Keycloak, Entra ID, Okta): issuer, клиент и название на кнопке «Войти через …», см. «Корпоративный вход» ниже |
 | `CODRAW_HTTP_PORT` | нет | порт приложения на сервере, по умолчанию `8080` |
 | `CODRAW_VERSION` | нет | тег образов, по умолчанию `latest` |
 | `CODRAW_IMAGE_PREFIX` | нет | реестр и префикс имён образов, по умолчанию `ghcr.io/thescarletarrow/codraw-` |
@@ -57,6 +62,12 @@ CI публикует образы при каждом пуше в `main`:
 
 | Переменная | По умолчанию | Что |
 |---|---|---|
+| `CODRAW_GUESTS_ENABLED` | `true` | «Продолжить без входа»; `false` — гостей нет, `POST /api/guest` отвечает 403, а прежние гости доживают свой срок |
+| `CODRAW_OIDC_SCOPES` | `openid,profile,email` | scope корпоративного провайдера; `openid` добавляется сам |
+| `CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS` | пусто | домены почты через запятую, с которыми корпоративный провайдер пускает в CoDraw; пусто — всех его пользователей |
+| `CODRAW_OIDC_ALLOWED_GROUPS` | пусто | группы через запятую, хотя бы в одной из которых должен быть пользователь; пусто — без проверки групп |
+| `CODRAW_OIDC_GROUPS_CLAIM` | `groups` | claim, в котором провайдер перечисляет группы пользователя |
+| `CODRAW_OIDC_LOGOUT` | `false` | `true` — «Выйти» завершает и сеанс у провайдера (RP-initiated logout) |
 | `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
 | `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
 | `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
@@ -80,6 +91,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_LIMITS_EMBED_SIZE` | `2MB` | больше не примет живая картинка доски (SVG из браузеров участников); сверх — 413 |
 | `DOCUMENT_SIZE_LIMIT_BYTES` | `16777216` | до скольких байт `collab` даёт расти документу доски и черновику предложения; у предела проходят только удаления |
 | `CODRAW_LIMITS_DOCUMENT_SIZE` | `32MB` | больше `backend` не сохранит состояние документа, черновика предложения и версию; держите выше предела `collab`, а при росте — поднимите и `client_max_body_size` nginx |
+| `CODRAW_COLLAB_BROADCAST_DELAY_MS` | `0` | сколько миллисекунд `collab` копит правки и курсоры доски, прежде чем разослать их участникам одним сообщением; 0 — сразу. 20–30 вдвое снижают процессор `collab` на досках с десятками участников ценой такой задержки каждой правки, см. [нагрузочные тесты](load-testing.md) |
 | `CODRAW_LIMITS_VERSIONS_SIZE_PER_BOARD` | `64MB` | сколько занимают версии одной доски вместе; сверх этого удаляются старые версии — сначала без названия, затем с названием, — а новейшая остаётся всегда |
 | `CODRAW_LIMITS_IMAGE_SIZE` | `10MB` | больше файл картинки на доску не примут (браузер проверяет до загрузки, `backend` — 413); держите ниже 32 МБ, которые пропускает nginx |
 | `CODRAW_LIMITS_IMAGES_SIZE_PER_BOARD` | `100MB` | сколько занимают картинки одной доски вместе, одинаковый файл — один раз; сверх — 409. Картинки хранятся, пока жива доска, даже убранные с неё: их показывают версии и предложения |
@@ -90,6 +102,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_ISSUES_GITHUB_WEBHOOK_SECRET` | пусто | секрет вебхука задач GitHub, который сразу приносит их изменения; пусто — вебхук выключен |
 | `CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS` | пусто | базы PostgreSQL, схему которых пользователи могут загрузить через `backend` («Подключиться к базе…» в «Импорт SQL»): имена хостов, адреса и сети CIDR через запятую; пусто — функция выключена, см. «Схема из живой базы» ниже |
 | `CODRAW_LIMITS_SCHEMA_IMPORTS_PER_USER_PER_HOUR` | `30` | попыток загрузить схему из базы у одного пользователя в час, неудачные тоже; сверх — 429; счётчик — в памяти `backend` |
+| `CODRAW_LIMITS_EXPORTS_PER_USER_PER_DAY` | `5` | выгрузок «Скачать мои данные» у одного пользователя в сутки; сверх — 429; счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_LIBRARIES_PER_USER` | `20` | больше личных библиотек фигур у пользователя не будет; библиотеки гостя, перешедшие при входе, не ограничиваются; сверх — 409 |
 | `CODRAW_LIMITS_COMPONENTS_PER_LIBRARY` | `200` | больше компонентов в одной библиотеке не будет; сверх — 409 |
 | `CODRAW_LIMITS_LIBRARY_COMPONENT_SIZE` | `4MB` | больше компонент библиотеки — схема с картинками внутри и образцом — не сохранится; сверх — 413; держите ниже 32 МБ, которые пропускает nginx |
@@ -107,8 +120,12 @@ cookie, сроки хранения этой установки, получат�
 задайте их и покажите тексты своему юристу. Ссылка на политику нужна и Google, чтобы перевести OAuth-приложение из
 режима Testing.
 
-Без обязательной переменной Docker Compose не запустит стек и назовёт её. Без OAuth-приложений работает только вход
-гостем: кнопки «Войти через GitHub» и «Войти через Google» ведут на ошибку провайдера.
+Выгрузку своих данных и удаление учётной записи пользователи делают сами на странице «Учётная запись»; на запрос,
+пришедший на `CODRAW_LEGAL_CONTACT_EMAIL`, можно ответить ссылкой на неё. Удалённая учётная запись не
+восстанавливается, а её следы в резервных копиях базы уходят вместе с ними, по сроку их хранения.
+
+Без обязательной переменной Docker Compose не запустит стек и назовёт её. Страница входа показывает только
+настроенные способы входа: без OAuth-приложений GitHub и Google и без корпоративного провайдера остаётся вход гостем.
 
 Ключ подписи:
 
@@ -229,9 +246,58 @@ CODRAW_ISSUES_GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
 `backend` принимает только события с подписью `X-Hub-Signature-256` этим секретом и меняет только уже привязанные
 задачи: название, статус, перенос в другой репозиторий, удаление. Повторное или запоздавшее событие ничего не меняет.
 
+### Корпоративный вход
+
+Сотрудники входят через провайдер удостоверений компании, если он говорит OpenID Connect: Keycloak, Microsoft Entra ID,
+Okta, Authentik, ADFS. Решение — [ADR-0011](adr/0011-corporate-sign-in.md).
+
+1. Создайте у провайдера конфиденциальный клиент (client) с потоком «authorization code» и адресом возврата
+   `https://codraw.example.com/api/login/oauth2/code/corp`, где `corp` — id провайдера в настройках CoDraw. Если
+   включаете выход у провайдера, разрешите адрес после выхода `https://codraw.example.com/login`.
+2. Задайте `CODRAW_OIDC_ISSUER_URI` — issuer провайдера, по которому открываются его метаданные
+   `<issuer>/.well-known/openid-configuration`, — `CODRAW_OIDC_CLIENT_ID`, `CODRAW_OIDC_CLIENT_SECRET` и название
+   кнопки `CODRAW_OIDC_NAME`, например «Keycloak компании». Без issuer или client id кнопки нет.
+3. По желанию ограничьте вход доменами почты (`CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS`) и группами
+   (`CODRAW_OIDC_ALLOWED_GROUPS`). Не прошедший проверку возвращается на страницу входа с сообщением, что вход в эту
+   установку ему не разрешён, и учётная запись не создаётся.
+
+**Пример для Keycloak.** В realm `acme` создайте клиент `codraw`: Client authentication — On, Standard flow — On,
+Valid redirect URIs — `https://codraw.example.com/api/login/oauth2/code/corp`, Valid post logout redirect URIs —
+`https://codraw.example.com/login`; секрет — на вкладке Credentials. Для ограничения по группам добавьте клиенту
+mapper «Group Membership» с Token Claim Name `groups` и выключенным Full group path. Затем в `.env.prod`:
+
+```bash
+CODRAW_OIDC_ISSUER_URI=https://sso.example.com/realms/acme
+CODRAW_OIDC_CLIENT_ID=codraw
+CODRAW_OIDC_CLIENT_SECRET=…
+CODRAW_OIDC_NAME=Keycloak компании
+CODRAW_OIDC_ALLOWED_GROUPS=codraw-users
+CODRAW_OIDC_LOGOUT=true
+```
+
+Для Entra ID issuer — `https://login.microsoftonline.com/<id каталога>/v2.0` (не `/common`), а группы приходят
+идентификаторами: их и указывайте. Ограничение по домену почты надёжно только с issuer одного каталога: Entra ID не
+отдаёт `email_verified`, и в мультитенантном приложении claim `email` задаёт администратор чужого каталога, так что
+он может указать любой домен. Для приложения, в которое входят из нескольких каталогов, ограничивайте вход группами
+или условиями доступа в самом Entra ID. Для Okta — адрес сервера авторизации, например `https://acme.okta.com`.
+
+Учётная запись CoDraw связана с парой issuer и идентификатора пользователя у провайдера (`sub`): смена почты или имени
+её не теряет, а пользователи разных провайдеров — разные учётные записи. Поэтому issuer должен оставаться прежним: новый
+адрес Keycloak или другой каталог Entra ID — это новые учётные записи. Метаданные провайдера `backend` читает при
+первом входе через него и помнит до перезапуска; если провайдер недоступен, `backend` работает, а вход через провайдера
+возвращает на страницу входа с ошибкой и пишет причину в журнал.
+
+`docker-compose.prod.yml` передаёт одного провайдера с id `corp`. Второй и следующие добавьте в `environment` сервиса
+`backend` (например, в `docker-compose.override.yml`) переменными `CODRAW_AUTH_OIDC_<ID>_ISSUER_URI`, `…_CLIENT_ID`,
+`…_CLIENT_SECRET`, `…_NAME`, `…_SCOPES`, `…_ALLOWED_EMAIL_DOMAINS`, `…_ALLOWED_GROUPS`, `…_GROUPS_CLAIM`, `…_LOGOUT`;
+id — строчные латинские буквы и цифры, кроме `github`, `google` и `guest`.
+
+**Закрытая установка.** Чтобы оставить только корпоративный вход, не задавайте `GITHUB_*` и `GOOGLE_*` и выключите
+гостей: `CODRAW_GUESTS_ENABLED=false`. Политика конфиденциальности сама назовёт провайдера, которого вы выбрали.
+
 ## 2. OAuth
 
-Создайте OAuth-приложения GitHub и Google, как описано в README («Вход через GitHub и Google»), с адресами возврата
+Если нужен вход через GitHub и Google, создайте их OAuth-приложения, как описано в README («Вход через GitHub и Google»), с адресами возврата
 `https://codraw.example.com/api/login/oauth2/code/github` и `https://codraw.example.com/api/login/oauth2/code/google`.
 `backend` строит эти адреса по схеме и домену, которые передаёт прокси, поэтому за TLS-прокси они получаются
 с `https`.
@@ -277,7 +343,9 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod pull
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 ```
 
-Контейнеры пересоздаются, данные остаются в томах `codraw-prod_postgres-data` и `codraw-prod_s3-data` (картинки). Подключённые участники видят «Нет
+Контейнеры пересоздаются, данные остаются в томах `codraw-prod_postgres-data`, `codraw-prod_s3-data` (картинки) и
+`codraw-prod_backups` (резервные копии). Перед обновлением, которое меняет схему базы, снимите копию:
+`docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup now`. Подключённые участники видят «Нет
 связи» на время перезапуска и переподключаются сами. Для отката задайте `CODRAW_VERSION` с хешем предыдущего коммита
 и выполните `up -d --wait`. Откат на версию до изменения схемы базы требует отката миграций — U-скриптов в
 `backend/src/main/resources/db/migration`.
@@ -288,8 +356,9 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 | Где | Что |
 |---|---|
-| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component` и `libraries-size`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
-| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
+| `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), удалённые учётные записи (`codraw_accounts_deleted_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component` и `libraries-size`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
+| `backup:9187/metrics.txt` | резервные копии: время и результат последней попытки, время последней удачной копии, размер и длительность (`codraw_backup_*`, см. «Резервные копии») |
+| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
 каталог `deploy/prometheus` из репозитория:
@@ -304,11 +373,14 @@ Prometheus слушает `127.0.0.1:9090` сервера (порт — `CODRAW_
 
 | Правило | Когда |
 |---|---|
-| `CodrawServiceDown` | `backend` или `collab` не отвечает Prometheus 2 минуты |
+| `CodrawServiceDown` | `backend`, `collab` или `backup` не отвечает Prometheus 2 минуты |
 | `CodrawBackendErrors` | больше 5% ответов `backend` — ошибки 5xx, 10 минут |
 | `CodrawDocumentStoreFailures` | `collab` не смог сохранить документ доски хотя бы раз за 10 минут |
+| `CodrawCollabBusy` | `collab` 10 минут занимает больше 80% ядра: правки вот-вот начнут доходить с задержкой, см. «Ресурсы» |
 | `CodrawDatabaseConnectionsPending` | запросы `backend` 5 минут ждут соединений с базой |
 | `CodrawClientErrors` | больше 20 ошибок в браузерах участников за 10 минут |
+| `CodrawBackupFailed` | последняя резервная копия не удалась |
+| `CodrawBackupMissing` | удачной резервной копии нет больше 26 часов (15 минут подряд) |
 
 Prometheus показывает сработавшие правила на странице Alerts. Чтобы получать оповещения, подключите Alertmanager
 (`alerting` в `deploy/prometheus/prometheus.yml`) или внешний мониторинг, который читает те же метрики. Проверить
@@ -325,42 +397,152 @@ Prometheus показывает сработавшие правила на ст�
 'select(.client.error.kind)'`. Одна и та же ошибка отправляется один раз за загрузку страницы, всего — не больше 10. Чтобы вернуть обычный текст, уберите
 `LOGGING_STRUCTURED_FORMAT_CONSOLE` у `backend` и задайте `LOG_FORMAT: text` у `collab`.
 
+## Ресурсы
+
+Первым у установки упирается процессор `collab`: это один процесс Node.js, он использует одно ядро, сколько бы их ни
+было. На ядре Xeon 2,1 ГГц он держит p95 доставки правки ≤ 200 мс до ~300 одновременно открытых досок по 3 активных
+участника и доску из 100 участников; `backend` и PostgreSQL при этом заняты на 10–15 % ядра.
+
+| Одновременно открытых досок (по 2–3 активных участника) | Сервер |
+|---|---|
+| до 100 | 2 vCPU, 4 ГБ памяти |
+| до 200 | 2–4 vCPU, 4 ГБ памяти |
+| до 300 | 4 vCPU, 8 ГБ памяти |
+| больше 300 | одного процесса `collab` не хватит ([#173](https://github.com/TheScarletArrow/codraw/issues/173)) |
+
+Заложите `collab` 1 ГБ памяти, держите его процессор ниже ~70 % ядра в часы пик — правило `CodrawCollabBusy`
+предупредит, — а если обычны доски с десятками участников, задайте `CODRAW_COLLAB_BROADCAST_DELAY_MS=20`–`30`. Стенд,
+цифры, найденные узкие места и как прогнать ту же нагрузку на своём сервере (`pnpm load`) — в
+[нагрузочных тестах](load-testing.md).
+
 ## Резервные копии
 
-Состояние — в PostgreSQL (доски, документы, пользователи, сеансы, описания картинок) и в томе хранилища `s3-data`
-(файлы картинок).
+Состояние — в PostgreSQL (доски, документы, версии, пользователи, сеансы, описания картинок) и в хранилище картинок
+(файлы картинок). Сервис `backup` стека снимает их копии сам: после `up -d` — сразу, если удачной копии ещё нет, а дальше
+по расписанию. Решение — [ADR-0010](adr/0010-backups.md).
+
+Каждая копия — один архив `codraw-2026-10-10T030000Z.tar` (время UTC) в томе `codraw-prod_backups`: в нём
+`database.dump` — `pg_dump --format=custom` базы, `images/` — файлы бакета картинок и `manifest.txt`. Сначала снимается
+база, затем картинки: файл картинки по своему адресу никогда не меняется, поэтому копия картинок, снятая после копии
+базы, покрывает все картинки, на которые та ссылается. Картинки копируются по S3 API, поэтому так же копируется и внешнее
+хранилище картинок (`CODRAW_IMAGES_S3_*`). Два снятия одновременно не идут.
+
+| Переменная | По умолчанию | Что |
+|---|---|---|
+| `CODRAW_BACKUP_SCHEDULE` | `0 3 * * *` | когда снимать копии: cron из пяти полей, время UTC; с другим расписанием поправьте и порог `CodrawBackupMissing` |
+| `CODRAW_BACKUP_KEEP_DAILY` | `7` | сколько последних дней хранится последняя копия каждого дня; не меньше 1 |
+| `CODRAW_BACKUP_KEEP_WEEKLY` | `4` | сколько последних недель (ISO, с понедельника) хранится последняя копия каждой недели; 0 — без недельных |
+| `CODRAW_BACKUP_ENCRYPTION_PASSWORD` | пусто | пароль шифрования архивов; пусто — архивы не шифруются |
+| `CODRAW_BACKUP_S3_ENDPOINT` | пусто | адрес S3-совместимого хранилища копий вне сервера, например `https://s3.eu-central-1.amazonaws.com`; пусто — копии только на сервере |
+| `CODRAW_BACKUP_S3_REGION` | `us-east-1` | регион этого хранилища |
+| `CODRAW_BACKUP_S3_BUCKET` | — | бакет копий; создаётся, если его нет; обязателен с адресом |
+| `CODRAW_BACKUP_S3_PREFIX` | пусто | каталог копий в бакете, например `codraw/prod` |
+| `CODRAW_BACKUP_S3_ACCESS_KEY`, `CODRAW_BACKUP_S3_SECRET_KEY` | — | ключи хранилища копий; обязательны с адресом. Ключу хватает прав читать, писать и удалять объекты бакета |
+| `CODRAW_BACKUP_VOLUME` | `backups` | где на сервере лежат архивы: том Docker или каталог сервера, например на другом диске (`/mnt/backups`; владелец — пользователь с UID 70: `chown 70:70 /mnt/backups`) |
+
+Неверное расписание, число или половина настроек хранилища копий не дают сервису запуститься: `docker compose … logs
+backup` называет настройку.
+
+**Хранилище вне сервера.** Копия на том же диске спасает от ошибок, но не от потери сервера. Задайте
+`CODRAW_BACKUP_S3_*`: каждый архив тогда копируется и туда, а копия считается удачной, когда архив лёг в оба места.
+Подойдёт облачный S3, Backblaze B2, Yandex Object Storage, MinIO на другой машине — путь бакета в адресе (path-style).
+Дайте хранилищу копий отдельные ключи, которые не открывают хранилище картинок, и, если провайдер умеет, включите
+блокировку удаления объектов (object lock) на срок хранения.
+
+**Шифрование.** С `CODRAW_BACKUP_ENCRYPTION_PASSWORD` архивы шифруются (rclone crypt: XSalsa20-Poly1305 с проверкой
+целостности) и лежат на сервере и в хранилище только зашифрованными, с суффиксом `.tar.bin`. Храните пароль вне сервера:
+без него копии не восстановить. Если пароль сменить, старые копии читаются только старым паролем; правило хранения
+удаляет их как обычно.
+
+**Правило хранения.** После удачной копии остаются: последний архив каждого дня (UTC), если он моложе
+`CODRAW_BACKUP_KEEP_DAILY` суток, последний архив каждой недели, если он моложе `CODRAW_BACKUP_KEEP_WEEKLY` недель, и
+всегда — самый свежий архив; остальные удаляются и на сервере, и в хранилище копий. Файлы с другими именами не
+трогаются. Значит, удалённые пользователями данные остаются в копиях не дольше `max(N дней, 7·M дней)` — по умолчанию 28
+дней; этот срок называет политика конфиденциальности. Место: до N+M архивов, каждый — база и все картинки.
+
+**Метрики и оповещения.** `backup:9187/metrics.txt` в сети стека, Prometheus профиля `monitoring` читает их заданием
+`backup`:
+
+| Метрика | Что |
+|---|---|
+| `codraw_backup_last_success_timestamp_seconds` | когда закончилась последняя удачная копия, 0 — ни одной |
+| `codraw_backup_last_run_timestamp_seconds`, `codraw_backup_last_run_success` | когда началась последняя попытка и удалась ли она (1 или 0) |
+| `codraw_backup_last_size_bytes`, `codraw_backup_last_duration_seconds` | размер последнего архива и время последней попытки |
+
+Значения лежат в томе копий и переживают перезапуск. Правила `CodrawBackupFailed` (последняя копия не удалась) и
+`CodrawBackupMissing` (удачной копии нет больше 26 часов) — в таблице оповещений выше. Причина неудачи — в журнале:
+`docker compose -f docker-compose.prod.yml logs backup`.
+
+**Копия сейчас и список копий:**
 
 ```bash
-# копия
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
-  pg_dump -U codraw -d codraw --format=custom > codraw-$(date +%F).dump
-
-# восстановление в пустую базу
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
-  pg_restore -U codraw -d codraw --clean --if-exists < codraw-2026-10-05.dump
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup now
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup list
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup list --remote
 ```
 
-Картинки копируются вместе с томом хранилища; файл картинки по своему адресу никогда не меняется, поэтому копия тома,
-снятая после копии базы, покрывает все картинки, на которые та ссылается:
+### Восстановление
+
+Восстановление заменяет базу целиком и делает бакет картинок таким, каким он был при копии. Пока к базе подключён
+`backend` или `collab`, оно отказывается. Выполните его с теми же `.env.prod` и паролем шифрования, что и копию, и той
+же версией образов (`CODRAW_VERSION`) или новее:
 
 ```bash
-# копия тома картинок рядом с копией базы
+# 1. остановите приложение: база и хранилище картинок продолжают работать
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop frontend collab backend
+
+# 2. восстановите последний архив сервера; имя архива вместо latest — конкретную копию,
+#    --remote — из хранилища копий вне сервера
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps backup restore latest
+
+# 3. запустите приложение
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+```
+
+**На новом сервере** после потери старого: скопируйте `docker-compose.prod.yml`, `deploy/` и `.env.prod`, поднимите
+базу и хранилище картинок и восстановите последнюю копию из хранилища вне сервера:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait postgres s3
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps backup restore latest --remote
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+```
+
+Копия снимается раз в сутки, поэтому после восстановления пропадает работа с момента последней копии.
+
+**Вручную, без сервиса `backup`**, — те же шаги, что он делает:
+
+```bash
+# копия базы, затем тома картинок
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
+  pg_dump -U codraw -d codraw --format=custom > codraw-$(date +%F).dump
 docker run --rm -v codraw-prod_s3-data:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/codraw-images-$(date +%F).tar.gz -C /data .
 
-# восстановление: остановите s3, распакуйте копию в том и запустите стек снова
+# восстановление в пустую базу; том картинок — при остановленном s3
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
+  pg_restore -U codraw -d codraw --clean --if-exists < codraw-2026-10-05.dump
 docker compose -f docker-compose.prod.yml --env-file .env.prod stop s3
 docker run --rm -v codraw-prod_s3-data:/data -v "$PWD":/backup alpine \
   sh -c 'rm -rf /data/* && tar xzf /backup/codraw-images-2026-10-05.tar.gz -C /data'
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 ```
 
-Делайте копию по расписанию (cron) и храните её вне сервера.
+**Секреты.** Пароль базы, ключи хранилищ и пароль шифрования сервис получает только из окружения контейнера: их нет в
+образе, архивах и журнале, а rclone и `pg_dump` получают их через окружение, а не аргументы. Как и у остальных сервисов,
+их видит `docker inspect`: доступ к Docker на сервере — это доступ ко всему.
 
 ## Что проверяет CI
 
-Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает три образа, поднимает из них
-этот же `docker-compose.prod.yml` с профилем `monitoring` (с хранилищем изображений), ждёт, пока Prometheus увидит `backend` и `collab`, и в
-браузере проверяет через nginx совместную работу двух гостей, заголовки безопасности, кеширование и закрытость
-внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить против своего стека:
-`STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.
+Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает четыре образа, поднимает из них
+этот же `docker-compose.prod.yml` с профилем `monitoring` (с хранилищем изображений, хранилищем копий вне сервера — бакетом
+того же RustFS — и шифрованием копий), ждёт, пока Prometheus увидит `backend`, `collab` и `backup`, и в
+браузере проверяет через nginx совместную работу двух гостей, изображение и версию доски, заголовки безопасности,
+кеширование и закрытость внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить
+против своего стека: `STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.
+
+Затем `deploy/backup/check-restore.sh` проверяет резервные копии: правило хранения (`retention.test.sh`), отказ
+восстановления при работающем `backend`, неудачную копию в метриках и в оповещении `CodrawBackupFailed`, удаление старых
+архивов на сервере и в хранилище копий, а потом снимает копию, теряет базу, картинки и архивы сервера, восстанавливает
+последний архив из хранилища копий и сверяет каждую таблицу базы и каждый файл картинок с тем, что было; журнал `backup`
+не должен содержать секретов. После этого стек снова поднимается, и проверка в браузере проходит ещё раз.

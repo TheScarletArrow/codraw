@@ -1,7 +1,14 @@
 import type { Cell } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { coversChildren, DARK_CANVAS_INK, darkCanvasStyle, isInk } from './canvasTheme.ts'
+import {
+  coversChildren,
+  DARK_CANVAS_INK,
+  DARK_CANVAS_SHADOW_OPACITY,
+  darkCanvasStyle,
+  isInk,
+  SHADOW_OPACITY_KEY,
+} from './canvasTheme.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { getCells, initializeDocument } from './model.ts'
 
@@ -63,6 +70,13 @@ describe('darkCanvasStyle', () => {
   it('leaves a cell over the fill of a shape that holds it as it is', () => {
     const style = { ...ink, fillColor: 'none' }
     expect(darkCanvasStyle(style, false, false)).toBe(style)
+  })
+
+  it('draws a shadow denser, also over a fill, and nothing else of a shape with a shadow', () => {
+    const style = { fillColor: '#dae8fc', strokeColor: '#6c8ebf', shadow: true }
+    expect(darkCanvasStyle(style, false, true)).toEqual({ ...style, [SHADOW_OPACITY_KEY]: DARK_CANVAS_SHADOW_OPACITY })
+    expect(darkCanvasStyle(style, false, false)).toEqual({ ...style, [SHADOW_OPACITY_KEY]: DARK_CANVAS_SHADOW_OPACITY })
+    expect(darkCanvasStyle({ ...style, shadow: false }, false, true)).not.toHaveProperty(SHADOW_OPACITY_KEY)
   })
 
   it('never changes the style it gets', () => {
@@ -180,6 +194,30 @@ describe('dark canvas of the editor', () => {
     expect(image.svg).not.toContain(DARK_CANVAS_INK)
     expect(image.svg).toContain('#1f2328')
     expect(drawn(editor, edge).strokeColor).toBe(DARK_CANVAS_INK)
+  })
+
+  it('draws the shadows of shapes denser on the dark canvas only, and keeps gradients and corners', () => {
+    const { editor } = open(undefined, { theme: 'dark' })
+    const { rectangle } = diagram(editor)
+    editor.graph.setSelectionCell(rectangle)
+    editor.setShapeEffects({ shadow: true, rounded: true, gradient: '#dae8fc' })
+
+    expect(drawn(editor, rectangle)).toMatchObject({
+      shadow: true,
+      rounded: true,
+      gradientColor: '#dae8fc',
+      [SHADOW_OPACITY_KEY]: DARK_CANVAS_SHADOW_OPACITY,
+    })
+    const opacities = [...editor.graph.getView().getState(rectangle)!.shape!.node.querySelectorAll('[opacity]')].map(
+      (node) => node.getAttribute('opacity'),
+    )
+    expect(opacities).toContain(String(DARK_CANVAS_SHADOW_OPACITY))
+    // Images draw the shadow as the light canvas does.
+    expect(editor.exportSvg()!.svg).toMatch(/fill="#000000"[^>]*transform="translate\(2,3\)" opacity="0.25"/)
+
+    editor.setTheme('light')
+    expect(drawn(editor, rectangle)).not.toHaveProperty(SHADOW_OPACITY_KEY)
+    expect(rectangle.getStyle()).not.toHaveProperty(SHADOW_OPACITY_KEY)
   })
 
   it('follows the theme also for a participant who only views', () => {

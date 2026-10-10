@@ -74,7 +74,8 @@ GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… ./gradlew bootRun          # Windo
 
 Переменные `GITHUB_*` и `GOOGLE_*` — client id и secret OAuth-приложений, через которые входят в CoDraw
 (см. [README](../README.md#вход-через-github-и-google)). Достаточно одного провайдера. Без них backend
-запускается, но работает только режим гостя.
+запускается, а страница входа предлагает только режим гостя. Корпоративный провайдер OpenID Connect (Keycloak и
+другие) задают переменные `CODRAW_AUTH_OIDC_<ID>_*` — см. [README](../README.md#корпоративный-вход).
 
 Первый запуск дольше: Gradle скачивает себя и зависимости. Backend готов, когда в логе появится
 `Started CodrawApplicationKt`. Таблицы в базе создаются при старте автоматически (миграции Flyway).
@@ -168,6 +169,10 @@ pnpm dev:frontend
     «История версий», нажмите «Сравнить с текущей» и «Миграция SQL»: в окне — `ALTER TABLE users RENAME COLUMN mail TO
     email;`. Выберите «Flyway»: появятся файлы `V1__update_schema.sql` и `U1__update_schema.sql` с обратным
     переименованием; выберите СУБД «SQL Server» — переименование станет `EXEC sp_rename`.
+15. Во втором окне (с картинкой из шага 13) выберите в меню доски «Создать копию»: откроется доска «<название> (копия)»
+    с теми же страницами, фигурами и картинкой, и она появится в списке досок второго окна. Добавьте фигуру в копию —
+    в оригинале её нет. В первом окне удалите оригинал и в «Корзина» нажмите «Удалить окончательно»: картинка в копии
+    остаётся.
 
 Как работать в редакторе:
 
@@ -359,6 +364,22 @@ pnpm --filter @codraw/e2e exec playwright install chromium   # один раз
 pnpm test:e2e
 ```
 
+### Нагрузка
+
+Нагрузочный клиент `load/` нагружает запущенный стек как настоящие участники: входит гостями, открывает доски,
+получает токены и правит доски через `collab`. Стек — из `docker-compose.prod.yml` (раздел «Запуск собранной
+версии») с пределом новых гостей, которого хватит на всех участников:
+
+```bash
+CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR=1000000 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+pnpm load                                   # все сценарии против http://localhost:8080, 20–30 минут
+pnpm load --scenarios boards --boards 50,100 --duration 30   # часть
+pnpm load --help
+```
+
+Отчёт печатается и сохраняется в `load/results/`. Сценарии, замеры и результаты — в
+[docs/load-testing.md](load-testing.md). Не запускайте нагрузку против рабочей установки: она создаёт гостей и доски.
+
 ## Частые проблемы
 
 **Backend не стартует: `Connection to localhost:5432 refused`.**
@@ -391,8 +412,14 @@ cd backend && SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/codraw ./gr
 в Test users. Подробности — в логе backend.
 
 **Backend не стартует: `Client id of registration 'github' must not be empty`.**
-Backend запущен не в профиле `dev`, а там переменные OAuth-приложений обязательны. Задайте `GITHUB_*`
-и `GOOGLE_*` или запускайте через `./gradlew bootRun`.
+Переменная `GITHUB_CLIENT_ID` или `GOOGLE_CLIENT_ID` задана пустой строкой. Задайте её или уберите совсем: без неё
+провайдер выключен, и его кнопки на странице входа нет.
+
+**Кнопка корпоративного входа возвращает на страницу входа с сообщением «Вход не выполнен».**
+Backend не прочитал метаданные провайдера по `<issuer>/.well-known/openid-configuration` — в логе backend есть
+`Cannot read the metadata of the sign-in provider` с причиной — или провайдер не подтвердил вход. Проверьте issuer
+(для Keycloak — `https://<хост>/realms/<realm>`), client id и secret и адрес возврата
+`http://localhost:5173/api/login/oauth2/code/<id>`.
 
 **Картинка не добавляется: «Не удалось загрузить изображение».**
 Не запущено хранилище изображений: `docker compose up -d s3`. В логе backend тогда есть `The storage of images is not

@@ -1,0 +1,39 @@
+diff --git a/dist/hocuspocus-server.cjs b/dist/hocuspocus-server.cjs
+index 6b46aae0f7b1fa90a3e790e8f007810eab29f89f..7eff2093f8354325506d7192246ed3b027a31812 100644
+--- a/dist/hocuspocus-server.cjs
++++ b/dist/hocuspocus-server.cjs
+@@ -229,7 +229,7 @@ var MessageReceiver = class {
+ 					source: "connection",
+ 					connection
+ 				} : this.defaultTransactionOrigin ?? { source: "local" };
+-				const scratchDoc = new yjs.Doc();
++				const scratchDoc = new yjs.Doc({ guid: "awareness-scratch" });
+ 				const scratch = new y_protocols_awareness.Awareness(scratchDoc);
+ 				try {
+ 					(0, y_protocols_awareness.applyAwarenessUpdate)(scratch, update, null);
+diff --git a/dist/hocuspocus-server.esm.js b/dist/hocuspocus-server.esm.js
+index d4acd27730f34118e315126657987a43f7c7f51c..e76978a5e06e9fabc784c84367a2e250e88bfe74 100644
+--- a/dist/hocuspocus-server.esm.js
++++ b/dist/hocuspocus-server.esm.js
+@@ -199,7 +199,7 @@ var MessageReceiver = class {
+ 					source: "connection",
+ 					connection
+ 				} : this.defaultTransactionOrigin ?? { source: "local" };
+-				const scratchDoc = new Y.Doc();
++				const scratchDoc = new Y.Doc({ guid: "awareness-scratch" });
+ 				const scratch = new Awareness(scratchDoc);
+ 				try {
+ 					applyAwarenessUpdate(scratch, update, null);
+diff --git a/src/MessageReceiver.ts b/src/MessageReceiver.ts
+index d6b185f516d1efe18f0f67aa6ff3bd1624f88fc1..7e097f7f09900f9942f4415c041392cd311e9dcc 100644
+--- a/src/MessageReceiver.ts
++++ b/src/MessageReceiver.ts
+@@ -85,7 +85,7 @@ export class MessageReceiver {
+ 				// object) are picked up by the re-encode below and forwarded as
+ 				// the broadcast payload. Hooks may also throw to reject the
+ 				// update entirely.
+-				const scratchDoc = new Y.Doc();
++				const scratchDoc = new Y.Doc({ guid: "awareness-scratch" });
+ 				const scratch = new Awareness(scratchDoc);
+ 				try {
+ 					applyAwarenessUpdate(scratch, update, null);

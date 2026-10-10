@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router'
 import { vi } from 'vitest'
-import type { CurrentUser } from '../api/auth.ts'
+import type { CurrentUser, LoginOptions } from '../api/auth.ts'
 import { createQueryClient } from '../queryClient.ts'
 
 /** The signed-in user that page tests answer `GET /api/me` with. */
@@ -11,6 +11,15 @@ export const ALICE: CurrentUser = {
   name: 'Алиса',
   avatarUrl: 'https://avatars.example.com/alice.png',
   guest: false,
+}
+
+/** The ways to sign in that page tests answer `GET /api/auth/providers` with: GitHub, Google and guests. */
+export const LOGIN_OPTIONS: LoginOptions = {
+  providers: [
+    { id: 'github', name: 'GitHub' },
+    { id: 'google', name: 'Google' },
+  ],
+  guests: true,
 }
 
 /** Renders routes in a memory router with a fresh query client, so tests can inspect navigation. */

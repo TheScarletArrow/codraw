@@ -5,6 +5,7 @@ import { canManageVersions, deleteBoard, renameBoard, type Board } from '../api/
 import { useBoardNotifications } from '../notifications/useBoardNotifications.ts'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { BoardActions } from './BoardActions.tsx'
+import { useCopyBoard } from './copyBoard.ts'
 import { TitleInput } from './TitleInput.tsx'
 import { boardMessages as m } from './board.messages.ts'
 
@@ -17,8 +18,8 @@ interface BoardHeadingProps {
 }
 
 /**
- * Title of the board; its owner renames it with a click and deletes it from the menu of the board, whoever edits it
- * opens its versions from that menu, and whoever has an email or a chat for notifications turns those of the board off
+ * Title of the board; its owner renames it with a click and deletes it from the menu of the board, anybody copies it
+ * there, whoever edits it opens its versions from that menu, and whoever has an email or a chat for notifications turns those of the board off
  * and on there.
  */
 export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingProps) {
@@ -26,6 +27,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
   const queryClient = useQueryClient()
   const [renaming, setRenaming] = useState(false)
   const notifications = useBoardNotifications(board.id)
+  const copy = useCopyBoard(board.id)
   const rename = useMutation({
     mutationFn: (title: string) => renameBoard(board.id, title),
     onSuccess: (renamed) => {
@@ -52,11 +54,21 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
   if (board.role !== 'owner') {
     const heading = <h2 className="max-w-64 min-w-24 truncate font-semibold">{board.title}</h2>
     const onHistory = canManageVersions(board) ? onOpenHistory : undefined
-    if (!onHistory && !notifications) return heading
     return (
       <div className="flex max-w-72 min-w-0 items-center gap-1">
         {heading}
-        <BoardActions title={board.title} onHistory={onHistory} notifications={notifications} />
+        <BoardActions
+          title={board.title}
+          disabled={copy.pending}
+          onCopy={copy.copy}
+          onHistory={onHistory}
+          notifications={notifications}
+        />
+        {copy.error && (
+          <span role="alert" className="text-sm whitespace-nowrap text-destructive">
+            {copy.error}
+          </span>
+        )}
       </div>
     )
   }
@@ -89,16 +101,17 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
       )}
       <BoardActions
         title={board.title}
-        deleteLabel={m.deleteBoard}
-        disabled={remove.isPending}
+        deleteLabel="Удалить доску"
+        disabled={remove.isPending || copy.pending}
         onRename={() => setRenaming(true)}
+        onCopy={copy.copy}
         onHistory={onOpenHistory}
         onDelete={() => remove.mutate()}
         notifications={notifications}
       />
-      {(rename.isError || remove.isError) && (
+      {(rename.isError || remove.isError || copy.error) && (
         <span role="alert" className="text-sm whitespace-nowrap text-destructive">
-          {rename.isError ? m.renameFailed : m.deleteFailed}
+          {rename.isError ? 'Не удалось переименовать' : remove.isError ? 'Не удалось удалить' : copy.error}
         </span>
       )}
     </div>

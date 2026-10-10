@@ -11,6 +11,8 @@ interface BoardActionsProps {
   deleteLabel?: string
   /** Renames the board; without it, as for anybody but the owner, the menu has no such item. */
   onRename?: () => void
+  /** Copies the board into a new board of the user; without it the menu has no such item. */
+  onCopy?: () => void
   /** Opens the versions of the board; without it the menu has no such item. */
   onHistory?: () => void
   /** Called once the user has confirmed the deletion; without it, as for anybody but the owner, nothing deletes. */
@@ -39,7 +41,8 @@ interface BoardActionsProps {
 type View = 'items' | 'confirm' | 'tags' | 'folder' | 'workspace'
 
 /**
- * Menu of a board: its owner renames and deletes it, whoever edits it opens its versions, in the list of boards the
+ * Menu of a board: its owner renames and deletes it, anybody with a role on it copies it, whoever edits it opens its
+ * versions, in the list of boards the
  * user gives it their tags and folder, and on the board the user stops or lets its notifications go to their email and
  * chat. Deleting moves it to the owner's trash.
  */
@@ -47,6 +50,7 @@ export function BoardActions({
   title,
   deleteLabel = m.delete,
   onRename,
+  onCopy,
   onHistory,
   onDelete,
   tags,
@@ -123,6 +127,22 @@ export function BoardActions({
                 }}
               >
                 {m.rename}
+              </Button>
+            )}
+            {onCopy && (
+              <Button
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                size="sm"
+                className={item}
+                title="Новая доска с теми же страницами и изображениями, без участников, комментариев и истории"
+                onClick={() => {
+                  setOpen(false)
+                  onCopy()
+                }}
+              >
+                Создать копию
               </Button>
             )}
             {tags && (

@@ -223,7 +223,7 @@ function PencilTools({ editor }: { editor: DiagramEditor | null }) {
         onChange={(color) => editor?.setPencilLine({ color })}
       />
       <LineStylePicker
-        line={{ width: pencilLine.width, dash: pencilLine.dash, edgeShape: null, hasEdges: false }}
+        line={{ width: pencilLine.width, dash: pencilLine.dash, edgeShape: null, hasEdges: false, shapes: null }}
         onChange={({ width, dash }) => editor?.setPencilLine({ width, dash })}
       />
     </>
@@ -278,6 +278,9 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
                 opacity={colors.fillOpacity}
                 opacityName={m.fillOpacity}
                 onOpacityChange={(opacity) => editor?.setFillOpacity(opacity)}
+                gradient={colors.gradient}
+                gradientDirection={colors.gradientDirection}
+                onGradientChange={(changes) => editor?.setShapeEffects(changes)}
               />
             )}
             <ColorPicker
@@ -295,7 +298,13 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
             />
           </>
         )}
-        {line && <LineStylePicker line={line} onChange={(changes) => editor?.setLineStyle(changes)} />}
+        {line && (
+          <LineStylePicker
+            line={line}
+            onChange={(changes) => editor?.setLineStyle(changes)}
+            onShapeEffects={(changes) => editor?.setShapeEffects(changes)}
+          />
+        )}
         {text && <TextTools text={text} editor={editor} />}
         {geometry && (
           <GeometryPicker

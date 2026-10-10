@@ -53,6 +53,14 @@ export default defineConfig({
         CODRAW_NOTIFICATIONS_DELIVERY_CRON: '* * * * * *',
         CODRAW_NOTIFICATIONS_WEBHOOK_ALLOWED_HOSTS: 'hooks.slack.com,localhost',
         CODRAW_NOTIFICATIONS_WEBHOOK_ALLOW_HTTP: 'true',
+        // A corporate provider of OpenID Connect whose issuer does not answer: the login page offers it, and signing in
+        // through it comes back with an error. `OidcLoginTest` of the backend signs in through a real Keycloak.
+        CODRAW_AUTH_OIDC_CORP_ISSUER_URI: 'http://127.0.0.1:9/realms/acme',
+        CODRAW_AUTH_OIDC_CORP_CLIENT_ID: 'codraw',
+        CODRAW_AUTH_OIDC_CORP_CLIENT_SECRET: 'codraw-secret',
+        CODRAW_AUTH_OIDC_CORP_NAME: 'Keycloak компании',
+        // The JVM reads the environment in the encoding of the locale; without a UTF-8 one the name above is garbled.
+        LANG: process.env.LANG || 'C.UTF-8',
       },
       timeout: 120_000,
     },

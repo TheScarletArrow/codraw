@@ -122,6 +122,37 @@ describe('copying and pasting the look of elements', () => {
     expect(storedStyle(doc, note)).toEqual({ shape: 'note', codrawShape: 'uml-note', rotation: 30 })
   })
 
+  it('carries the shadow and the gradient over to shapes, and leaves their corners', () => {
+    const { doc, editor } = open()
+    const sample = shape(editor, 0, 0)
+    const rounded = shape(editor, 200, 0, '', 'rounded')
+    const plain = shape(editor, 400, 0)
+    const edge = editor.graph.insertEdge({ parent: editor.graph.getDefaultParent(), value: '', source: rounded, target: plain })
+    editor.graph.setSelectionCell(sample)
+    editor.setShapeEffects({ shadow: true, gradient: '#dae8fc', gradientDirection: 'east' })
+    editor.graph.setSelectionCell(rounded)
+    editor.setShapeEffects({ arcSize: 30 })
+
+    editor.graph.setSelectionCell(sample)
+    editor.copyStyle()
+    editor.graph.setSelectionCells([rounded, plain, edge])
+    editor.pasteStyle()
+
+    const effects = { shadow: true, gradientColor: '#dae8fc', gradientDirection: 'east' }
+    expect(storedStyle(doc, rounded)).toMatchObject({ ...effects, rounded: true, arcSize: 30 })
+    expect(storedStyle(doc, plain)).toMatchObject(effects)
+    expect(storedStyle(doc, plain)).not.toHaveProperty('rounded')
+    expect(storedStyle(doc, edge)).not.toHaveProperty('shadow')
+    expect(storedStyle(doc, edge)).not.toHaveProperty('gradientColor')
+
+    // A look without them takes them away.
+    editor.graph.setSelectionCell(shape(editor, 600, 0))
+    editor.copyStyle()
+    editor.graph.setSelectionCell(rounded)
+    editor.pasteStyle()
+    expect(storedStyle(doc, rounded)).toEqual({ codrawShape: 'rounded', rounded: true, arcSize: 30 })
+  })
+
   it('pastes nothing until a look is copied', () => {
     const { doc, editor } = open()
     const cell = shape(editor, 0, 0)

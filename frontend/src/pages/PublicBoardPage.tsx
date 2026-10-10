@@ -164,7 +164,12 @@ function PublicLayout({
             {m.readOnly}
           </span>
         )}
-        {title && <EditorToolbar editor={editor} readOnly collaboration={false} />}
+        {/* A phone zooms with two fingers: the line keeps its room for the title. */}
+        {title && (
+          <div className="contents max-sm:hidden">
+            <EditorToolbar editor={editor} readOnly collaboration={false} />
+          </div>
+        )}
         <span className="ml-auto shrink-0">{action}</span>
       </header>
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>

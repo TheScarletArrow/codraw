@@ -57,10 +57,26 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-not-configured}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-not-configured}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-not-configured}
+      # A corporate provider of OpenID Connect with the id corp (docs/deploy.md); without an issuer there is none.
+      CODRAW_AUTH_OIDC_CORP_ISSUER_URI: ${CODRAW_OIDC_ISSUER_URI:-}
+      CODRAW_AUTH_OIDC_CORP_CLIENT_ID: ${CODRAW_OIDC_CLIENT_ID:-}
+      CODRAW_AUTH_OIDC_CORP_CLIENT_SECRET: ${CODRAW_OIDC_CLIENT_SECRET:-}
+      CODRAW_AUTH_OIDC_CORP_NAME: ${CODRAW_OIDC_NAME:-}
+      CODRAW_AUTH_OIDC_CORP_SCOPES: ${CODRAW_OIDC_SCOPES:-openid,profile,email}
+      CODRAW_AUTH_OIDC_CORP_ALLOWED_EMAIL_DOMAINS: ${CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS:-}
+      CODRAW_AUTH_OIDC_CORP_ALLOWED_GROUPS: ${CODRAW_OIDC_ALLOWED_GROUPS:-}
+      CODRAW_AUTH_OIDC_CORP_GROUPS_CLAIM: ${CODRAW_OIDC_GROUPS_CLAIM:-groups}
+      CODRAW_AUTH_OIDC_CORP_LOGOUT: ${CODRAW_OIDC_LOGOUT:-false}
+      # «Продолжить без входа»; false leaves a closed installation with its providers only.
+      CODRAW_GUESTS_ENABLED: ${CODRAW_GUESTS_ENABLED:-true}
       CODRAW_GUESTS_BOARD_RETENTION: ${CODRAW_GUESTS_BOARD_RETENTION:-30d}
       # Who provides the service: the privacy policy and the terms of use name them.
       CODRAW_LEGAL_OPERATOR: ${CODRAW_LEGAL_OPERATOR:-}
       CODRAW_LEGAL_CONTACT_EMAIL: ${CODRAW_LEGAL_CONTACT_EMAIL:-}
+      # How long the service backup keeps archives and whether outside the server: the privacy policy states it.
+      CODRAW_LEGAL_BACKUP_KEEP_DAILY: ${CODRAW_BACKUP_KEEP_DAILY:-7}
+      CODRAW_LEGAL_BACKUP_KEEP_WEEKLY: ${CODRAW_BACKUP_KEEP_WEEKLY:-4}
+      CODRAW_LEGAL_BACKUP_STORAGE: ${CODRAW_BACKUP_S3_ENDPOINT:-}
       CODRAW_LIMITS_BOARDS_PER_USER: ${CODRAW_LIMITS_BOARDS_PER_USER:-100}
       CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR: ${CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR:-20}
       CODRAW_LIMITS_CLIENT_ERRORS_PER_ADDRESS_PER_MINUTE: ${CODRAW_LIMITS_CLIENT_ERRORS_PER_ADDRESS_PER_MINUTE:-30}
@@ -135,6 +151,9 @@ services:
       BACKEND_JWKS_URL: http://backend:8080/.well-known/jwks.json
       CODRAW_INTERNAL_TOKEN: ${CODRAW_INTERNAL_TOKEN}
       DOCUMENT_SIZE_LIMIT_BYTES: ${DOCUMENT_SIZE_LIMIT_BYTES:-16777216}
+      # Milliseconds that changes and cursors of a board gather before they go out together; 0 sends them at once.
+      # A few tens help installations with crowded boards (docs/load-testing.md).
+      BROADCAST_DELAY_MS: ${CODRAW_COLLAB_BROADCAST_DELAY_MS:-0}
       # One line of JSON (ECS) per event, like the backend; "text" gives plain text.
       LOG_FORMAT: json
     depends_on:
@@ -157,6 +176,43 @@ services:
       collab:
         condition: service_healthy
 
+  # Backups of the database and the images on a schedule, kept by a rule of retention, on the server and outside of it
+  # if set (docs/deploy.md, «Резервные копии»). Its metrics are open in the network of the stack only.
+  backup:
+    <<: *restart
+    image: ${CODRAW_IMAGE_PREFIX:-ghcr.io/thescarletarrow/codraw-}backup:${CODRAW_VERSION:-latest}
+    build: ./deploy/backup
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:-codraw}
+      PGUSER: ${POSTGRES_USER:-codraw}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      CODRAW_IMAGES_S3_ENDPOINT: ${CODRAW_IMAGES_S3_ENDPOINT:-http://s3:9000}
+      CODRAW_IMAGES_S3_REGION: ${CODRAW_IMAGES_S3_REGION:-us-east-1}
+      CODRAW_IMAGES_S3_BUCKET: ${CODRAW_IMAGES_S3_BUCKET:-codraw-images}
+      CODRAW_IMAGES_S3_ACCESS_KEY: ${CODRAW_S3_ACCESS_KEY:-codraw}
+      CODRAW_IMAGES_S3_SECRET_KEY: ${CODRAW_S3_SECRET_KEY}
+      # Cron in UTC; the alert CodrawBackupMissing expects a backup at least once a day.
+      CODRAW_BACKUP_SCHEDULE: ${CODRAW_BACKUP_SCHEDULE:-0 3 * * *}
+      CODRAW_BACKUP_KEEP_DAILY: ${CODRAW_BACKUP_KEEP_DAILY:-7}
+      CODRAW_BACKUP_KEEP_WEEKLY: ${CODRAW_BACKUP_KEEP_WEEKLY:-4}
+      # Empty keeps archives unencrypted.
+      CODRAW_BACKUP_ENCRYPTION_PASSWORD: ${CODRAW_BACKUP_ENCRYPTION_PASSWORD:-}
+      # The S3-compatible storage of archives outside the server; an empty address keeps them on the server only.
+      CODRAW_BACKUP_S3_ENDPOINT: ${CODRAW_BACKUP_S3_ENDPOINT:-}
+      CODRAW_BACKUP_S3_REGION: ${CODRAW_BACKUP_S3_REGION:-us-east-1}
+      CODRAW_BACKUP_S3_BUCKET: ${CODRAW_BACKUP_S3_BUCKET:-}
+      CODRAW_BACKUP_S3_PREFIX: ${CODRAW_BACKUP_S3_PREFIX:-}
+      CODRAW_BACKUP_S3_ACCESS_KEY: ${CODRAW_BACKUP_S3_ACCESS_KEY:-}
+      CODRAW_BACKUP_S3_SECRET_KEY: ${CODRAW_BACKUP_S3_SECRET_KEY:-}
+    volumes:
+      # The volume of archives, or a directory of the server, e.g. on another disk, owned by the user 70.
+      - ${CODRAW_BACKUP_VOLUME:-backups}:/backups
+    depends_on:
+      # The first backup waits for the migrations and the bucket of images that the backend makes.
+      backend:
+        condition: service_healthy
+
   prometheus:
     <<: *restart
     image: prom/prometheus:v3.15.0
@@ -171,8 +227,10 @@ services:
     depends_on:
       - backend
       - collab
+      - backup
 
 volumes:
   postgres-data:
   s3-data:
+  backups:
   prometheus-data:

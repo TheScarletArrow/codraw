@@ -30,6 +30,10 @@ export class FakeBackend {
   readonly requests: { method: string; boardId: string; editors?: string[]; text?: string; onlyIfMissing?: boolean }[] = [];
   /** The texts for search of the boards by their ids, as collab sent them. */
   readonly searchTexts = new Map<string, string>();
+  /** Users whose accounts are gone; collab asks about the users of its connections. */
+  readonly missingUsers = new Set<string>();
+  /** How many times collab asked which users are gone. */
+  userChecks = 0;
   /** How many times collab asked for the boards without a text for search. */
   listingsWithoutSearchText = 0;
   /** How many of the next stores fail with 500, as when the database is down. */
@@ -115,6 +119,19 @@ export class FakeBackend {
         return;
       }
       const url = new URL(request.url ?? "/", "http://fake");
+      if (url.pathname === "/internal/users/missing" && request.method === "POST") {
+        this.userChecks++;
+        if (request.headers["x-internal-token"] !== this.token) {
+          response.writeHead(401).end();
+          return;
+        }
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(chunk as Buffer);
+        const ids = JSON.parse(Buffer.concat(chunks).toString("utf8")) as string[];
+        const missing = ids.filter((id) => this.missingUsers.has(id));
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(missing));
+        return;
+      }
       if (url.pathname === "/internal/boards/without-search-text") {
         // Not among the requests about boards: collab asks for these on its own when it starts.
         this.listingsWithoutSearchText++;

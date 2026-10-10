@@ -62,6 +62,16 @@ describe("backend client", () => {
     await expect(client.loadAccess("0199a000-0000-7000-8000-000000000002")).rejects.toBeInstanceOf(BoardNotFoundError);
   });
 
+  it("asks which users are gone, and nothing without users", async () => {
+    backend.missingUsers.add("0199a000-0000-7000-8000-0000000000b1");
+
+    await expect(
+      client.missingUsers(["0199a000-0000-7000-8000-0000000000b1", "0199a000-0000-7000-8000-0000000000c1"]),
+    ).resolves.toEqual(["0199a000-0000-7000-8000-0000000000b1"]);
+    await expect(client.missingUsers([])).resolves.toEqual([]);
+    expect(backend.userChecks).toBe(1);
+  });
+
   it("fails on other backend errors", async () => {
     const unauthorized = createBackendClient({ baseUrl: backend.url, internalToken: "wrong" });
 
@@ -70,6 +80,7 @@ describe("backend client", () => {
     await expect(unauthorized.loadAccess(board)).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.storeSearchText(board, "Схема")).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.boardsWithoutSearchText(null, 10)).rejects.toThrow("backend responded with 401");
+    await expect(unauthorized.missingUsers([board])).rejects.toThrow("backend responded with 401");
   });
 
   it("stores the text of a board for search in UTF-8, and only while it has none when asked so", async () => {
@@ -117,8 +128,15 @@ describe("config", () => {
       jwksUrl: "http://backend:8080/.well-known/jwks.json",
       accessCheckInterval: 5000,
       documentSizeLimit: 16 * 1024 * 1024,
+      broadcastDelay: 0,
       logFormat: "text",
     });
+  });
+
+  it("sends changes at once unless a delay of the broadcast is set", () => {
+    expect(loadConfig({ ...env, BROADCAST_DELAY_MS: "25" }).broadcastDelay).toBe(25);
+    expect(loadConfig({ ...env, BROADCAST_DELAY_MS: "0" }).broadcastDelay).toBe(0);
+    expect(() => loadConfig({ ...env, BROADCAST_DELAY_MS: "-5" })).toThrow("BROADCAST_DELAY_MS");
   });
 
   it("defaults the port to 1234, the access check to once a minute and the document size to 16 MiB", () => {

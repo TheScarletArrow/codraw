@@ -17,6 +17,7 @@ import {
 } from '../api/boards.ts'
 import { fetchFolders, FOLDERS_QUERY_KEY, type BoardFolder } from '../api/folders.ts'
 import { BoardActions } from '../board/BoardActions.tsx'
+import { useCopyBoard } from '../board/copyBoard.ts'
 import { BoardTrash } from '../board/BoardTrash.tsx'
 import { TitleInput } from '../board/TitleInput.tsx'
 import { BoardFilters } from '../boardList/BoardFilters.tsx'
@@ -435,8 +436,8 @@ function BoardRow({ children, aside }: { children: ReactNode; aside: ReactNode }
 }
 
 /**
- * A board of the user: it opens, and its menu renames it, gives it tags, puts it into a folder, brings it into a
- * workspace or deletes it.
+ * A board of the user: it opens, and its menu renames it, copies it, gives it tags, puts it into a folder, brings it into
+ * a workspace or deletes it.
  */
 function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowContext }) {
   const queryClient = useQueryClient()
@@ -477,6 +478,7 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
     },
   })
   const organization = useOrganizationMenu(OWN_BOARDS_QUERY_KEY, board, context)
+  const copy = useCopyBoard(board.id)
   const title = rename.isPending ? rename.variables : board.title
   const workspaceLimit = workspaceLimitOf(toWorkspace.error)
   const error = rename.isError
@@ -487,9 +489,9 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
         ? m.moveFailed
         : toWorkspace.isError
           ? workspaceLimit === null
-            ? m.toWorkspaceFailed
-            : m.workspaceBoardsLimit(workspaceLimit.limit)
-          : null
+            ? 'Не удалось перенести доску'
+            : `В пространстве уже ${counted(workspaceLimit.limit, ['доска', 'доски', 'досок'])}`
+          : copy.error
 
   return (
     <BoardRow
@@ -503,9 +505,10 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
           <BoardTime board={board} sort={context.sort} />
           <BoardActions
             title={board.title}
-            deleteLabel={m.delete}
-            disabled={remove.isPending}
+            deleteLabel="Удалить"
+            disabled={remove.isPending || copy.pending}
             onRename={() => setRenaming(true)}
+            onCopy={copy.copy}
             tags={organization.tags}
             folder={organization.folder}
             workspace={
@@ -549,21 +552,29 @@ function OwnBoardItem({ board, context }: { board: ListedBoard; context: RowCont
 
 /**
  * A board of another user that the user is a member of or opened through its link, with its owner and their role; its
- * menu gives it the tags and the folder of the user.
+ * menu copies it and gives it the tags and the folder of the user.
  */
 function SharedBoardItem({ board, context }: { board: SharedBoard; context: RowContext }) {
   const organization = useOrganizationMenu(SHARED_BOARDS_QUERY_KEY, board, context)
+  const copy = useCopyBoard(board.id)
+  const error = organization.moveFailed ? 'Не удалось переместить доску' : copy.error
   return (
     <BoardRow
       aside={
         <>
-          {organization.moveFailed && (
+          {error && (
             <span role="alert" className="text-sm text-destructive">
-              {m.moveFailed}
+              {error}
             </span>
           )}
           <BoardTime board={board} sort={context.sort} />
-          <BoardActions title={board.title} tags={organization.tags} folder={organization.folder} />
+          <BoardActions
+            title={board.title}
+            disabled={copy.pending}
+            onCopy={copy.copy}
+            tags={organization.tags}
+            folder={organization.folder}
+          />
         </>
       }
     >

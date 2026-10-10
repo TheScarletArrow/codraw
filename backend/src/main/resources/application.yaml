@@ -12,14 +12,15 @@ spring:
   security:
     oauth2:
       client:
+        # A provider whose client id is `not-configured` is off: the login page does not offer it (docs/deploy.md).
         registration:
           github:
-            client-id: ${GITHUB_CLIENT_ID:}
-            client-secret: ${GITHUB_CLIENT_SECRET:}
+            client-id: ${GITHUB_CLIENT_ID:not-configured}
+            client-secret: ${GITHUB_CLIENT_SECRET:not-configured}
             redirect-uri: "{baseUrl}/api/login/oauth2/code/{registrationId}"
           google:
-            client-id: ${GOOGLE_CLIENT_ID:}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            client-id: ${GOOGLE_CLIENT_ID:not-configured}
+            client-secret: ${GOOGLE_CLIENT_SECRET:not-configured}
             # Without `openid` Google is used as a plain OAuth2 provider, like GitHub.
             scope: profile
             redirect-uri: "{baseUrl}/api/login/oauth2/code/{registrationId}"
@@ -65,7 +66,13 @@ management:
       enabled: false
 
 codraw:
+  # Providers of OpenID Connect by their ids (codraw.auth.oidc.<id>.issuer-uri, client-id, client-secret, name, scopes,
+  # allowed-email-domains, allowed-groups, groups-claim, logout; CODRAW_AUTH_OIDC_<ID>_*). See docs/deploy.md.
+  auth:
+    oidc: {}
   guests:
+    # «Продолжить без входа» (CODRAW_GUESTS_ENABLED); a closed installation turns it off.
+    enabled: true
     # A board of a guest whose session has expired is deleted once nobody worked on it for this long.
     board-retention: 30d
     # Every hour; "-" turns the cleanup off.
