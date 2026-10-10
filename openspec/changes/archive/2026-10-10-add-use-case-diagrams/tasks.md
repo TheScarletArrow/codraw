@@ -28,9 +28,9 @@
 
 - [x] 4.1 README (возможности, раздел «Диаграммы вариантов использования», пункт плана 97), «Что нового» 0.29.0, версия
   фронтенда 0.29.0
-- [ ] 4.2 e2e: `use-case-diagrams.spec.ts` — актёр и вариант использования у двух участников, ассоциация без стрелки,
+- [x] 4.2 e2e: `use-case-diagrams.spec.ts` — актёр и вариант использования у двух участников, ассоциация без стрелки,
   «Отношение», `.drawio` туда и обратно
-- [ ] 4.3 `openspec validate --all`, typecheck, lint, тесты, `vite build`
+- [x] 4.3 `openspec validate --all`, typecheck, lint, тесты, `vite build`
 
 ## Workflow follow-up
 
