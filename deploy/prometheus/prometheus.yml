@@ -1,5 +1,5 @@
-# Prometheus of the profile `monitoring` of docker-compose.prod.yml: it reads the metrics of backend and collab in the
-# network of the stack, where they are open; the app address does not give them.
+# Prometheus of the profile `monitoring` of docker-compose.prod.yml: it reads the metrics of backend, collab and backup
+# in the network of the stack, where they are open; the app address does not give them.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -15,3 +15,9 @@ scrape_configs:
   - job_name: collab
     static_configs:
       - targets: ["collab:1234"]
+  # A file that the service backup writes after each backup; its server names no version of the text format.
+  - job_name: backup
+    metrics_path: /metrics.txt
+    fallback_scrape_protocol: PrometheusText0.0.4
+    static_configs:
+      - targets: ["backup:9187"]

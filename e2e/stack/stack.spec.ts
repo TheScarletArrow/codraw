@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
+import * as Y from 'yjs'
 
 /** A guest in a fresh browser context, whose page records what the Content Security Policy blocks. */
 async function guest(browser: Browser): Promise<Page> {
@@ -49,6 +50,45 @@ test('two guests work on one board through the app address without violations of
   await expect(owner.getByRole('textbox', { name: 'Ссылка на доску' })).toHaveValue(owner.url())
   expect(await cspViolations(owner)).toEqual([])
   expect(await cspViolations(other)).toEqual([])
+})
+
+// The board of this test is also what the check of backups in CI (deploy/backup/check-restore.sh) restores and compares.
+test('a board keeps an image and a named version through the app address', async ({ browser }) => {
+  const owner = await guest(browser)
+  await owner.getByRole('button', { name: 'Создать доску' }).click()
+  await expect(owner.getByRole('status')).toHaveText('Синхронизировано')
+  await owner.getByRole('complementary', { name: 'Фигуры' }).getByRole('button', { name: 'Прямоугольник', exact: true }).click()
+  const boardId = new URL(owner.url()).pathname.split('/').pop()!
+  await owner.request.get('/api/me')
+  const { cookies } = await owner.context().storageState()
+  const csrf = { 'X-XSRF-TOKEN': cookies.find((cookie) => cookie.name === 'XSRF-TOKEN')!.value }
+
+  const png = Buffer.from(
+    await owner.evaluate(async () => {
+      const canvas = new OffscreenCanvas(30, 20)
+      const context = canvas.getContext('2d')!
+      context.fillStyle = '#3366ff'
+      context.fillRect(0, 0, 30, 20)
+      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+      return Array.from(bytes)
+    }),
+  )
+  const added = await owner.request.post(`/api/boards/${boardId}/images`, {
+    data: png,
+    headers: { ...csrf, 'Content-Type': 'application/octet-stream' },
+  })
+  expect(added.status()).toBe(201)
+  const image = await owner.request.get(((await added.json()) as { url: string }).url)
+  expect(image.status()).toBe(200)
+  expect(Buffer.from(await image.body()).equals(png)).toBe(true)
+
+  const saved = await owner.request.post(`/api/boards/${boardId}/versions?reason=manual&name=${encodeURIComponent('Перед копией')}`, {
+    data: Buffer.from(Y.encodeStateAsUpdate(new Y.Doc())),
+    headers: { ...csrf, 'Content-Type': 'application/octet-stream' },
+  })
+  expect(saved.status()).toBe(201)
+  const versions = (await (await owner.request.get(`/api/boards/${boardId}/versions`)).json()) as { name: string | null }[]
+  expect(versions.map((version) => version.name)).toContain('Перед копией')
 })
 
 test('the app comes with the security headers, and its files are cached for a year', async ({ request }) => {

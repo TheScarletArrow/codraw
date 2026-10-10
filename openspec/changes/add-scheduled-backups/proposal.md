@@ -28,7 +28,7 @@ Prometheus с оповещениями, а CI на каждом пуше сни�
 - Необязательное шифрование архивов паролем из `CODRAW_BACKUP_ENCRYPTION_PASSWORD`.
 - Метрики (`codraw_backup_last_success_timestamp_seconds`, `codraw_backup_last_run_success` и другие) в сети стека,
   задание `backup` в Prometheus профиля `monitoring` и правила `CodrawBackupFailed` и `CodrawBackupMissing`.
-- Восстановление одной командой: `docker compose … run --rm backup restore [имя|latest] [--remote]` — база
+- Восстановление одной командой: `docker compose … run --rm --no-deps backup restore [имя|latest] [--remote]` — база
   и изображения из архива; оно отказывается работать, пока к базе подключён `backend`.
 - CI (задача `images`) проверяет правило хранения, неудачную копию в метриках и оповещениях, снимает копию стека с
   досками, документами, версиями и изображениями, восстанавливает её из внешнего хранилища в пустую базу и пустой
