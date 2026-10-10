@@ -22,6 +22,8 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   closedProposalsPerBoard: 10,
   schemaImport: false,
   issues: false,
+  backupRetentionDays: null,
+  backupOffsite: false,
   signInProviders: [
     { name: 'GitHub', corporate: false },
     { name: 'Google', corporate: false },
@@ -159,6 +161,10 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
     )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Копия доски, которую сделал её участник, переносит в его новую доску документ с изображениями, а с ним имена тех, кто менял элементы, писал стикеры и ставил статусы; их видят участники копии',
+    )
+    expect(retention).toHaveTextContent('Копия доски хранится как отдельная доска того, кто её сделал, со своими изображениями и не зависит от оригинала')
     expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
   })
 
@@ -208,6 +214,32 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'после сохранения. Больше никому данные не передаются и не продаются.',
     )
+  })
+
+  it('names backups, their retention and the storage outside the server only when the installation makes them', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ backupRetentionDays: 28, backupOffsite: true }) } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const retention = await screen.findByRole('region', { name: 'Сколько хранятся данные' })
+    expect(retention).toHaveTextContent(
+      'Резервные копии базы и изображений — до 28 дней: данные, которые вы удалили, остаются в копиях, пока копии не удалятся по этому сроку. Копии хранятся на сервере установки и в хранилище файлов, которое выбрал оператор.',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'оператор хранит и у поставщика хранилища файлов, которого выбрал сам; копии могут быть зашифрованы. Больше никому',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal({ backupRetentionDays: 7 }) } })
+    const local = renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'пока копии не удалятся по этому сроку. Копии хранятся на сервере установки.',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).not.toHaveTextContent('Резервные копии')
+    local.unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Сколько хранятся данные' })).not.toHaveTextContent('Резервные копии')
   })
 
   it('names the connection to a database only when the installation has it on', async () => {

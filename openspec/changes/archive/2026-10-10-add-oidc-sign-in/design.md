@@ -157,7 +157,7 @@ Keycloak с Docker Hub качается и здесь, и в GitHub Actions и �
 
 ### ADR
 
-ADR-0010 «Корпоративный вход через OpenID Connect»: OIDC вместо SAML, связь по `iss` + `sub`, ленивые метаданные.
+ADR-0011 «Корпоративный вход через OpenID Connect»: OIDC вместо SAML, связь по `iss` + `sub`, ленивые метаданные.
 Новой библиотеки нет — OIDC уже в `spring-boot-starter-security-oauth2-client`, Keycloak — только образ для тестов.
 
 ## Risks / Trade-offs

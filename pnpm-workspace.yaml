@@ -2,6 +2,7 @@ packages:
   - frontend
   - collab
   - e2e
+  - load
 
 onlyBuiltDependencies:
   - esbuild
@@ -12,3 +13,8 @@ ignoredOptionalDependencies:
   - core-js
   - dompurify
   - html2canvas
+
+# Hocuspocus makes a scratch document for every awareness message; with a guid of its own the document does not ask the
+# system for random numbers 31 times (docs/load-testing.md).
+patchedDependencies:
+  '@hocuspocus/server@4.7.0': patches/@hocuspocus__server@4.7.0.patch

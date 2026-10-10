@@ -5,13 +5,14 @@ export type StylePart = 'fill' | 'line' | 'text'
 
 /**
  * The style keys that «Вставить стиль» carries over, by the parts of the look: what the toolbar sets, but neither the
- * size and the form of an element nor what it means. Not carried: the geometry, `rotation`, the auto width and the
- * wrap of words, which lay the label out in the width of the shape; the shape and its corners; the form of an edge
- * (`edgeStyle`, `curved`) and its markers, which tell the direction and the cardinality; locks and other keys of
- * CoDraw, the keys of tables, and any key not listed here, e.g. of keys that later features bring.
+ * size and the form of an element nor what it means. The shadow goes with the fill: only shapes have it. Not carried:
+ * the geometry, `rotation`, the auto width and the wrap of words, which lay the label out in the width of the shape;
+ * the shape and its corners (`rounded`, `arcSize`), which the palette tells apart, e.g. «Скруглённый прямоугольник»;
+ * the form of an edge (`edgeStyle`, `curved`) and its markers, which tell the direction and the cardinality; locks and
+ * other keys of CoDraw, the keys of tables, and any key not listed here, e.g. of keys that later features bring.
  */
 export const STYLE_PARTS: Readonly<Record<StylePart, readonly string[]>> = {
-  fill: ['fillColor', 'fillOpacity'],
+  fill: ['fillColor', 'fillOpacity', 'gradientColor', 'gradientDirection', 'shadow'],
   line: ['strokeColor', 'strokeWidth', 'dashed', 'dashPattern'],
   text: ['fontColor', 'fontSize', 'fontFamily', 'fontStyle', 'align'],
 }

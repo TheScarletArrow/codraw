@@ -3,6 +3,7 @@ import { GitPullRequestArrow, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { SIDE_PANEL_CLASS } from '@/lib/panels'
 import {
   createProposal,
   PROPOSAL_TEXT_MAX_LENGTH,
@@ -35,7 +36,7 @@ export function ProposalsPanel({ boardId, proposals, failed, selectedId, onSelec
   const closed = proposals?.filter((proposal) => !isOpen(proposal)) ?? []
 
   return (
-    <aside aria-label="Предложения" className="flex w-72 shrink-0 flex-col border-l bg-background">
+    <aside aria-label="Предложения" className={cn(SIDE_PANEL_CLASS, 'w-72')}>
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <GitPullRequestArrow className="size-4 text-muted-foreground" />
         <h3 className="flex-1 text-sm font-semibold">Предложения</h3>

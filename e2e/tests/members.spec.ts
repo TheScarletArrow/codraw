@@ -68,7 +68,7 @@ test('an invited editor edits a board closed to others, becomes a viewer at once
   await owner.keyboard.press('Escape')
   await expect(owner.getByRole('button', { name: 'Новая доска', exact: true })).toHaveCount(0)
   await owner.getByRole('button', { name: 'Меню доски «Новая доска»' }).click()
-  await expect(owner.getByRole('menuitem')).toHaveText(['История версий'])
+  await expect(owner.getByRole('menuitem')).toHaveText(['Создать копию', 'История версий'])
   await owner.getByRole('menuitem', { name: 'История версий' }).click()
   const history = owner.getByRole('complementary', { name: 'История версий' })
   await history.getByRole('button', { name: 'Сохранить версию' }).click()

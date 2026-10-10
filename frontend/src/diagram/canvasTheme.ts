@@ -9,6 +9,15 @@ export type CanvasTheme = 'light' | 'dark'
 /** What black lines and text lying on the dark canvas are drawn with. */
 export const DARK_CANVAS_INK = '#e6edf3'
 
+/**
+ * Key of a drawn style, never of the document: the opacity of the shadow of the shape, 0–1, instead of that of all
+ * shadows; see `extensions.ts`.
+ */
+export const SHADOW_OPACITY_KEY = 'codrawShadowOpacity'
+
+/** Shadows on the dark canvas: a quarter of black, as on the light one, would hardly darken it. */
+export const DARK_CANVAS_SHADOW_OPACITY = 0.6
+
 /** The brightest channel of a color that still reads as black ink, e.g. of `#333333`, and how far its channels differ. */
 const INK_MAX_CHANNEL = 0x40
 const INK_MAX_SPREAD = 0x20
@@ -63,19 +72,24 @@ function hasLabelBackground(style: CellStateStyle): boolean {
  * the canvas itself becomes {@link DARK_CANVAS_INK}. `onCanvas` tells that no shape that holds the cell fills the area
  * under it. On the canvas lie the line of an edge and of a shape without fill, the text of an edge without a label
  * background, and the text of a shape without fill or outside the shape. Lines and text over a fill, fills and every
- * other color stay as they are. The style of the document is not changed: a new style is returned.
+ * other color stay as they are. A shadow, wherever the shape lies, is drawn denser (see
+ * {@link DARK_CANVAS_SHADOW_OPACITY}). The style of the document is not changed: a new style is returned.
  */
 export function darkCanvasStyle<T extends CellStateStyle>(style: T, edge: boolean, onCanvas: boolean): T {
-  if (!onCanvas) return style
+  const shadow = isOn(style.shadow)
   const filled = !edge && hides(style, 'fillColor')
-  const strokeOnCanvas = !filled
-  const textOnCanvas = (!filled || labelOutside(style)) && !hasLabelBackground(style)
+  const strokeOnCanvas = onCanvas && !filled
+  const textOnCanvas = onCanvas && (!filled || labelOutside(style)) && !hasLabelBackground(style)
   const stroke = strokeOnCanvas && isInk(style.strokeColor)
   const font = textOnCanvas && isInk(style.fontColor)
-  if (!stroke && !font) return style
+  if (!stroke && !font && !shadow) return style
   return {
     ...style,
     ...(stroke && { strokeColor: DARK_CANVAS_INK }),
     ...(font && { fontColor: DARK_CANVAS_INK }),
+    ...(shadow && { [SHADOW_OPACITY_KEY]: DARK_CANVAS_SHADOW_OPACITY }),
   }
 }
+
+/** A flag of draw.io in any of its spellings: it writes 1, CoDraw keeps `true`. */
+const isOn = (value: unknown) => value === true || value === 1 || value === '1'

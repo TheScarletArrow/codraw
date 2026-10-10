@@ -22,6 +22,12 @@ data class LegalProperties(
     val operator: String = "",
     /** Where users write about their data and the service. */
     val contactEmail: String = "",
+    /** For how many days the service of backups keeps the last archive of a day (docs/deploy.md); 0 without backups. */
+    val backupKeepDaily: Int = 0,
+    /** For how many weeks it keeps the last archive of a week; 0 without weekly archives or without backups. */
+    val backupKeepWeekly: Int = 0,
+    /** The storage of backups outside the server, only to know whether there is one. */
+    val backupStorage: String = "",
 )
 
 /**
@@ -47,6 +53,10 @@ data class LegalResponse(
     val schemaImport: Boolean,
     /** Whether users may connect GitHub with a token of theirs and link its issues to elements and threads of boards. */
     val issues: Boolean,
+    /** The most days that deleted data stays in backups, `null` when the installation makes none. */
+    val backupRetentionDays: Long?,
+    /** Whether backups are kept outside the server too, at a provider of storage of the operator. */
+    val backupOffsite: Boolean,
     /** The providers that users of this installation sign in through: they learn of every sign-in. */
     val signInProviders: List<LegalSignInProvider>,
     /** Whether «Продолжить без входа» creates guests. */
@@ -83,9 +93,15 @@ class LegalController(
         closedProposalsPerBoard = limits.closedProposalsPerBoard,
         schemaImport = schemaImport.enabled,
         issues = issues.github.apiUrl.isNotBlank(),
+        backupRetentionDays = backupRetentionDays(),
+        backupOffsite = backupRetentionDays() != null && legal.backupStorage.isNotBlank(),
         signInProviders = registrations.providers.map { LegalSignInProvider(it.name, it.corporate) },
         guests = guests.enabled,
     )
+
+    /** An archive stays while it is the last of its day younger than the days, or of its week younger than the weeks. */
+    private fun backupRetentionDays(): Long? =
+        maxOf(legal.backupKeepDaily.toLong(), legal.backupKeepWeekly * 7L).takeIf { it > 0 }
 
     companion object {
         const val PATH = "/api/legal"
