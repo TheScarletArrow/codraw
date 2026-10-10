@@ -5,4 +5,6 @@
 export const ALLOWED_RUSSIAN: Record<string, readonly string[] | 'all'> = {
   // The names of the languages in the switch are their own names, the same in any language of the interface.
   'i18n/i18n.ts': ['Русский'],
+  // The novelties of every release in both languages; whatsNew.test.ts checks that each one has its English text.
+  'releaseNotes/releases.ts': 'all',
 }

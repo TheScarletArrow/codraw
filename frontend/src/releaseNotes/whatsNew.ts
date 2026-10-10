@@ -1,3 +1,4 @@
+import { perLocale } from '../i18n/i18n.ts'
 import { keepsLocalCopies } from '../offline/localCopies.ts'
 import { releases, type Release } from './releases.ts'
 
@@ -48,10 +49,16 @@ export function markReleasesSeen() {
   }
 }
 
-/** `6 октября 2026` for `2026-10-06`. */
+const dayFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long', year: 'numeric' }))
+
+/** `6 октября 2026` or `October 6, 2026` for `2026-10-06`, in the language of the interface. */
 export function releaseDate(date: string): string {
   const [year, month, day] = date.split('-').map(Number)
-  return new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long', year: 'numeric' })
-    .format(new Date(year, month - 1, day))
-    .replace(/\s*г\.$/, '')
+  const parts = dayFormat().formatToParts(new Date(year, month - 1, day))
+  // Up to the year: Russian adds «г.» after it, which a date in a heading does without.
+  const end = parts.findIndex((part) => part.type === 'year') + 1
+  return parts
+    .slice(0, end)
+    .map((part) => part.value)
+    .join('')
 }
