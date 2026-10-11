@@ -38,7 +38,7 @@ jobs:
       CODRAW_COLLAB_BROADCAST_DELAY_MS: ${{ inputs.broadcast-delay }}
     steps:
       - uses: actions/checkout@v5
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build backend
         uses: docker/build-push-action@v6
         with:

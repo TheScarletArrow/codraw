@@ -123,7 +123,7 @@ jobs:
       - name: Name the images
         # Image names must be lower case; the owner of the repository need not be.
         run: echo "CODRAW_IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-" >> "$GITHUB_ENV"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build backend
         uses: docker/build-push-action@v6
         with:
