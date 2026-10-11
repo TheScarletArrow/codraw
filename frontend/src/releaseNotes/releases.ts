@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.42.0',
+    date: '2026-10-11',
+    items: [
+      {
+        ru: {
+          title: 'Ещё 100 логотипов, в том числе российских',
+          text: 'Значок на фигуре и «Поиск фигур» находят логотипы AWS и её сервисов, Azure, Microsoft SQL Server, Oracle, OpenAI и Slack, а также российских сервисов и технологий: Сбер, Т-Банк, Мир, СБП, Госуслуги, 1С, МТС, МегаФон, Яндекс, Ozon, Wildberries, Авито, MAX, Cloud.ru, VK Cloud, GigaChat, Tarantool, YDB и других. Технологию можно написать и по-русски — «Яндекс Облако», «1С:Предприятие», «Кафка», — а Astra Linux и РЕД ОС показывают логотип Linux.',
+        },
+        en: {
+          title: '100 more logos, Russian ones too',
+          text: 'The badge of a shape and “Search shapes” find the logos of AWS and its services, Azure, Microsoft SQL Server, Oracle, OpenAI and Slack, and of Russian services and technologies: Sber, T-Bank, Mir, SBP, Gosuslugi, 1C, MTS, MegaFon, Yandex, Ozon, Wildberries, Avito, MAX, Cloud.ru, VK Cloud, GigaChat, Tarantool, YDB and others. A technology can be written in Russian as well, and Astra Linux and RED OS show the logo of Linux.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.41.0',
     date: '2026-10-11',
     items: [

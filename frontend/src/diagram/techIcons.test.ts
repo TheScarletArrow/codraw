@@ -98,4 +98,36 @@ describe('logos of technologies', () => {
     expect(await loadIconPath('redis')).toMatch(/^M/)
     expect(await loadIconPath('no-such-logo')).toBeNull()
   })
+
+  it('has the logos that simple-icons lacks, Russian ones too, and finds them by Russian names', async () => {
+    const icons = await loadTechIcons()
+    const slug = (technology: string) => iconOfTechnology(icons, technology)?.slug ?? null
+
+    expect(slug('AWS Lambda')).toBe('awslambda')
+    expect(slug('MS SQL 2019')).toBe('microsoftsqlserver')
+    expect(slug('Azure')).toBe('microsoftazure')
+    expect(slug('Сбер')).toBe('sber')
+    expect(slug('1С:Предприятие 8.3')).toBe('1c')
+    expect(slug('Яндекс Облако')).toBe('yandexcloud')
+    expect(slug('Яндекс Карты API')).toBe('yandexmaps')
+    // A number in the name is not taken for a version.
+    expect(slug('Яндекс 360')).toBe('yandex360')
+    expect(slug('Amazon Route 53')).toBe('amazonroute53')
+    expect(slug('Кафка')).toBe('apachekafka')
+    // A title of CoDraw wins over the same title of simple-icons.
+    expect(slug('MAX')).toBe('maxmessenger')
+    // Russian distributions of Linux show Linux rather than the logo of Astra, a theme of WordPress.
+    expect(slug('Astra Linux 1.7')).toBe('linux')
+    const first = (query: string) => searchIcons(icons, query)[0]?.slug
+    expect(['сбер', 'госуслуги', 'сбп', 'tarantool', 'gigachat', 'вконтакте'].map(first)).toEqual([
+      'sber',
+      'gosuslugi',
+      'sbp',
+      'tarantool',
+      'gigachat',
+      'vk',
+    ])
+    expect(await loadIconPath('1c')).toMatch(/^M/)
+    expect(await loadIconPath('tbank')).toMatch(/^M/)
+  })
 })

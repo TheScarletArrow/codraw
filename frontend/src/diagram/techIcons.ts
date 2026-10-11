@@ -122,17 +122,20 @@ export const iconPathNow = (slug: string): string | null => paths.get(groupOf(sl
 const VERSION = /\s+(v?\d[\w.-]*|lts|latest|ce|ee)(?=\s|$)/gi
 
 /**
- * The logo of a technology as people write it: the whole name, without its version, or the first of the technologies
- * it lists (`Kotlin, Spring Boot`), or the first words of it (`Redis Cluster` is Redis); `null` when simple-icons has
- * none.
+ * The logo of a technology as people write it: the whole name as it is written (`Яндекс 360`, `Amazon Route 53`) or
+ * without its version, or the first of the technologies it lists (`Kotlin, Spring Boot`), or the first words of it
+ * (`Redis Cluster` is Redis); `null` when the set has none.
  */
 export function iconOfTechnology(icons: TechIconCatalog, technology: string): TechIcon | null {
   const parts = technology
     .split(/\s*(?:[,;/|]|\s\+\s|\sи\s|\sand\s)\s*/i)
-    .map((part) => part.replace(VERSION, '').trim())
+    .map((part) => part.trim())
     .filter(Boolean)
   for (const part of parts) {
-    const words = part.split(/\s+/)
+    // A number that belongs to the name, before it is taken for a version.
+    const whole = icons.byName.get(nameKey(part))
+    if (whole) return whole
+    const words = part.replace(VERSION, '').trim().split(/\s+/).filter(Boolean)
     for (let count = words.length; count > 0; count--) {
       const icon = icons.byName.get(nameKey(words.slice(0, count).join(' ')))
       if (icon) return icon
