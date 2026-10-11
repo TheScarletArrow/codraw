@@ -93,8 +93,15 @@ class BoardCopyService(
             workspaceId = workspaceId,
             projectId = original.projectId.takeIf { workspaceId != null },
         )
-        // As a new board of its kind: a board of a team opens to whom its owner decides.
-        val board = boardRepository.save(if (workspaceId == null) copy else copy.copy(linkAccess = LinkAccess.NONE))
+        // As a new board of its kind: a board of a team opens to whom its owner decides. A copy of a board whose sharing
+        // an administrator closed stays closed the same way.
+        val board = boardRepository.save(
+            when {
+                original.sharingBlockedAt != null -> copy.copy(linkAccess = LinkAccess.NONE, sharingBlockedAt = now)
+                workspaceId == null -> copy
+                else -> copy.copy(linkAccess = LinkAccess.NONE)
+            },
+        )
         val copyId = checkNotNull(board.id)
         val copiedImages = images.copyAll(originalId, copyId, now)
         documents.findState(originalId)?.let { state ->
