@@ -107,6 +107,8 @@ import { draftPath, PROPOSALS_POLL_INTERVAL, proposalsKey } from '../proposals/p
 import { ProposalReview } from '../proposals/ProposalReview.tsx'
 import { ProposalsButton } from '../proposals/ProposalsButton.tsx'
 import { ProposalsPanel } from '../proposals/ProposalsPanel.tsx'
+import { useNewerDocument } from '../update/useNewerDocument.ts'
+import { useReloadGuard } from '../update/useReloadGuard.ts'
 import { workspacePath } from '../workspaces/workspaces.ts'
 import { boardPageMessages as m } from './BoardPage.messages.ts'
 
@@ -160,8 +162,12 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // The trail of the laser pointer and the message at the cursor go with the connection.
   const online = status === 'synced'
   useLaserPublisher(editor, awareness, online)
+  // A board saved by a newer version of CoDraw is for viewing until the page is reloaded with that version.
+  const newerDocument = useNewerDocument(document)
   // Until the page fetches the role again, the access of the connection may be narrower than the role.
-  const readOnly = viewer || connection.readOnly
+  const readOnly = viewer || connection.readOnly || newerDocument
+  // A reload by the banner of a new version applies the label being edited and keeps edits that are only in this tab.
+  useReloadGuard(editor, connection.unsent && !connection.cached)
   // A participant who may only view never writes to the document: collab would reject it, and their document would
   // differ from everybody else's. A board nobody has edited yet has no page for them.
   useEffect(() => {
