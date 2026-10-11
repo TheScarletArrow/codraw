@@ -1,0 +1,27 @@
+{{/* Messages of the alerts of CoDraw, the same in every channel (deploy/alertmanager/entrypoint.sh). */}}
+
+{{/* «Сработало 2: CodrawServiceDown (backend)» — the state, the number of alerts, the rule and the service. */}}
+{{ define "codraw.title" -}}
+{{ if eq .Status "firing" }}Сработало {{ len .Alerts.Firing }}{{ else }}Разрешено {{ len .Alerts.Resolved }}{{ end -}}
+: {{ .GroupLabels.alertname }}{{ with .GroupLabels.job }} ({{ . }}){{ end }}
+{{- end }}
+
+{{ define "codraw.subject" }}[CoDraw] {{ template "codraw.title" . }}{{ end }}
+
+{{/* A line of each alert: its summary, then the service, the severity and when it started, in UTC. */}}
+{{ define "codraw.text" -}}
+{{ range .Alerts -}}
+• {{ if eq .Status "resolved" }}[разрешено] {{ end }}{{ .Annotations.summary }}
+  {{ with .Labels.job }}сервис {{ . }}, {{ end }}{{ with .Labels.severity }}важность {{ . }}, {{ end }}с {{ .StartsAt.UTC.Format "2006-01-02 15:04 UTC" }}
+{{ end -}}
+{{ end }}
+
+{{/* Telegram takes HTML: the same, escaped. */}}
+{{ define "codraw.telegram" -}}
+<b>{{ if eq .Status "firing" }}Сработало {{ len .Alerts.Firing }}{{ else }}Разрешено {{ len .Alerts.Resolved }}{{ end -}}
+: {{ .GroupLabels.alertname | html }}{{ with .GroupLabels.job }} ({{ . | html }}){{ end }}</b>
+{{ range .Alerts -}}
+• {{ if eq .Status "resolved" }}[разрешено] {{ end }}{{ .Annotations.summary | html }}
+  {{ with .Labels.job }}сервис {{ . | html }}, {{ end }}{{ with .Labels.severity }}важность {{ . | html }}, {{ end }}с {{ .StartsAt.UTC.Format "2006-01-02 15:04 UTC" }}
+{{ end -}}
+{{ end }}
