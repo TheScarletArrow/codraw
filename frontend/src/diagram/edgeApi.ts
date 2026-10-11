@@ -1,5 +1,6 @@
 import { locationLabels, modelMessages } from './model.messages.ts'
 import type { StyleValue } from './model.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /**
  * The style key of the description of the HTTP call an edge stands for: a string of JSON (see {@link writeEdgeApi}). Like
@@ -138,7 +139,8 @@ export function parseEdgeApi(value: unknown): EdgeApi | null {
 }
 
 /** The description of an edge with this style, or `null`; see {@link parseEdgeApi}. */
-export const edgeApiOf = (style: Record<string, unknown> | null | undefined): EdgeApi | null => parseEdgeApi(style?.[EDGE_API_KEY])
+export const edgeApiOf = (style: AnyStyle | null | undefined): EdgeApi | null =>
+  parseEdgeApi(style ? styleValues(style)[EDGE_API_KEY] : undefined)
 
 /**
  * The value to store: the description without the rows left empty in the form, i.e. parameters without a name and

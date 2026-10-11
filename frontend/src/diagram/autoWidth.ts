@@ -1,5 +1,6 @@
 import type { ShapeStyle } from './shapes.ts'
 import { measureLabel, numeric, type LabelStyle } from './textMeasure.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 export { cssFont, DEFAULT_FONT_FAMILY, measureLabel, type LabelStyle } from './textMeasure.ts'
 
@@ -17,14 +18,14 @@ const MARGIN = 8
 
 export type Align = 'left' | 'center' | 'right'
 
-export function hasAutoWidth(style: Record<string, unknown>): boolean {
-  const value = style[AUTO_WIDTH_KEY]
+export function hasAutoWidth(style: AnyStyle): boolean {
+  const value = styleValues(style)[AUTO_WIDTH_KEY]
   return value === true || value === 1 || value === '1'
 }
 
 /** The words of the label wrap onto lines that fit the shape; auto width, which fits the shape to the lines, wins. */
-export function hasTextWrap(style: Record<string, unknown>): boolean {
-  return style[TEXT_WRAP_KEY] === 'wrap' && !hasAutoWidth(style)
+export function hasTextWrap(style: AnyStyle): boolean {
+  return styleValues(style)[TEXT_WRAP_KEY] === 'wrap' && !hasAutoWidth(style)
 }
 
 /**

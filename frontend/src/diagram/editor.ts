@@ -5935,7 +5935,9 @@ function configureRotation(graph: Graph, rotate: (cell: Cell, angle: number) => 
   const isCellRotatable = graph.isCellRotatable.bind(graph)
   // A participant who may only view has every cell locked.
   graph.isCellRotatable = (cell) => isCellRotatable(cell) && isRotatableShape(cell) && !graph.isCellsLocked()
-  graph.createVertexHandler = (state) => new ShapeHandler(state, rotate)
+  graph
+    .getPlugin<SelectionCellsHandler>('SelectionCellsHandler')
+    ?.setVertexHandlerFactory((state) => new ShapeHandler(state, rotate))
 }
 
 /**
@@ -6015,9 +6017,12 @@ class ShapeHandler extends VertexHandler {
  * otherwise.
  */
 function configureFreehand(graph: Graph) {
-  const createEdgeHandler = graph.createEdgeHandler.bind(graph)
-  graph.createEdgeHandler = (state, edgeStyle) =>
-    isFreehand(state.cell) ? new FreehandHandler(state) : createEdgeHandler(state, edgeStyle)
+  const handlers = graph.getPlugin<SelectionCellsHandler>('SelectionCellsHandler')
+  if (handlers) {
+    const createEdgeHandler = handlers.createEdgeHandler.bind(handlers)
+    handlers.createEdgeHandler = (state, edgeStyle) =>
+      isFreehand(state.cell) ? new FreehandHandler(state) : createEdgeHandler(state, edgeStyle)
+  }
   const getEdgeValidationError = graph.getEdgeValidationError.bind(graph)
   graph.getEdgeValidationError = (edge, source, target) =>
     edge && isFreehand(edge) && !source && !target ? null : getEdgeValidationError(edge, source, target)
@@ -6074,11 +6079,14 @@ function configureLocks(graph: Graph): () => void {
   // connections stays as it is: maxGraph checks the end that does not move as well.
   const connections = graph.getPlugin<ConnectionHandler>('ConnectionHandler')
   if (connections) connections.isConnectableCell = (cell) => !locked(cell)
-  const createEdgeHandler = graph.createEdgeHandler.bind(graph)
-  graph.createEdgeHandler = (state, edgeStyle) => {
-    const handler = createEdgeHandler(state, edgeStyle)
-    handler.isConnectableCell = (cell) => !locked(cell)
-    return handler
+  const handlers = graph.getPlugin<SelectionCellsHandler>('SelectionCellsHandler')
+  if (handlers) {
+    const createEdgeHandler = handlers.createEdgeHandler.bind(handlers)
+    handlers.createEdgeHandler = (state, edgeStyle) => {
+      const handler = createEdgeHandler(state, edgeStyle)
+      handler.isConnectableCell = (cell) => !locked(cell)
+      return handler
+    }
   }
   const cloneCells = graph.cloneCells.bind(graph)
   graph.cloneCells = (...args) => {
@@ -6095,14 +6103,15 @@ function configureLocks(graph: Graph): () => void {
   // The handles of a selected cell are made with it, when it is selected: a cell locked or unlocked since, by the
   // participant or by another one, gets new handles, unless they are being dragged.
   const handledLocks = new WeakMap<object, boolean>()
-  const createHandler = graph.createHandler.bind(graph)
-  graph.createHandler = (state) => {
-    const handler = createHandler(state)
-    handledLocks.set(handler, graph.isCellLocked(state.cell))
-    return handler
+  if (handlers) {
+    const createHandler = handlers.createHandler.bind(handlers)
+    handlers.createHandler = (state) => {
+      const handler = createHandler(state)
+      handledLocks.set(handler, graph.isCellLocked(state.cell))
+      return handler
+    }
   }
   const refreshHandlers = () => {
-    const handlers = graph.getPlugin<SelectionCellsHandler>('SelectionCellsHandler')
     if (!handlers) return
     for (const cell of graph.getSelectionCells()) {
       const handler = handlers.getHandler(cell)

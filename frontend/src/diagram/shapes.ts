@@ -4,6 +4,7 @@ import { LEGEND_PRESET, LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_PRESET, SEQUENCE_SHAPE } from './sequence.ts'
 import { PROVIDER_SHAPES, type ProviderId } from './providers.ts'
 import { type NamedShapeId, shapeMessages as m, type ShapeSectionKey } from './shapes.messages.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 export type ShapeId =
   | ProviderId
@@ -786,16 +787,18 @@ export function shapeGroupOf(style: ShapeStyle): ShapeGroup | null {
 const isOn = (value: unknown) => value === true || value === 1 || value === '1'
 
 /** The size of the text follows the shape (see {@link TEXT_FIT_KEY}), unless the width of the shape follows its text. */
-export function hasTextFit(style: Record<string, unknown>): boolean {
-  return isOn(style[TEXT_FIT_KEY]) && !isOn(style.autosize)
+export function hasTextFit(style: AnyStyle): boolean {
+  const values = styleValues(style)
+  return isOn(values[TEXT_FIT_KEY]) && !isOn(values.autosize)
 }
 
 /**
  * A sticky: a shape made as one, or a shape whose text fits it, as the notes of draw.io that fit their text are; see
  * {@link TEXT_FIT_KEY}.
  */
-export function isStickyStyle(style: Record<string, unknown> | null | undefined): boolean {
-  return !!style && (style.codrawShape === 'sticky' || isOn(style[TEXT_FIT_KEY]))
+export function isStickyStyle(style: AnyStyle | null | undefined): boolean {
+  const values = style ? styleValues(style) : null
+  return !!values && (values.codrawShape === 'sticky' || isOn(values[TEXT_FIT_KEY]))
 }
 
 /** A table is a cell whose children are stacked fields. */
