@@ -73,6 +73,7 @@ describe('LoginPage', () => {
     expect(screen.getByText(/Входя или продолжая без входа, вы принимаете/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'условия использования' })).toHaveAttribute('href', '/terms')
     expect(screen.getByRole('link', { name: 'политику конфиденциальности' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: 'Что умеет CoDraw: справка' })).toHaveAttribute('href', '/help')
   })
 
   it('continues without a sign-in as a guest and opens the boards', async () => {

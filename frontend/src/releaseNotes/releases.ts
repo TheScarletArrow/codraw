@@ -5,6 +5,8 @@
  * Every change that users notice adds an item to the next release, written for users in both languages of the interface,
  * Russian and English: what they can do now and where to find it, in the words of the interface in that language, without
  * file names, keys of styles or APIs. The window shows the items in the language of the interface.
+ *
+ * A new feature also gets a topic in the help, `help/topics.messages.ts`, or extends one there.
  */
 
 /** A novelty in one language: a short title and a sentence or two about it. */
@@ -28,6 +30,22 @@ export interface Release {
 }
 
 export const releases: Release[] = [
+  {
+    version: '0.40.0',
+    date: '2026-10-11',
+    items: [
+      {
+        ru: {
+          title: 'Справка',
+          text: 'Кнопка со знаком вопроса в шапке открывает в новой вкладке справку: что умеет CoDraw и где это найти — от фигур и слоёв до архитектуры, баз данных, импортов, совместной работы и доступа, — с поиском по словам, содержанием и горячими клавишами. Ссылкой на тему можно поделиться, а справку можно открыть и до входа — со страницы входа.',
+        },
+        en: {
+          title: 'Help',
+          text: 'The question mark button in the header opens the help in a new tab: what CoDraw can do and where to find it — from shapes and layers to architecture, databases, imports, working together and access — with a search by words, contents and keyboard shortcuts. A link to a topic can be shared, and the help opens before signing in too, from the login page.',
+        },
+      },
+    ],
+  },
   {
     version: '0.39.0',
     date: '2026-10-10',

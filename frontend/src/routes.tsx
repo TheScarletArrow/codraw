@@ -17,6 +17,12 @@ export const routes: RouteObject[] = [
   // Read before signing in, so outside of the pages of a signed-in user.
   { path: '/privacy', element: <PrivacyPage />, errorElement: <AppError /> },
   { path: '/terms', element: <TermsPage />, errorElement: <AppError /> },
+  // Read before signing in too, and from a board in a tab of its own.
+  {
+    path: '/help',
+    errorElement: <AppError />,
+    lazy: async () => ({ Component: (await import('./help/HelpPage.tsx')).HelpPage }),
+  },
   {
     // A board that its link shows to anybody, read without a session and in frames of other sites.
     path: '/view/:boardId',

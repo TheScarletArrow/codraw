@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plug, ShieldCheck, UserCog } from 'lucide-react'
+import { CircleQuestionMark, Plug, ShieldCheck, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { logout, saveLanguage, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
 import { HeaderSlotProvider } from './headerSlot.tsx'
+import { helpMessages } from './help/messages.ts'
 import { locale } from './i18n/i18n.ts'
 import { LanguageMenu } from './i18n/LanguageMenu.tsx'
 import { layoutMessages as m } from './messages.ts'
@@ -53,6 +54,12 @@ export function Layout() {
           <>
             {/* What the page shows in the header, e.g. who is on the board: the rest of the line is its room. */}
             <div ref={setHeaderSlot} className="ml-auto flex min-w-0 items-center" />
+            {/* In a tab of its own: the board stays open where it was. */}
+            <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
+              <a href="/help" target="_blank" rel="noopener" aria-label={helpMessages.help} title={helpMessages.helpHint}>
+                <CircleQuestionMark />
+              </a>
+            </Button>
             <WhatsNew />
             <NotificationBell />
             <UserMenu user={user.data} />
