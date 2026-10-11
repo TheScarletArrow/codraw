@@ -3,10 +3,17 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import { techIcons } from './vite/techIcons.ts'
+import { buildInfo, versionFile } from './vite/versionFile.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), techIcons()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    techIcons(),
+    // `version.json` lets a tab opened before a deployment learn that the server has another build.
+    versionFile(buildInfo(fileURLToPath(new URL('./package.json', import.meta.url)))),
+  ],
   resolve: {
     alias: [
       { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },

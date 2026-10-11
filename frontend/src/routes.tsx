@@ -11,7 +11,9 @@ import { LoginPage } from './pages/LoginPage.tsx'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage.tsx'
 import { WorkspaceInvitePage } from './pages/WorkspaceInvitePage.tsx'
 import { WorkspacePage } from './pages/WorkspacePage.tsx'
+import { lazyPage } from './update/lazyPage.ts'
 
+// Pages that are files of their own load through `lazyPage`: after a deployment a tab opened before it reloads them.
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <AppError /> },
   // Read before signing in, so outside of the pages of a signed-in user.
@@ -21,13 +23,13 @@ export const routes: RouteObject[] = [
   {
     path: '/help',
     errorElement: <AppError />,
-    lazy: async () => ({ Component: (await import('./help/HelpPage.tsx')).HelpPage }),
+    lazy: lazyPage(() => import('./help/HelpPage.tsx'), (module) => module.HelpPage),
   },
   {
     // A board that its link shows to anybody, read without a session and in frames of other sites.
     path: '/view/:boardId',
     errorElement: <AppError />,
-    lazy: async () => ({ Component: (await import('./pages/PublicBoardPage.tsx')).PublicBoardPage }),
+    lazy: lazyPage(() => import('./pages/PublicBoardPage.tsx'), (module) => module.PublicBoardPage),
   },
   {
     path: '/',
@@ -47,17 +49,17 @@ export const routes: RouteObject[] = [
       {
         // Only for the administrators of the installation; anybody else sees «Нет доступа».
         path: 'admin',
-        lazy: async () => ({ Component: (await import('./pages/AdminPage.tsx')).AdminPage }),
+        lazy: lazyPage(() => import('./pages/AdminPage.tsx'), (module) => module.AdminPage),
       },
       {
         path: 'boards/:boardId',
         // The editor pulls in maxGraph, so it is loaded only when a board is opened.
-        lazy: async () => ({ Component: (await import('./pages/BoardPage.tsx')).BoardPage }),
+        lazy: lazyPage(() => import('./pages/BoardPage.tsx'), (module) => module.BoardPage),
       },
       {
         // The draft of a proposal of changes of a board, in the editor of the board.
         path: 'boards/:boardId/proposals/:proposalId',
-        lazy: async () => ({ Component: (await import('./pages/ProposalPage.tsx')).ProposalPage }),
+        lazy: lazyPage(() => import('./pages/ProposalPage.tsx'), (module) => module.ProposalPage),
       },
     ],
   },

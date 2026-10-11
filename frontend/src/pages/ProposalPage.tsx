@@ -56,6 +56,8 @@ import { proposalMessages } from '../proposals/messages.ts'
 import { applySchemaUpdate, takePendingSchemaImportUpdate } from '../proposals/schemaImportUpdate.ts'
 import { useDraftConnection } from '../proposals/useDraftConnection.ts'
 import { SqlMenu } from '../sql/SqlMenu.tsx'
+import { useNewerDocument } from '../update/useNewerDocument.ts'
+import { useReloadGuard } from '../update/useReloadGuard.ts'
 import { proposalPageMessages as m } from './ProposalPage.messages.ts'
 
 const STATUS_COLORS: Record<ConnectionStatus, string> = {
@@ -94,8 +96,12 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   const mine = proposal.author.id === user.id
   const open = proposal.status === 'open'
   // Collab decides: the author edits an open proposal, anybody else and a closed one are for viewing.
-  const readOnly = connection.readOnly
+  // A draft saved by a newer version of CoDraw is for viewing until the page is reloaded with that version.
+  const newerDocument = useNewerDocument(document)
+  const readOnly = connection.readOnly || newerDocument
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
+  // A draft has no local copy: without a connection its edits may be only in this tab, which a reload would lose.
+  useReloadGuard(editor, !readOnly && status !== 'synced')
   useEffect(() => {
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])
