@@ -177,6 +177,7 @@ describe('BoardsPage', () => {
     const documents = await screen.findByRole('navigation', { name: 'Документы' })
     expect(within(documents).getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms')
     expect(within(documents).getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute('href', '/privacy')
+    expect(within(documents).getByRole('link', { name: 'Справка' })).toHaveAttribute('href', '/help')
   })
 
   it('lists the boards shared with the user with their owners, with a menu of their tags and folder only', async () => {

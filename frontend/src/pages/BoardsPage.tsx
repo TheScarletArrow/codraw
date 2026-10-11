@@ -305,6 +305,9 @@ export function BoardsPage() {
         <Link to="/privacy" className="underline">
           {m.privacy}
         </Link>
+        <Link to="/help" className="underline">
+          {m.help}
+        </Link>
       </nav>
       <BoardTrash />
     </section>

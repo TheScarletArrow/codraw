@@ -15,6 +15,7 @@ export const loginMessages = defineMessages({
     asGuest: 'Продолжить без входа',
     terms: 'условия использования',
     privacy: 'политику конфиденциальности',
+    help: 'Что умеет CoDraw: справка',
     consent: (terms: ReactNode, privacy: ReactNode) => (
       <>
         Входя или продолжая без входа, вы принимаете {terms} и {privacy}.
@@ -35,6 +36,7 @@ export const loginMessages = defineMessages({
     asGuest: 'Continue without signing in',
     terms: 'Terms of Use',
     privacy: 'Privacy Policy',
+    help: 'What CoDraw can do: help',
     consent: (terms: ReactNode, privacy: ReactNode) => (
       <>
         By signing in or continuing without signing in, you accept the {terms} and the {privacy}.

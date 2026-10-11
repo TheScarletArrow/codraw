@@ -93,6 +93,16 @@ describe('Layout', () => {
     expect(await screen.findByText('Досок пока нет')).toBeInTheDocument()
   })
 
+  it('opens the help from the header in a tab of its own', async () => {
+    mockFetch({ 'GET /api/me': { body: ALICE }, 'GET /api/boards': { body: [] }, ...unreadCount })
+
+    renderRoutes(routes)
+
+    const help = await within(await screen.findByRole('banner')).findByRole('link', { name: 'Справка' })
+    expect(help).toHaveAttribute('href', '/help')
+    expect(help).toHaveAttribute('target', '_blank')
+  })
+
   it('tells the backend the language of the interface when the user had another one', async () => {
     const fetchMock = mockFetch({
       'GET /api/me': { body: { ...ALICE, language: 'en' } },

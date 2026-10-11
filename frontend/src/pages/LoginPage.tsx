@@ -77,6 +77,11 @@ export function LoginPage() {
             </Link>,
           )}
         </p>
+        <p className="text-xs text-muted-foreground">
+          <Link to="/help" className="underline">
+            {m.help}
+          </Link>
+        </p>
         {guest.isError && (
           <p role="alert" className="text-destructive">
             {isTooManyRequests(guest.error) ? m.tooManyGuests : m.guestFailed}
