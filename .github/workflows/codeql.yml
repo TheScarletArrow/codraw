@@ -3,7 +3,9 @@ name: CodeQL
 # The static analysis of the code (docs/security.md). Alerts go to «Security → Code scanning» of the repository; the
 # weekly run finds what new queries learn about code that did not change.
 on:
+  # Runs for the branches of Dependabot have a token that cannot upload results; their changes are analysed in main.
   push:
+    branches-ignore: ["dependabot/**"]
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:

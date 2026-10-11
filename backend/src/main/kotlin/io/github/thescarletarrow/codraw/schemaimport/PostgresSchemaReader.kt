@@ -11,7 +11,7 @@ import java.net.SocketTimeoutException
 import java.sql.Connection
 import java.sql.SQLException
 import java.util.UUID
-import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /**
@@ -146,7 +146,8 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
 
     companion object {
         /** Closes the sockets of imports that take too long. */
-        private val CUT_OFF = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("schema-import-cut-off").factory())
+        private val CUT_OFF = ScheduledThreadPoolExecutor(1, Thread.ofPlatform().daemon().name("schema-import-cut-off").factory())
+            .apply { removeOnCancelPolicy = true }
 
         /** `attgenerated` and the rest of the catalog that the queries read are there since PostgreSQL 12. */
         const val MIN_SERVER_VERSION = 120000

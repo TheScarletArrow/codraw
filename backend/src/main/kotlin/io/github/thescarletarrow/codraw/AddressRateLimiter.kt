@@ -21,8 +21,7 @@ class AddressRateLimiter(private val window: Duration, private val limit: () -> 
 
     /**
      * Counts a request of [address]. Returns `null` when it may go through, or how long the address has to wait when
-     * it made as many requests in the current window as the limit allows, or when the limiter already counts as many
-     * other keys as it can hold.
+     * it made as many requests in the current window as the limit allows.
      */
     fun acquire(address: String): Duration? {
         val now = clock.instant()
@@ -32,8 +31,9 @@ class AddressRateLimiter(private val window: Duration, private val limit: () -> 
             nextSweep = now + SWEEP_INTERVAL
             windows.values.removeIf { it.end <= now }
         }
-        // A full map takes no new keys rather than forgetting counted ones, which would reset their windows.
-        if (windows.size >= MAX_KEYS && !windows.containsKey(address)) return window
+        // So many keys at once in a window come from one who has addresses enough to pass the limit anyway: the counts
+        // start again rather than refuse everybody else.
+        if (windows.size >= MAX_KEYS && !windows.containsKey(address)) windows.clear()
         var wait: Duration? = null
         windows.compute(address) { _, current ->
             val open = current?.takeIf { now < it.end } ?: Window(end = now + window, count = 0)

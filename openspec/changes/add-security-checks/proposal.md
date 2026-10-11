@@ -15,7 +15,7 @@
   присутствии только за свой клиент и от имени пользователя своего токена, с состоянием не больше 32 КиБ; читатели не
   рассылают «доска изменилась» и «решения изменились».
 - `backend`: пределы по адресу считают сеть IPv6 /64 одним адресом и держат не больше 100 000 ключей; корзина хранит не
-  больше 100 личных досок пользователя и 500 досок пространства; запрет доступа администратором отзывает приглашения и
+  больше 100 досок пользователя; запрет доступа администратором отзывает приглашения и
   переходит на копии доски; импорт схемы — не больше двух одновременно, общий срок импорта, ещё несколько особых
   диапазонов адресов и имена без управляющих символов; очиститель живой картинки и сообщения чатов строже.
 
@@ -37,8 +37,7 @@
 
 - `.github/dependabot.yml`, `.github/workflows/ci.yml`, `.github/workflows/codeql.yml`, `SECURITY.md`, `docs/security.md`.
 - `collab`: `size.ts`, `server.ts` (`beforeHandleAwareness`, `onStateless`).
-- `backend`: `AddressRateLimiter`, `NewGuestLimiter`, `LimitProperties` (`boards-in-trash-per-user`,
-  `boards-in-trash-per-workspace`), `BoardService.moveToTrash`, `BoardMemberService`, `AdminService.blockSharing`,
+- `backend`: `AddressRateLimiter`, `NewGuestLimiter`, `LimitProperties` (`boards-in-trash-per-user`), `BoardService.moveToTrash`, `BoardMemberService`, `AdminService.blockSharing`,
   `BoardCopyService`, `schemaimport/*` (`import-timeout`, `max-concurrent-imports`), `SvgSanitizer`,
   `NotificationMessages`.
 - Миграций нет; пользователю изменение почти не заметно, поэтому версия и «Что нового» не меняются.

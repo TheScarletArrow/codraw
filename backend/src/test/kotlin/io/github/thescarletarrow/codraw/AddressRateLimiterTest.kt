@@ -40,16 +40,13 @@ class AddressRateLimiterTest {
     }
 
     @Test
-    fun `holds at most as many keys as it can, and takes new ones again once their windows end`() {
+    fun `holds at most as many keys as it can, and starts counting again rather than refuse new ones`() {
         val limiter = AddressRateLimiter(Duration.ofMinutes(1), { 1 }, clock)
         repeat(AddressRateLimiter.MAX_KEYS) { assertNull(limiter.acquire("key-$it")) }
-
-        // A full limiter keeps counting the keys it holds and refuses new ones.
-        assertEquals(Duration.ofMinutes(1), limiter.acquire("key-new"))
         assertEquals(Duration.ofMinutes(1), limiter.acquire("key-0"))
 
-        clock.advance(Duration.ofMinutes(1))
         assertNull(limiter.acquire("key-new"))
         assertNull(limiter.acquire("key-0"))
+        assertEquals(Duration.ofMinutes(1), limiter.acquire("key-new"))
     }
 }

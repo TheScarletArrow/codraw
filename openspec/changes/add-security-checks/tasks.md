@@ -9,9 +9,9 @@
 ## 2. Исправления
 
 - [x] 2.1 collab: предел размера считает удаления того, чего нет в документе; проверка: тест в `server.test.ts`
-- [x] 2.2 collab: `beforeHandleAwareness` — свой клиент, пользователь из токена, 32 КиБ; читатели без `board-changed` и `decisions-changed`; проверка: тесты «viewing only»
-- [x] 2.3 backend: `AddressRateLimiter` — сеть IPv6 /64, не больше 100 000 ключей, уборка раз в секунду; проверка: `AddressRateLimiterTest`
-- [x] 2.4 backend: предел корзины пользователя и пространства; проверка: `LimitsApiTest`
+- [x] 2.2 collab: `beforeHandleAwareness` — свой клиент и переподключение, пользователь из токена, 32 КиБ с пустым выделением; читатели без `board-changed` и `decisions-changed`; проверка: тесты «viewing only»
+- [x] 2.3 backend: `AddressRateLimiter` — сеть IPv6 /64, не больше 100 000 ключей, затем счёт заново, уборка раз в секунду; проверка: `AddressRateLimiterTest`
+- [x] 2.4 backend: предел корзины пользователя; проверка: `LimitsApiTest`
 - [x] 2.5 backend: запрет доступа отзывает приглашения и переходит на копии; проверка: `AdminApiTest`
 - [x] 2.6 backend: импорт схемы — одновременные импорты, общий срок, особые диапазоны, имена без управляющих символов; проверка: `PostgresConnectionsTest`, `AllowedHostsTest`, `SchemaImportApiTest`
 - [x] 2.7 backend: `SvgSanitizer` и `NotificationMessages.chatText`; проверка: `SvgSanitizerTest`, `NotificationMessagesTest`

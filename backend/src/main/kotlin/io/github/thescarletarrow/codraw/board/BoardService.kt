@@ -75,19 +75,14 @@ class BoardService(
 
     /**
      * Keeps all related data for recovery; active API and collab lookups no longer find the board. A full trash of the
-     * owner, or of the workspace of the board, deletes for good the board that has been there longest.
+     * owner, boards of workspaces that they are responsible for included, deletes for good the one of their boards that
+     * has been there longest.
      */
     @Transactional
     fun moveToTrash(board: Board) {
         checkNotNull(users.lock(board.ownerId))
         if (!boards.moveToTrash(checkNotNull(board.id), board.ownerId, now())) throw BoardOwnerChangedException()
-        val workspaceId = board.workspaceId
-        val beyond = if (workspaceId == null) {
-            boards.personalTrashBeyond(board.ownerId, limits.boardsInTrashPerUser)
-        } else {
-            boards.workspaceTrashBeyond(workspaceId, limits.boardsInTrashPerWorkspace)
-        }
-        for (id in beyond) {
+        for (id in boards.trashBeyond(board.ownerId, limits.boardsInTrashPerUser)) {
             if (boards.purgeTrashed(id)) events.publishEvent(BoardDeleted(id))
         }
     }

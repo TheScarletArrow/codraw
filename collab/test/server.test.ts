@@ -390,6 +390,43 @@ describe("collab server", () => {
       expect(editor.provider.awareness!.getStates().get(client)?.junk).toBeUndefined();
     });
 
+    it("drops a selection too large for the others, and keeps the cursor", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const client = viewer.document.clientID;
+
+      viewer.provider.setAwarenessField("selection", Array.from({ length: 2_000 }, () => crypto.randomUUID()));
+      viewer.provider.setAwarenessField("cursor", { x: 5, y: 5 });
+
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 5);
+      expect(editor.provider.awareness!.getStates().get(client)?.selection).toEqual([]);
+    });
+
+    it("lets a reconnected connection of the same user speak for its client again", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const client = viewer.document.clientID;
+      viewer.provider.setAwarenessField("cursor", { x: 1, y: 1 });
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 1);
+
+      // The same document, so the same client, over a second connection while the first is still open.
+      const again = await new Promise<HocuspocusProvider>((resolve) => {
+        const provider: HocuspocusProvider = new HocuspocusProvider({
+          url: `ws://127.0.0.1:${server!.address.port}`,
+          name: board,
+          document: viewer.document,
+          token: () => backend.issueToken(board, { subject: BOB }),
+          onSynced: () => resolve(provider),
+        });
+        providers.push(provider);
+      });
+      rawSend({ provider: again }, awarenessFrame(board, [[client, 1_000, { cursor: { x: 9, y: 9 } }]]));
+
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 9);
+    });
+
     it("does not let a connection speak for another client or as another user", async () => {
       await startServer();
       const editor = await connect(board);

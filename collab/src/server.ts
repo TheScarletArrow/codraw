@@ -1,5 +1,5 @@
 import { Database } from "@hocuspocus/extension-database";
-import { Server, type Document } from "@hocuspocus/server";
+import { Server, type Connection, type Document } from "@hocuspocus/server";
 import {
   accessOnConnect,
   BOARD_DELETED,
@@ -115,10 +115,16 @@ export function createCollabServer({
   let accessChecks: NodeJS.Timeout | undefined;
   /** The awareness client id each connection speaks for. */
   const awarenessClients = new WeakMap<object, number>();
-  const claimedByOther = (document: Document, connection: object, clientId: number) =>
-    [...document.connections].some(
-      ([other, { clients }]) => other !== connection && (clients.has(clientId) || awarenessClients.get(other) === clientId),
+  /** Whether a connection of another user speaks for the client; the same user takes it over, e.g. after a reconnect. */
+  const claimedByOther = (document: Document, connection: Connection, clientId: number) => {
+    const userId = (connection.context as ConnectionContext).user.id;
+    return [...document.connections].some(
+      ([other, { clients }]) =>
+        other !== connection &&
+        (other.context as ConnectionContext).user.id !== userId &&
+        (clients.has(clientId) || awarenessClients.get(other) === clientId),
     );
+  };
   let userChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
   let instance: Server["hocuspocus"] | undefined;
@@ -281,11 +287,14 @@ export function createCollabServer({
         if (mine === undefined && Object.keys(state).length > 0 && !claimedByOther(document, connection, clientId)) {
           awarenessClients.set(connection, (mine = clientId));
         }
-        if (clientId !== mine || JSON.stringify(state).length > AWARENESS_STATE_LIMIT) {
+        if (clientId !== mine) {
           states.delete(clientId);
-        } else if ("user" in state) {
-          state.user = participantOf(context.user);
+          continue;
         }
+        // A selection too large for the others goes first, so that the cursor and the rest stay.
+        if ("selection" in state && JSON.stringify(state).length > AWARENESS_STATE_LIMIT) state.selection = [];
+        if (JSON.stringify(state).length > AWARENESS_STATE_LIMIT) states.delete(clientId);
+        else if ("user" in state) state.user = participantOf(context.user);
       }
     },
     // A participant changed the board, its comments, its decisions, its linked issues or its proposals; the others fetch
