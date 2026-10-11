@@ -18,6 +18,11 @@ repositories {
     mavenCentral()
 }
 
+// Patches with security fixes ahead of the next Spring Boot (docs/security.md); drop each once Boot manages a version
+// at least as new.
+extra["tomcat.version"] = "11.0.26"
+extra["jackson-bom.version"] = "3.1.7"
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
