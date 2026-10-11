@@ -31,6 +31,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Known high and critical vulnerabilities in the packages of the lockfile (docs/security.md).
+      - run: pnpm audit --audit-level high
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
@@ -156,6 +158,20 @@ jobs:
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}backup:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=backup
           cache-to: type=gha,mode=max,scope=backup
+      # The packages of the system and the dependencies inside the images (docs/security.md): a critical or high
+      # vulnerability that has a fixed version fails the job, before the images start or are published.
+      - uses: anchore/scan-action/download-grype@v7
+        id: grype
+      - name: Scan the images for vulnerabilities
+        run: |
+          failed=
+          for service in backend collab frontend backup; do
+            echo "::group::$service"
+            "${{ steps.grype.outputs.cmd }}" "docker:${CODRAW_IMAGE_PREFIX}${service}:${CODRAW_VERSION}" \
+              --only-fixed --fail-on high || failed="$failed $service"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then echo "::error::Fixed critical or high vulnerabilities in:$failed"; exit 1; fi
       - name: Check the Prometheus configuration and alert rules
         run: |
           promtool() {
