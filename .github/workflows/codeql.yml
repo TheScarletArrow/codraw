@@ -42,9 +42,11 @@ jobs:
               - "**/node_modules"
               - "**/dist"
       - if: matrix.build-mode == 'manual'
-        # A fresh compilation in the process of Gradle: neither the build cache nor a daemon of Kotlin compiles out of
-        # sight of the extractor.
-        run: ./gradlew --no-daemon --no-build-cache -Pkotlin.compiler.execution.strategy=in-process testClasses
+        # A fresh compilation in the process of Gradle, which then needs a larger heap: neither the build cache nor a
+        # daemon of Kotlin compiles out of sight of the extractor.
+        run: >-
+          ./gradlew --no-daemon --no-build-cache -Dorg.gradle.jvmargs=-Xmx4g
+          -Pkotlin.compiler.execution.strategy=in-process testClasses
         working-directory: backend
       - uses: github/codeql-action/analyze@v4
         with:
