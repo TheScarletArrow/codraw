@@ -30,6 +30,15 @@ data class LimitProperties(
     /** The most boards of a workspace, without those in the trash. */
     @field:Positive
     val boardsPerWorkspace: Int = 500,
+    /**
+     * The most personal boards of a user in the trash; the board deleted earliest goes for good as another comes, so
+     * that copies or new boards deleted again and again do not keep their images and documents for the retention.
+     */
+    @field:Positive
+    val boardsInTrashPerUser: Int = 100,
+    /** The most boards of a workspace in the trash, kept as [boardsInTrashPerUser] keeps those of a user. */
+    @field:Positive
+    val boardsInTrashPerWorkspace: Int = 500,
     /** The most guests created from one network address in an hour. */
     @field:Positive
     val guestsPerAddressPerHour: Int = 20,

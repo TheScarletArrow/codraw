@@ -73,11 +73,23 @@ class BoardService(
 
     fun deleted(id: UUID): Board? = boards.findByIdOrNull(id)?.takeIf { it.deletedAt != null }
 
-    /** Keeps all related data for recovery; active API and collab lookups no longer find the board. */
+    /**
+     * Keeps all related data for recovery; active API and collab lookups no longer find the board. A full trash of the
+     * owner, or of the workspace of the board, deletes for good the board that has been there longest.
+     */
     @Transactional
     fun moveToTrash(board: Board) {
         checkNotNull(users.lock(board.ownerId))
         if (!boards.moveToTrash(checkNotNull(board.id), board.ownerId, now())) throw BoardOwnerChangedException()
+        val workspaceId = board.workspaceId
+        val beyond = if (workspaceId == null) {
+            boards.personalTrashBeyond(board.ownerId, limits.boardsInTrashPerUser)
+        } else {
+            boards.workspaceTrashBeyond(workspaceId, limits.boardsInTrashPerWorkspace)
+        }
+        for (id in beyond) {
+            if (boards.purgeTrashed(id)) events.publishEvent(BoardDeleted(id))
+        }
     }
 
     /**
