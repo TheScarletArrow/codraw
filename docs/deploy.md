@@ -410,8 +410,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 | `backup:9187/metrics.txt` | резервные копии: время и результат последней попытки, время последней удачной копии, размер и длительность (`codraw_backup_*`, см. «Резервные копии») |
 | `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время — кодирование в потоке сохранений и запись в `backend` (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись, и `user-blocked` — заблокированные пользователи), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
-**Prometheus** поднимается вместе со стеком с профилем `monitoring`. Положите рядом с `docker-compose.prod.yml`
-каталог `deploy/prometheus` из репозитория:
+**Prometheus** и **Alertmanager** поднимаются вместе со стеком с профилем `monitoring`. Положите рядом с
+`docker-compose.prod.yml` каталоги `deploy/prometheus` и `deploy/alertmanager` из репозитория:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod --profile monitoring up -d --wait
@@ -431,9 +431,10 @@ Prometheus слушает `127.0.0.1:9090` сервера (порт — `CODRAW_
 | `CodrawClientErrors` | больше 20 ошибок в браузерах участников за 10 минут |
 | `CodrawBackupFailed` | последняя резервная копия не удалась |
 | `CodrawBackupMissing` | удачной резервной копии нет больше 26 часов (15 минут подряд) |
+| `Watchdog` | всегда: сторож, по которому внешний сервис замечает, что мониторинг жив, см. «Оповещения» |
 
-Prometheus показывает сработавшие правила на странице Alerts. Чтобы получать оповещения, подключите Alertmanager
-(`alerting` в `deploy/prometheus/prometheus.yml`) или внешний мониторинг, который читает те же метрики. Проверить
+Prometheus показывает сработавшие правила на странице Alerts и отправляет их в Alertmanager стека, а тот — в Telegram,
+на почту или в чат, которые заданы в `.env.prod` (см. «Оповещения» ниже). Без них оповещения никуда не уходят. Проверить
 правила после правки: `promtool test rules deploy/prometheus/alerts.test.yml`.
 
 **Журналы** `backend` и `collab` в этом стеке — JSON по строке на событие в формате ECS (`@timestamp`, `log.level`,
@@ -446,6 +447,163 @@ Prometheus показывает сработавшие правила на ст�
 участник вошёл; содержимого досок в отчётах нет. Найти их: `docker compose -f docker-compose.prod.yml logs backend | jq
 'select(.client.error.kind)'`. Одна и та же ошибка отправляется один раз за загрузку страницы, всего — не больше 10. Чтобы вернуть обычный текст, уберите
 `LOGGING_STRUCTURED_FORMAT_CONSOLE` у `backend` и задайте `LOG_FORMAT: text` у `collab`.
+
+### Оповещения
+
+С профилем `monitoring` стек поднимает и Alertmanager (`prom/alertmanager:v0.34.1`, решение —
+[ADR-0013](adr/0013-alert-delivery.md)): Prometheus отправляет ему сработавшие правила, а он — во все каналы, которые
+заданы в `.env.prod`: Telegram, почту и Slack-совместимый чат. Оператор получает сообщение «сработало» с правилом,
+сервисом и описанием, напоминание, пока правило не разрешилось, и сообщение «разрешено», когда всё вернулось.
+Необязательный сторож отмечается во внешнем сервисе, чтобы тот поднял тревогу, если замолчит сам мониторинг.
+
+> **Без каналов оповещения никуда не уходят.** Стек при этом поднимается как обычно, и Prometheus показывает правила
+> на странице Alerts, но сообщений не будет: о поломке вы узнаете от пользователей. Alertmanager при каждом запуске пишет
+> об этом предупреждение в журнал (`docker compose -f docker-compose.prod.yml logs alertmanager`). Задайте хотя бы один
+> канал и сторожа и отправьте тестовое оповещение (см. «Проверка отправки» ниже).
+
+| Переменная | По умолчанию | Что |
+|---|---|---|
+| `CODRAW_ALERT_TELEGRAM_BOT_TOKEN`, `CODRAW_ALERT_TELEGRAM_CHAT_ID` | пусто | бот Telegram и чат, куда он пишет; задаются вместе |
+| `CODRAW_ALERT_TELEGRAM_API_URL` | `https://api.telegram.org` | свой сервер Bot API или прокси, если Telegram с сервера недоступен |
+| `CODRAW_ALERT_EMAIL_TO` | пусто | адреса почты через запятую; письма уходят через SMTP уведомлений CoDraw (`CODRAW_SMTP_*`, `CODRAW_MAIL_FROM`) |
+| `CODRAW_ALERT_SMTP_REQUIRE_TLS` | `true` | `false` — письма оповещений без TLS, только для внутреннего релея |
+| `CODRAW_ALERT_CHAT_WEBHOOK_URL` | пусто | входящий вебхук Slack, Mattermost или Rocket.Chat |
+| `CODRAW_ALERT_WATCHDOG_URL` | пусто | адрес внешнего сторожа (healthchecks.io и подобных), на который раз в 5 минут уходит `POST` |
+| `CODRAW_ALERTMANAGER_PORT` | `9093` | порт веб-интерфейса Alertmanager на `127.0.0.1` сервера |
+| `CODRAW_ALERTMANAGER_CONFIG` | пусто | свой файл конфигурации Alertmanager внутри контейнера вместо собранной из переменных, см. ниже |
+
+Конфигурацию Alertmanager собирает при запуске `deploy/alertmanager/entrypoint.sh` из этих переменных; после их
+правки пересоздайте сервис той же командой `--profile monitoring up -d --wait`. Оповещение приходит в каждый заданный
+канал.
+
+**Telegram.**
+
+1. Создайте бота у [@BotFather](https://t.me/BotFather) командой `/newbot`; он выдаст токен вида
+   `123456789:AAH…` — это `CODRAW_ALERT_TELEGRAM_BOT_TOKEN`.
+2. Добавьте бота в группу дежурных (или напишите ему сами, если оповещения нужны только вам) и отправьте в группу
+   любую команду боту, например `/start@имя_бота`.
+3. Откройте `https://api.telegram.org/bot<токен>/getUpdates` и найдите в ответе `"chat":{"id":…}` — это
+   `CODRAW_ALERT_TELEGRAM_CHAT_ID`. У групп идентификатор отрицательный (`-1001234567890`), у личного чата —
+   положительный.
+
+```bash
+CODRAW_ALERT_TELEGRAM_BOT_TOKEN=123456789:AAH…
+CODRAW_ALERT_TELEGRAM_CHAT_ID=-1001234567890
+```
+
+Если `api.telegram.org` с сервера недоступен, задайте адрес своего сервера Bot API или обратного прокси к нему в
+`CODRAW_ALERT_TELEGRAM_API_URL`: Alertmanager обращается к `<адрес>/bot<токен>/sendMessage`.
+
+Токен даёт полный доступ к боту: не вставляйте его и адрес `getUpdates` с ним в общие чаты, задачи и сервисы
+форматирования JSON. Если токен утёк, выпустите новый у @BotFather (`/revoke`).
+
+**Почта.** Оповещения уходят через тот же SMTP-сервер и от того же отправителя, что письма уведомлений (см.
+«Уведомления на почту и в чат»), поэтому достаточно адресов получателей:
+
+```bash
+CODRAW_ALERT_EMAIL_TO=oncall@example.com,admin@example.com
+```
+
+Нужны `CODRAW_SMTP_HOST` и `CODRAW_MAIL_FROM`; порт — `CODRAW_SMTP_PORT`, по умолчанию 587; `CODRAW_SMTP_USERNAME` и
+`CODRAW_SMTP_PASSWORD` задаются вместе или не задаются оба. В отличие от писем
+`backend`, оповещения уходят только с TLS: на 587 — STARTTLS, на 465 — TLS сразу; сервер без TLS письмо не примет, иначе
+пароль ушёл бы открытым текстом. `CODRAW_ALERT_SMTP_REQUIRE_TLS=false` задавайте только для внутреннего релея без TLS в
+доверенной сети.
+
+**Чат.** Создайте входящий вебхук и задайте его адрес:
+
+- Slack — приложение с Incoming Webhooks, адрес `https://hooks.slack.com/services/…`;
+- Mattermost — «Интеграции → Входящие вебхуки»;
+- Rocket.Chat — «Администрирование → Интеграции → Новая → Входящая»; Rocket.Chat и Mattermost принимают формат Slack.
+
+```bash
+CODRAW_ALERT_CHAT_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/XXXX
+```
+
+Адрес вебхука — секрет: по нему любой может писать в канал. Список `CODRAW_WEBHOOK_ALLOWED_HOSTS` к оповещениям не
+относится — он ограничивает адреса, которые вводят пользователи.
+
+**Сторож.** Alertmanager не сообщит о том, что упал сам, Prometheus или весь сервер. Для этого правило `Watchdog`
+срабатывает всегда, а Alertmanager раз в 5 минут отправляет `POST` на `CODRAW_ALERT_WATCHDOG_URL`; внешний сервис
+тревожит, если отметки прекратились. С [healthchecks.io](https://healthchecks.io) (подойдут и Uptime Kuma с монитором
+Push, и Cronitor):
+
+1. Создайте проверку с периодом 5 минут и запасом (grace) около 10 минут и настройте в ней, куда она тревожит:
+   почта, Telegram, Slack.
+2. Скопируйте её адрес для отметок:
+
+```bash
+CODRAW_ALERT_WATCHDOG_URL=https://hc-ping.com/1f2e3d4c-…
+```
+
+Сторож уходит только на этот адрес: в Telegram, почту и чат он не попадает, а `CodrawServiceDown` его не глушит. На
+странице Alerts Prometheus и в Alertmanager `Watchdog` всегда виден сработавшим — так и должно быть. Без адреса сторожа
+отметок нет, и падение самого мониторинга останется незамеченным.
+
+**Что настроено по умолчанию.**
+
+- Группировка по правилу и сервису (`alertname`, `job`): первое сообщение — через 30 секунд после срабатывания, новые
+  оповещения той же группы — не чаще раза в 5 минут, напоминание о несработавшем — раз в 4 часа.
+- Сообщение о разрешении — во всех каналах.
+- Глушение: пока сработал `CodrawServiceDown` сервиса, не приходят правила, которые срабатывают из-за его падения:
+  - `backend` — `CodrawBackendErrors`, `CodrawDatabaseConnectionsPending` и `CodrawDocumentStoreFailures`;
+  - `collab` — `CodrawCollabBusy`;
+  - `backup` — `CodrawBackupFailed` и `CodrawBackupMissing`.
+
+Разные получатели для разных правил, расписания дежурств, PagerDuty или Opsgenie — своим файлом конфигурации (ниже).
+
+**Ошибки настройки.** Наполовину заданный канал — токен Telegram без чата, токен не того формата, адреса почты без
+`CODRAW_SMTP_HOST` или `CODRAW_MAIL_FROM` — останавливает Alertmanager, и `up --wait` падает, а
+`docker compose -f docker-compose.prod.yml logs alertmanager` называет неверную настройку. Так ошибку видно сразу, а не
+в день аварии.
+
+**Секреты.** Токен бота, пароль SMTP, адрес вебхука и адрес сторожа в собранную конфигурацию не попадают: они лежат в
+файлах с правами владельца внутри контейнера и подключаются полями `*_file`, поэтому их нет ни в конфигурации, ни на
+странице состояния Alertmanager, ни в журнале. Токен Telegram, который Alertmanager печатает в ошибках сети, вырезается
+из журнала. Как и у остальных сервисов, их видит `docker inspect`: доступ к Docker на сервере — это доступ ко всему.
+
+**Своя конфигурация.** Если переменных не хватает, напишите файл конфигурации Alertmanager сами и подключите его файлом
+`docker-compose.override.yml` рядом с `docker-compose.prod.yml`:
+
+```yaml
+services:
+  alertmanager:
+    volumes:
+      - ./alertmanager.yml:/etc/codraw/alertmanager.yml:ro
+```
+
+и укажите путь внутри контейнера в `.env.prod`:
+
+```bash
+CODRAW_ALERTMANAGER_CONFIG=/etc/codraw/alertmanager.yml
+```
+
+Запускайте стек тогда с обоими файлами: `docker compose -f docker-compose.prod.yml -f docker-compose.override.yml
+--env-file .env.prod --profile monitoring up -d --wait`. Файл берётся как есть: переменные `CODRAW_ALERT_*`, маршрут,
+глушение и сторож по умолчанию тогда не действуют, а улучшения их в новых версиях CoDraw переносите сами. Основой может
+служить собранная конфигурация: её показывает страница Status веб-интерфейса Alertmanager. Секреты в своём файле тоже
+держите в файлах (`bot_token_file`, `auth_password_file`, `api_url_file`, `url_file`). Alertmanager работает от
+пользователя `nobody` (uid 65534): файл конфигурации и файлы секретов должны быть ему доступны для чтения, иначе сервис
+остановится со строкой `cannot read`. Фильтр журнала со своим файлом не работает: если Telegram недоступен по сети,
+его токен попадёт в журнал Alertmanager.
+
+**Проверка отправки.** После настройки отправьте тестовое оповещение:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec alertmanager \
+  amtool alert add CodrawTestAlert severity=warning "job=test-$(date +%s)" \
+  --annotation='summary="Проверка доставки оповещений"' --alertmanager.url=http://127.0.0.1:9093
+```
+
+Примерно через 30 секунд оно придёт во все заданные каналы, а минут через 5–10 — сообщение о разрешении. Метка `job`
+каждый раз новая: такое же оповещение, о котором уже сообщили, Alertmanager повторяет только через 4 часа. Если не
+пришло, причина — в журнале: `docker compose -f docker-compose.prod.yml logs alertmanager` (ошибки отправки с именем
+канала). Отметки сторожа видно в журнале его проверки во внешнем сервисе.
+
+Веб-интерфейс Alertmanager слушает `127.0.0.1:9093` сервера (`CODRAW_ALERTMANAGER_PORT`) без входа: открывайте его через
+SSH-туннель (`ssh -L 9093:127.0.0.1:9093 сервер`, затем `http://localhost:9093`). В нём видны текущие оповещения и
+конфигурация, и в нём же можно заглушить оповещения на время работ (Silences). Тишины и журнал отправок хранятся в томе
+`codraw-prod_alertmanager-data`.
 
 ## Ресурсы
 
@@ -584,9 +742,11 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 
 ## Что проверяет CI
 
-Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`), собирает четыре образа, поднимает из них
-этот же `docker-compose.prod.yml` с профилем `monitoring` (с хранилищем изображений, хранилищем копий вне сервера — бакетом
-того же RustFS — и шифрованием копий), ждёт, пока Prometheus увидит `backend`, `collab` и `backup`, и в
+Задача `images` проверяет конфигурацию и правила Prometheus (`promtool`) и конфигурацию Alertmanager, собранную
+`deploy/alertmanager/entrypoint.sh`, — без каналов и со всеми каналами (`amtool check-config`; наполовину заданный
+канал должен падать), собирает четыре образа, поднимает из них этот же `docker-compose.prod.yml` с профилем
+`monitoring` (с хранилищем изображений, хранилищем копий вне сервера — бакетом того же RustFS — шифрованием копий и
+каналами оповещений), ждёт, пока Prometheus увидит `backend`, `collab` и `backup`, и в
 браузере проверяет через nginx совместную работу двух гостей, изображение и версию доски, заголовки безопасности,
 кеширование и закрытость внутреннего API и метрик (`pnpm --filter @codraw/e2e test:stack`). Тот же тест можно запустить
 против своего стека: `STACK_URL=https://codraw.example.com pnpm --filter @codraw/e2e test:stack`.
@@ -596,3 +756,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 архивов на сервере и в хранилище копий, а потом снимает копию, теряет базу, картинки и архивы сервера, восстанавливает
 последний архив из хранилища копий и сверяет каждую таблицу базы и каждый файл картинок с тем, что было; журнал `backup`
 не должен содержать секретов. После этого стек снова поднимается, и проверка в браузере проходит ещё раз.
+
+`deploy/alertmanager/check-delivery.sh` проверяет оповещения: Prometheus видит Alertmanager, тестовое оповещение
+`amtool` доходит в формате Slack до получателя-вебхука, поднятого в CI в сети стека, `Watchdog` от Prometheus — до
+адреса сторожа (вся цепочка Prometheus → Alertmanager → получатель), а токена Telegram нет в журнале Alertmanager, хотя
+доставка в Telegram с выдуманным токеном падает.
