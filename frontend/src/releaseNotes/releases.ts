@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.41.0',
+    date: '2026-10-11',
+    items: [
+      {
+        ru: {
+          title: 'Обновление открытых вкладок',
+          text: 'Открытая вкладка сама узнаёт о новой версии CoDraw и предлагает внизу экрана «Обновить», а страница, которая не загрузилась после обновления, перезагружается сама. Перед обновлением начатые правки сохраняются, а доска, сохранённая более новой версией, открывается только для просмотра, пока вы не обновите страницу.',
+        },
+        en: {
+          title: 'Open tabs after an update',
+          text: 'An open tab notices a new version of CoDraw by itself and offers “Reload” at the bottom of the screen, and a page that did not load after an update reloads by itself. The edits you are making are saved before the reload, and a board saved by a newer version opens for viewing only until you reload the page.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.40.0',
     date: '2026-10-11',
     items: [

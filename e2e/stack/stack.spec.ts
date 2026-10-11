@@ -118,6 +118,16 @@ test('the app comes with the security headers, and its files are cached for a ye
   expect(asset.headers()['cache-control']).toBe('public, max-age=31536000, immutable')
 })
 
+test('the build that open tabs compare with theirs is not cached', async ({ request }) => {
+  const version = await request.get('/version.json')
+  expect(version.status()).toBe(200)
+  expect(version.headers()['content-type']).toContain('application/json')
+  expect(version.headers()['cache-control']).toBe('no-cache')
+  const body = (await version.json()) as { version: unknown; build: unknown }
+  expect(typeof body.version).toBe('string')
+  expect(typeof body.build).toBe('string')
+})
+
 test('the API answers through the app address, and the internal API of the backend does not', async ({ request }) => {
   expect((await request.get('/api/me')).status()).toBe(401)
   expect((await request.get('/internal/boards/0199a000-0000-7000-8000-000000000001/document')).status()).toBe(404)

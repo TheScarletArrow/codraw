@@ -100,6 +100,13 @@ server {
         try_files $uri =404;
     }
 
+    # Open tabs read the build that the server gives; a missing file is a 404, not the page of the app.
+    location = /version.json {
+        include /etc/nginx/codraw/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
     # Any other path is a page of the app, e.g. /boards/{id}; the browser checks for a new build every time.
     location / {
         include /etc/nginx/codraw/security-headers.conf;

@@ -89,6 +89,14 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             ],
           },
           {
+            id: 'updates',
+            title: 'Обновление открытых вкладок',
+            paragraphs: [
+              'Когда выходит новая версия, открытая вкладка узнаёт об этом сама: внизу экрана появляется «Вышла новая версия CoDraw» с кнопками «Обновить» и «Позже». «Обновить» сначала сохраняет начатые правки и перезагружает страницу; если сохранить их негде, например нет связи, CoDraw предупредит, что не все правки сохранены, и предложит «Обновить всё равно». «Позже» прячет плашку до следующей перезагрузки.',
+              'Страница, которая не загрузилась после обновления, перезагружается сама; если и это не помогло, появится экран «CoDraw обновился» с кнопкой «Обновить страницу». Доска, сохранённая более новой версией CoDraw, открывается только для просмотра, пока вы не обновите страницу.',
+            ],
+          },
+          {
             id: 'touch',
             title: 'Телефон и планшет',
             paragraphs: [
@@ -686,6 +694,14 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'What’s new',
             paragraphs: [
               'After an update CoDraw shows once what has appeared in it. The button with the sparkles in the header opens the list of all versions again.',
+            ],
+          },
+          {
+            id: 'updates',
+            title: 'Open tabs after an update',
+            paragraphs: [
+              'When a new version comes out, an open tab learns about it by itself: “A new version of CoDraw is out” appears at the bottom of the screen with the “Reload” and “Later” buttons. “Reload” first saves the edits you are making and then reloads the page; if there is nowhere to save them, for example without a connection, CoDraw warns that some edits are not saved and offers “Reload anyway”. “Later” hides the banner until the next reload.',
+              'A page that did not load after an update reloads by itself; if that did not help, the “CoDraw has been updated” screen appears with the “Reload the page” button. A board saved by a newer version of CoDraw opens for viewing only until you reload the page.',
             ],
           },
           {
