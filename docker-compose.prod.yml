@@ -1,7 +1,8 @@
 # CoDraw on a server: the app with its API and sync on one port, behind a proxy that terminates TLS.
 # Variables: .env.prod.example; the whole guide: docs/deploy.md.
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
-# With Prometheus, which reads the metrics of backend and collab (deploy/prometheus next to this file):
+# With Prometheus, which reads the metrics of backend, collab and backup (deploy/prometheus next to this file), and
+# Alertmanager, which delivers its alerts to the channels of .env.prod (deploy/alertmanager):
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod --profile monitoring up -d --wait
 # Its own project name: the containers and the volume do not mix with those of docker-compose.yml for development.
 name: codraw-prod
@@ -233,9 +234,50 @@ services:
       - backend
       - collab
       - backup
+      - alertmanager
+
+  # Delivers the alerts of Prometheus to Telegram, email and a chat, and marks the external watchdog (docs/deploy.md,
+  # «Оповещения»). deploy/alertmanager/entrypoint.sh builds its configuration from these variables at each start;
+  # without channels alerts go nowhere, and a channel set in part stops it.
+  alertmanager:
+    <<: *restart
+    image: prom/alertmanager:v0.34.1
+    # Only with --profile monitoring.
+    profiles: [monitoring]
+    entrypoint: ["/bin/sh", "/etc/alertmanager/codraw/entrypoint.sh"]
+    environment:
+      CODRAW_ALERT_TELEGRAM_BOT_TOKEN: ${CODRAW_ALERT_TELEGRAM_BOT_TOKEN:-}
+      CODRAW_ALERT_TELEGRAM_CHAT_ID: ${CODRAW_ALERT_TELEGRAM_CHAT_ID:-}
+      # Letters go through the SMTP server and from the sender of the notifications of CoDraw.
+      CODRAW_ALERT_EMAIL_TO: ${CODRAW_ALERT_EMAIL_TO:-}
+      CODRAW_SMTP_HOST: ${CODRAW_SMTP_HOST:-}
+      CODRAW_SMTP_PORT: ${CODRAW_SMTP_PORT:-587}
+      CODRAW_SMTP_USERNAME: ${CODRAW_SMTP_USERNAME:-}
+      CODRAW_SMTP_PASSWORD: ${CODRAW_SMTP_PASSWORD:-}
+      CODRAW_MAIL_FROM: ${CODRAW_MAIL_FROM:-}
+      CODRAW_ALERT_SMTP_REQUIRE_TLS: ${CODRAW_ALERT_SMTP_REQUIRE_TLS:-true}
+      # An incoming webhook of Slack, Mattermost or Rocket.Chat.
+      CODRAW_ALERT_CHAT_WEBHOOK_URL: ${CODRAW_ALERT_CHAT_WEBHOOK_URL:-}
+      CODRAW_ALERT_WATCHDOG_URL: ${CODRAW_ALERT_WATCHDOG_URL:-}
+      # A configuration of one's own, a path in the container, mounted by docker-compose.override.yml; it replaces the
+      # one built from the variables above.
+      CODRAW_ALERTMANAGER_CONFIG: ${CODRAW_ALERTMANAGER_CONFIG:-}
+    volumes:
+      - ./deploy/alertmanager:/etc/alertmanager/codraw:ro
+      # Silences and the log of notifications sent survive a new container.
+      - alertmanager-data:/alertmanager
+    ports:
+      # On the server itself only: Alertmanager has no sign-in. Reach it through an SSH tunnel.
+      - "127.0.0.1:${CODRAW_ALERTMANAGER_PORT:-9093}:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres-data:
   s3-data:
   backups:
   prometheus-data:
+  alertmanager-data:

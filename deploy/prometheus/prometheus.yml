@@ -4,6 +4,12 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Alertmanager of the same profile delivers the alerts to the channels of .env.prod (docs/deploy.md, «Оповещения»).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 rule_files:
   - /etc/prometheus/alerts.yml
 

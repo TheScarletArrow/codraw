@@ -1,8 +1,17 @@
-# Alert rules of CoDraw. Prometheus evaluates them; where alerts go (Alertmanager, mail, a messenger) is up to the
-# installation, see docs/deploy.md.
+# Alert rules of CoDraw. Prometheus evaluates them; Alertmanager of the profile monitoring delivers them to the channels
+# set in .env.prod, see docs/deploy.md, «Оповещения».
 groups:
   - name: codraw
     rules:
+      # Always firing: Alertmanager sends it to the external watchdog (CODRAW_ALERT_WATCHDOG_URL) only, which raises the
+      # alarm when the marks stop, i.e. when Prometheus, Alertmanager or the server is down.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Срабатывает всегда: отметки у внешнего сторожа показывают, что мониторинг работает"
+
       - alert: CodrawServiceDown
         expr: up{job=~"backend|collab|backup"} == 0
         for: 2m
