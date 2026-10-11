@@ -54,8 +54,9 @@ export function Layout() {
           <>
             {/* What the page shows in the header, e.g. who is on the board: the rest of the line is its room. */}
             <div ref={setHeaderSlot} className="ml-auto flex min-w-0 items-center" />
-            {/* In a tab of its own: the board stays open where it was. */}
-            <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
+            {/* In a tab of its own: the board stays open where it was. A phone keeps the room of the header for who is on
+                the board and finds the help under the list of boards. */}
+            <Button asChild variant="ghost" size="icon-sm" className="shrink-0 max-sm:hidden">
               <a href="/help" target="_blank" rel="noopener" aria-label={helpMessages.help} title={helpMessages.helpHint}>
                 <CircleQuestionMark />
               </a>
