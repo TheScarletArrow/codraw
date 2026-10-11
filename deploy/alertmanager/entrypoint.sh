@@ -175,6 +175,7 @@ EOF
       - api_url_file: $SECRETS/chat-webhook-url
         title: '{{ template "codraw.title" . }}'
         title_link: ''
+        fallback: '{{ template "codraw.title" . }}'
         text: '{{ template "codraw.text" . }}'
         send_resolved: true
 EOF

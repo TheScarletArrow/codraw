@@ -116,6 +116,12 @@ jobs:
       # An OAuth application of GitHub that the stack offers: the browser check reads its callback URL.
       GITHUB_CLIENT_ID: ci-github-client
       GITHUB_CLIENT_SECRET: ci-github-secret
+      # Alert channels of the stack for deploy/alertmanager/check-delivery.sh: the chat and the watchdog go to its
+      # receiver, Telegram has an invented token, which Telegram refuses and which must stay out of the log.
+      CODRAW_ALERT_CHAT_WEBHOOK_URL: http://alert-sink:8080/chat
+      CODRAW_ALERT_WATCHDOG_URL: http://alert-sink:8080/watchdog
+      CODRAW_ALERT_TELEGRAM_BOT_TOKEN: 123456789:AAFakeTokenForCi_alerts-check
+      CODRAW_ALERT_TELEGRAM_CHAT_ID: "-1001"
     steps:
       - uses: actions/checkout@v5
       - name: Name the images
@@ -156,7 +162,7 @@ jobs:
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}backup:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=backup
           cache-to: type=gha,mode=max,scope=backup
-      - name: Check the Prometheus configuration and alert rules
+      - name: Check the Prometheus and Alertmanager configurations and alert rules
         run: |
           promtool() {
             docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/prometheus:/etc/prometheus:ro" -w /etc/prometheus \
@@ -164,6 +170,21 @@ jobs:
           }
           promtool check config prometheus.yml
           promtool test rules alerts.test.yml
+          # The configuration that deploy/alertmanager/entrypoint.sh builds, checked by amtool; only the -e given count.
+          amtool_check() {
+            docker run --rm --entrypoint /bin/sh -v "$PWD/deploy/alertmanager:/etc/alertmanager/codraw:ro" "$@" \
+              prom/alertmanager:v0.34.1 /etc/alertmanager/codraw/entrypoint.sh check
+          }
+          amtool_check
+          amtool_check -e CODRAW_ALERT_TELEGRAM_BOT_TOKEN=123456789:AAFake -e CODRAW_ALERT_TELEGRAM_CHAT_ID=-1001 \
+            -e CODRAW_ALERT_EMAIL_TO=ops@example.com,oncall@example.com -e CODRAW_SMTP_HOST=smtp.example.com \
+            -e CODRAW_MAIL_FROM=codraw@example.com -e CODRAW_SMTP_USERNAME=codraw -e CODRAW_SMTP_PASSWORD=secret \
+            -e CODRAW_ALERT_CHAT_WEBHOOK_URL=https://chat.example.com/hooks/1 \
+            -e CODRAW_ALERT_WATCHDOG_URL=https://watchdog.example.com/ping/1
+          if amtool_check -e CODRAW_ALERT_EMAIL_TO=ops@example.com; then
+            echo "::error::a channel set in part passed the check"
+            exit 1
+          fi
       - name: Start the stack from the images, with monitoring
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$RUNNER_TEMP/signing-key.pem"
@@ -179,6 +200,8 @@ jobs:
           done
           curl -s http://127.0.0.1:9090/api/v1/targets
           exit 1
+      - name: Check that alerts reach a receiver
+        run: deploy/alertmanager/check-delivery.sh
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:

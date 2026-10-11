@@ -462,7 +462,7 @@ Prometheus показывает сработавшие правила на ст�
 | `CODRAW_ALERT_SMTP_REQUIRE_TLS` | `true` | `false` — письма оповещений без TLS, только для внутреннего релея |
 | `CODRAW_ALERT_CHAT_WEBHOOK_URL` | пусто | входящий вебхук Slack, Mattermost или Rocket.Chat |
 | `CODRAW_ALERT_WATCHDOG_URL` | пусто | адрес внешнего сторожа (healthchecks.io и подобных), на который раз в 5 минут уходит `POST` |
-| `CODRAW_ALERTMANAGER_PORT` | `127.0.0.1:9093` | порт веб-интерфейса Alertmanager на сервере |
+| `CODRAW_ALERTMANAGER_PORT` | `9093` | порт веб-интерфейса Alertmanager на `127.0.0.1` сервера |
 | `CODRAW_ALERTMANAGER_CONFIG` | пусто | свой файл конфигурации Alertmanager внутри контейнера вместо собранной из переменных, см. ниже |
 
 Конфигурацию Alertmanager собирает при запуске `deploy/alertmanager/entrypoint.sh` из этих переменных; после их
@@ -577,11 +577,12 @@ CODRAW_ALERTMANAGER_CONFIG=/etc/codraw/alertmanager.yml
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod exec alertmanager \
-  amtool alert add CodrawTestAlert severity=warning job=test \
-  --annotation=summary="Проверка доставки оповещений" --alertmanager.url=http://127.0.0.1:9093
+  amtool alert add CodrawTestAlert severity=warning "job=test-$(date +%s)" \
+  --annotation='summary="Проверка доставки оповещений"' --alertmanager.url=http://127.0.0.1:9093
 ```
 
-Примерно через 30 секунд оно придёт во все заданные каналы, а минут через 5–10 — сообщение о разрешении. Если не
+Примерно через 30 секунд оно придёт во все заданные каналы, а минут через 5–10 — сообщение о разрешении. Метка `job`
+каждый раз новая: такое же оповещение, о котором уже сообщили, Alertmanager повторяет только через 4 часа. Если не
 пришло, причина — в журнале: `docker compose -f docker-compose.prod.yml logs alertmanager` (ошибки отправки с именем
 канала). Отметки сторожа видно в журнале его проверки во внешнем сервисе.
 
