@@ -136,7 +136,8 @@ describe('locked cells', () => {
     lock(editor, locked)
     editor.graph.setSelectionCell(edge)
 
-    const handler = editor.graph.createEdgeHandler(editor.graph.getView().getState(edge)!, null)
+    const handlers = editor.graph.getPlugin<SelectionCellsHandler>('SelectionCellsHandler')!
+    const handler = handlers.createEdgeHandler(editor.graph.getView().getState(edge)!, null)
     expect(handler.isConnectableCell(locked)).toBe(false)
     expect(handler.isConnectableCell(b)).toBe(true)
     handler.onDestroy()

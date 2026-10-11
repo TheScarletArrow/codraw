@@ -1,4 +1,5 @@
 import type { StyleValue } from './model.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /**
  * The style key of the link of an element: a page of the board, another board or an address of the web. draw.io keeps
@@ -66,8 +67,8 @@ export function parseLink(value: unknown, origin = appOrigin()): ShapeLink | nul
 }
 
 /** The link of a style, if CoDraw opens it; see {@link parseLink}. */
-export function linkOf(style: Record<string, unknown> | null | undefined, origin = appOrigin()): string | null {
-  const value = style?.[LINK_KEY]
+export function linkOf(style: AnyStyle | null | undefined, origin = appOrigin()): string | null {
+  const value = style ? styleValues(style)[LINK_KEY] : undefined
   return typeof value === 'string' && parseLink(value, origin) ? value.trim() : null
 }
 

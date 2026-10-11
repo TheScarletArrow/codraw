@@ -1,5 +1,6 @@
 import { edgeMarkerMessages as m } from './edgeMarkers.messages.ts'
 import type { StyleValue } from './model.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /**
  * The markers of the ends of an edge as data, without maxGraph: the toolbar offers them, the editor reads and writes
@@ -61,10 +62,11 @@ const isOff = (value: unknown) => value === false || value === 0 || value === '0
  * `block` without a fill. An end without a marker of its own has the default of the editor: none at the start, an
  * arrow at the end.
  */
-export function markerOf(style: Readonly<Record<string, unknown>>, end: EdgeEnd): string {
+export function markerOf(style: AnyStyle, end: EdgeEnd): string {
   const keys = MARKER_KEYS[end]
-  const arrow = String(style[keys.arrow] ?? (end === 'end' ? DEFAULT_END_ARROW : 'none')) || 'none'
-  return arrow === 'block' && isOff(style[keys.fill]) ? HOLLOW_TRIANGLE : arrow
+  const values = styleValues(style)
+  const arrow = String(values[keys.arrow] ?? (end === 'end' ? DEFAULT_END_ARROW : 'none')) || 'none'
+  return arrow === 'block' && isOff(values[keys.fill]) ? HOLLOW_TRIANGLE : arrow
 }
 
 /**
