@@ -25,6 +25,7 @@ const { values } = parseArgs({
     crowd: { type: "string", default: "25,50,100" },
     "large-boards": { type: "string", default: "3" },
     "large-participants": { type: "string", default: "3" },
+    "large-neighbours": { type: "string", default: "20" },
     "document-size": { type: "string", default: String(16 * 1024 * 1024) },
     "large-fill": { type: "string", default: "0.9" },
     "reconnect-boards": { type: "string", default: "100" },
@@ -51,6 +52,7 @@ if (values.help) {
   --board-participants 3      participants of each of those boards
   --crowd 25,50,100           participants of the one board of the scenario crowd, one step each
   --large-boards 3            boards near the size limit; --large-participants 3, --document-size, --large-fill 0.9
+  --large-neighbours 20       small boards of --board-participants each that work beside them, counted apart; 0 for none
   --reconnect-boards 100      boards whose participants come back after collab restarts (needs Docker)
   --duration 60 --warmup 10   seconds of each step
   --edit-interval 3000        mean milliseconds between edits of a participant
@@ -102,7 +104,10 @@ if (scenarios.has("crowd")) results.push(...(await crowdedBoard(options, numbers
 if (scenarios.has("large")) {
   const bytes = Math.floor(number(values["document-size"]) * number(values["large-fill"]));
   results.push(
-    await largeDocuments(options, number(values["large-boards"]), number(values["large-participants"]), bytes),
+    ...(await largeDocuments(options, number(values["large-boards"]), number(values["large-participants"]), bytes, {
+      count: number(values["large-neighbours"]),
+      perBoard,
+    })),
   );
 }
 if (scenarios.has("reconnect")) {

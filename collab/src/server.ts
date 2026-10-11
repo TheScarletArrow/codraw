@@ -1,5 +1,5 @@
-import { Database } from "@hocuspocus/extension-database";
 import { Server, type Connection, type Document } from "@hocuspocus/server";
+import * as Y from "yjs";
 import {
   accessOnConnect,
   BOARD_DELETED,
@@ -9,12 +9,7 @@ import {
 } from "./access.js";
 import type { TokenVerifier } from "./auth.js";
 import { checkUserOnConnect, createUserChecks } from "./users.js";
-import {
-  BoardNotFoundError,
-  ProposalClosedError,
-  ProposalNotFoundError,
-  type BackendClient,
-} from "./backend-client.js";
+import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
 import { documentOf, type CollabDocument } from "./documents.js";
 import { createDocumentEditors } from "./editors.js";
 import { log } from "./log.js";
@@ -28,12 +23,14 @@ import {
 } from "./messages.js";
 import { createMetrics, rejectionReasonOf, type Metrics } from "./metrics.js";
 import { createSearchTextBackfill } from "./search-text-backfill.js";
-import { searchTextOf } from "./search-text.js";
 import { createDocumentSizes, DOCUMENT_SIZE_LIMIT, DocumentTooLargeError } from "./size.js";
+import type { Snapshots } from "./snapshots.js";
 
 export interface CollabServerOptions {
   port: number;
   backend: BackendClient;
+  /** Where the open documents are mirrored and stored, outside the main thread; the server destroys it with itself. */
+  snapshots: Snapshots;
   verifyToken: TokenVerifier;
   quiet?: boolean;
   /** Delay after the last change before the document is stored, in milliseconds. */
@@ -94,6 +91,7 @@ const SYNC_UPDATE = 2;
 export function createCollabServer({
   port,
   backend,
+  snapshots,
   verifyToken,
   quiet = false,
   debounce = 2_000,
@@ -110,8 +108,6 @@ export function createCollabServer({
   const checkUsers = createUserChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
-  /** The text for search that the backend has of each open board, as collab sent it last. */
-  const searchTexts = new Map<string, string>();
   let accessChecks: NodeJS.Timeout | undefined;
   /** The awareness client id each connection speaks for. */
   const awarenessClients = new WeakMap<object, number>();
@@ -127,8 +123,7 @@ export function createCollabServer({
   };
   let userChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
-  let instance: Server["hocuspocus"] | undefined;
-  const backfill = createSearchTextBackfill(backend, metrics, (boardId) => instance?.documents.get(boardId));
+  const backfill = createSearchTextBackfill(backend, metrics, snapshots);
   const fillInSearchTexts = () =>
     void backfill.run().catch((error: unknown) => log.error("Failed to fill in the texts of boards", error));
   /** The board or the draft that an open document is; authentication lets no other name through. */
@@ -136,50 +131,6 @@ export function createCollabServer({
     const target = documentOf(documentName);
     if (!target) throw new BoardNotFoundError(documentName);
     return target;
-  };
-  /**
-   * Stores a draft. A closed proposal keeps its draft as it is: the changes are dropped, and the connections are checked,
-   * so that its author views it from now on. The connections of a deleted proposal are closed.
-   */
-  const storeDraft = async (proposalId: string, state: Uint8Array, document: Document) => {
-    const started = performance.now();
-    const seconds = () => (performance.now() - started) / 1000;
-    try {
-      await backend.storeDraft(proposalId, state);
-      metrics.stored("stored", seconds());
-    } catch (error) {
-      if (error instanceof ProposalClosedError) {
-        metrics.stored("proposal_closed", seconds());
-        void checkAccess(document);
-        return;
-      }
-      if (error instanceof ProposalNotFoundError) {
-        metrics.stored("proposal_deleted", seconds());
-        document.getConnections().forEach((connection) => connection.close(PROPOSAL_DELETED));
-        return;
-      }
-      metrics.stored("failed", seconds());
-      log.error(`Failed to store the draft of proposal ${proposalId}`, error, { "codraw.proposal": proposalId });
-      throw error;
-    }
-  };
-  /**
-   * Sends the text of a stored board document for search, unless the backend has it already. A failure leaves the
-   * stored state as it is: the next store sends the text again.
-   */
-  const storeSearchText = async (documentName: string, boardId: string, text: string) => {
-    if (searchTexts.get(documentName) === text) return;
-    searchTexts.delete(documentName);
-    try {
-      await backend.storeSearchText(boardId, text);
-      searchTexts.set(documentName, text);
-      metrics.searchTextSent("stored");
-    } catch (error) {
-      // The board was deleted right after its state was stored.
-      if (error instanceof BoardNotFoundError) return;
-      metrics.searchTextSent("failed");
-      log.error(`Failed to store the text of board ${boardId}`, error, { "codraw.board": boardId });
-    }
   };
   return new Server({
     port,
@@ -193,47 +144,74 @@ export function createCollabServer({
     // A message that cannot fit into a document is refused before it is read into memory: ws closes with 1009.
     websocketOptions: { maxPayload: documentSizeLimit + MESSAGE_OVERHEAD },
     extensions: [
-      new Database({
-        // A document is a board, named by its id, or the draft of a proposal, `proposal:<id>`.
+      {
+        // A document is a board, named by its id, or the draft of a proposal, `proposal:<id>`. Its mirror in the
+        // snapshot worker starts from the same state, and gets every change from here on: the listener is added right
+        // after the state is applied, with nothing awaited in between.
         // Throwing here makes Hocuspocus close the connection and report the error reason to the client.
-        async fetch({ documentName }) {
+        async onLoadDocument({ documentName, document }) {
           const target = targetOf(documentName);
           const state = target.kind === "board" ? await backend.loadDocument(target.id) : await backend.loadDraft(target.id);
           sizes.set(documentName, state?.length ?? 0);
-          return state;
+          if (state) Y.applyUpdate(document, state);
+          // Last use of the state here: its bytes move to the worker.
+          snapshots.open(documentName, state);
+          document.on("update", (update: Uint8Array) => snapshots.update(documentName, update));
         },
-        async store({ documentName, state, document }) {
-          sizes.set(documentName, state.length);
+        // The snapshot worker encodes and sends the state; here only what follows from how the store ended.
+        async onStoreDocument(payload) {
+          const { documentName, document, instance } = payload;
           const target = targetOf(documentName);
-          if (target.kind === "proposal") {
-            await storeDraft(target.id, state, document);
-            return;
-          }
-          // Taken before anything is awaited, right after the state was encoded: their changes are in it, and the
-          // changes in it are theirs. So is the text: it is the text of the state.
+          // Taken before anything is awaited, when the store is asked for: the state that the worker encodes has
+          // exactly the changes applied before, and those are theirs. A draft has nobody to name.
           const changedBy = editors.take(documentName);
-          const text = searchTextOf(document);
-          const started = performance.now();
-          const seconds = () => (performance.now() - started) / 1000;
-          try {
-            await backend.storeDocument(target.id, state, changedBy);
-            metrics.stored("stored", seconds());
-          } catch (error) {
-            if (error instanceof BoardNotFoundError) {
-              metrics.stored("board_deleted", seconds());
+          const mark = sizes.storing(documentName);
+          const { result, seconds, size, searchText, error } = await snapshots.store(
+            documentName,
+            target,
+            changedBy,
+            document,
+          );
+          if (size !== null) sizes.stored(documentName, size, mark);
+          metrics.stored(result, seconds);
+          switch (result) {
+            case "board_deleted":
               // The board was deleted: its participants are told so, and its changes are dropped.
               document.getConnections().forEach((connection) => connection.close(BOARD_DELETED));
               return;
-            }
-            // The changes are stored with the next store, and so are the users who made them.
-            editors.giveBack(documentName, changedBy);
-            metrics.stored("failed", seconds());
-            log.error(`Failed to store board ${documentName}`, error, { "codraw.board": documentName });
-            throw error;
+            // A closed proposal keeps its draft as it is: the changes are dropped, and the connections are checked, so
+            // that its author views it from now on.
+            case "proposal_closed":
+              void checkAccess(document);
+              return;
+            case "proposal_deleted":
+              document.getConnections().forEach((connection) => connection.close(PROPOSAL_DELETED));
+              return;
+            case "failed":
+              // The changes are stored with the next store, and so are the users who made them: Hocuspocus keeps a
+              // document whose store throws. It stores it again only after another change, and never when the last
+              // participant has left, nor before it stops: the server would wait for it forever. So the store is
+              // asked for again, after the debounce delay; a stop runs it at once. Hocuspocus starts it once this
+              // one has ended.
+              editors.giveBack(documentName, changedBy);
+              void instance.storeDocumentHooks(document, payload);
+              if (target.kind === "board") {
+                log.error(`Failed to store board ${target.id}`, error, { "codraw.board": target.id });
+              } else {
+                log.error(`Failed to store the draft of proposal ${target.id}`, error, {
+                  "codraw.proposal": target.id,
+                });
+              }
+              throw error ?? new Error(`Failed to store document ${documentName}`);
           }
-          await storeSearchText(documentName, target.id, text);
+          // The text went to the backend unless it had it already; a failure leaves the stored state as it is, and the
+          // next store sends the text again.
+          if (searchText !== null) metrics.searchTextSent(searchText);
+          if (searchText === "failed") {
+            log.error(`Failed to store the text of board ${target.id}`, error, { "codraw.board": target.id });
+          }
         },
-      }),
+      },
     ],
     // Runs before the document is loaded: a rejected client gets neither the document nor the awareness of others.
     // The token tells who the user is, and the backend what the board or the proposal lets them do now. A client that
@@ -274,7 +252,7 @@ export function createCollabServer({
     async afterUnloadDocument({ documentName }) {
       sizes.forget(documentName);
       editors.forget(documentName);
-      searchTexts.delete(documentName);
+      snapshots.close(documentName);
     },
     // A connection speaks for the one client id it announced first, which no other connection has; its user is the one
     // of its token, and a state stays small. Anything else in an update is dropped: the update of Hocuspocus also holds
@@ -325,7 +303,6 @@ export function createCollabServer({
     // have deleted their accounts or been blocked, are checked more often. Boards without a text for search get theirs
     // at the start and then from time to time.
     async onListen({ instance: hocuspocus }) {
-      instance = hocuspocus;
       metrics.observe(hocuspocus);
       accessChecks = setInterval(
         () => hocuspocus.documents.forEach((document) => void checkAccess(document)),
@@ -345,6 +322,8 @@ export function createCollabServer({
       clearInterval(userChecks);
       clearInterval(backfills);
       backfill.stop();
+      // Hocuspocus calls this once every document was stored and unloaded.
+      await snapshots.destroy();
     },
     async onRequest({ request, response }) {
       if (request.method === "GET" && request.url === "/health") {

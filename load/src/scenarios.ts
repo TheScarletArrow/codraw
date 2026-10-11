@@ -3,7 +3,7 @@ import { now, type Behaviour, type Measurements, type ParticipantSpec } from "./
 import { Pool } from "./pool.js";
 import { UsageSampler, type Service, type Stack } from "./stack.js";
 import { delta, histogramQuantile, percentiles, type Percentiles, type Samples } from "./stats.js";
-import type { CollectResult, ConnectResult, OfflineMarksResult, ResyncResult } from "./worker.js";
+import type { CollectResult, Command, ConnectResult, OfflineMarksResult, ResyncResult } from "./worker.js";
 
 export interface RunOptions {
   baseUrl: string;
@@ -43,6 +43,11 @@ export interface StepResult {
   usage: Partial<Record<Service, { cpuMean: number; cpuPeak: number; memoryPeak: number }>>;
   /** Anything else the step found, e.g. how participants came back after collab restarted. */
   notes: Record<string, number | string>;
+  /**
+   * The step ran in the same window as the one before it, against the same collab: `collab` and `usage` are those of
+   * both, not of this one alone.
+   */
+  sharedWithPrevious?: boolean;
 }
 
 /** What the metrics of collab say about a step: stores of documents in the backend and refusals. */
@@ -132,26 +137,37 @@ async function connect(pool: Pool, options: RunOptions, participants: Participan
   };
 }
 
+/** What the participants of one pool measured in a step, with what collab and the containers did meanwhile. */
+interface Measured {
+  collected: CollectResult[];
+  usage: StepResult["usage"];
+  collab: CollabResult | null;
+}
+
 /**
  * Lets the participants work: warms up, then measures for the duration of the step, and stops editing. Participants
- * get a few seconds to receive what is in flight before they are counted.
+ * get a few seconds to receive what is in flight before they are counted. Several pools work in the same window, so
+ * that the latencies of each group of boards are counted apart while collab carries the load of all of them.
  */
-async function measure(pool: Pool, options: RunOptions, behaviour: Behaviour) {
-  await pool.all({ type: "start", behaviour });
+async function measure(pools: Pool[], options: RunOptions, behaviour: Behaviour): Promise<Measured[]> {
+  const everyPool = (command: Command) => Promise.all(pools.map((pool) => pool.all(command)));
+  await everyPool({ type: "start", behaviour });
   await sleep(options.warmup);
-  await pool.all({ type: "reset", since: now() + RESET_LEAD });
+  // One moment for every pool: their counts cover the same window.
+  await everyPool({ type: "reset", since: now() + RESET_LEAD });
   const sampler = new UsageSampler(options.stack);
   const before = await options.stack.scrapeCollab();
   const started = now();
   sampler.start();
   await sleep(options.duration);
-  await pool.all({ type: "stop" });
+  await everyPool({ type: "stop" });
   const usage = await sampler.stop();
   await sleep(3);
   const after = await options.stack.scrapeCollab();
   const seconds = (now() - started) / 1000;
-  const collected = await pool.all<CollectResult>({ type: "collect" });
-  return { collected, usage, collab: options.stack.collabMetrics ? collabResult(before, after, seconds) : null };
+  const collab = options.stack.collabMetrics ? collabResult(before, after, seconds) : null;
+  const collected = await Promise.all(pools.map((pool) => pool.all<CollectResult>({ type: "collect" })));
+  return collected.map((results) => ({ collected: results, usage, collab }));
 }
 
 function collabResult(before: Samples, after: Samples, seconds: number): CollabResult {
@@ -186,7 +202,7 @@ function stepResult(
   step: string,
   boards: number,
   connected: ConnectResult,
-  measured: Awaited<ReturnType<typeof measure>>,
+  measured: Measured,
   notes: Record<string, number | string> = {},
 ): StepResult {
   const sum = (pick: (result: Measurements) => number) =>
@@ -248,8 +264,8 @@ async function boardsStep(
   const pool = Pool.create(Math.min(options.workers, boards.participants.length), options.baseUrl, options.collabUrl);
   try {
     const connected = await connect(pool, options, boards.participants);
-    const measured = await measure(pool, options, behaviour);
-    return stepResult(scenario, step, count, connected, measured);
+    const [measured] = await measure([pool], options, behaviour);
+    return stepResult(scenario, step, count, connected, measured!);
   } finally {
     await pool.close();
     await deleteBoards(boards);
@@ -259,47 +275,75 @@ async function boardsStep(
 /**
  * Boards near the limit of the size of a document: the owner fills each board, then participants open it — every
  * opening loads the whole document from the backend — and edit it, so that every store sends the whole state.
+ * Ordinary small boards — neighbours — work in the same window and are counted apart: a store of a large board must
+ * not delay the edits of the other boards of collab.
  */
 export async function largeDocuments(
   options: RunOptions,
   count: number,
   perBoard: number,
   bytes: number,
-): Promise<StepResult> {
-  options.log(`large: ${count} boards of ${(bytes / 1024 / 1024).toFixed(1)} MiB, ${perBoard} participants each`);
+  neighbours: { count: number; perBoard: number },
+): Promise<StepResult[]> {
+  options.log(
+    `large: ${count} boards of ${(bytes / 1024 / 1024).toFixed(1)} MiB, ${perBoard} participants each` +
+      (neighbours.count > 0 ? `, ${neighbours.count} neighbour boards of ${neighbours.perBoard} participants` : ""),
+  );
   const boards = await prepareBoards(options, count, perBoard, "Нагрузка large");
   const fillers = Pool.create(count, options.baseUrl, options.collabUrl);
   const owners = boards.participants.filter((participant) => participant.initializes);
+  let small: Boards = { owners: [], ids: [], participants: [] };
+  const pools: Pool[] = [];
   try {
-    // One owner in each worker: `fill` fills the board of the first participant of the worker.
-    await connect(fillers, options, owners);
-    const filled = now();
-    await fillers.all({ type: "fill", bytes, chunk: 512 * 1024 });
-    options.log(`large: filled in ${((now() - filled) / 1000).toFixed(1)} s`);
+    try {
+      // One owner in each worker: `fill` fills the board of the first participant of the worker.
+      await connect(fillers, options, owners);
+      const filled = now();
+      await fillers.all({ type: "fill", bytes, chunk: 512 * 1024 });
+      options.log(`large: filled in ${((now() - filled) / 1000).toFixed(1)} s`);
+    } finally {
+      // The last participant leaves: collab stores the document at once.
+      await fillers.close();
+    }
+    if (neighbours.count > 0)
+      small = await prepareBoards(options, neighbours.count, neighbours.perBoard, "Нагрузка large, соседняя");
+    await sleep(5);
+    // Each group in its own pool, so that its latencies are counted apart; the threads of both make `--workers`.
+    const smallWorkers =
+      small.participants.length > 0
+        ? Math.max(1, Math.min(small.participants.length, Math.floor(options.workers / 2)))
+        : 0;
+    const largeWorkers = Math.max(1, Math.min(options.workers - smallWorkers, boards.participants.length));
+    pools.push(Pool.create(largeWorkers, options.baseUrl, options.collabUrl, 1_000_000));
+    if (smallWorkers > 0) pools.push(Pool.create(smallWorkers, options.baseUrl, options.collabUrl, 10_000_000));
+    const connected = await connect(pools[0]!, options, boards.participants);
+    const connectedSmall = pools[1] ? await connect(pools[1], options, small.participants) : null;
+    const measured = await measure(pools, options, options.behaviour);
+    const results = [
+      stepResult(
+        "large",
+        `${count} × ${perBoard}, ${(bytes / 1024 / 1024).toFixed(1)} MiB`,
+        count,
+        connected,
+        measured[0]!,
+      ),
+    ];
+    if (connectedSmall)
+      results.push({
+        ...stepResult(
+          "large",
+          `соседние ${neighbours.count} × ${neighbours.perBoard}`,
+          neighbours.count,
+          connectedSmall,
+          measured[1]!,
+        ),
+        sharedWithPrevious: true,
+      });
+    return results;
   } finally {
-    // The last participant leaves: collab stores the document at once.
-    await fillers.close();
-  }
-  await sleep(5);
-  const pool = Pool.create(
-    Math.min(options.workers, boards.participants.length),
-    options.baseUrl,
-    options.collabUrl,
-    1_000_000,
-  );
-  try {
-    const connected = await connect(pool, options, boards.participants);
-    const measured = await measure(pool, options, options.behaviour);
-    return stepResult(
-      "large",
-      `${count} × ${perBoard}, ${(bytes / 1024 / 1024).toFixed(1)} MiB`,
-      count,
-      connected,
-      measured,
-    );
-  } finally {
-    await pool.close();
+    await Promise.all(pools.map((pool) => pool.close()));
     await deleteBoards(boards);
+    await deleteBoards(small);
   }
 }
 

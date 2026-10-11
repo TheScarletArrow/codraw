@@ -46,6 +46,11 @@ export class FakeBackend {
   failingStores = 0;
   /** How many of the next stores of a text for search fail with 500. */
   failingSearchTexts = 0;
+  /**
+   * How long a store of a board document takes after its body arrived, in milliseconds; the state of a client gone by
+   * then is not stored.
+   */
+  storeDelay = 0;
   private keys: { kid: string; privateKey: CryptoKey; publicJwk: JWK }[] = [];
   private server?: Server;
 
@@ -188,6 +193,19 @@ export class FakeBackend {
       if (request.method === "PUT") {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(chunk as Buffer);
+        if (this.storeDelay > 0) {
+          let gone = false;
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, this.storeDelay);
+            response.once("close", () => {
+              gone = true;
+              clearTimeout(timer);
+              resolve();
+            });
+          });
+          // The client went away before the answer, e.g. its thread ended: the store does not happen.
+          if (gone) return;
+        }
         if (this.failingStores > 0) {
           this.failingStores--;
           response.writeHead(500).end();

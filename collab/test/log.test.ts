@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { configureLogging, log } from "../src/log.js";
+import { configureLogging, log, type LogLevel } from "../src/log.js";
 
 describe("log", () => {
   const lines: { level: string; line: string }[] = [];
-  const capture = (level: "info" | "error", line: string) => lines.push({ level, line });
+  const capture = (level: LogLevel, line: string) => lines.push({ level, line });
 
   afterEach(() => {
     lines.splice(0);
@@ -42,6 +42,15 @@ describe("log", () => {
       "codraw.board": "b1",
     });
     expect(entry["error.stack_trace"]).toContain("TypeError: fetch failed");
+  });
+
+  it("writes a warning without an error", () => {
+    configureLogging("json", capture);
+
+    log.warn("Encoding document b1 on the main thread", { "codraw.document": "b1" });
+
+    expect(lines[0]!.level).toBe("warn");
+    expect(JSON.parse(lines[0]!.line)).toMatchObject({ "log.level": "warn", "codraw.document": "b1" });
   });
 
   it("writes plain text by default", () => {
