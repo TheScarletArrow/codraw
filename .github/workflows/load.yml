@@ -40,14 +40,14 @@ jobs:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v4
       - name: Build backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           load: true
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}backend:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=backend
       - name: Build collab
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: collab/Dockerfile
@@ -55,7 +55,7 @@ jobs:
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}collab:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=collab
       - name: Build frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: frontend/Dockerfile

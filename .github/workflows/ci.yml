@@ -133,7 +133,7 @@ jobs:
         run: echo "CODRAW_IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v4
       - name: Build backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           load: true
@@ -141,7 +141,7 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
       - name: Build collab
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: collab/Dockerfile
@@ -150,7 +150,7 @@ jobs:
           cache-from: type=gha,scope=collab
           cache-to: type=gha,mode=max,scope=collab
       - name: Build frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: frontend/Dockerfile
@@ -159,7 +159,7 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
       - name: Build backup
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: deploy/backup
           load: true
