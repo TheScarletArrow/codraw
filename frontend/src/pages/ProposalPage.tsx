@@ -100,8 +100,8 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
   const newerDocument = useNewerDocument(document)
   const readOnly = connection.readOnly || newerDocument
   const [editor, setEditor] = useState<DiagramEditor | null>(null)
-  // A draft has no local copy: without a connection its edits may be only in this tab, which a reload would lose.
-  useReloadGuard(editor, !readOnly && status !== 'synced')
+  // A draft has no local copy: edits that collab has not confirmed are only in this tab, which a reload would lose.
+  useReloadGuard(editor, !readOnly && connection.unsent)
   useEffect(() => {
     if (document && !readOnly) initializeDocument(document)
   }, [document, readOnly])

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import { reportError } from '../errors/reporting.ts'
 
 /**
  * A part of the app that did not load, typically a file of an earlier build that the server no longer has after a
@@ -23,6 +24,8 @@ export function lazyPage<M>(load: () => Promise<M>, pick: (module: M) => Compone
     try {
       module = await load()
     } catch (error) {
+      // Usually a deployment; but a module that breaks while it runs fails the same way, and the report shows which.
+      reportError('error', error)
       throw new ChunkLoadError(error)
     }
     return { Component: pick(module) }

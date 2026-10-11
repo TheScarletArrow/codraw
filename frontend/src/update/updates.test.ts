@@ -136,6 +136,18 @@ describe('startUpdateChecks', () => {
     expect(updateState().available).toBe(false)
   })
 
+  it('asks again at the next chance after the server did not answer, e.g. while it restarted', async () => {
+    const fetchMock = vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')))
+    vi.stubGlobal('fetch', fetchMock)
+    stop = startUpdateChecks()
+
+    window.dispatchEvent(new Event('online'))
+    await settle()
+    window.dispatchEvent(new Event('online'))
+    await settle()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('stops listening once stopped', async () => {
     const fetchMock = mockFetch({ 'GET /version.json': { body: OTHER } })
     startUpdateChecks()()

@@ -11,8 +11,7 @@ export interface BuildInfo {
 }
 
 /**
- * The build that this run of Vite makes: `CODRAW_BUILD_ID` when it is set, e.g. to the hash of the commit, else the
- * moment of the build. The code cannot name the hash of the files it is in, so every build gets its own id instead.
+ * The build that this run of Vite makes: `CODRAW_BUILD_ID` when it is set, else the moment of the build. The code cannot name the hash of the files it is in, so every build gets its own id instead.
  */
 export function buildInfo(
   packageJson: string,
@@ -38,7 +37,8 @@ export function versionFile(info: BuildInfo): Plugin {
       },
     }),
     configureServer(server) {
-      server.middlewares.use(`/${VERSION_FILE}`, (_request, response) => {
+      server.middlewares.use((request, response, next) => {
+        if (request.url?.split('?')[0] !== `/${VERSION_FILE}`) return next()
         response.setHeader('Content-Type', 'application/json')
         response.setHeader('Cache-Control', 'no-cache')
         response.end(source)

@@ -37,6 +37,17 @@ export function registerUnsavedWork(work: UnsavedWork): () => void {
 }
 
 const anyUnsaved = () => [...works].some((work) => work.unsaved())
+
+/** Applies the half done edits of every page, e.g. before a reload that the user asked for despite unsaved edits. */
+export function flushUnsavedWork() {
+  for (const work of works) {
+    try {
+      work.flush()
+    } catch {
+      // A page that cannot apply its half done edit still lets the others apply theirs.
+    }
+  }
+}
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** How long a reload waits for the edits to reach the server or the local copy. */
@@ -49,16 +60,10 @@ const STORE_DELAY_MS = 100
  * to reach the server or the local copy; `false` when some would still be lost.
  */
 export async function prepareReload(): Promise<boolean> {
-  for (const work of works) {
-    try {
-      work.flush()
-    } catch {
-      // A page that cannot apply its half done edit still lets the others save theirs.
-    }
-  }
+  flushUnsavedWork()
   const deadline = Date.now() + SAVE_TIMEOUT_MS
-  while (anyUnsaved() && Date.now() < deadline) await sleep(STORE_DELAY_MS)
-  if (anyUnsaved()) return false
-  await sleep(STORE_DELAY_MS)
-  return true
+  // The pages learn of what the flush wrote once React has rendered them again, so they are asked only after a moment.
+  do await sleep(STORE_DELAY_MS)
+  while (anyUnsaved() && Date.now() < deadline)
+  return !anyUnsaved()
 }

@@ -2,10 +2,10 @@ import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { updateMessages as m } from './messages.ts'
-import { prepareReload } from './reload.ts'
+import { flushUnsavedWork, prepareReload } from './reload.ts'
 import { useUpdateState } from './updates.ts'
 
-type Step = 'idle' | 'saving' | 'unsaved'
+type Step = 'idle' | 'saving' | 'unsaved' | 'offline'
 
 /**
  * A banner at the bottom of every page once the server gives a newer build, or once an open board is saved by one. It
@@ -19,11 +19,26 @@ export function UpdateBanner({ reload = () => location.reload() }: { reload?: ()
   if (!newerDocument && (!available || hidden)) return null
 
   const update = async () => {
+    // The browser would show its page of no connection in place of the app, which works without one.
+    if (!navigator.onLine) {
+      setStep('offline')
+      return
+    }
     setStep('saving')
     if (await prepareReload()) reload()
     else setStep('unsaved')
   }
-  const text = step === 'saving' ? m.saving : step === 'unsaved' ? m.unsaved : newerDocument ? m.newerDocument : m.available
+  const reloadAnyway = () => {
+    flushUnsavedWork()
+    reload()
+  }
+  const texts: Record<Step, string> = {
+    idle: newerDocument ? m.newerDocument : m.available,
+    saving: m.saving,
+    unsaved: m.unsaved,
+    offline: m.offline,
+  }
+  const text = texts[step]
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
@@ -33,8 +48,8 @@ export function UpdateBanner({ reload = () => location.reload() }: { reload?: ()
       >
         <RefreshCw aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">{text}</span>
-        {step === 'unsaved' ? (
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={reload}>
+        {step === 'unsaved' || step === 'offline' ? (
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={reloadAnyway}>
             {m.reloadAnyway}
           </Button>
         ) : (

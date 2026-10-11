@@ -49,7 +49,9 @@ export function checkForUpdate({ force = false }: { force?: boolean } = {}): Pro
   lastCheck = now
   checking = fetchDeployedBuild()
     .then((deployed) => {
-      if (isOtherBuild(deployed)) setState({ available: true })
+      // A server that did not answer, e.g. while it restarts with the new build, is asked again at the next chance.
+      if (deployed === null) lastCheck = Number.NEGATIVE_INFINITY
+      else if (isOtherBuild(deployed)) setState({ available: true })
     })
     .finally(() => {
       checking = null

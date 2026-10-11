@@ -24,6 +24,7 @@ describe('UpdateBanner', () => {
     for (const take of unregister.splice(0)) take()
     act(() => resetUpdates())
     vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -80,6 +81,36 @@ describe('UpdateBanner', () => {
     expect(reload).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Обновить всё равно' }))
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it('applies the half done edits before «Обновить всё равно»', async () => {
+    const reload = vi.fn()
+    const flush = vi.fn()
+    unregister.push(registerUnsavedWork({ flush, unsaved: () => true }))
+    render(<UpdateBanner reload={reload} />)
+    await deploy()
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
+    await act(() => vi.advanceTimersByTimeAsync(SAVE_TIMEOUT_MS + 100))
+    flush.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить всё равно' }))
+    expect(flush).toHaveBeenCalledOnce()
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it('does not reload without a connection, which would show the page of the browser in place of the app', async () => {
+    const reload = vi.fn()
+    render(<UpdateBanner reload={reload} />)
+    await deploy()
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Обновить' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Нет связи: обновите страницу, когда она появится')
+    expect(reload).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Обновить всё равно' }))
     expect(reload).toHaveBeenCalledOnce()
   })
 

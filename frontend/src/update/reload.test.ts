@@ -107,6 +107,17 @@ describe('prepareReload', () => {
     expect(await settleWithin(ready, 200)).toEqual({ value: true })
   })
 
+  it('waits for edits that the flush itself makes, which the page learns of a moment later', async () => {
+    let unsaved = false
+    register({ flush: () => setTimeout(() => (unsaved = true), 10), unsaved: () => unsaved })
+
+    const ready = prepareReload()
+    expect(await settleWithin(ready, 500)).toBeNull()
+
+    unsaved = false
+    expect(await settleWithin(ready, 200)).toEqual({ value: true })
+  })
+
   it('gives up when the edits are not saved in time', async () => {
     register({ flush: () => {}, unsaved: () => true })
 

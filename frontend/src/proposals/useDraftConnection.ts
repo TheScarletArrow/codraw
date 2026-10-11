@@ -36,6 +36,8 @@ export function useDraftConnection(boardId: string, proposalId: string) {
   const [document, setDocument] = useState<Y.Doc | null>(null)
   /** Collab refused a change because of the size of the draft; the page connects again with a fresh document. */
   const [tooLarge, setTooLarge] = useState(false)
+  /** The page changed the draft, and collab has not confirmed the changes yet: a reload would lose them. */
+  const [unsent, setUnsent] = useState(false)
   const [generation, setGeneration] = useState(0)
   const providerRef = useRef<HocuspocusProvider | null>(null)
 
@@ -46,7 +48,9 @@ export function useDraftConnection(boardId: string, proposalId: string) {
     let pending = false
     const changed = (_update: Uint8Array, origin: unknown) => {
       // The provider applies what collab sends with itself as the origin.
-      if (origin !== provider) pending = true
+      if (origin === provider || pending) return
+      pending = true
+      setUnsent(true)
     }
     // The status, or the proposal of the draft, may have changed: e.g. it was accepted, and its author views it now.
     const refetchProposal = () => queryClient.invalidateQueries({ queryKey: proposalsKey(boardId) })
@@ -93,7 +97,9 @@ export function useDraftConnection(boardId: string, proposalId: string) {
         setReadOnly(connectionReadOnly)
       },
       onUnsyncedChanges: ({ number }) => {
-        if (number === 0) pending = false
+        if (number !== 0) return
+        pending = false
+        setUnsent(false)
       },
       onAuthenticationFailed: ({ reason }) => {
         if (reason === PROPOSAL_NOT_FOUND) stop('not-found')
@@ -121,6 +127,7 @@ export function useDraftConnection(boardId: string, proposalId: string) {
       doc.off('update', changed)
       setDocument(null)
       setReadOnly(true)
+      setUnsent(false)
       providerRef.current = null
       provider.destroy()
       doc.destroy()
@@ -132,5 +139,5 @@ export function useDraftConnection(boardId: string, proposalId: string) {
 
   const dismissTooLarge = useCallback(() => setTooLarge(false), [])
 
-  return { status, readOnly, document, tooLarge, dismissTooLarge, notifyProposalsChanged }
+  return { status, readOnly, document, unsent, tooLarge, dismissTooLarge, notifyProposalsChanged }
 }
