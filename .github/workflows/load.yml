@@ -68,7 +68,7 @@ jobs:
           export CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat "$RUNNER_TEMP/signing-key.pem")"
           docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 300
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
