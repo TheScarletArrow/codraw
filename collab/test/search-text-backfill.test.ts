@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { BoardNotFoundError, type BackendClient } from "../src/backend-client.js";
 import { configureLogging } from "../src/log.js";
 import { createMetrics } from "../src/metrics.js";
 import { BACKFILL_BATCH, createSearchTextBackfill } from "../src/search-text-backfill.js";
+import { createSnapshots, type Snapshots } from "../src/snapshots.js";
 
 /** A board id that sorts by its number. */
 const boardId = (n: number) => `0199a000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -31,7 +32,8 @@ class Backend {
     loadDocument: async (id) => {
       if (this.failing.has(id)) throw new Error("backend responded with 500");
       if (this.deleted.has(id)) throw new BoardNotFoundError(id);
-      return this.documents.get(id) ?? null;
+      // A copy, as from HTTP: the backfill moves the buffer to the snapshot worker.
+      return this.documents.get(id)?.slice() ?? null;
     },
     storeSearchText: async (id, text, { onlyIfMissing = false } = {}) => {
       if (this.storedMeanwhile.has(id)) this.texts.set(id, "Новее");
@@ -60,6 +62,19 @@ class Backend {
 describe("search text backfill", () => {
   let backend: Backend;
   const errors: string[] = [];
+  /** The snapshot worker extracts the texts; nothing here is stored through it. */
+  let snapshots: Snapshots;
+  /** The texts that the backfill gets: of boards open in collab by `open`, of stored states from the worker. */
+  const texts = (open: (boardId: string) => Promise<string | null> = async () => null) => ({
+    searchText: open,
+    searchTextOfState: (state: Uint8Array) => snapshots.searchTextOfState(state),
+  });
+
+  beforeAll(() => {
+    snapshots = createSnapshots({ backendUrl: "http://127.0.0.1:1", internalToken: "unused" });
+  });
+
+  afterAll(() => snapshots.destroy());
 
   beforeEach(() => {
     backend = new Backend();
@@ -78,7 +93,7 @@ describe("search text backfill", () => {
     for (let n = 1; n <= count; n++) backend.documents.set(boardId(n), state(`Доска ${n}`));
     backend.texts.set(boardId(1), "Есть");
 
-    const stored = await createSearchTextBackfill(backend.client, createMetrics(), async () => null).run();
+    const stored = await createSearchTextBackfill(backend.client, createMetrics(), texts()).run();
 
     expect(stored).toBe(count - 1);
     expect(backend.texts.get(boardId(1))).toBe("Есть");
@@ -90,7 +105,7 @@ describe("search text backfill", () => {
     backend.documents.set(boardId(1), state("Сохранённая"));
     const open = async (id: string) => (id === boardId(1) ? "Открытая" : null);
 
-    await createSearchTextBackfill(backend.client, createMetrics(), open).run();
+    await createSearchTextBackfill(backend.client, createMetrics(), texts(open)).run();
 
     expect(backend.texts.get(boardId(1))).toBe("Открытая");
   });
@@ -101,7 +116,7 @@ describe("search text backfill", () => {
     backend.deleted.add(boardId(2));
     const metrics = createMetrics();
 
-    const stored = await createSearchTextBackfill(backend.client, metrics, async () => null).run();
+    const stored = await createSearchTextBackfill(backend.client, metrics, texts()).run();
 
     expect(stored).toBe(1);
     expect(backend.texts.get(boardId(3))).toBe("Доска 3");
@@ -112,12 +127,24 @@ describe("search text backfill", () => {
     );
   });
 
+  it("passes a board whose stored state the worker cannot read, and goes on", async () => {
+    backend.documents.set(boardId(1), new Uint8Array([200, 1, 2, 3]));
+    backend.documents.set(boardId(2), state("Доска 2"));
+
+    const stored = await createSearchTextBackfill(backend.client, createMetrics(), texts()).run();
+
+    expect(stored).toBe(1);
+    expect(backend.texts.get(boardId(2))).toBe("Доска 2");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`Failed to fill in the text of board ${boardId(1)}`);
+  });
+
   it("does not replace a text that a store sent while it read the state", async () => {
     backend.documents.set(boardId(1), state("Старая"));
     backend.storedMeanwhile.add(boardId(1));
     const metrics = createMetrics();
 
-    const stored = await createSearchTextBackfill(backend.client, metrics, async () => null).run();
+    const stored = await createSearchTextBackfill(backend.client, metrics, texts()).run();
 
     expect(stored).toBe(0);
     expect(backend.texts.get(boardId(1))).toBe("Новее");
@@ -128,7 +155,7 @@ describe("search text backfill", () => {
 
   it("runs one pass at a time and stops before the next board", async () => {
     for (let n = 1; n <= 3; n++) backend.documents.set(boardId(n), state(`Доска ${n}`));
-    const backfill = createSearchTextBackfill(backend.client, createMetrics(), async () => null);
+    const backfill = createSearchTextBackfill(backend.client, createMetrics(), texts());
 
     const first = backfill.run();
     expect(backfill.run()).toBe(first);

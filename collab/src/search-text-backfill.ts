@@ -1,8 +1,7 @@
-import * as Y from "yjs";
 import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
 import { log } from "./log.js";
 import type { Metrics } from "./metrics.js";
-import { searchTextOf } from "./search-text.js";
+import type { Snapshots } from "./snapshots.js";
 
 /** How many boards without a text a pass asks the backend for at a time. */
 export const BACKFILL_BATCH = 20;
@@ -20,32 +19,24 @@ export interface SearchTextBackfill {
 /**
  * Fills in the texts for search of boards whose documents were stored before collab extracted texts, or whose first
  * text did not reach the backend: nobody may open such a board, so no store would send its text. A board open in
- * collab is read from memory, by the snapshot worker from its mirror, so that the main thread does not go through a
- * large board; any other one from its stored state. Texts go with `onlyIfMissing`, so that the text of a state read
- * before a newer store does not replace the text of that store.
- *
- * `openText` gives the text of a board open in collab, or `null` when it is not open.
+ * collab is read from memory, any other one from its stored state. Either way the snapshot worker extracts the text,
+ * from its mirror or from the state, so that the main thread does not go through a large board: reading a state of
+ * 60 000 shapes takes more than a second. Texts go with `onlyIfMissing`, so that the text of a state read before a
+ * newer store does not replace the text of that store.
  */
 export function createSearchTextBackfill(
   backend: BackendClient,
   metrics: Metrics,
-  openText: (boardId: string) => Promise<string | null>,
+  texts: Pick<Snapshots, "searchText" | "searchTextOfState">,
 ): SearchTextBackfill {
   let running: Promise<number> | null = null;
   let stopped = false;
 
   const textOf = async (boardId: string): Promise<string | null> => {
-    const open = await openText(boardId);
+    const open = await texts.searchText(boardId);
     if (open !== null) return open;
     const state = await backend.loadDocument(boardId);
-    if (!state) return null;
-    const document = new Y.Doc();
-    try {
-      Y.applyUpdate(document, state);
-      return searchTextOf(document);
-    } finally {
-      document.destroy();
-    }
+    return state ? texts.searchTextOfState(state) : null;
   };
 
   /** Pages through the boards by id, so that a board whose text cannot be stored is passed once, not again and again. */

@@ -32,7 +32,9 @@ export function onlyDeletes(update: Uint8Array): boolean {
  *
  * The size of a store comes from the snapshot worker after the store was asked for, when more changes may have been
  * accepted. A store therefore takes a mark of the changes accepted until it was asked for, and its size counts with
- * those accepted after the mark: the stored state has every change before the mark, so the size stays an upper bound.
+ * those accepted after the mark. A change is counted before Hocuspocus applies it, after a hook it awaits: a store
+ * marked in between has the change counted before the mark but not in its state, so the size may fall short by that one
+ * message until the next store. Counting at the encoding had the same gap; it is at most one message of a participant.
  */
 export function createDocumentSizes(limit: number) {
   /** The size of each document, and the bytes of all changes it accepted since it was loaded. */

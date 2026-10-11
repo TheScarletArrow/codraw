@@ -727,14 +727,14 @@ describe("collab server", () => {
     });
 
     it("names the users of a store that failed with the next store", async () => {
-      await startServer();
+      // A failed store is asked for again after the debounce delay: Alice changes the document before that.
+      await startServer({ debounce: 300, maxDebounce: 2_000 });
       const alice = await connect(board);
       const bob = await connect(board, asUser(BOB));
       backend.failingStores = 1;
 
       bob.document.getMap("meta").set("title", "Bob");
       await waitFor(() => backend.storesFor(board) === 1);
-      await new Promise((resolve) => setTimeout(resolve, 50));
       alice.document.getMap("meta").set("description", "Alice");
       await waitFor(() => backend.storesFor(board) === 2);
 
@@ -1320,6 +1320,36 @@ describe("collab server", () => {
       edit(writer.document, 20, 10);
       await waitFor(() => backend.storesFor(board) === 3 && storedIs(writer.document));
       expect(warnings).toHaveLength(1);
+    });
+
+    it("stores a document again whose store failed after its last participant left, and then unloads it", async () => {
+      await startServer({ debounce: 300, maxDebounce: 2_000 });
+      const writer = await connect(board);
+      backend.failingStores = 1;
+      writer.document.getMap("meta").set("title", "Left");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      writer.provider.destroy();
+
+      await waitFor(() => backend.storesFor(board) === 2 && storedIs(writer.document));
+      await waitFor(() => server!.hocuspocus.getDocumentsCount() === 0);
+      await server!.destroy();
+    });
+
+    it("stores a document whose store failed when the server stops, and stops", async () => {
+      await startServer({ debounce: 60_000, maxDebounce: 60_000 });
+      const writer = await connect(board);
+      backend.failingStores = 1;
+      writer.document.getMap("meta").set("title", "Stopped");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      writer.provider.destroy();
+      await waitFor(() => errors.some((line) => line.includes(`Failed to store board ${board}`)));
+
+      // Without the store asked for again, the server would wait for the document to unload forever.
+      await server!.destroy();
+
+      expect(backend.storesFor(board)).toBe(2);
+      expect(storedIs(writer.document)).toBe(true);
     });
 
     it("keeps the changes and their users of a store that the failing worker did not finish", async () => {

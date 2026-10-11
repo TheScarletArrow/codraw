@@ -36,25 +36,33 @@ export interface StoreOutcome {
  * sees every change applied before it was asked for. The Y.Doc itself never crosses between threads: it can only cross
  * encoded, which is the work to avoid.
  *
- * When the worker fails, the stores it was doing fail as well, and Hocuspocus keeps their documents to store them with
- * their next change. A new worker starts; a document that it has no mirror of is encoded on the main thread once, at
- * its next store, and goes to the worker, so no change is lost.
+ * When the worker fails, the stores it was doing fail as well, and Hocuspocus keeps their documents to store them
+ * again. A new worker starts; a document that it has no mirror of is encoded on the main thread once, at its next
+ * store, and goes to the worker, so no change is lost.
  */
 export interface Snapshots {
-  /** The document was loaded with this state, already applied to it, or empty; the worker starts its mirror. */
+  /**
+   * The document was loaded with this state, already applied to it, or empty; the worker starts its mirror. The buffer
+   * of the state moves to the worker: the state is not to be read after.
+   */
   open(name: string, state: Uint8Array | null): void;
   /** The change was applied to the document. The worker gets a copy: Hocuspocus sends this buffer to participants. */
   update(name: string, update: Uint8Array): void;
   /**
    * Stores the document, which the users `editors` changed since the previous store. The state is that of the mirror
    * with every change passed to {@link update} before; `document` is encoded here only when the worker has no mirror of
-   * it. Never rejects: a failure is an outcome.
+   * it. Never rejects: a failure is an outcome, also once the snapshots are destroyed.
    */
   store(name: string, target: CollabDocument, editors: readonly string[], document: Y.Doc): Promise<StoreOutcome>;
   /** The document was unloaded. */
   close(name: string): void;
-  /** The text for search of the open board, or `null` when the worker has no mirror of it. */
+  /** The text for search of the open board, or `null` when the worker has no mirror of it or is stopped. */
   searchText(name: string): Promise<string | null>;
+  /**
+   * The text for search of a stored state of a board, extracted by the worker, or `null` once the snapshots are
+   * destroyed; rejects when the state cannot be read. The buffer of the state moves to the worker.
+   */
+  searchTextOfState(state: Uint8Array): Promise<string | null>;
   /** Stops the worker; the documents are to be stored by now. */
   destroy(): Promise<void>;
   /** Ends the worker as a crash would, keeping the snapshots working; tests check the recovery with it. */
@@ -64,19 +72,46 @@ export interface Snapshots {
 export interface SnapshotsOptions {
   backendUrl: string;
   internalToken: string;
+  /** The script of the worker; tests give a broken one. By default {@link defaultWorkerUrl}. */
+  workerUrl?: URL;
 }
 
 /**
  * The script of the worker: the compiled one next to this module, or, when collab runs from its TypeScript sources
  * (tests, `pnpm dev`), an entry that loads tsx into the thread first.
  */
-const workerUrl = () =>
+const defaultWorkerUrl = () =>
   new URL(import.meta.url.endsWith(".ts") ? "./snapshot-worker-entry.mjs" : "./snapshot-worker.js", import.meta.url);
+
+/**
+ * What to transfer to move the bytes of `state` to the worker: its whole buffer, or the buffer of a copy when the state
+ * is a part of a larger or shared buffer, which must not be taken from its other users.
+ */
+function movable(state: Uint8Array): { state: Uint8Array; transfer: ArrayBuffer[] } {
+  const { buffer } = state;
+  if (buffer instanceof ArrayBuffer && state.byteOffset === 0 && state.byteLength === buffer.byteLength) {
+    return { state, transfer: [buffer] };
+  }
+  const copy = state.slice();
+  return { state: copy, transfer: [copy.buffer] };
+}
+
+/** The snapshots were destroyed: nothing is stored or read any more. */
+class SnapshotsDestroyedError extends Error {
+  constructor() {
+    super("The snapshots are destroyed");
+    this.name = "SnapshotsDestroyedError";
+  }
+}
 
 const errorOf = ({ name, message, stack }: SerializedError): Error =>
   Object.assign(new Error(message), { name, ...(stack !== undefined && { stack }) });
 
-export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions): Snapshots {
+export function createSnapshots({
+  backendUrl,
+  internalToken,
+  workerUrl = defaultWorkerUrl(),
+}: SnapshotsOptions): Snapshots {
   const workerData: SnapshotWorkerData = { backendUrl, internalToken };
   /** The running worker; a new one starts when it ends, unless the snapshots are destroyed. */
   let worker: Worker | undefined;
@@ -93,15 +128,17 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
   };
 
   const start = (): Worker => {
-    const started = new Worker(workerUrl(), { workerData });
+    const started = new Worker(workerUrl, { workerData });
     let failure: Error | undefined;
-    let online = false;
-    started.once("online", () => {
-      online = true;
-    });
+    /** Whether the worker ran its whole script; Node tells a worker is online before it does. */
+    let ready = false;
     // An idle worker does not keep the process alive; a store or a question it has not answered yet does.
     started.unref();
     started.on("message", (reply: SnapshotReply) => {
+      if (reply.type === "ready") {
+        ready = true;
+        return;
+      }
       const request = pending.get(reply.id);
       pending.delete(reply.id);
       if (pending.size === 0) started.unref();
@@ -119,7 +156,7 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
         "process.exit_code": code,
       });
       // A worker that could not even start is not started again and again: the next document or store starts one.
-      if (!destroyed && online) worker = start();
+      if (!destroyed && ready) worker = start();
     });
     return started;
   };
@@ -130,17 +167,29 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
     (worker ??= start()).postMessage(request, transfer);
   };
 
-  const ask = (request: (id: number) => SnapshotRequest) =>
+  const ask = (request: (id: number) => SnapshotRequest, transfer: ArrayBuffer[] = []) =>
     new Promise<SnapshotReply>((resolve, reject) => {
-      if (destroyed) throw new Error("The snapshots are destroyed");
+      if (destroyed) throw new SnapshotsDestroyedError();
       const id = nextId++;
       pending.set(id, { resolve, reject });
-      post(request(id));
+      post(request(id), transfer);
       worker!.ref();
     });
 
-  const open = (name: string, state: Uint8Array | null, transfer: ArrayBuffer[] = []) => {
+  /** The answer, or `null` once the snapshots are destroyed, also while the worker was asked. */
+  const unlessDestroyed = async <T>(answer: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await answer();
+    } catch (error) {
+      if (destroyed) return null;
+      throw error;
+    }
+  };
+
+  /** The worker starts a mirror of the document; the bytes of the state move to it. */
+  const open = (name: string, loaded: Uint8Array | null) => {
     if (destroyed) return;
+    const { state, transfer } = loaded ? movable(loaded) : { state: null, transfer: [] };
     post({ type: "open", name, state }, transfer);
     mirrored.add(name);
   };
@@ -151,14 +200,12 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
    */
   const mirror = (name: string, document: Y.Doc) => {
     log.warn(`Encoding document ${name} on the main thread for a new mirror`, { "codraw.document": name });
-    const state = Y.encodeStateAsUpdate(document);
-    // Nothing else holds the encoded state, so its buffer moves instead of being copied.
-    open(name, state, [state.buffer as ArrayBuffer]);
+    open(name, Y.encodeStateAsUpdate(document));
   };
 
   return {
-    // The loaded state is copied rather than moved: the caller keeps it, and copying costs little next to applying it.
-    open: (name, state) => open(name, state),
+    // Nothing reads the loaded state once it is applied to the document of Hocuspocus, so it moves, not copied.
+    open,
 
     update(name, update) {
       // A document without a mirror is encoded whole at its next store, with this change.
@@ -170,6 +217,7 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
       try {
         // The second attempt is for a worker that tells it has no mirror, though it was given one.
         for (let attempt = 1; attempt <= 2; attempt++) {
+          if (destroyed) throw new SnapshotsDestroyedError();
           if (!mirrored.has(name)) mirror(name, document);
           const reply = await ask((id) => ({ type: "store", id, name, target, editors: [...editors] }));
           if (reply.type === "stored") {
@@ -194,10 +242,21 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
       if (mirrored.delete(name)) post({ type: "close", name });
     },
 
-    async searchText(name) {
-      if (!mirrored.has(name)) return null;
-      const reply = await ask((id) => ({ type: "search-text", id, name }));
-      return reply.type === "search-text" ? reply.text : null;
+    searchText(name) {
+      return unlessDestroyed(async () => {
+        if (!mirrored.has(name)) return null;
+        const reply = await ask((id) => ({ type: "search-text", id, name }));
+        return reply.type === "search-text" ? reply.text : null;
+      });
+    },
+
+    searchTextOfState(loaded) {
+      return unlessDestroyed(async () => {
+        const { state, transfer } = movable(loaded);
+        const reply = await ask((id) => ({ type: "search-text-of-state", id, state }), transfer);
+        if (reply.type === "unreadable") throw errorOf(reply.error);
+        return reply.type === "search-text" ? reply.text : null;
+      });
     },
 
     async destroy() {
@@ -205,7 +264,7 @@ export function createSnapshots({ backendUrl, internalToken }: SnapshotsOptions)
       const stopping = worker;
       worker = undefined;
       mirrored.clear();
-      fail(new Error("The snapshots are destroyed"));
+      fail(new SnapshotsDestroyedError());
       await stopping?.terminate();
     },
 

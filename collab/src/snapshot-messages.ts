@@ -21,7 +21,9 @@ export type SnapshotRequest =
   /** Store the mirror of the document in the backend, naming the users who changed it since the previous store. */
   | { type: "store"; id: number; name: string; target: CollabDocument; editors: string[] }
   /** The text for search of the mirror of an open board. */
-  | { type: "search-text"; id: number; name: string };
+  | { type: "search-text"; id: number; name: string }
+  /** The text for search of a stored state of a board that is not open; the state is read and dropped. */
+  | { type: "search-text-of-state"; id: number; state: Uint8Array };
 
 /** An error as it crosses between threads: the worker sends what the log needs of it. */
 export interface SerializedError {
@@ -33,8 +35,12 @@ export interface SerializedError {
 /** How sending the text of a stored board ended: `null` when it was not sent, as unchanged or of a board gone. */
 export type StoredSearchText = "stored" | "failed" | null;
 
-/** Answers of the snapshot worker to the requests by their ids. */
+/**
+ * Messages of the snapshot worker: that it started, and answers to the requests by their ids. A worker that never tells
+ * it started, e.g. its script throws, is not started again at once.
+ */
 export type SnapshotReply =
+  | { type: "ready" }
   /** The worker has no mirror of the document to store, e.g. it started after the document was loaded. */
   | { type: "missing"; id: number }
   | {
@@ -49,5 +55,7 @@ export type SnapshotReply =
       /** Why the store failed, or, for a stored board, why its text did not reach the backend. */
       error?: SerializedError;
     }
-  /** The text of the board, or `null` when the worker has no mirror of it. */
-  | { type: "search-text"; id: number; text: string | null };
+  /** The text of the board or of the state, or `null` when the worker has no mirror of the board. */
+  | { type: "search-text"; id: number; text: string | null }
+  /** The state could not be read. */
+  | { type: "unreadable"; id: number; error: SerializedError };

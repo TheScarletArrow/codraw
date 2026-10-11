@@ -145,5 +145,21 @@ port.on("message", (request: SnapshotRequest) => {
       reply({ type: "search-text", id: request.id, text: mirror ? searchTextOf(mirror) : null });
       break;
     }
+    case "search-text-of-state": {
+      // A state that cannot be read fails this question, not the worker.
+      const document = new Y.Doc();
+      try {
+        Y.applyUpdate(document, request.state);
+        reply({ type: "search-text", id: request.id, text: searchTextOf(document) });
+      } catch (error) {
+        reply({ type: "unreadable", id: request.id, error: serialized(error) });
+      } finally {
+        document.destroy();
+      }
+      break;
+    }
   }
 });
+
+// Last: the worker is ready once everything above ran.
+reply({ type: "ready" });

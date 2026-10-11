@@ -98,7 +98,7 @@ export function createCollabServer({
   let accessChecks: NodeJS.Timeout | undefined;
   let userChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
-  const backfill = createSearchTextBackfill(backend, metrics, (boardId) => snapshots.searchText(boardId));
+  const backfill = createSearchTextBackfill(backend, metrics, snapshots);
   const fillInSearchTexts = () =>
     void backfill.run().catch((error: unknown) => log.error("Failed to fill in the texts of boards", error));
   /** The board or the draft that an open document is; authentication lets no other name through. */
@@ -129,11 +129,13 @@ export function createCollabServer({
           const state = target.kind === "board" ? await backend.loadDocument(target.id) : await backend.loadDraft(target.id);
           sizes.set(documentName, state?.length ?? 0);
           if (state) Y.applyUpdate(document, state);
+          // Last use of the state here: its bytes move to the worker.
           snapshots.open(documentName, state);
           document.on("update", (update: Uint8Array) => snapshots.update(documentName, update));
         },
         // The snapshot worker encodes and sends the state; here only what follows from how the store ended.
-        async onStoreDocument({ documentName, document }) {
+        async onStoreDocument(payload) {
+          const { documentName, document, instance } = payload;
           const target = targetOf(documentName);
           // Taken before anything is awaited, when the store is asked for: the state that the worker encodes has
           // exactly the changes applied before, and those are theirs. A draft has nobody to name.
@@ -162,8 +164,12 @@ export function createCollabServer({
               return;
             case "failed":
               // The changes are stored with the next store, and so are the users who made them: Hocuspocus keeps a
-              // document whose store throws.
+              // document whose store throws. It stores it again only after another change, and never when the last
+              // participant has left, nor before it stops: the server would wait for it forever. So the store is
+              // asked for again, after the debounce delay; a stop runs it at once. Hocuspocus starts it once this
+              // one has ended.
               editors.giveBack(documentName, changedBy);
+              void instance.storeDocumentHooks(document, payload);
               if (target.kind === "board") {
                 log.error(`Failed to store board ${target.id}`, error, { "codraw.board": target.id });
               } else {
