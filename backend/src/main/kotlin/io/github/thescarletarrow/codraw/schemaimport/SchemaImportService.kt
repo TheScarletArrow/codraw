@@ -13,6 +13,7 @@ import java.net.InetAddress
 import java.time.Clock
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.Semaphore
 
 @Configuration(proxyBeanMethods = false)
 class SchemaImportConfiguration {
@@ -44,6 +45,9 @@ class SchemaImportService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    /** A server controls how much the driver buffers for its messages: few imports run at once. */
+    private val running = Semaphore(settings.maxConcurrentImports)
+
     val enabled: Boolean
         get() = hosts.enabled
 
@@ -55,11 +59,12 @@ class SchemaImportService(
         val host = field("host", request.host?.trim()) { (Hosts.literal(it) != null || Hosts.isName(it)) && it.length <= 255 }
         val port = request.port ?: DEFAULT_PORT
         if (port !in 1..65535) throw InvalidSchemaImportRequestException("port")
-        val database = field("database", request.database) { it.isNotBlank() && it.length <= NAME_MAX_LENGTH && '\u0000' !in it }
-        val user = field("user", request.user) { it.isNotBlank() && it.length <= NAME_MAX_LENGTH && '\u0000' !in it }
+        // The names go to the server as they are, so they hold no control characters; the password, which may, no NUL.
+        val database = field("database", request.database) { it.isNotBlank() && it.length <= NAME_MAX_LENGTH && it.none(Char::isISOControl) }
+        val user = field("user", request.user) { it.isNotBlank() && it.length <= NAME_MAX_LENGTH && it.none(Char::isISOControl) }
         val password = field("password", request.password.orEmpty()) { it.length <= PASSWORD_MAX_LENGTH && '\u0000' !in it }
         val schema = field("schema", request.schema?.takeIf { it.isNotBlank() } ?: DEFAULT_SCHEMA) {
-            it.length <= NAME_MAX_LENGTH && '\u0000' !in it
+            it.length <= NAME_MAX_LENGTH && it.none(Char::isISOControl)
         }
         val sslMode = request.sslMode ?: SslMode.PREFER
 
@@ -67,6 +72,7 @@ class SchemaImportService(
             .addKeyValue("user.id", userId.toString())
             .addKeyValue("server.address", host)
             .addKeyValue("server.port", port)
+        if (!running.tryAcquire()) throw SchemaImportBusyException()
         try {
             val address = hosts.address(host)
             val ddl = reader.read(ConnectionTarget(host, address, port, database, user, password, schema, sslMode))
@@ -90,6 +96,8 @@ class SchemaImportService(
             ).fold(failure) { line, (key, value) -> line.addKeyValue(key, value) }
                 .log("Schema import from a database: {}", exception.result.tag)
             throw exception
+        } finally {
+            running.release()
         }
     }
 

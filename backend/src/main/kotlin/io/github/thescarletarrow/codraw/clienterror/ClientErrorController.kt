@@ -51,7 +51,7 @@ data class ClientErrorReport(
 class ClientErrorLimiter(limits: LimitProperties, clock: Clock) {
     private val limiter = AddressRateLimiter(Duration.ofMinutes(1), { limits.clientErrorsPerAddressPerMinute }, clock)
 
-    fun acquire(address: String): Duration? = limiter.acquire(address)
+    fun acquire(address: String): Duration? = limiter.acquire(AddressRateLimiter.networkOf(address))
 }
 
 /**

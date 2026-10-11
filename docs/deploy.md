@@ -71,7 +71,8 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_OIDC_LOGOUT` | `false` | `true` — «Выйти» завершает и сеанс у провайдера (RP-initiated logout) |
 | `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
 | `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
-| `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
+| `CODRAW_LIMITS_BOARDS_IN_TRASH_PER_USER` | `100` | досок пользователя в корзине, и личных, и пространств, за которые он отвечает; доска, удалённая сверх, окончательно удаляет его доску, что лежит там дольше всех |
+| `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час (адрес IPv6 — его сеть /64); счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_REPORTS_PER_ADDRESS_PER_HOUR` | `5` | жалоб на доски с одного адреса в час; сверх — 429; счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_REPORTS_PER_BOARD` | `50` | больше открытых жалоб у доски не хранится; жалоба сверх не сохраняется, а отправитель видит, что она отправлена |
 | `CODRAW_ADMIN_RETENTION` | `365d` | записи журнала администраторов и закрытые жалобы удаляются, когда им столько; уборка идёт раз в час |
@@ -162,8 +163,9 @@ CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS=db.internal,reports.internal,10.20.0.0/16
   базы, которому можно войти, — права на таблицы и данные не нужны; заведите для этого отдельную роль:
   `CREATE ROLE codraw_reader LOGIN PASSWORD '…'`.
 - Подключение — только чтение, одно соединение без пула: ждёт соединения 5 секунд, ответа — 20, запрос к каталогу
-  прерывается через 15; схема — не больше 500 таблиц и 2 МБ DDL (свойства `codraw.schema-import.connect-timeout`,
-  `read-timeout`, `statement-timeout`, `max-tables`, `max-ddl-size`). В сессиях базы оно видно как
+  прерывается через 15, весь импорт закрывается через 60; одновременно — не больше двух импортов на `backend`, следующий
+  получает 429; схема — не больше 500 таблиц и 2 МБ DDL (свойства `codraw.schema-import.connect-timeout`,
+  `read-timeout`, `statement-timeout`, `import-timeout`, `max-concurrent-imports`, `max-tables`, `max-ddl-size`). В сессиях базы оно видно как
   `application_name = 'CoDraw schema import'`.
 - Пароль приходит в теле запроса по HTTPS установки и нигде не хранится, в журнал не пишется. В журнале `backend` —
   строка о каждой попытке «Schema import from a database» с полями `user.id`, `server.address`, `server.port`,
@@ -390,7 +392,11 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 Контейнеры пересоздаются, данные остаются в томах `codraw-prod_postgres-data`, `codraw-prod_s3-data` (картинки) и
 `codraw-prod_backups` (резервные копии). Перед обновлением, которое меняет схему базы, снимите копию:
 `docker compose -f docker-compose.prod.yml --env-file .env.prod exec backup codraw-backup now`. Подключённые участники видят «Нет
-связи» на время перезапуска и переподключаются сами. Для отката задайте `CODRAW_VERSION` с хешем предыдущего коммита
+связи» на время перезапуска и переподключаются сами. Открытые вкладки сами узнают о новой версии приложения и предлагают
+обновить страницу, сохранив правки; страница, которая не загрузилась после выкатки, перезагружается сама. Идентификатор
+сборки для этой проверки — время сборки образа `frontend`; задать свой можно аргументом сборки
+`--build-arg CODRAW_BUILD_ID=…`. Хеш коммита для этого не годится: он меняется и при выкатке, которая не трогает
+`frontend`, и вкладки зря предложили бы обновиться. Для отката задайте `CODRAW_VERSION` с хешем предыдущего коммита
 и выполните `up -d --wait`. Откат на версию до изменения схемы базы требует отката миграций — U-скриптов в
 `backend/src/main/resources/db/migration`.
 
@@ -402,7 +408,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 |---|---|
 | `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), удалённые учётные записи (`codraw_accounts_deleted_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component`, `libraries-size`, `reports` и `board-reports`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
 | `backup:9187/metrics.txt` | резервные копии: время и результат последней попытки, время последней удачной копии, размер и длительность (`codraw_backup_*`, см. «Резервные копии») |
-| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись, и `user-blocked` — заблокированные пользователи), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
+| `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время — кодирование в потоке сохранений и запись в `backend` (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись, и `user-blocked` — заблокированные пользователи), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
 
 **Prometheus** и **Alertmanager** поднимаются вместе со стеком с профилем `monitoring`. Положите рядом с
 `docker-compose.prod.yml` каталоги `deploy/prometheus` и `deploy/alertmanager` из репозитория:
@@ -612,7 +618,7 @@ SSH-туннель (`ssh -L 9093:127.0.0.1:9093 сервер`, затем `http:
 | до 300 | 4 vCPU, 8 ГБ памяти |
 | больше 300 | одного процесса `collab` не хватит ([#173](https://github.com/TheScarletArrow/codraw/issues/173)) |
 
-Заложите `collab` 1 ГБ памяти, держите его процессор ниже ~70 % ядра в часы пик — правило `CodrawCollabBusy`
+Заложите `collab` 1,5 ГБ памяти (он держит каждый открытый документ дважды, см. [ADR-0012](adr/0012-document-stores.md)), держите его процессор ниже ~70 % ядра в часы пик — правило `CodrawCollabBusy`
 предупредит, — а если обычны доски с десятками участников, задайте `CODRAW_COLLAB_BROADCAST_DELAY_MS=20`–`30`. Стенд,
 цифры, найденные узкие места и как прогнать ту же нагрузку на своём сервере (`pnpm load`) — в
 [нагрузочных тестах](load-testing.md).

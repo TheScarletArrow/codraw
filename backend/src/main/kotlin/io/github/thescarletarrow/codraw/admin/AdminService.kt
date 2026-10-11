@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.account.Accounts
 import io.github.thescarletarrow.codraw.account.SoleWorkspaceOwnerException
 import io.github.thescarletarrow.codraw.account.UndecidedBoards
 import io.github.thescarletarrow.codraw.board.Board
+import io.github.thescarletarrow.codraw.board.BoardInvites
 import io.github.thescarletarrow.codraw.board.BoardRepository
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.LinkAccess
@@ -31,6 +32,7 @@ class AdminService(
     private val boards: BoardRepository,
     private val boardService: BoardService,
     private val embeds: EmbedService,
+    private val invites: BoardInvites,
     private val reports: BoardReports,
     private val actions: AdminActions,
     private val accounts: Accounts,
@@ -86,7 +88,8 @@ class AdminService(
 
     /**
      * Closes the link of the board [boardId], in the trash too, and turns its live image off; its owner opens neither
-     * again until [unblockSharing]. Those whom the link gave access lose it like after its owner closed it.
+     * again until [unblockSharing]. Those whom the link gave access lose it like after its owner closed it; its
+     * invitation links, which anyone may open as well, are revoked.
      */
     @Transactional
     fun blockSharing(admin: User, boardId: UUID) {
@@ -94,6 +97,7 @@ class AdminService(
         val now = now()
         if (!boards.blockSharing(boardId, now)) return
         embeds.disable(boardId)
+        invites.deleteAll(boardId)
         val closed = board.copy(linkAccess = LinkAccess.NONE, sharingBlockedAt = now)
         if (closed.deletedAt == null) boardService.forgetUsersWithoutAccess(closed)
         actions.record(admin, AdminActionKind.BLOCK_SHARING, AdminTargetKind.BOARD, boardId, board.title, now)

@@ -61,6 +61,10 @@ class BoardInvites(private val jdbc: JdbcClient) {
             .param("boardId", boardId)
             .update() > 0
 
+    /** Revokes all invitations of the board [boardId]. */
+    fun deleteAll(boardId: UUID): Int =
+        jdbc.sql("DELETE FROM board_invites WHERE board_id = :boardId").param("boardId", boardId).update()
+
     private fun ResultSet.toInvite() = Invite(
         id = getObject("id", UUID::class.java),
         boardId = getObject("board_id", UUID::class.java),

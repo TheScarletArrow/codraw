@@ -3,20 +3,20 @@
 # rclone talks to the S3-compatible storages and encrypts archives; it comes as a static binary of its own image.
 FROM rclone/rclone:1.75.2 AS rclone
 
+# The cron of containers: it runs as any user, passes the environment to its jobs and logs them to stdout. Built from its
+# module, verified by the checksum database of Go, with a current Go: the release binaries carry the Go of their day.
+FROM golang:1.26-alpine AS supercronic
+ARG SUPERCRONIC_VERSION=0.2.49
+RUN CGO_ENABLED=0 go install -trimpath -ldflags="-s -w" github.com/aptible/supercronic@v${SUPERCRONIC_VERSION}
+
 # The major version of the server of the stack, so that pg_dump and pg_restore fit it.
 FROM postgres:18-alpine
-ARG TARGETARCH
-ARG SUPERCRONIC_VERSION=0.2.49
-# The cron of containers: it runs as any user, passes the environment to its jobs and logs them to stdout.
-ADD https://github.com/aptible/supercronic/releases/download/v${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH} /usr/local/bin/supercronic
-RUN case "$TARGETARCH" in \
-      amd64) sum=a53ae236602c7338aba3fbaff40bda6300eae3b9fedb8261eb06cfe3724430c1 ;; \
-      arm64) sum=02aa0cb229ba09050cba6638059dadb9eedc2276632ea43d6a57a2f8c1629dd5 ;; \
-      *) echo "no supercronic for $TARGETARCH" >&2; exit 1 ;; \
-    esac \
-    && echo "$sum  /usr/local/bin/supercronic" | sha256sum -c - \
-    && chmod 755 /usr/local/bin/supercronic \
+# The fixes of the packages of Alpine that came after the base image; gosu of the image, which the backups do not run
+# (they start as postgres), goes.
+RUN apk upgrade --no-cache \
+    && rm -f /usr/local/bin/gosu \
     && mkdir -p /backups && chown postgres:postgres /backups
+COPY --from=supercronic /go/bin/supercronic /usr/local/bin/supercronic
 COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
 COPY lib.sh /usr/local/lib/codraw-backup/lib.sh
 COPY codraw-backup /usr/local/bin/codraw-backup

@@ -73,7 +73,7 @@ export function createMetrics() {
   });
   const storeDuration = new Histogram({
     name: "codraw_collab_store_duration_seconds",
-    help: "Time of storing a board document or a draft of a proposal in the backend",
+    help: "Time of encoding a board document or a draft of a proposal and storing it in the backend",
     buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   });

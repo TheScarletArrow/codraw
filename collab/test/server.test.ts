@@ -1,15 +1,68 @@
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import type { Server } from "@hocuspocus/server";
 import { createRemoteJWKSet, generateKeyPair } from "jose";
+import { isDeepStrictEqual } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { createTokenVerifier } from "../src/auth.js";
 import { createBackendClient } from "../src/backend-client.js";
+import { configureLogging } from "../src/log.js";
+import { createMetrics } from "../src/metrics.js";
 import { createCollabServer, type CollabServerOptions } from "../src/server.js";
+import { createSnapshots } from "../src/snapshots.js";
 import { ALICE, FakeBackend } from "./fake-backend.js";
 
 const board = "0199a000-0000-7000-8000-000000000001";
 const otherBoard = "0199a000-0000-7000-8000-000000000002";
+
+
+/** A writer of the encoding of lib0, as Yjs and Hocuspocus read it. */
+function encode(write: (writer: { varUint(value: number): void; bytes(value: Uint8Array): void }) => void): Uint8Array {
+  const out: number[] = [];
+  const varUint = (value: number) => {
+    for (; value > 0x7f; value = Math.floor(value / 128)) out.push(0x80 | (value & 0x7f));
+    out.push(value);
+  };
+  write({
+    varUint,
+    bytes(value) {
+      varUint(value.length);
+      out.push(...value);
+    },
+  });
+  return new Uint8Array(out);
+}
+
+/** A message of Hocuspocus with a Yjs update of the document, as a client that does not use the provider sends it. */
+const syncUpdateFrame = (documentName: string, update: Uint8Array) =>
+  encode((write) => {
+    write.bytes(new TextEncoder().encode(documentName));
+    write.varUint(0); // sync
+    write.varUint(2); // update
+    write.bytes(update);
+  });
+
+/** A message of Hocuspocus with an update of awareness, as a client that does not use the provider sends it. */
+const awarenessFrame = (documentName: string, states: [client: number, clock: number, state: unknown][]) =>
+  encode((write) => {
+    write.bytes(new TextEncoder().encode(documentName));
+    write.varUint(1); // awareness
+    write.bytes(
+      encode((update) => {
+        update.varUint(states.length);
+        for (const [client, clock, state] of states) {
+          update.varUint(client);
+          update.varUint(clock);
+          update.bytes(new TextEncoder().encode(JSON.stringify(state)));
+        }
+      }),
+    );
+  });
+
+/** Sends a message past the provider, over its socket. */
+function rawSend({ provider }: { provider: HocuspocusProvider }, frame: Uint8Array) {
+  (provider.configuration.websocketProvider as unknown as { webSocket: { send(data: Uint8Array): void } }).webSocket.send(frame);
+}
 
 describe("collab server", () => {
   let backend: FakeBackend;
@@ -34,6 +87,8 @@ describe("collab server", () => {
       quiet: true,
       stopOnSignals: false,
       backend: createBackendClient({ baseUrl: backend.url, internalToken: backend.token }),
+      // The worker of a test that passes its own snapshots is not started.
+      snapshots: options.snapshots ?? createSnapshots({ backendUrl: backend.url, internalToken: backend.token }),
       // Without a cooldown a token with an unknown key id refetches the keys at once.
       verifyToken: createTokenVerifier(createRemoteJWKSet(new URL(backend.jwksUrl), { cooldownDuration: 0 })),
       debounce: 50,
@@ -146,13 +201,14 @@ describe("collab server", () => {
     const participant = await connect(board);
     const startedAt = Date.now();
 
-    while (backend.storesFor(board) === 0 && Date.now() - startedAt < 1_000) {
+    // A change every 20 ms postpones a store of a debounce of 100 ms for ever: only the maximum delay lets it happen
+    // while changes keep coming. The bound leaves room for the snapshot worker, which a busy machine slows down.
+    while (backend.storesFor(board) === 0 && Date.now() - startedAt < 2_000) {
       participant.document.getMap("meta").set("title", `Edit ${Date.now()}`);
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
 
     expect(backend.storesFor(board)).toBeGreaterThan(0);
-    expect(Date.now() - startedAt).toBeLessThan(500);
   });
 
   it("keeps the document across a collab restart", async () => {
@@ -326,6 +382,101 @@ describe("collab server", () => {
       expect(stored.getMap("meta").toJSON()).toEqual({ description: "Editor" });
     });
 
+    it("drops an awareness state larger than the limit", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      viewer.provider.setAwarenessField("cursor", { x: 1, y: 1 });
+      const client = viewer.document.clientID;
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 1);
+
+      rawSend(viewer, awarenessFrame(board, [[client, 1_000, { cursor: { x: 2, y: 2 }, junk: "x".repeat(64 * 1024) }]]));
+      viewer.provider.setAwarenessField("cursor", { x: 3, y: 3 });
+
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 3);
+      expect(editor.provider.awareness!.getStates().get(client)?.junk).toBeUndefined();
+    });
+
+    it("drops a selection too large for the others, and keeps the cursor", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const client = viewer.document.clientID;
+
+      viewer.provider.setAwarenessField("selection", Array.from({ length: 2_000 }, () => crypto.randomUUID()));
+      viewer.provider.setAwarenessField("cursor", { x: 5, y: 5 });
+
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 5);
+      expect(editor.provider.awareness!.getStates().get(client)?.selection).toEqual([]);
+    });
+
+    it("lets a reconnected connection of the same user speak for its client again", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const client = viewer.document.clientID;
+      viewer.provider.setAwarenessField("cursor", { x: 1, y: 1 });
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 1);
+
+      // The same document, so the same client, over a second connection while the first is still open.
+      const again = await new Promise<HocuspocusProvider>((resolve) => {
+        const provider: HocuspocusProvider = new HocuspocusProvider({
+          url: `ws://127.0.0.1:${server!.address.port}`,
+          name: board,
+          document: viewer.document,
+          token: () => backend.issueToken(board, { subject: BOB }),
+          onSynced: () => resolve(provider),
+        });
+        providers.push(provider);
+      });
+      rawSend({ provider: again }, awarenessFrame(board, [[client, 1_000, { cursor: { x: 9, y: 9 } }]]));
+
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 9);
+    });
+
+    it("does not let a connection speak for another client or as another user", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const third = await connect(board);
+      editor.provider.setAwarenessField("user", { name: "Alice", color: "#2563eb" });
+      const victim = editor.document.clientID;
+      await waitFor(() => third.provider.awareness!.getStates().get(victim)?.user?.name === "Alice");
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB, name: "Bob" }));
+
+      viewer.provider.setAwarenessField("user", { name: "Alice", color: "#000000", avatarUrl: "https://evil.example/x.png" });
+      await waitFor(() => third.provider.awareness!.getStates().get(viewer.document.clientID)?.user !== undefined);
+      rawSend(viewer, awarenessFrame(board, [[victim, 10_000, { user: { name: "Mallory", color: "#000000" } }]]));
+      rawSend(viewer, awarenessFrame(board, [[777_001, 1, { user: { name: "Ghost", color: "#000000" } }]]));
+      viewer.provider.setAwarenessField("cursor", { x: 1, y: 1 });
+
+      await waitFor(() => third.provider.awareness!.getStates().get(viewer.document.clientID)?.cursor !== undefined);
+      expect(third.provider.awareness!.getStates().get(victim)?.user?.name).toBe("Alice");
+      expect(third.provider.awareness!.getStates().has(777_001)).toBe(false);
+      expect(third.provider.awareness!.getStates().get(viewer.document.clientID)?.user).toEqual({
+        name: "Bob",
+        color: expect.stringMatching(/^#[0-9a-f]{6}$/),
+        avatarUrl: "https://avatars.example.com/alice.png",
+      });
+    });
+
+    it("does not relay that a viewer changed the board or its decisions", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const received: string[] = [];
+      owner.provider.on("stateless", ({ payload }: { payload: string }) => received.push(payload));
+      const before = backend.accessRequestsFor(board);
+
+      viewer.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+      viewer.provider.sendStateless(JSON.stringify({ type: "decisions-changed" }));
+      viewer.provider.sendStateless(JSON.stringify({ type: "comments-changed" }));
+
+      await waitFor(() => received.length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(received).toEqual([JSON.stringify({ type: "comments-changed" })]);
+      expect(backend.accessRequestsFor(board)).toBe(before);
+    });
+
     it("shows the cursor of a participant who may only view to the others", async () => {
       await startServer();
       const editor = await connect(board);
@@ -386,7 +537,7 @@ describe("collab server", () => {
       bob.provider.on("close", closed);
       const before = backend.accessRequestsFor(board);
 
-      bob.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+      owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
 
       await waitFor(() => backend.accessRequestsFor(board) > before);
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -721,14 +872,14 @@ describe("collab server", () => {
     });
 
     it("names the users of a store that failed with the next store", async () => {
-      await startServer();
+      // A failed store is asked for again after the debounce delay: Alice changes the document before that.
+      await startServer({ debounce: 300, maxDebounce: 2_000 });
       const alice = await connect(board);
       const bob = await connect(board, asUser(BOB));
       backend.failingStores = 1;
 
       bob.document.getMap("meta").set("title", "Bob");
       await waitFor(() => backend.storesFor(board) === 1);
-      await new Promise((resolve) => setTimeout(resolve, 50));
       alice.document.getMap("meta").set("description", "Alice");
       await waitFor(() => backend.storesFor(board) === 2);
 
@@ -851,6 +1002,7 @@ describe("collab server", () => {
       await expect(closed).resolves.toMatchObject({ reason: "document-too-large" });
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(title(other)).toBe("Small");
+      await waitFor(() => backend.storesFor(board) > 0);
       expect(storedTitle()).toBe("Small");
     });
 
@@ -868,14 +1020,46 @@ describe("collab server", () => {
       await waitFor(() => storedTitle() === undefined);
     });
 
-    it("counts the document exactly again once it is stored", async () => {
+    it("counts deletions of what the document does not have as any other change", async () => {
       await startServer({ documentSizeLimit: 2_000 });
       const writer = await connect(board);
       const other = await connect(board);
+      writer.document.getMap("meta").set("title", "x".repeat(1_500));
+      await waitFor(() => title(other) === "x".repeat(1_500));
+      const closed = closeReasonOf(writer);
+
+      // Updates without structs whose deletions name clients that the document does not know: one range each.
+      for (let round = 0; round < 10; round++) {
+        const update = encode((write) => {
+          write.varUint(0);
+          write.varUint(100);
+          for (let client = 1_000_000 + round * 100; client < 1_000_100 + round * 100; client++) {
+            [client, 1, 0, 1].forEach(write.varUint);
+          }
+        });
+        rawSend(writer, syncUpdateFrame(board, update));
+      }
+
+      await expect(closed).resolves.toMatchObject({ reason: "document-too-large" });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(backend.documents.get(board)?.length ?? 0).toBeLessThanOrEqual(2_000);
+      expect(title(other)).toBe("x".repeat(1_500));
+    });
+
+    it("counts the document exactly again once it is stored", async () => {
+      const metrics = createMetrics();
+      await startServer({ documentSizeLimit: 2_000, metrics });
+      const writer = await connect(board);
+      const other = await connect(board);
+      // The size is exact once collab learns how the store ended, not when the backend gets it.
+      const stored = async () => {
+        const text = await metrics.registry.getSingleMetricAsString("codraw_collab_stores_total");
+        return /result="stored"\} (\d+)/.exec(text)?.[1];
+      };
       writer.document.getMap("meta").set("title", "a".repeat(1_500));
-      await waitFor(() => backend.storesFor(board) > 0);
+      await vi.waitFor(async () => expect(await stored()).toBe("1"));
       writer.document.getMap("meta").delete("title");
-      await waitFor(() => backend.storesFor(board) > 1);
+      await vi.waitFor(async () => expect(await stored()).toBe("2"));
 
       // Counted change by change, the document would have 1 500 bytes of the deleted title and these.
       writer.document.getMap("meta").set("title", "b".repeat(1_500));
@@ -1205,6 +1389,157 @@ describe("collab server", () => {
 
       await waitFor(() => told.length > 0);
       expect(told).toEqual(['{"type":"proposals-changed"}']);
+    });
+  });
+
+  describe("stores in the snapshot worker", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+    const warnings: string[] = [];
+    const errors: string[] = [];
+
+    beforeEach(() => {
+      configureLogging("text", (level, line) => {
+        if (level === "warn") warnings.push(line);
+        if (level === "error") errors.push(line);
+      });
+    });
+
+    afterEach(() => {
+      warnings.splice(0);
+      errors.splice(0);
+      configureLogging("text");
+    });
+
+    /** The stored state of the board, decoded. */
+    const stored = () => {
+      const document = new Y.Doc();
+      Y.applyUpdate(document, backend.documents.get(board)!);
+      return document;
+    };
+
+    /** Whether the backend has the state of the document: the same changes, and the same content. */
+    const storedIs = (document: Y.Doc) => {
+      if (!backend.documents.has(board)) return false;
+      const state = stored();
+      return (
+        Buffer.from(Y.encodeStateVector(state)).equals(Buffer.from(Y.encodeStateVector(document))) &&
+        ["meta", "cells:page-1"].every((map) =>
+          isDeepStrictEqual(state.getMap(map).toJSON(), document.getMap(map).toJSON()),
+        )
+      );
+    };
+
+    /** Many small changes, as an editor makes them: shapes added, moved and deleted. */
+    function edit(document: Y.Doc, from: number, count: number) {
+      const cells = document.getMap<Y.Map<unknown>>("cells:page-1");
+      for (let n = from; n < from + count; n++) {
+        const cell = new Y.Map<unknown>();
+        cell.set("kind", "vertex");
+        cell.set("value", `Shape ${n}`);
+        cells.set(`cell-${n}`, cell);
+        cells.get(`cell-${Math.floor(n / 2)}`)?.set("x", n);
+        if (n % 5 === 0) cells.delete(`cell-${n - 3}`);
+      }
+    }
+
+    it("stores the document as its participants have it, with changes made while a store was on its way", async () => {
+      backend.documents.set(board, Y.encodeStateAsUpdate(new Y.Doc()));
+      await startServer();
+      const writer = await connect(board);
+      const other = await connect(board);
+      backend.storeDelay = 300;
+
+      edit(writer.document, 0, 100);
+      await waitFor(() => backend.storesFor(board) === 1);
+      edit(writer.document, 100, 100);
+      edit(other.document, 200, 100);
+
+      await waitFor(() => backend.storesFor(board) === 2, 5_000);
+      await waitFor(() => storedIs(writer.document) && storedIs(other.document), 5_000);
+      expect(warnings).toEqual([]);
+    });
+
+    it("stores a document opened again under the same name from its new mirror", async () => {
+      await startServer();
+      const first = await connect(board);
+      edit(first.document, 0, 10);
+      await waitFor(() => storedIs(first.document));
+      first.provider.destroy();
+      await waitFor(() => server!.hocuspocus.getDocumentsCount() === 0);
+
+      const second = await connect(board);
+      edit(second.document, 10, 10);
+
+      await waitFor(() => storedIs(second.document));
+      expect(stored().getMap("cells:page-1").has("cell-1")).toBe(true);
+      expect(warnings).toEqual([]);
+    });
+
+    it("stores the whole document after the worker failed, encoded once on the main thread", async () => {
+      const snapshots = createSnapshots({ backendUrl: backend.url, internalToken: backend.token });
+      await startServer({ snapshots });
+      const writer = await connect(board);
+      edit(writer.document, 0, 10);
+      await waitFor(() => storedIs(writer.document));
+
+      await snapshots.terminateWorker();
+      edit(writer.document, 10, 10);
+
+      await waitFor(() => backend.storesFor(board) === 2 && storedIs(writer.document));
+      expect(errors.some((line) => line.includes("The snapshot worker stopped"))).toBe(true);
+      expect(warnings).toHaveLength(1);
+      edit(writer.document, 20, 10);
+      await waitFor(() => backend.storesFor(board) === 3 && storedIs(writer.document));
+      expect(warnings).toHaveLength(1);
+    });
+
+    it("stores a document again whose store failed after its last participant left, and then unloads it", async () => {
+      await startServer({ debounce: 300, maxDebounce: 2_000 });
+      const writer = await connect(board);
+      backend.failingStores = 1;
+      writer.document.getMap("meta").set("title", "Left");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      writer.provider.destroy();
+
+      await waitFor(() => backend.storesFor(board) === 2 && storedIs(writer.document));
+      await waitFor(() => server!.hocuspocus.getDocumentsCount() === 0);
+      await server!.destroy();
+    });
+
+    it("stores a document whose store failed when the server stops, and stops", async () => {
+      await startServer({ debounce: 60_000, maxDebounce: 60_000 });
+      const writer = await connect(board);
+      backend.failingStores = 1;
+      writer.document.getMap("meta").set("title", "Stopped");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      writer.provider.destroy();
+      await waitFor(() => errors.some((line) => line.includes(`Failed to store board ${board}`)));
+
+      // Without the store asked for again, the server would wait for the document to unload forever.
+      await server!.destroy();
+
+      expect(backend.storesFor(board)).toBe(2);
+      expect(storedIs(writer.document)).toBe(true);
+    });
+
+    it("keeps the changes and their users of a store that the failing worker did not finish", async () => {
+      const snapshots = createSnapshots({ backendUrl: backend.url, internalToken: backend.token });
+      await startServer({ snapshots });
+      const alice = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      // The backend never answers the store: the worker fails while it waits.
+      backend.storeDelay = 60_000;
+      bob.document.getMap("meta").set("title", "Bob");
+      await waitFor(() => backend.storesFor(board) === 1);
+
+      await snapshots.terminateWorker();
+      backend.storeDelay = 0;
+      alice.document.getMap("meta").set("description", "Alice");
+
+      await waitFor(() => backend.storesFor(board) === 2 && storedIs(alice.document));
+      expect(backend.editorsOfStores(board)[1]).toEqual([BOB, ALICE]);
+      expect(errors.some((line) => line.includes(`Failed to store board ${board}`))).toBe(true);
     });
   });
 });

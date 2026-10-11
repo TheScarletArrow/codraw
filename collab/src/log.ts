@@ -3,11 +3,13 @@ export type LogFormat = "text" | "json";
 
 type Fields = Record<string, unknown>;
 
-/** Writes a line of the log; errors go to stderr. */
-type Writer = (level: "info" | "error", line: string) => void;
+export type LogLevel = "info" | "warn" | "error";
+
+/** Writes a line of the log; warnings and errors go to stderr. */
+type Writer = (level: LogLevel, line: string) => void;
 
 const toConsole: Writer = (level, line) => {
-  (level === "error" ? process.stderr : process.stdout).write(`${line}\n`);
+  (level === "info" ? process.stdout : process.stderr).write(`${line}\n`);
 };
 
 let format: LogFormat = "text";
@@ -19,7 +21,7 @@ export function configureLogging(logFormat: LogFormat, writer: Writer = toConsol
   write = writer;
 }
 
-function entry(level: "info" | "error", message: string, error: unknown, fields: Fields) {
+function entry(level: LogLevel, message: string, error: unknown, fields: Fields) {
   if (format === "text") {
     const extra = Object.keys(fields).length > 0 ? ` ${JSON.stringify(fields)}` : "";
     write(level, `${level.toUpperCase()} ${message}${extra}${error instanceof Error ? `\n${error.stack}` : ""}`);
@@ -47,6 +49,10 @@ function entry(level: "info" | "error", message: string, error: unknown, fields:
 export const log = {
   info(message: string, fields: Fields = {}) {
     entry("info", message, undefined, fields);
+  },
+  /** Something that works, but not as it should, e.g. work that is to be off the main thread done on it. */
+  warn(message: string, fields: Fields = {}) {
+    entry("warn", message, undefined, fields);
   },
   error(message: string, error?: unknown, fields: Fields = {}) {
     entry("error", message, error, fields);

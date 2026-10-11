@@ -56,14 +56,17 @@ export function report(results: StepResult[], { options, slo }: { options: RunOp
   for (const result of results) {
     const collab = result.collab;
     const collabUsage = result.usage.collab;
+    // Stores and resources of a step that shared its window with the row above are those of both: shown once.
+    const shared = result.sharedWithPrevious
+      ? "″ | ″ | ″ | ″ | ″"
+      : `${collab ? collab.stores : "—"} | ${ms(collab?.storeP95 ?? null)} | ` +
+        `${collabUsage ? `${percent(collabUsage.cpuMean)} (пик ${percent(collabUsage.cpuPeak)})` : percent(collab?.cpu ?? undefined)} / ` +
+        `${mib(collabUsage?.memoryPeak ?? collab?.memory)} | ${percent(result.usage.backend?.cpuMean)} | ` +
+        `${percent(result.usage.postgres?.cpuMean)}`;
     lines.push(
       `| ${result.scenario} | ${result.step} | ${result.participants} | ${ms(result.connect.p95)} | ` +
         `${ms(result.edits.p50)} / ${ms(result.edits.p95)} / ${ms(result.edits.p99)} | ${ms(result.cursors.p95)} | ` +
-        `${(result.delivered * 100).toFixed(2)} % | ${result.disconnects} | ${collab ? collab.stores : "—"} | ` +
-        `${ms(collab?.storeP95 ?? null)} | ` +
-        `${collabUsage ? `${percent(collabUsage.cpuMean)} (пик ${percent(collabUsage.cpuPeak)})` : percent(collab?.cpu ?? undefined)} / ` +
-        `${mib(collabUsage?.memoryPeak ?? collab?.memory)} | ${percent(result.usage.backend?.cpuMean)} | ` +
-        `${percent(result.usage.postgres?.cpuMean)} | ${target(result, slo)} |`,
+        `${(result.delivered * 100).toFixed(2)} % | ${result.disconnects} | ${shared} | ${target(result, slo)} |`,
     );
   }
   lines.push("");
@@ -79,6 +82,15 @@ export function report(results: StepResult[], { options, slo }: { options: RunOp
         ".",
     );
   }
+  results.forEach((result, index) => {
+    const previous = results[index - 1];
+    if (!result.sharedWithPrevious || !previous) return;
+    lines.push(
+      `- ${result.scenario} «${result.step}»: доски работали в том же окне и в том же collab, что и «${previous.step}», ` +
+        `сохранения и ресурсы («″») — общие для обеих групп досок; p95 правки ${ms(result.edits.p95)} мс ` +
+        `против ${ms(previous.edits.p95)} мс у «${previous.step}».`,
+    );
+  });
   for (const result of results) {
     if (Object.keys(result.notes).length === 0) continue;
     lines.push(

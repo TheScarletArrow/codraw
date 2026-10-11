@@ -14,6 +14,8 @@ export interface TokenOptions {
   signWith?: CryptoKey;
   /** The user the token is issued to. */
   subject?: string;
+  /** The name of that user. */
+  name?: string;
 }
 
 /** In-memory stand-in for the backend: the internal API, the collab token keys and token issuing. */
@@ -44,6 +46,11 @@ export class FakeBackend {
   failingStores = 0;
   /** How many of the next stores of a text for search fail with 500. */
   failingSearchTexts = 0;
+  /**
+   * How long a store of a board document takes after its body arrived, in milliseconds; the state of a client gone by
+   * then is not stored.
+   */
+  storeDelay = 0;
   private keys: { kid: string; privateKey: CryptoKey; publicJwk: JWK }[] = [];
   private server?: Server;
 
@@ -77,10 +84,10 @@ export class FakeBackend {
 
   private sign(
     document: { board: string } | { proposal: string },
-    { audience = "codraw-collab", expiresAt = "5m", signWith, subject = ALICE }: TokenOptions,
+    { audience = "codraw-collab", expiresAt = "5m", signWith, subject = ALICE, name = "Alice" }: TokenOptions,
   ): Promise<string> {
     const key = this.keys[0]!;
-    return new SignJWT({ ...document, name: "Alice", avatar: "https://avatars.example.com/alice.png" })
+    return new SignJWT({ ...document, name, avatar: "https://avatars.example.com/alice.png" })
       .setProtectedHeader({ alg: "RS256", kid: key.kid })
       .setSubject(subject)
       .setAudience(audience)
@@ -186,6 +193,19 @@ export class FakeBackend {
       if (request.method === "PUT") {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(chunk as Buffer);
+        if (this.storeDelay > 0) {
+          let gone = false;
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, this.storeDelay);
+            response.once("close", () => {
+              gone = true;
+              clearTimeout(timer);
+              resolve();
+            });
+          });
+          // The client went away before the answer, e.g. its thread ended: the store does not happen.
+          if (gone) return;
+        }
         if (this.failingStores > 0) {
           this.failingStores--;
           response.writeHead(500).end();

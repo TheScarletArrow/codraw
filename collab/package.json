@@ -11,7 +11,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hocuspocus/extension-database": "^4.7.0",
     "@hocuspocus/server": "^4.7.0",
     "jose": "^6.2.12",
     "prom-client": "^15.1.3",
