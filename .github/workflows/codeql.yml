@@ -27,7 +27,7 @@ jobs:
           - language: java-kotlin
             build-mode: manual
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - if: matrix.build-mode == 'manual'
         uses: actions/setup-java@v5
         with:

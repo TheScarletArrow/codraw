@@ -37,7 +37,7 @@ jobs:
       CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR: "1000000"
       CODRAW_COLLAB_BROADCAST_DELAY_MS: ${{ inputs.broadcast-delay }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build backend
         uses: docker/build-push-action@v6
