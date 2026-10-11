@@ -266,6 +266,47 @@ class AdminApiTest(
     }
 
     @Test
+    fun `closing sharing revokes the invitations of the board, and its owner makes none until it is lifted`() {
+        val board = createBoard(alice, "Нарушитель")
+        val invitation = invite(alice, board).andExpect { status { isCreated() } }.andReturn().response.contentAsString
+        val token = Regex(""""path":"/invite/([^"]+)"""").find(invitation)!!.groupValues[1]
+
+        adminPost("/api/admin/boards/$board/sharing-block").andExpect { status { isOk() } }
+
+        mockMvc.post("/api/invites/$token/accept") {
+            with(bob.session())
+            with(csrf())
+        }.andExpect { status { isNotFound() } }
+        invite(alice, board).andExpect {
+            status { isConflict() }
+            jsonPath("$.title") { value("Sharing blocked") }
+        }
+        mockMvc.get("/api/boards/$board") { with(bob.session()) }.andExpect { status { isForbidden() } }
+
+        adminDelete("/api/admin/boards/$board/sharing-block")
+        invite(alice, board).andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `a copy of a board with closed sharing stays closed`() {
+        val board = createBoard(alice, "Нарушитель")
+        patchBoard(alice, board, """{"linkAccess": "public"}""")
+        adminPost("/api/admin/boards/$board/sharing-block")
+
+        val copy = mockMvc.post("/api/boards/$board/copy") {
+            with(alice.session())
+            with(csrf())
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.linkAccess") { value("none") }
+            jsonPath("$.sharingBlocked") { value(true) }
+        }.andReturn().response.getHeader("Location")!!.substringAfterLast('/')
+
+        patchBoard(alice, copy, """{"linkAccess": "public"}""").andExpect { status { isConflict() } }
+        enableEmbed(alice, copy).andExpect { status { isConflict() } }
+    }
+
+    @Test
     fun `the owner restores a board that an administrator moved to the trash, still closed`() {
         val board = createBoard(alice, "Нарушитель")
         patchBoard(alice, board, """{"linkAccess": "public"}""")
@@ -448,6 +489,13 @@ class AdminApiTest(
         with(csrf())
         contentType = MediaType.APPLICATION_JSON
         content = body
+    }
+
+    private fun invite(owner: User, board: String): ResultActionsDsl = mockMvc.post("/api/boards/$board/invites") {
+        with(owner.session())
+        with(csrf())
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"role": "viewer"}"""
     }
 
     private fun enableEmbed(owner: User, board: String): ResultActionsDsl = mockMvc.put("/api/boards/$board/embed") {

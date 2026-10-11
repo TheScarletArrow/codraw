@@ -8,7 +8,9 @@ import java.net.Socket
 import java.net.SocketAddress
 import java.net.URLEncoder
 import java.time.Duration
+import java.time.Instant
 import java.util.Properties
+import java.util.concurrent.ConcurrentHashMap
 import javax.net.SocketFactory
 
 /** The name of the sessions of imports in `pg_stat_activity` of the database. */
@@ -47,7 +49,7 @@ fun driverProperties(target: ConnectionTarget, settings: SchemaImportProperties)
     PGProperty.JAAS_LOGIN.set(this, false)
     PGProperty.MAX_RESULT_BUFFER.set(this, (settings.maxDdlSize.toBytes() * 4).toString())
     PGProperty.SOCKET_FACTORY.set(this, PinnedSocketFactory::class.java.name)
-    PGProperty.SOCKET_FACTORY_ARG.set(this, target.address.hostAddress)
+    PGProperty.SOCKET_FACTORY_ARG.set(this, listOfNotNull(target.address.hostAddress, target.sockets).joinToString(" "))
 }
 
 /** Whole seconds, at least one: the driver counts its timeouts in seconds, and 0 means none. */
@@ -56,13 +58,21 @@ private fun seconds(duration: Duration): Int = duration.toSeconds().coerceIn(1, 
 /**
  * Sockets that connect to one address, whatever host the driver asks for: the address that [HostGuard] checked, so
  * that a name that resolves differently by the time of the connection cannot lead elsewhere. The host stays in the URL
- * for SSL. The driver creates the factory by its name with the address as `socketFactoryArg`.
+ * for SSL. The driver creates the factory by its name with `socketFactoryArg`: the address, then the key of the
+ * [ImportSockets] of the import, if any.
  */
-class PinnedSocketFactory(address: String) : SocketFactory() {
+class PinnedSocketFactory(argument: String) : SocketFactory() {
 
-    private val address: InetAddress = requireNotNull(Hosts.literal(address)) { "The address of a pinned socket must be an address" }
+    private val address: InetAddress
+    private val key: String?
 
-    override fun createSocket(): Socket = PinnedSocket(address)
+    init {
+        val parts = argument.split(' ')
+        address = requireNotNull(Hosts.literal(parts[0])) { "The address of a pinned socket must be an address" }
+        key = parts.getOrNull(1)
+    }
+
+    override fun createSocket(): Socket = PinnedSocket(address).also { socket -> key?.let { ImportSockets.add(it, socket) } }
 
     override fun createSocket(host: String?, port: Int): Socket = createSocket().apply { connect(InetSocketAddress(address, port)) }
 
@@ -83,5 +93,40 @@ private class PinnedSocket(private val address: InetAddress) : Socket() {
     override fun connect(endpoint: SocketAddress, timeout: Int) {
         val port = (endpoint as InetSocketAddress).port
         super.connect(InetSocketAddress(address, port), timeout)
+    }
+}
+
+/**
+ * The sockets of the running imports by their keys. The driver reads what a server sends at the pace of the server, and
+ * a thread that it gives up on after the login timeout reads on: closing the sockets of an import ends both, so that a
+ * server that holds an import open holds neither a thread nor its buffers past the time of the import.
+ */
+object ImportSockets {
+
+    private class Sockets {
+        val open: MutableSet<Socket> = ConcurrentHashMap.newKeySet()
+
+        @Volatile
+        var closedAt: Instant? = null
+    }
+
+    private val imports = ConcurrentHashMap<String, Sockets>()
+
+    /** How long the key of a finished import stays known, so that a late socket of it is closed at once. */
+    private val FORGET_AFTER: Duration = Duration.ofMinutes(10)
+
+    fun add(key: String, socket: Socket) {
+        val sockets = imports.computeIfAbsent(key) { Sockets() }
+        sockets.open += socket
+        if (sockets.closedAt != null) runCatching { socket.close() }
+    }
+
+    /** Closes the sockets of the import [key], and those that it opens later. */
+    fun close(key: String) {
+        val now = Instant.now()
+        val sockets = imports.computeIfAbsent(key) { Sockets() }
+        sockets.closedAt = now
+        sockets.open.forEach { runCatching { it.close() } }
+        imports.values.removeIf { it.closedAt?.let { closed -> closed + FORGET_AFTER < now } == true }
     }
 }

@@ -16,7 +16,11 @@ COPY frontend frontend
 ARG CODRAW_BUILD_ID
 RUN pnpm --filter @codraw/frontend build
 
-FROM nginxinc/nginx-unprivileged:1.29-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
+# The fixes of the packages of Alpine that came after the base image.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 # Where nginx sends the API and sync; the defaults are the services of docker-compose.prod.yml. The resolvers of the
 # container (NGINX_LOCAL_RESOLVERS) find them again when they are recreated.
 ENV BACKEND_URL=http://backend:8080 COLLAB_URL=http://collab:1234 NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1

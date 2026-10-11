@@ -37,11 +37,17 @@ class AllowedHostsTest {
     fun `opens special addresses only to entries inside their ranges, not to wide networks`() {
         val wide = AllowedHosts.parse(listOf("0.0.0.0/0", "::/0"))
 
-        for (special in listOf("127.0.0.1", "169.254.169.254", "0.0.0.0", "224.0.0.1", "255.255.255.255", "::1", "::", "fe80::1", "ff02::1")) {
+        for (special in listOf(
+                "127.0.0.1", "169.254.169.254", "0.0.0.0", "224.0.0.1", "255.255.255.255", "100.100.100.200", "::1", "::",
+                "fe80::1", "ff02::1", "fd00:ec2::254", "fd20:ce::254", "64:ff9b::a9fe:a9fe", "2002:a9fe:a9fe::1",
+            )
+        ) {
             assertFalse(wide.allows(address(special)), special)
         }
         assertTrue(wide.allows(address("10.0.0.1")))
         assertTrue(wide.allows(address("2001:db8::1")))
+        assertTrue(wide.allows(address("fd00::7")))
+        assertTrue(AllowedHosts.parse(listOf("100.100.100.200/32")).allows(address("100.100.100.200")))
 
         val explicit = AllowedHosts.parse(listOf("127.0.0.1/32", "169.254.10.0/24", "::1"))
         assertTrue(explicit.allows(address("127.0.0.1")))

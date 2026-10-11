@@ -71,7 +71,8 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_OIDC_LOGOUT` | `false` | `true` — «Выйти» завершает и сеанс у провайдера (RP-initiated logout) |
 | `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
 | `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
-| `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час; счётчик — в памяти `backend` |
+| `CODRAW_LIMITS_BOARDS_IN_TRASH_PER_USER` | `100` | досок пользователя в корзине, и личных, и пространств, за которые он отвечает; доска, удалённая сверх, окончательно удаляет его доску, что лежит там дольше всех |
+| `CODRAW_LIMITS_GUESTS_PER_ADDRESS_PER_HOUR` | `20` | новых гостей с одного адреса в час (адрес IPv6 — его сеть /64); счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_REPORTS_PER_ADDRESS_PER_HOUR` | `5` | жалоб на доски с одного адреса в час; сверх — 429; счётчик — в памяти `backend` |
 | `CODRAW_LIMITS_REPORTS_PER_BOARD` | `50` | больше открытых жалоб у доски не хранится; жалоба сверх не сохраняется, а отправитель видит, что она отправлена |
 | `CODRAW_ADMIN_RETENTION` | `365d` | записи журнала администраторов и закрытые жалобы удаляются, когда им столько; уборка идёт раз в час |
@@ -162,8 +163,9 @@ CODRAW_SCHEMA_IMPORT_ALLOWED_HOSTS=db.internal,reports.internal,10.20.0.0/16
   базы, которому можно войти, — права на таблицы и данные не нужны; заведите для этого отдельную роль:
   `CREATE ROLE codraw_reader LOGIN PASSWORD '…'`.
 - Подключение — только чтение, одно соединение без пула: ждёт соединения 5 секунд, ответа — 20, запрос к каталогу
-  прерывается через 15; схема — не больше 500 таблиц и 2 МБ DDL (свойства `codraw.schema-import.connect-timeout`,
-  `read-timeout`, `statement-timeout`, `max-tables`, `max-ddl-size`). В сессиях базы оно видно как
+  прерывается через 15, весь импорт закрывается через 60; одновременно — не больше двух импортов на `backend`, следующий
+  получает 429; схема — не больше 500 таблиц и 2 МБ DDL (свойства `codraw.schema-import.connect-timeout`,
+  `read-timeout`, `statement-timeout`, `import-timeout`, `max-concurrent-imports`, `max-tables`, `max-ddl-size`). В сессиях базы оно видно как
   `application_name = 'CoDraw schema import'`.
 - Пароль приходит в теле запроса по HTTPS установки и нигде не хранится, в журнал не пишется. В журнале `backend` —
   строка о каждой попытке «Schema import from a database» с полями `user.id`, `server.address`, `server.port`,

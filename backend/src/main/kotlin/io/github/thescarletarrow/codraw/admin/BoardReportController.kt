@@ -62,7 +62,7 @@ class BoardReportController(
     ): ResponseEntity<*> {
         val board = boards.shownWithoutSignIn(id)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found, or not shown without a sign-in")
-        limiter.acquire(httpRequest.remoteAddr)?.let { wait -> return tooManyReports(wait) }
+        limiter.acquire(AddressRateLimiter.networkOf(httpRequest.remoteAddr))?.let { wait -> return tooManyReports(wait) }
         val boardId = checkNotNull(board.id)
         if (reports.countOpen(boardId) < limits.reportsPerBoard) {
             reports.create(boardId, request.reason, request.message.trim(), principal?.userId, clock.instant().truncatedTo(ChronoUnit.MICROS))

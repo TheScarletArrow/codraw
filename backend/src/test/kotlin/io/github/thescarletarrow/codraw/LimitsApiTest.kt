@@ -30,6 +30,7 @@ import kotlin.test.assertEquals
 @TestPropertySource(
     properties = [
         "codraw.limits.boards-per-user=3",
+        "codraw.limits.boards-in-trash-per-user=2",
         "codraw.limits.guests-per-address-per-hour=2",
         "codraw.limits.document-size=2KB",
         "codraw.limits.versions-size-per-board=1KB",
@@ -80,6 +81,26 @@ class LimitsApiTest(
             with(alice.session())
             with(csrf())
         }.andExpect { status { isNoContent() } }
+        createBoard(alice).andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `the trash of a user keeps as many boards as the limit, those deleted last`() {
+        val boards = List(3) { createBoard(alice).andExpect { status { isCreated() } }.id() }
+        for (board in boards) {
+            mockMvc.delete("/api/boards/$board") {
+                with(alice.session())
+                with(csrf())
+            }.andExpect { status { isNoContent() } }
+            clock.advance(Duration.ofMinutes(1))
+        }
+
+        mockMvc.get("/api/boards/trash") { with(alice.session()) }.andExpect {
+            jsonPath("$[*].id", contains(boards[2], boards[1]))
+        }
+        val first = java.util.UUID.fromString(boards[0])
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM boards WHERE id = :id").param("id", first).query(Int::class.java).single())
+        // The space of the board deleted for good is free again, as that of any other.
         createBoard(alice).andExpect { status { isCreated() } }
     }
 

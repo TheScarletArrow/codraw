@@ -88,10 +88,14 @@ class BoardMemberService(
     /** The invitations of the [board], oldest first. */
     fun invites(board: Board): List<Invite> = invites.list(board.boardId)
 
-    /** Creates an invitation link that makes whoever opens it a member of the [board] with the [role]. */
+    /**
+     * Creates an invitation link that makes whoever opens it a member of the [board] with the [role]; none while an
+     * administrator closes the sharing of the board, as anyone may open a link.
+     */
     @Transactional
     fun invite(board: Board, role: MemberRole): Invite {
         members.lockBoard(board.boardId)
+        if (boards.find(board.boardId)?.sharingBlockedAt != null) throw SharingBlockedException()
         if (invites.count(board.boardId) >= limits.invitesPerBoard) {
             metrics.limitReached(Limit.INVITES)
             throw InviteLimitReachedException(limits.invitesPerBoard)
@@ -107,7 +111,8 @@ class BoardMemberService(
     /**
      * The user [userId] accepts the invitation [token]: they become a member with its role, a member with a lower role
      * gets it, and a member with a higher role or the owner keeps theirs. Returns the board. Throws
-     * [InviteNotFoundException] when there is no such invitation, e.g. it was revoked.
+     * [InviteNotFoundException] when there is no such invitation, e.g. it was revoked, and [SharingBlockedException]
+     * while an administrator closes the sharing of the board.
      */
     @Transactional
     fun accept(token: String, userId: UUID): Board {
@@ -116,6 +121,7 @@ class BoardMemberService(
         // Read under the lock: the owner may have just given the board away.
         val board = boards.find(invite.boardId) ?: throw InviteNotFoundException()
         if (board.ownerId == userId) return board
+        if (board.sharingBlockedAt != null) throw SharingBlockedException()
         val current = members.roleOf(invite.boardId, userId)
         if (current == null) checkMemberLimit(invite.boardId)
         if (current == null || current < invite.role) members.put(invite.boardId, userId, invite.role, now())

@@ -14,6 +14,8 @@ export interface TokenOptions {
   signWith?: CryptoKey;
   /** The user the token is issued to. */
   subject?: string;
+  /** The name of that user. */
+  name?: string;
 }
 
 /** In-memory stand-in for the backend: the internal API, the collab token keys and token issuing. */
@@ -77,10 +79,10 @@ export class FakeBackend {
 
   private sign(
     document: { board: string } | { proposal: string },
-    { audience = "codraw-collab", expiresAt = "5m", signWith, subject = ALICE }: TokenOptions,
+    { audience = "codraw-collab", expiresAt = "5m", signWith, subject = ALICE, name = "Alice" }: TokenOptions,
   ): Promise<string> {
     const key = this.keys[0]!;
-    return new SignJWT({ ...document, name: "Alice", avatar: "https://avatars.example.com/alice.png" })
+    return new SignJWT({ ...document, name, avatar: "https://avatars.example.com/alice.png" })
       .setProtectedHeader({ alg: "RS256", kid: key.kid })
       .setSubject(subject)
       .setAudience(audience)
