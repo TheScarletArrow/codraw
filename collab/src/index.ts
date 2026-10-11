@@ -4,6 +4,7 @@ import { createBackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { configureLogging, log } from "./log.js";
 import { createCollabServer } from "./server.js";
+import { createSnapshots } from "./snapshots.js";
 
 const config = loadConfig();
 configureLogging(config.logFormat);
@@ -15,6 +16,7 @@ const verifyToken = createTokenVerifier(createRemoteJWKSet(new URL(config.jwksUr
 await createCollabServer({
   port: config.port,
   backend,
+  snapshots: createSnapshots({ backendUrl: config.backendUrl, internalToken: config.internalToken }),
   verifyToken,
   accessCheckInterval: config.accessCheckInterval,
   userCheckInterval: config.userCheckInterval,

@@ -78,7 +78,7 @@ describe("search text backfill", () => {
     for (let n = 1; n <= count; n++) backend.documents.set(boardId(n), state(`Доска ${n}`));
     backend.texts.set(boardId(1), "Есть");
 
-    const stored = await createSearchTextBackfill(backend.client, createMetrics(), () => undefined).run();
+    const stored = await createSearchTextBackfill(backend.client, createMetrics(), async () => null).run();
 
     expect(stored).toBe(count - 1);
     expect(backend.texts.get(boardId(1))).toBe("Есть");
@@ -86,12 +86,11 @@ describe("search text backfill", () => {
     expect(backend.pages).toBe(3);
   });
 
-  it("reads a board open in collab from memory", async () => {
+  it("takes the text of a board open in collab from collab, not from its stored state", async () => {
     backend.documents.set(boardId(1), state("Сохранённая"));
-    const open = new Y.Doc();
-    open.getMap("pages").set("page-1", { name: "Открытая", order: "a0" });
+    const open = async (id: string) => (id === boardId(1) ? "Открытая" : null);
 
-    await createSearchTextBackfill(backend.client, createMetrics(), (id) => (id === boardId(1) ? open : undefined)).run();
+    await createSearchTextBackfill(backend.client, createMetrics(), open).run();
 
     expect(backend.texts.get(boardId(1))).toBe("Открытая");
   });
@@ -102,7 +101,7 @@ describe("search text backfill", () => {
     backend.deleted.add(boardId(2));
     const metrics = createMetrics();
 
-    const stored = await createSearchTextBackfill(backend.client, metrics, () => undefined).run();
+    const stored = await createSearchTextBackfill(backend.client, metrics, async () => null).run();
 
     expect(stored).toBe(1);
     expect(backend.texts.get(boardId(3))).toBe("Доска 3");
@@ -118,7 +117,7 @@ describe("search text backfill", () => {
     backend.storedMeanwhile.add(boardId(1));
     const metrics = createMetrics();
 
-    const stored = await createSearchTextBackfill(backend.client, metrics, () => undefined).run();
+    const stored = await createSearchTextBackfill(backend.client, metrics, async () => null).run();
 
     expect(stored).toBe(0);
     expect(backend.texts.get(boardId(1))).toBe("Новее");
@@ -129,7 +128,7 @@ describe("search text backfill", () => {
 
   it("runs one pass at a time and stops before the next board", async () => {
     for (let n = 1; n <= 3; n++) backend.documents.set(boardId(n), state(`Доска ${n}`));
-    const backfill = createSearchTextBackfill(backend.client, createMetrics(), () => undefined);
+    const backfill = createSearchTextBackfill(backend.client, createMetrics(), async () => null);
 
     const first = backfill.run();
     expect(backfill.run()).toBe(first);

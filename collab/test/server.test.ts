@@ -1,11 +1,15 @@
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import type { Server } from "@hocuspocus/server";
 import { createRemoteJWKSet, generateKeyPair } from "jose";
+import { isDeepStrictEqual } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { createTokenVerifier } from "../src/auth.js";
 import { createBackendClient } from "../src/backend-client.js";
+import { configureLogging } from "../src/log.js";
+import { createMetrics } from "../src/metrics.js";
 import { createCollabServer, type CollabServerOptions } from "../src/server.js";
+import { createSnapshots } from "../src/snapshots.js";
 import { ALICE, FakeBackend } from "./fake-backend.js";
 
 const board = "0199a000-0000-7000-8000-000000000001";
@@ -34,6 +38,8 @@ describe("collab server", () => {
       quiet: true,
       stopOnSignals: false,
       backend: createBackendClient({ baseUrl: backend.url, internalToken: backend.token }),
+      // The worker of a test that passes its own snapshots is not started.
+      snapshots: options.snapshots ?? createSnapshots({ backendUrl: backend.url, internalToken: backend.token }),
       // Without a cooldown a token with an unknown key id refetches the keys at once.
       verifyToken: createTokenVerifier(createRemoteJWKSet(new URL(backend.jwksUrl), { cooldownDuration: 0 })),
       debounce: 50,
@@ -851,6 +857,7 @@ describe("collab server", () => {
       await expect(closed).resolves.toMatchObject({ reason: "document-too-large" });
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(title(other)).toBe("Small");
+      await waitFor(() => backend.storesFor(board) > 0);
       expect(storedTitle()).toBe("Small");
     });
 
@@ -869,13 +876,19 @@ describe("collab server", () => {
     });
 
     it("counts the document exactly again once it is stored", async () => {
-      await startServer({ documentSizeLimit: 2_000 });
+      const metrics = createMetrics();
+      await startServer({ documentSizeLimit: 2_000, metrics });
       const writer = await connect(board);
       const other = await connect(board);
+      // The size is exact once collab learns how the store ended, not when the backend gets it.
+      const stored = async () => {
+        const text = await metrics.registry.getSingleMetricAsString("codraw_collab_stores_total");
+        return /result="stored"\} (\d+)/.exec(text)?.[1];
+      };
       writer.document.getMap("meta").set("title", "a".repeat(1_500));
-      await waitFor(() => backend.storesFor(board) > 0);
+      await vi.waitFor(async () => expect(await stored()).toBe("1"));
       writer.document.getMap("meta").delete("title");
-      await waitFor(() => backend.storesFor(board) > 1);
+      await vi.waitFor(async () => expect(await stored()).toBe("2"));
 
       // Counted change by change, the document would have 1 500 bytes of the deleted title and these.
       writer.document.getMap("meta").set("title", "b".repeat(1_500));
@@ -1205,6 +1218,127 @@ describe("collab server", () => {
 
       await waitFor(() => told.length > 0);
       expect(told).toEqual(['{"type":"proposals-changed"}']);
+    });
+  });
+
+  describe("stores in the snapshot worker", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+    const warnings: string[] = [];
+    const errors: string[] = [];
+
+    beforeEach(() => {
+      configureLogging("text", (level, line) => {
+        if (level === "warn") warnings.push(line);
+        if (level === "error") errors.push(line);
+      });
+    });
+
+    afterEach(() => {
+      warnings.splice(0);
+      errors.splice(0);
+      configureLogging("text");
+    });
+
+    /** The stored state of the board, decoded. */
+    const stored = () => {
+      const document = new Y.Doc();
+      Y.applyUpdate(document, backend.documents.get(board)!);
+      return document;
+    };
+
+    /** Whether the backend has the state of the document: the same changes, and the same content. */
+    const storedIs = (document: Y.Doc) => {
+      if (!backend.documents.has(board)) return false;
+      const state = stored();
+      return (
+        Buffer.from(Y.encodeStateVector(state)).equals(Buffer.from(Y.encodeStateVector(document))) &&
+        ["meta", "cells:page-1"].every((map) =>
+          isDeepStrictEqual(state.getMap(map).toJSON(), document.getMap(map).toJSON()),
+        )
+      );
+    };
+
+    /** Many small changes, as an editor makes them: shapes added, moved and deleted. */
+    function edit(document: Y.Doc, from: number, count: number) {
+      const cells = document.getMap<Y.Map<unknown>>("cells:page-1");
+      for (let n = from; n < from + count; n++) {
+        const cell = new Y.Map<unknown>();
+        cell.set("kind", "vertex");
+        cell.set("value", `Shape ${n}`);
+        cells.set(`cell-${n}`, cell);
+        cells.get(`cell-${Math.floor(n / 2)}`)?.set("x", n);
+        if (n % 5 === 0) cells.delete(`cell-${n - 3}`);
+      }
+    }
+
+    it("stores the document as its participants have it, with changes made while a store was on its way", async () => {
+      backend.documents.set(board, Y.encodeStateAsUpdate(new Y.Doc()));
+      await startServer();
+      const writer = await connect(board);
+      const other = await connect(board);
+      backend.storeDelay = 300;
+
+      edit(writer.document, 0, 100);
+      await waitFor(() => backend.storesFor(board) === 1);
+      edit(writer.document, 100, 100);
+      edit(other.document, 200, 100);
+
+      await waitFor(() => backend.storesFor(board) === 2, 5_000);
+      await waitFor(() => storedIs(writer.document) && storedIs(other.document), 5_000);
+      expect(warnings).toEqual([]);
+    });
+
+    it("stores a document opened again under the same name from its new mirror", async () => {
+      await startServer();
+      const first = await connect(board);
+      edit(first.document, 0, 10);
+      await waitFor(() => storedIs(first.document));
+      first.provider.destroy();
+      await waitFor(() => server!.hocuspocus.getDocumentsCount() === 0);
+
+      const second = await connect(board);
+      edit(second.document, 10, 10);
+
+      await waitFor(() => storedIs(second.document));
+      expect(stored().getMap("cells:page-1").has("cell-1")).toBe(true);
+      expect(warnings).toEqual([]);
+    });
+
+    it("stores the whole document after the worker failed, encoded once on the main thread", async () => {
+      const snapshots = createSnapshots({ backendUrl: backend.url, internalToken: backend.token });
+      await startServer({ snapshots });
+      const writer = await connect(board);
+      edit(writer.document, 0, 10);
+      await waitFor(() => storedIs(writer.document));
+
+      await snapshots.terminateWorker();
+      edit(writer.document, 10, 10);
+
+      await waitFor(() => backend.storesFor(board) === 2 && storedIs(writer.document));
+      expect(errors.some((line) => line.includes("The snapshot worker stopped"))).toBe(true);
+      expect(warnings).toHaveLength(1);
+      edit(writer.document, 20, 10);
+      await waitFor(() => backend.storesFor(board) === 3 && storedIs(writer.document));
+      expect(warnings).toHaveLength(1);
+    });
+
+    it("keeps the changes and their users of a store that the failing worker did not finish", async () => {
+      const snapshots = createSnapshots({ backendUrl: backend.url, internalToken: backend.token });
+      await startServer({ snapshots });
+      const alice = await connect(board);
+      const bob = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      // The backend never answers the store: the worker fails while it waits.
+      backend.storeDelay = 60_000;
+      bob.document.getMap("meta").set("title", "Bob");
+      await waitFor(() => backend.storesFor(board) === 1);
+
+      await snapshots.terminateWorker();
+      backend.storeDelay = 0;
+      alice.document.getMap("meta").set("description", "Alice");
+
+      await waitFor(() => backend.storesFor(board) === 2 && storedIs(alice.document));
+      expect(backend.editorsOfStores(board)[1]).toEqual([BOB, ALICE]);
+      expect(errors.some((line) => line.includes(`Failed to store board ${board}`))).toBe(true);
     });
   });
 });

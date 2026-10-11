@@ -20,20 +20,23 @@ export interface SearchTextBackfill {
 /**
  * Fills in the texts for search of boards whose documents were stored before collab extracted texts, or whose first
  * text did not reach the backend: nobody may open such a board, so no store would send its text. A board open in
- * collab is read from memory, any other one from its stored state. Texts go with `onlyIfMissing`, so that the text of a
- * state read before a newer store does not replace the text of that store.
+ * collab is read from memory, by the snapshot worker from its mirror, so that the main thread does not go through a
+ * large board; any other one from its stored state. Texts go with `onlyIfMissing`, so that the text of a state read
+ * before a newer store does not replace the text of that store.
+ *
+ * `openText` gives the text of a board open in collab, or `null` when it is not open.
  */
 export function createSearchTextBackfill(
   backend: BackendClient,
   metrics: Metrics,
-  openDocument: (boardId: string) => Y.Doc | undefined,
+  openText: (boardId: string) => Promise<string | null>,
 ): SearchTextBackfill {
   let running: Promise<number> | null = null;
   let stopped = false;
 
   const textOf = async (boardId: string): Promise<string | null> => {
-    const open = openDocument(boardId);
-    if (open) return searchTextOf(open);
+    const open = await openText(boardId);
+    if (open !== null) return open;
     const state = await backend.loadDocument(boardId);
     if (!state) return null;
     const document = new Y.Doc();
