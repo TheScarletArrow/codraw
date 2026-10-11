@@ -12,6 +12,8 @@ COPY e2e/package.json e2e/
 COPY load/package.json load/
 RUN pnpm install --frozen-lockfile --filter @codraw/frontend
 COPY frontend frontend
+# The id of the build in `version.json` (`--build-arg`); without it the build names itself by its moment.
+ARG CODRAW_BUILD_ID
 RUN pnpm --filter @codraw/frontend build
 
 FROM nginxinc/nginx-unprivileged:1.31-alpine
