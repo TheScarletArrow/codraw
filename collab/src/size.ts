@@ -20,9 +20,20 @@ export class DocumentTooLargeError extends Error {
 /** A change that only deletes is never larger than this; larger changes are not decoded to find out. */
 const DELETION_SIZE = 64 * 1024;
 
-/** Whether the Yjs update only deletes, so that it frees space rather than takes it. */
-export function onlyDeletes(update: Uint8Array): boolean {
-  return update.length <= DELETION_SIZE && Y.decodeUpdate(update).structs.length === 0;
+/**
+ * Whether the Yjs update only deletes what the [document] already has, so that it frees space rather than takes it. A
+ * deletion of what the document does not have waits in it for the change it deletes from, and the document keeps it
+ * with its state, so such an update takes space as any other.
+ */
+export function onlyDeletes(update: Uint8Array, document: Y.Doc): boolean {
+  if (update.length > DELETION_SIZE) return false;
+  const { structs, ds } = Y.decodeUpdate(update);
+  if (structs.length !== 0) return false;
+  for (const [client, deletions] of ds.clients) {
+    const known = Y.getState(document.store, client);
+    if (deletions.some(({ clock, len }) => clock + len > known)) return false;
+  }
+  return true;
 }
 
 /**
@@ -66,10 +77,10 @@ export function createDocumentSizes(limit: number) {
      * Counts a change of the document, or throws {@link DocumentTooLargeError} when it adds to a document that would
      * become larger than the limit with it.
      */
-    accept(documentName: string, update: Uint8Array) {
+    accept(documentName: string, document: Y.Doc, update: Uint8Array) {
       const entry = sizes.get(documentName) ?? { size: 0, accepted: 0 };
       const size = entry.size + update.length;
-      if (size > limit && !onlyDeletes(update)) throw new DocumentTooLargeError(documentName, limit);
+      if (size > limit && !onlyDeletes(update, document)) throw new DocumentTooLargeError(documentName, limit);
       entry.size = size;
       entry.accepted += update.length;
       sizes.set(documentName, entry);

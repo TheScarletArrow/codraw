@@ -22,6 +22,14 @@ data class SchemaImportProperties(
     val connectTimeout: Duration = Duration.ofSeconds(5),
     /** How long the backend waits for an answer of the database, signing in included. */
     val readTimeout: Duration = Duration.ofSeconds(20),
+    /**
+     * How long a whole import may take, signing in and all queries; then its connection closes, whatever the server
+     * still sends.
+     */
+    val importTimeout: Duration = Duration.ofSeconds(60),
+    /** The most imports that run at once in this instance of the backend; more wait for a free one as for the limit. */
+    @field:Positive
+    val maxConcurrentImports: Int = 2,
     /** How long a query of the catalog may run in the database (`statement_timeout`). */
     val statementTimeout: Duration = Duration.ofSeconds(15),
     /** The most tables of a schema that an import reads. */

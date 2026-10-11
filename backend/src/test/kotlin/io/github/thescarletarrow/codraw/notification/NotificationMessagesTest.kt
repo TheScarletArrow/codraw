@@ -118,6 +118,18 @@ class NotificationMessagesTest {
     }
 
     @Test
+    fun `a message of a chat breaks links and pictures of Markdown`() {
+        val zws = '\u200B'
+        assertEquals("[Войти]$zws(https://evil.example)", NotificationMessages.chatText("[Войти](https://evil.example)"))
+        assertEquals("![x]$zws(https://evil.example/t.png)", NotificationMessages.chatText("![x](https://evil.example/t.png)"))
+        assertEquals("[a]$zws[r]$zws\n[r]$zws: https://evil.example", NotificationMessages.chatText("[a][r]\n[r]: https://evil.example"))
+        assertEquals(
+            "Аня: упоминание в «[Схема]$zws(https://evil.example)»\nhttps://codraw.example.com/boards/$board",
+            messages.chat(NotificationMessage("Аня: упоминание в «[Схема](https://evil.example)»", null, "https://codraw.example.com/boards/$board")),
+        )
+    }
+
+    @Test
     fun `every kind of notification belongs to exactly one event`() {
         for (kind in NotificationKind.entries) {
             assertEquals(1, NotificationEvent.entries.count { kind in it.kinds }, kind.name)

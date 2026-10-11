@@ -1,4 +1,4 @@
-import { Server } from "@hocuspocus/server";
+import { Server, type Connection, type Document } from "@hocuspocus/server";
 import * as Y from "yjs";
 import {
   accessOnConnect,
@@ -68,6 +68,19 @@ export interface CollabServerOptions {
   userCheckInterval?: number;
 }
 
+/** The largest awareness state of one client, in characters of its JSON. */
+const AWARENESS_STATE_LIMIT = 32 * 1024;
+
+/** As PARTICIPANT_COLORS and participantColor() in frontend/src/board/identity.ts. */
+const PARTICIPANT_COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#4d7c0f"];
+
+/** How the user appears to the others, as participantIdentity() of the frontend makes it. */
+function participantOf(user: { id: string; name: string; avatar?: string }) {
+  let hash = 0;
+  for (const char of user.id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return { name: user.name, color: PARTICIPANT_COLORS[Math.abs(hash) % PARTICIPANT_COLORS.length], avatarUrl: user.avatar ?? null };
+}
+
 /** Room for the framing of a message around the largest change. */
 const MESSAGE_OVERHEAD = 64 * 1024;
 
@@ -96,6 +109,18 @@ export function createCollabServer({
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
   let accessChecks: NodeJS.Timeout | undefined;
+  /** The awareness client id each connection speaks for. */
+  const awarenessClients = new WeakMap<object, number>();
+  /** Whether a connection of another user speaks for the client; the same user takes it over, e.g. after a reconnect. */
+  const claimedByOther = (document: Document, connection: Connection, clientId: number) => {
+    const userId = (connection.context as ConnectionContext).user.id;
+    return [...document.connections].some(
+      ([other, { clients }]) =>
+        other !== connection &&
+        (other.context as ConnectionContext).user.id !== userId &&
+        (clients.has(clientId) || awarenessClients.get(other) === clientId),
+    );
+  };
   let userChecks: NodeJS.Timeout | undefined;
   let backfills: NodeJS.Timeout | undefined;
   const backfill = createSearchTextBackfill(backend, metrics, snapshots);
@@ -208,10 +233,10 @@ export function createCollabServer({
     },
     // A change that would make the document larger than the limit is not applied: Hocuspocus closes the connection of
     // its participant to the document with the reason of the error. Read-only connections change nothing.
-    async beforeSync({ type, payload, documentName, connection }) {
+    async beforeSync({ type, payload, documentName, document, connection }) {
       if ((type !== SYNC_STEP_2 && type !== SYNC_UPDATE) || connection.readOnly) return;
       try {
-        sizes.accept(documentName, payload);
+        sizes.accept(documentName, document, payload);
       } catch (error) {
         if (error instanceof DocumentTooLargeError) metrics.rejected("document-too-large");
         throw error;
@@ -229,6 +254,27 @@ export function createCollabServer({
       editors.forget(documentName);
       snapshots.close(documentName);
     },
+    // A connection speaks for the one client id it announced first, which no other connection has; its user is the one
+    // of its token, and a state stays small. Anything else in an update is dropped: the update of Hocuspocus also holds
+    // an empty state of a client of its own, which the others ignore anyway.
+    async beforeHandleAwareness({ states, connection, document }) {
+      if (!connection) return;
+      const context = connection.context as ConnectionContext;
+      for (const [clientId, state] of states) {
+        let mine = awarenessClients.get(connection);
+        if (mine === undefined && Object.keys(state).length > 0 && !claimedByOther(document, connection, clientId)) {
+          awarenessClients.set(connection, (mine = clientId));
+        }
+        if (clientId !== mine) {
+          states.delete(clientId);
+          continue;
+        }
+        // A selection too large for the others goes first, so that the cursor and the rest stay.
+        if ("selection" in state && JSON.stringify(state).length > AWARENESS_STATE_LIMIT) state.selection = [];
+        if (JSON.stringify(state).length > AWARENESS_STATE_LIMIT) states.delete(clientId);
+        else if ("user" in state) state.user = participantOf(context.user);
+      }
+    },
     // A participant changed the board, its comments, its decisions, its linked issues or its proposals; the others fetch
     // them again. Only these messages pass, written by collab itself. A change of the board may be of the access to it,
     // and a change of a proposal in its draft closes it or not, so the connections are checked too. Viewers comment,
@@ -237,11 +283,13 @@ export function createCollabServer({
     async onStateless({ payload, document, connection }) {
       const change = changeOf(payload);
       if (change === "board-changed") {
+        // Only those who may edit change the board or the access to it; a viewer would make everybody fetch it.
+        if (connection.readOnly) return;
         document.broadcastStateless(BOARD_CHANGED, (other) => other !== connection);
         void checkAccess(document);
       } else if (change === "comments-changed") {
         document.broadcastStateless(COMMENTS_CHANGED, (other) => other !== connection);
-      } else if (change === "decisions-changed") {
+      } else if (change === "decisions-changed" && !connection.readOnly) {
         document.broadcastStateless(DECISIONS_CHANGED, (other) => other !== connection);
       } else if (change === "issues-changed") {
         document.broadcastStateless(ISSUES_CHANGED, (other) => other !== connection);

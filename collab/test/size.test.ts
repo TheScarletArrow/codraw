@@ -15,7 +15,7 @@ describe("document sizes", () => {
     sizes.set("board", 1_000);
     const update = change(500);
 
-    sizes.accept("board", update);
+    sizes.accept("board", new Y.Doc(), update);
 
     expect(sizes.get("board")).toBe(1_000 + update.length);
   });
@@ -25,10 +25,10 @@ describe("document sizes", () => {
     sizes.set("board", 1_000);
     const before = change(500);
     const after = change(700);
-    sizes.accept("board", before);
+    sizes.accept("board", new Y.Doc(), before);
 
     const mark = sizes.storing("board");
-    sizes.accept("board", after);
+    sizes.accept("board", new Y.Doc(), after);
     // Merged and with deletions, the stored state is smaller than the counted changes.
     sizes.stored("board", 1_200, mark);
 
@@ -40,10 +40,10 @@ describe("document sizes", () => {
     sizes.set("board", 0);
     const first = sizes.storing("board");
     const between = change(300);
-    sizes.accept("board", between);
+    sizes.accept("board", new Y.Doc(), between);
     const second = sizes.storing("board");
     const last = change(400);
-    sizes.accept("board", last);
+    sizes.accept("board", new Y.Doc(), last);
 
     sizes.stored("board", 2_000, second);
     sizes.stored("board", 1_500, first);
@@ -56,10 +56,10 @@ describe("document sizes", () => {
     const sizes = createDocumentSizes(2_000);
     sizes.set("board", 0);
     const mark = sizes.storing("board");
-    sizes.accept("board", change(900));
+    sizes.accept("board", new Y.Doc(), change(900));
     sizes.stored("board", 500, mark);
 
-    expect(() => sizes.accept("board", change(700))).toThrow(DocumentTooLargeError);
+    expect(() => sizes.accept("board", new Y.Doc(), change(700))).toThrow(DocumentTooLargeError);
   });
 
   it("ignores a store of a document that was unloaded meanwhile", () => {

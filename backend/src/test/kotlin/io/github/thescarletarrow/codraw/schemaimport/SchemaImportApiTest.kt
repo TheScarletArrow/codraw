@@ -453,7 +453,7 @@ class SchemaImportApiTest(
 
     @Test
     fun `names a wrong field without its value, and takes no body that is not a connection`() {
-        for ((field, value) in listOf("host" to "db.internal/x", "host" to "user@db", "host" to "", "port" to 70000, "database" to " ", "user" to null)) {
+        for ((field, value) in listOf("host" to "db.internal/x", "host" to "user@db", "host" to "", "port" to 70000, "database" to " ", "user" to null, "user" to "reader\r\nQUIT", "database" to "shop\n", "schema" to "a\u0007")) {
             val body = import(newUser(), connection(field to value)).andExpect {
                 status { isBadRequest() }
                 jsonPath("$.detail") { value("Invalid field of the connection: $field") }

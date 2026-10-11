@@ -20,6 +20,10 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Query("SELECT count(*) FROM boards WHERE workspace_id = :workspaceId AND deleted_at IS NULL")
     fun countInWorkspace(workspaceId: UUID): Int
 
+    /** The boards of the user [ownerId] in the trash, of workspaces too, beyond the [keep] deleted last. */
+    @Query("SELECT id FROM boards WHERE owner_id = :ownerId AND deleted_at IS NOT NULL ORDER BY deleted_at DESC, id OFFSET :keep")
+    fun trashBeyond(ownerId: UUID, keep: Int): List<UUID>
+
     @Query("SELECT EXISTS (SELECT 1 FROM boards WHERE id = :id AND deleted_at IS NULL)")
     fun existsActive(id: UUID): Boolean
 
@@ -52,6 +56,10 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Modifying
     @Query("DELETE FROM boards WHERE id = :id AND owner_id = :ownerId AND deleted_at IS NOT NULL")
     fun purgeTrash(id: UUID, ownerId: UUID): Boolean
+
+    @Modifying
+    @Query("DELETE FROM boards WHERE id = :id AND deleted_at IS NOT NULL")
+    fun purgeTrashed(id: UUID): Boolean
 
     @Modifying
     @Query("UPDATE boards SET owner_id = :newOwnerId WHERE owner_id = :ownerId")

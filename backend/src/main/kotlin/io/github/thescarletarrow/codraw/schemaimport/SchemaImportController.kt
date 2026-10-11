@@ -81,6 +81,12 @@ class SchemaImportController(
     }
 
     @ExceptionHandler
+    fun busy(exception: SchemaImportBusyException): ResponseEntity<ProblemDetail> {
+        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, exception.message)
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header(HttpHeaders.RETRY_AFTER, BUSY_RETRY_SECONDS).body(problem)
+    }
+
+    @ExceptionHandler
     fun invalid(exception: InvalidSchemaImportRequestException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.message)
 
@@ -94,6 +100,9 @@ class SchemaImportController(
 
     companion object {
         const val PATH = "/api/schema-import"
+
+        /** An import takes seconds: one of those running has likely ended by then. */
+        private const val BUSY_RETRY_SECONDS = "10"
 
         private val DETAILS = mapOf(
             SchemaImportResult.HOST_NOT_ALLOWED to "The administrator did not allow this host",

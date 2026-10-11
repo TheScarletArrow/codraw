@@ -1,0 +1,64 @@
+# Updates of dependencies (docs/security.md): once a week, minor and patch updates of an ecosystem in one pull request,
+# major updates one by one. Security updates come at once and outside the groups when Dependabot alerts are on.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      gradle:
+        update-types: [minor, patch]
+
+  # The pnpm workspace: frontend, collab, e2e and load share one lockfile.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      npm:
+        update-types: [minor, patch]
+    ignore:
+      # The server of Hocuspocus carries a patch for its exact version (pnpm-workspace.yaml, docs/load-testing.md), and
+      # the provider goes with the server: both are updated by hand together with the patch.
+      - dependency-name: "@hocuspocus/*"
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /collab
+      - /frontend
+      - /deploy/backup
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker:
+        update-types: [minor, patch]
+    ignore:
+      # A new major version of Node.js, the JDK or PostgreSQL is a decision of its own, not a weekly update.
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker-compose:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        update-types: [minor, patch]
