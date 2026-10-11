@@ -144,8 +144,9 @@ export function createSnapshots({
       if (pending.size === 0) started.unref();
       request?.resolve(reply);
     });
+    // The types of Node 26 give the error of a worker as `unknown`: a thread can throw any value.
     started.on("error", (error) => {
-      failure = error;
+      failure = error instanceof Error ? error : new Error(String(error));
     });
     started.on("exit", (code) => {
       if (worker !== started) return;
