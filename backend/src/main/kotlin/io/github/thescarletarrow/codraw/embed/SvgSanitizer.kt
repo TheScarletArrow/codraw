@@ -52,11 +52,23 @@ object SvgSanitizer {
 
     private val EMBEDDED_IMAGE = Regex("^data:image/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\\s]*$")
 
-    /** A reference in a style to anything but an element of the image, or a way to run code. */
-    private val UNSAFE_STYLE = Regex("url\\(\\s*['\"]?\\s*(?!#)|expression\\s*\\(|@import|javascript:|behavior\\s*:", RegexOption.IGNORE_CASE)
+    /** The spaces of CSS; other Unicode spaces are no spaces there. */
+    private const val SPACE = "[ \\t\\n\\r\\f]"
 
-    /** Attributes whose value may be a reference to an element: `url(#id)` is all they may hold. */
-    private val UNSAFE_REFERENCE = Regex("url\\(\\s*['\"]?\\s*(?!#)", RegexOption.IGNORE_CASE)
+    /** `url(` of anything but an element of the image: the quantifiers give nothing back, so `url('#a')` is fine. */
+    private const val OUTSIDE_URL = "url\\($SPACE*+['\"]?+$SPACE*+(?!#)"
+
+    /**
+     * A reference in a style to anything but an element of the image, a way to run code, or an escape of CSS, which
+     * could hide either (as in `library/SvgIcons.kt`).
+     */
+    private val UNSAFE_STYLE = Regex(
+        "$OUTSIDE_URL|expression$SPACE*\\(|@import|javascript:|behavior$SPACE*:|image-set$SPACE*\\(|\\bsrc$SPACE*\\(|\\\\",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Attributes whose value may be a reference to an element: `url(#id)` is all they may hold, and no escape of CSS. */
+    private val UNSAFE_REFERENCE = Regex("$OUTSIDE_URL|image-set$SPACE*\\(|\\\\", RegexOption.IGNORE_CASE)
 
     fun sanitize(svg: String): String {
         val document = try {

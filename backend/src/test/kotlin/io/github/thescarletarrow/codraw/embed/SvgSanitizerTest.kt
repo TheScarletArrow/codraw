@@ -99,6 +99,32 @@ class SvgSanitizerTest {
         assertContains(clean, "<circle")
     }
 
+    @ParameterizedTest
+    @ValueSource(
+        strings = [
+            """background: u\72l(https://evil.example/a.png)""",
+            """background: \75rl(https://evil.example/b.png)""",
+            """background-image: image-set("https://evil.example/c.png" 1x)""",
+            """background-image: src("https://evil.example/d.png")""",
+        ],
+    )
+    fun `drops styles that reach outside through an escape of CSS or without url()`(style: String) {
+        val clean = SvgSanitizer.sanitize(
+            svg("""<foreignObject><div xmlns="http://www.w3.org/1999/xhtml" style='$style'>label</div></foreignObject>"""),
+        )
+
+        assertFalse("evil.example" in clean, clean)
+        assertContains(clean, "label")
+    }
+
+    @Test
+    fun `keeps a quoted reference to an element of the image`() {
+        val clean = SvgSanitizer.sanitize(svg("""<rect width="1" height="1" style="fill: url('#gradient')" fill="url(&quot;#g&quot;)"/>"""))
+
+        assertContains(clean, "url('#gradient')")
+        assertContains(clean, "#g")
+    }
+
     @Test
     fun `keeps raster images embedded into the image`() {
         val clean = SvgSanitizer.sanitize(svg("""<image href="data:image/png;base64,iVBORw0KGgo=" width="1" height="1"/>"""))

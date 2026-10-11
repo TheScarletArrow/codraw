@@ -125,12 +125,14 @@ class NotificationMessages(private val properties: NotificationProperties) {
 
         /**
          * Text of users in a message of a chat: `&`, `<` and `>` are the control characters of Slack (`<!channel>`,
-         * `<url|text>`), and `@` mentions people and whole channels in Slack and Mattermost.
+         * `<url|text>`), `@` mentions people and whole channels in Slack and Mattermost, and `]` closes the text of a link
+         * or a picture of Markdown in Mattermost and Rocket.Chat (`[text](url)`, `![](url)`, `[text][ref]`, `[ref]: url`).
          */
         fun chatText(text: String): String = text
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace("@", "@$ZERO_WIDTH_SPACE")
+            .replace("]", "]$ZERO_WIDTH_SPACE")
     }
 }
