@@ -12,7 +12,9 @@ const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine ===
  */
 export function StaleClient() {
   const [offline, setOffline] = useState(isOffline)
-  const [reloading, setReloading] = useState(false)
+  // Until the effect knows whether it may reload, the page says that it is reloading: the screen with the button would
+  // flash before every automatic reload.
+  const [reloading, setReloading] = useState(() => !isOffline())
   // Effects run twice in development: the second run would find the mark of the first reload and give up.
   const attempted = useRef(false)
 
@@ -20,6 +22,7 @@ export function StaleClient() {
     if (offline) {
       const onOnline = () => {
         setOffline(false)
+        setReloading(true)
       }
       window.addEventListener('online', onOnline)
       return () => window.removeEventListener('online', onOnline)
