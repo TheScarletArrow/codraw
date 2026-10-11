@@ -11,6 +11,55 @@ import { ALICE, FakeBackend } from "./fake-backend.js";
 const board = "0199a000-0000-7000-8000-000000000001";
 const otherBoard = "0199a000-0000-7000-8000-000000000002";
 
+
+/** A writer of the encoding of lib0, as Yjs and Hocuspocus read it. */
+function encode(write: (writer: { varUint(value: number): void; bytes(value: Uint8Array): void }) => void): Uint8Array {
+  const out: number[] = [];
+  const varUint = (value: number) => {
+    for (; value > 0x7f; value = Math.floor(value / 128)) out.push(0x80 | (value & 0x7f));
+    out.push(value);
+  };
+  write({
+    varUint,
+    bytes(value) {
+      varUint(value.length);
+      out.push(...value);
+    },
+  });
+  return new Uint8Array(out);
+}
+
+/** A message of Hocuspocus with a Yjs update of the document, as a client that does not use the provider sends it. */
+const syncUpdateFrame = (documentName: string, update: Uint8Array) =>
+  encode((write) => {
+    write.bytes(new TextEncoder().encode(documentName));
+    write.varUint(0); // sync
+    write.varUint(2); // update
+    write.bytes(update);
+  });
+
+/** A message of Hocuspocus with an update of awareness, as a client that does not use the provider sends it. */
+const awarenessFrame = (documentName: string, states: [client: number, clock: number, state: unknown][]) =>
+  encode((write) => {
+    write.bytes(new TextEncoder().encode(documentName));
+    write.varUint(1); // awareness
+    write.bytes(
+      encode((update) => {
+        update.varUint(states.length);
+        for (const [client, clock, state] of states) {
+          update.varUint(client);
+          update.varUint(clock);
+          update.bytes(new TextEncoder().encode(JSON.stringify(state)));
+        }
+      }),
+    );
+  });
+
+/** Sends a message past the provider, over its socket. */
+function rawSend({ provider }: { provider: HocuspocusProvider }, frame: Uint8Array) {
+  (provider.configuration.websocketProvider as unknown as { webSocket: { send(data: Uint8Array): void } }).webSocket.send(frame);
+}
+
 describe("collab server", () => {
   let backend: FakeBackend;
   let server: Server | undefined;
@@ -326,6 +375,64 @@ describe("collab server", () => {
       expect(stored.getMap("meta").toJSON()).toEqual({ description: "Editor" });
     });
 
+    it("drops an awareness state larger than the limit", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      viewer.provider.setAwarenessField("cursor", { x: 1, y: 1 });
+      const client = viewer.document.clientID;
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 1);
+
+      rawSend(viewer, awarenessFrame(board, [[client, 1_000, { cursor: { x: 2, y: 2 }, junk: "x".repeat(64 * 1024) }]]));
+      viewer.provider.setAwarenessField("cursor", { x: 3, y: 3 });
+
+      await waitFor(() => editor.provider.awareness!.getStates().get(client)?.cursor?.x === 3);
+      expect(editor.provider.awareness!.getStates().get(client)?.junk).toBeUndefined();
+    });
+
+    it("does not let a connection speak for another client or as another user", async () => {
+      await startServer();
+      const editor = await connect(board);
+      const third = await connect(board);
+      editor.provider.setAwarenessField("user", { name: "Alice", color: "#2563eb" });
+      const victim = editor.document.clientID;
+      await waitFor(() => third.provider.awareness!.getStates().get(victim)?.user?.name === "Alice");
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB, name: "Bob" }));
+
+      viewer.provider.setAwarenessField("user", { name: "Alice", color: "#000000", avatarUrl: "https://evil.example/x.png" });
+      await waitFor(() => third.provider.awareness!.getStates().get(viewer.document.clientID)?.user !== undefined);
+      rawSend(viewer, awarenessFrame(board, [[victim, 10_000, { user: { name: "Mallory", color: "#000000" } }]]));
+      rawSend(viewer, awarenessFrame(board, [[777_001, 1, { user: { name: "Ghost", color: "#000000" } }]]));
+      viewer.provider.setAwarenessField("cursor", { x: 1, y: 1 });
+
+      await waitFor(() => third.provider.awareness!.getStates().get(viewer.document.clientID)?.cursor !== undefined);
+      expect(third.provider.awareness!.getStates().get(victim)?.user?.name).toBe("Alice");
+      expect(third.provider.awareness!.getStates().has(777_001)).toBe(false);
+      expect(third.provider.awareness!.getStates().get(viewer.document.clientID)?.user).toEqual({
+        name: "Bob",
+        color: expect.stringMatching(/^#[0-9a-f]{6}$/),
+        avatarUrl: "https://avatars.example.com/alice.png",
+      });
+    });
+
+    it("does not relay that a viewer changed the board or its decisions", async () => {
+      await startServer();
+      const owner = await connect(board);
+      const viewer = await connect(board, () => backend.issueToken(board, { subject: BOB }));
+      const received: string[] = [];
+      owner.provider.on("stateless", ({ payload }: { payload: string }) => received.push(payload));
+      const before = backend.accessRequestsFor(board);
+
+      viewer.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+      viewer.provider.sendStateless(JSON.stringify({ type: "decisions-changed" }));
+      viewer.provider.sendStateless(JSON.stringify({ type: "comments-changed" }));
+
+      await waitFor(() => received.length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(received).toEqual([JSON.stringify({ type: "comments-changed" })]);
+      expect(backend.accessRequestsFor(board)).toBe(before);
+    });
+
     it("shows the cursor of a participant who may only view to the others", async () => {
       await startServer();
       const editor = await connect(board);
@@ -386,7 +493,7 @@ describe("collab server", () => {
       bob.provider.on("close", closed);
       const before = backend.accessRequestsFor(board);
 
-      bob.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
+      owner.provider.sendStateless(JSON.stringify({ type: "board-changed" }));
 
       await waitFor(() => backend.accessRequestsFor(board) > before);
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -866,6 +973,32 @@ describe("collab server", () => {
 
       await waitFor(() => title(other) === undefined);
       await waitFor(() => storedTitle() === undefined);
+    });
+
+    it("counts deletions of what the document does not have as any other change", async () => {
+      await startServer({ documentSizeLimit: 2_000 });
+      const writer = await connect(board);
+      const other = await connect(board);
+      writer.document.getMap("meta").set("title", "x".repeat(1_500));
+      await waitFor(() => title(other) === "x".repeat(1_500));
+      const closed = closeReasonOf(writer);
+
+      // Updates without structs whose deletions name clients that the document does not know: one range each.
+      for (let round = 0; round < 10; round++) {
+        const update = encode((write) => {
+          write.varUint(0);
+          write.varUint(100);
+          for (let client = 1_000_000 + round * 100; client < 1_000_100 + round * 100; client++) {
+            [client, 1, 0, 1].forEach(write.varUint);
+          }
+        });
+        rawSend(writer, syncUpdateFrame(board, update));
+      }
+
+      await expect(closed).resolves.toMatchObject({ reason: "document-too-large" });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(backend.documents.get(board)?.length ?? 0).toBeLessThanOrEqual(2_000);
+      expect(title(other)).toBe("x".repeat(1_500));
     });
 
     it("counts the document exactly again once it is stored", async () => {
