@@ -458,6 +458,7 @@ Prometheus показывает сработавшие правила на ст�
 | Переменная | По умолчанию | Что |
 |---|---|---|
 | `CODRAW_ALERT_TELEGRAM_BOT_TOKEN`, `CODRAW_ALERT_TELEGRAM_CHAT_ID` | пусто | бот Telegram и чат, куда он пишет; задаются вместе |
+| `CODRAW_ALERT_TELEGRAM_API_URL` | `https://api.telegram.org` | свой сервер Bot API или прокси, если Telegram с сервера недоступен |
 | `CODRAW_ALERT_EMAIL_TO` | пусто | адреса почты через запятую; письма уходят через SMTP уведомлений CoDraw (`CODRAW_SMTP_*`, `CODRAW_MAIL_FROM`) |
 | `CODRAW_ALERT_SMTP_REQUIRE_TLS` | `true` | `false` — письма оповещений без TLS, только для внутреннего релея |
 | `CODRAW_ALERT_CHAT_WEBHOOK_URL` | пусто | входящий вебхук Slack, Mattermost или Rocket.Chat |
@@ -484,6 +485,9 @@ CODRAW_ALERT_TELEGRAM_BOT_TOKEN=123456789:AAH…
 CODRAW_ALERT_TELEGRAM_CHAT_ID=-1001234567890
 ```
 
+Если `api.telegram.org` с сервера недоступен, задайте адрес своего сервера Bot API или обратного прокси к нему в
+`CODRAW_ALERT_TELEGRAM_API_URL`: Alertmanager обращается к `<адрес>/bot<токен>/sendMessage`.
+
 Токен даёт полный доступ к боту: не вставляйте его и адрес `getUpdates` с ним в общие чаты, задачи и сервисы
 форматирования JSON. Если токен утёк, выпустите новый у @BotFather (`/revoke`).
 
@@ -494,7 +498,8 @@ CODRAW_ALERT_TELEGRAM_CHAT_ID=-1001234567890
 CODRAW_ALERT_EMAIL_TO=oncall@example.com,admin@example.com
 ```
 
-Нужны `CODRAW_SMTP_HOST` и `CODRAW_MAIL_FROM`; порт — `CODRAW_SMTP_PORT`, по умолчанию 587. В отличие от писем
+Нужны `CODRAW_SMTP_HOST` и `CODRAW_MAIL_FROM`; порт — `CODRAW_SMTP_PORT`, по умолчанию 587; `CODRAW_SMTP_USERNAME` и
+`CODRAW_SMTP_PASSWORD` задаются вместе или не задаются оба. В отличие от писем
 `backend`, оповещения уходят только с TLS: на 587 — STARTTLS, на 465 — TLS сразу; сервер без TLS письмо не примет, иначе
 пароль ушёл бы открытым текстом. `CODRAW_ALERT_SMTP_REQUIRE_TLS=false` задавайте только для внутреннего релея без TLS в
 доверенной сети.
@@ -571,7 +576,10 @@ CODRAW_ALERTMANAGER_CONFIG=/etc/codraw/alertmanager.yml
 --env-file .env.prod --profile monitoring up -d --wait`. Файл берётся как есть: переменные `CODRAW_ALERT_*`, маршрут,
 глушение и сторож по умолчанию тогда не действуют, а улучшения их в новых версиях CoDraw переносите сами. Основой может
 служить собранная конфигурация: её показывает страница Status веб-интерфейса Alertmanager. Секреты в своём файле тоже
-держите в файлах (`bot_token_file`, `auth_password_file`, `api_url_file`, `url_file`).
+держите в файлах (`bot_token_file`, `auth_password_file`, `api_url_file`, `url_file`). Alertmanager работает от
+пользователя `nobody` (uid 65534): файл конфигурации и файлы секретов должны быть ему доступны для чтения, иначе сервис
+остановится со строкой `cannot read`. Фильтр журнала со своим файлом не работает: если Telegram недоступен по сети,
+его токен попадёт в журнал Alertmanager.
 
 **Проверка отправки.** После настройки отправьте тестовое оповещение:
 

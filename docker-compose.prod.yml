@@ -248,6 +248,7 @@ services:
     environment:
       CODRAW_ALERT_TELEGRAM_BOT_TOKEN: ${CODRAW_ALERT_TELEGRAM_BOT_TOKEN:-}
       CODRAW_ALERT_TELEGRAM_CHAT_ID: ${CODRAW_ALERT_TELEGRAM_CHAT_ID:-}
+      CODRAW_ALERT_TELEGRAM_API_URL: ${CODRAW_ALERT_TELEGRAM_API_URL:-}
       # Letters go through the SMTP server and from the sender of the notifications of CoDraw.
       CODRAW_ALERT_EMAIL_TO: ${CODRAW_ALERT_EMAIL_TO:-}
       CODRAW_SMTP_HOST: ${CODRAW_SMTP_HOST:-}

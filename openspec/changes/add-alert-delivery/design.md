@@ -65,7 +65,8 @@ Prometheus профиля `monitoring` (`prom/prometheus:v3.15.0`, [ADR-0002](..
 
 - Один получатель `codraw` со всеми заданными каналами: оповещение приходит в каждый.
   - Telegram — встроенный `telegram_configs`: `CODRAW_ALERT_TELEGRAM_BOT_TOKEN` и `CODRAW_ALERT_TELEGRAM_CHAT_ID`
-    (число, у групп — отрицательное), разметка HTML с экранированием.
+    (число, у групп — отрицательное), разметка HTML с экранированием; `CODRAW_ALERT_TELEGRAM_API_URL` — свой сервер
+    Bot API или прокси, если `api.telegram.org` с сервера недоступен.
   - Почта — `email_configs`: `CODRAW_ALERT_EMAIL_TO` (адреса через запятую) и SMTP уведомлений CoDraw
     (`CODRAW_SMTP_HOST`, `CODRAW_SMTP_PORT` — по умолчанию 587, `CODRAW_SMTP_USERNAME`, `CODRAW_SMTP_PASSWORD`,
     отправитель `CODRAW_MAIL_FROM`); отдельные настройки не нужны.
@@ -88,8 +89,8 @@ Prometheus профиля `monitoring` (`prom/prometheus:v3.15.0`, [ADR-0002](..
     сохраняет документы через `backend`);
   - `collab` — `CodrawCollabBusy`;
   - `backup` — `CodrawBackupFailed` и `CodrawBackupMissing`.
-  Правила глушения называют сервис в источнике и имена правил в цели, без `equal`: производные правила агрегируют ряды и
-  метки `job` не несут.
+  Правила глушения называют сервис в источнике и имена правил в цели, без `equal`: часть производных правил
+  суммирует ряды и теряет метку `job` (`CodrawBackendErrors`, `CodrawDatabaseConnectionsPending`).
 
 ### Сторож
 
@@ -107,12 +108,15 @@ Prometheus профиля `monitoring` (`prom/prometheus:v3.15.0`, [ADR-0002](..
 - Шаг конфигурации задачи `images`: `entrypoint.sh check` собирает конфигурацию и проверяет её `amtool check-config` (с
   шаблонами) в образе Alertmanager — без каналов и со всеми каналами; наполовину заданный канал должен падать.
   `promtool test rules` проверяет `Watchdog`.
-- Стек в CI поднимается с вебхуком чата и сторожем на `http://alert-sink:8080/…` и Telegram с выдуманным токеном.
+- Стек в CI поднимается с вебхуком чата и сторожем на `http://alert-sink:8080/…` и Telegram с выдуманным токеном и
+  адресом Bot API на закрытом порту получателя (`CODRAW_ALERT_TELEGRAM_API_URL`): настоящий Telegram отвечает на
+  чужой токен `401` без адреса в ошибке, а сетевая ошибка печатает адрес с токеном — так фильтр журнала проверяется
+  на деле.
   `deploy/alertmanager/check-delivery.sh` после подъёма стека запускает в сети стека получатель-вебхук (Python из
   `python:3.13-alpine`, пишет пришедшие запросы в журнал), проверяет `/api/v1/alertmanagers` Prometheus, отправляет
   тестовое оповещение `amtool alert add` и ждёт его у получателя в формате Slack, ждёт `Watchdog` от Prometheus на адресе
   сторожа (вся цепочка Prometheus → Alertmanager → получатель) и проверяет, что токена Telegram нет в журнале
-  Alertmanager, хотя доставка в Telegram падает. Alertmanager повторяет неудачную отправку на следующем интервале группы,
+  Alertmanager, хотя доставка в Telegram падает с сетевой ошибкой: вместо токена там `bot<secret>`. Alertmanager повторяет неудачную отправку на следующем интервале группы,
   поэтому получатель, поднятый после стека, всё равно получает сторожа.
 
 ## Risks / Trade-offs

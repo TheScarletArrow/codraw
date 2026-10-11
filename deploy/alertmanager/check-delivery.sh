@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The check of alerts in CI (the job `images`): against the stack of docker-compose.prod.yml with the profile
 # `monitoring`, started with the chat webhook and the watchdog on http://alert-sink:8080/chat and /watchdog and Telegram
-# with an invented token. It starts that receiver in the network of the stack, checks that Prometheus sees Alertmanager,
+# with an invented token and a Bot API on a closed port. It starts that receiver in the network of the stack, checks that Prometheus sees Alertmanager,
 # that a test alert reaches the chat in the format of Slack, that the watchdog reaches its address from Prometheus and
 # not the chat, and that the token of Telegram, whose delivery fails, is not in the log of Alertmanager.
 # Run from the root of the repository with the environment that started the stack. The receiver goes when the check
@@ -109,11 +109,12 @@ received /watchdog | tail -n 1
 if received /chat | grep -F Watchdog > /dev/null; then fail "Watchdog reached the chat"; fi
 done_step
 
-# Telegram refuses the invented token or is not reached; the errors of the network hold its address with the token.
+# The Bot API of the stack is a closed port: the errors of the network hold its address with the token, and the filter
+# of the log must replace it. (Telegram itself answers an invented token with 401, without the address.)
 step "No token of Telegram in the log of Alertmanager"
-telegram_attempts() { compose logs --no-color alertmanager | grep -F 'integration=telegram'; }
-wait_for 30 telegram_attempts || echo "No attempt to reach Telegram in the log"
-telegram_attempts || true
+telegram_errors() { compose logs --no-color alertmanager | grep -F 'integration=telegram' | grep -F 'bot<secret>/'; }
+wait_for 60 telegram_errors || fail "no error of the network of Telegram with the token replaced in the log of Alertmanager"
+telegram_errors | tail -n 1
 if compose logs --no-color alertmanager | grep -F -- "$CODRAW_ALERT_TELEGRAM_BOT_TOKEN" > /dev/null; then
   fail "the log of Alertmanager holds the token of Telegram"
 fi

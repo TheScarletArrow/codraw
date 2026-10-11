@@ -36,6 +36,8 @@ check_url() {
 check_settings() {
   token=${CODRAW_ALERT_TELEGRAM_BOT_TOKEN:-}
   chat=${CODRAW_ALERT_TELEGRAM_CHAT_ID:-}
+  telegram_api=${CODRAW_ALERT_TELEGRAM_API_URL:-}
+  q_telegram_api=
   email_to=${CODRAW_ALERT_EMAIL_TO:-}
   chat_url=${CODRAW_ALERT_CHAT_WEBHOOK_URL:-}
   watchdog_url=${CODRAW_ALERT_WATCHDOG_URL:-}
@@ -49,8 +51,13 @@ check_settings() {
     printf '%s' "$token" | grep -Eqx '[0-9]+:[A-Za-z0-9_-]+' ||
       fail "CODRAW_ALERT_TELEGRAM_BOT_TOKEN must look like 123456789:AAE…, the token that @BotFather gives"
     case "$chat" in *[[:cntrl:]]*) chat=x ;; esac
-    printf '%s' "$chat" | grep -Eqx -- '-?[0-9]+' ||
+    # No leading zero: YAML would read the number as octal.
+    printf '%s' "$chat" | grep -Eqx -- '-?[1-9][0-9]*' ||
       fail "CODRAW_ALERT_TELEGRAM_CHAT_ID must be a whole number, negative for groups"
+    if [ -n "$telegram_api" ]; then
+      check_url CODRAW_ALERT_TELEGRAM_API_URL "$telegram_api"
+      q_telegram_api=$(quoted CODRAW_ALERT_TELEGRAM_API_URL "$telegram_api")
+    fi
     printf '%s' "$token" > "$SECRETS/telegram-bot-token"
     channels="$channels telegram"
   fi
@@ -62,16 +69,19 @@ check_settings() {
     case "$smtp_port" in '' | *[!0-9]*) fail "CODRAW_SMTP_PORT must be a port number" ;; esac
     require_tls=${CODRAW_ALERT_SMTP_REQUIRE_TLS:-true}
     case "$require_tls" in true | false) ;; *) fail "CODRAW_ALERT_SMTP_REQUIRE_TLS must be true or false" ;; esac
-    # An IPv6 address of the server goes in brackets before the port.
+    # An IPv6 address of the server goes in brackets before the port; the port of any other host is CODRAW_SMTP_PORT.
     case "$CODRAW_SMTP_HOST" in
+      *:*[!0-9A-Fa-f:]* | *[!0-9A-Fa-f:]*:*) fail "CODRAW_SMTP_HOST must be a host without a port, the port is CODRAW_SMTP_PORT" ;;
       *:*) smarthost="[$CODRAW_SMTP_HOST]:$smtp_port" ;;
       *) smarthost="$CODRAW_SMTP_HOST:$smtp_port" ;;
     esac
+    case "$email_to" in *';'*) fail "CODRAW_ALERT_EMAIL_TO must be addresses of email, comma-separated" ;; esac
     IFS=,
     for address in $email_to; do
       case "$address" in *?@?*) ;; *) fail "CODRAW_ALERT_EMAIL_TO must be addresses of email, comma-separated" ;; esac
     done
     unset IFS
+    case "$CODRAW_MAIL_FROM" in *?@?*) ;; *) fail "CODRAW_MAIL_FROM must hold an address of email" ;; esac
     q_email_to=$(quoted CODRAW_ALERT_EMAIL_TO "$email_to")
     q_from=$(quoted CODRAW_MAIL_FROM "$CODRAW_MAIL_FROM")
     q_smarthost=$(quoted CODRAW_SMTP_HOST "$smarthost")
@@ -79,6 +89,8 @@ check_settings() {
     if [ -n "${CODRAW_SMTP_USERNAME:-}" ]; then
       q_username=$(quoted CODRAW_SMTP_USERNAME "$CODRAW_SMTP_USERNAME")
     fi
+    [ -n "${CODRAW_SMTP_PASSWORD:-}" ] || [ -z "$q_username" ] ||
+      fail "CODRAW_SMTP_PASSWORD is not set, and CODRAW_SMTP_USERNAME is"
     if [ -n "${CODRAW_SMTP_PASSWORD:-}" ]; then
       [ -n "$q_username" ] || fail "CODRAW_SMTP_USERNAME is not set, and CODRAW_SMTP_PASSWORD is"
       printf '%s' "$CODRAW_SMTP_PASSWORD" > "$SECRETS/smtp-password"
@@ -125,7 +137,8 @@ route:
       group_interval: 1m
       repeat_interval: 5m
 
-# A service that is down silences the rules that fire because of it; those rules carry no label job.
+# A service that is down silences the rules that fire because of it. No equal: some of those rules sum the series
+# and lose the label job.
 inhibit_rules:
   - source_matchers: ['alertname="CodrawServiceDown"', 'job="backend"']
     target_matchers: ['alertname=~"CodrawBackendErrors|CodrawDatabaseConnectionsPending|CodrawDocumentStoreFailures"']
@@ -150,6 +163,7 @@ EOF
         message: '{{ template "codraw.telegram" . }}'
         send_resolved: true
 EOF
+    [ -z "$q_telegram_api" ] || echo "        api_url: $q_telegram_api"
   fi
   if [ -n "$email_to" ]; then
     cat <<EOF

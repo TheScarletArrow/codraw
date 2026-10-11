@@ -117,11 +117,13 @@ jobs:
       GITHUB_CLIENT_ID: ci-github-client
       GITHUB_CLIENT_SECRET: ci-github-secret
       # Alert channels of the stack for deploy/alertmanager/check-delivery.sh: the chat and the watchdog go to its
-      # receiver, Telegram has an invented token, which Telegram refuses and which must stay out of the log.
+      # receiver; Telegram has an invented token and a Bot API on a closed port of the receiver, so that its errors of the
+      # network print the address with the token, which must stay out of the log.
       CODRAW_ALERT_CHAT_WEBHOOK_URL: http://alert-sink:8080/chat
       CODRAW_ALERT_WATCHDOG_URL: http://alert-sink:8080/watchdog
       CODRAW_ALERT_TELEGRAM_BOT_TOKEN: 123456789:AAFakeTokenForCi_alerts-check
       CODRAW_ALERT_TELEGRAM_CHAT_ID: "-1001"
+      CODRAW_ALERT_TELEGRAM_API_URL: http://alert-sink:9
     steps:
       - uses: actions/checkout@v5
       - name: Name the images
@@ -177,14 +179,16 @@ jobs:
           }
           amtool_check
           amtool_check -e CODRAW_ALERT_TELEGRAM_BOT_TOKEN=123456789:AAFake -e CODRAW_ALERT_TELEGRAM_CHAT_ID=-1001 \
+            -e CODRAW_ALERT_TELEGRAM_API_URL=https://telegram-proxy.example.com \
             -e CODRAW_ALERT_EMAIL_TO=ops@example.com,oncall@example.com -e CODRAW_SMTP_HOST=smtp.example.com \
             -e CODRAW_MAIL_FROM=codraw@example.com -e CODRAW_SMTP_USERNAME=codraw -e CODRAW_SMTP_PASSWORD=secret \
             -e CODRAW_ALERT_CHAT_WEBHOOK_URL=https://chat.example.com/hooks/1 \
             -e CODRAW_ALERT_WATCHDOG_URL=https://watchdog.example.com/ping/1
-          if amtool_check -e CODRAW_ALERT_EMAIL_TO=ops@example.com; then
+          if amtool_check -e CODRAW_ALERT_EMAIL_TO=ops@example.com 2> "$RUNNER_TEMP/amtool.log"; then
             echo "::error::a channel set in part passed the check"
             exit 1
           fi
+          grep -F "CODRAW_SMTP_HOST is not set" "$RUNNER_TEMP/amtool.log"
       - name: Start the stack from the images, with monitoring
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$RUNNER_TEMP/signing-key.pem"
