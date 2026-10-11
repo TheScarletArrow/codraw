@@ -156,7 +156,7 @@ importers:
         specifier: ^30.1.2
         version: 30.1.2
       oxc-parser:
-        specifier: 0.153.0
+        specifier: ^0.153.0
         version: 0.153.0
       oxlint:
         specifier: ^1.87.0
