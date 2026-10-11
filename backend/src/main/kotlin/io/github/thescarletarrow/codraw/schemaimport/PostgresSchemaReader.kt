@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component
 import java.net.SocketTimeoutException
 import java.sql.Connection
 import java.sql.SQLException
+import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Reads the tables and views of one schema of a PostgreSQL database into DDL as pg_dump writes it: `CREATE TABLE`, the
@@ -21,6 +24,21 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
 
     /** The schema of [target]; throws [SchemaImportException] with the category of what went wrong. */
     fun read(target: ConnectionTarget): SchemaDdl {
+        // The sockets of the import close when it ends, or when it takes longer than the import may.
+        val sockets = UUID.randomUUID().toString()
+        val cutOff = CUT_OFF.schedule({ ImportSockets.close(sockets) }, settings.importTimeout.toMillis(), TimeUnit.MILLISECONDS)
+        try {
+            return readPinned(ConnectionTarget(
+                target.host, target.address, target.port, target.database, target.user, target.password, target.schema,
+                target.sslMode, sockets,
+            ))
+        } finally {
+            cutOff.cancel(false)
+            ImportSockets.close(sockets)
+        }
+    }
+
+    private fun readPinned(target: ConnectionTarget): SchemaDdl {
         val connection = connect(target)
         try {
             connection.autoCommit = false
@@ -127,6 +145,9 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
     private class View(val name: String, val materialized: Boolean, val definition: String)
 
     companion object {
+        /** Closes the sockets of imports that take too long. */
+        private val CUT_OFF = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("schema-import-cut-off").factory())
+
         /** `attgenerated` and the rest of the catalog that the queries read are there since PostgreSQL 12. */
         const val MIN_SERVER_VERSION = 120000
 

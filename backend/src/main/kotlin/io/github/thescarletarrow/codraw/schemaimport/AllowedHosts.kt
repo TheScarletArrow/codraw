@@ -94,16 +94,27 @@ class AllowedHosts private constructor(private val names: Set<String>, private v
     }
 
     companion object {
-        /** Loopback, link-local, «this host» and IPv4-compatible, multicast and reserved addresses. */
+        /**
+         * Loopback, link-local, «this host» and IPv4-compatible, multicast and reserved addresses; the shared address
+         * space of carriers, where clouds keep services of their own; the addresses of the metadata of AWS and Google
+         * Cloud over IPv6; and IPv6 that carries an IPv4 address to a translator (NAT64, 6to4), which could reach any of
+         * the above.
+         */
         private val SPECIAL = listOf(
             "127.0.0.0/8",
             "169.254.0.0/16",
             "0.0.0.0/8",
             "224.0.0.0/4",
             "240.0.0.0/4",
+            "100.64.0.0/10",
             "::/96",
             "fe80::/10",
             "ff00::/8",
+            "fd00:ec2::254/128",
+            "fd20:ce::254/128",
+            "64:ff9b::/96",
+            "64:ff9b:1::/48",
+            "2002::/16",
         ).map { checkNotNull(Network.parse(it)) }
 
         /** The entries of `codraw.schema-import.allowed-hosts`; an entry that is neither a name nor a network is refused. */

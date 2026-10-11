@@ -46,6 +46,8 @@ class ConnectionTarget(
     val password: String,
     val schema: String,
     val sslMode: SslMode,
+    /** The key that the sockets of this import go by in [ImportSockets], if any. */
+    val sockets: String? = null,
 ) {
     override fun toString() = "ConnectionTarget(host=$host, address=${address.hostAddress}, port=$port, schema=$schema, sslMode=$sslMode)"
 }
@@ -74,3 +76,6 @@ class SchemaImportException(
 
 /** A field of [SchemaImportRequest] that is missing or wrong; the message names the field, never its value. */
 class InvalidSchemaImportRequestException(field: String) : RuntimeException("Invalid field of the connection: $field")
+
+/** As many imports as may run at once are running; the user tries again in a moment. */
+class SchemaImportBusyException : RuntimeException("Other imports of schemas are running")

@@ -6,14 +6,20 @@ import org.postgresql.Driver
 import org.postgresql.PGProperty
 import org.postgresql.util.PSQLException
 import org.postgresql.util.PSQLState
+import java.io.DataOutputStream
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
 import java.sql.SQLException
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class PostgresConnectionsTest {
 
@@ -71,6 +77,40 @@ class PostgresConnectionsTest {
                 it.connect(InetSocketAddress.createUnresolved("rebound.example.com", server.localPort), 1000)
                 server.accept().use { accepted -> assertEquals(it.localPort, accepted.port) }
             }
+        }
+    }
+
+    @Test
+    fun `closes the connection of an import that takes longer than an import may, whatever the server still sends`() {
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { server ->
+            val closed = CompletableFuture<Unit>()
+            Thread.ofVirtual().start {
+                server.accept().use { socket ->
+                    // The start of an error message that the driver would wait for forever, a byte at a time.
+                    val output = DataOutputStream(socket.getOutputStream())
+                    output.writeByte('E'.code)
+                    output.writeInt(0x3FFFFFFF)
+                    try {
+                        while (true) {
+                            output.writeByte('x'.code)
+                            output.flush()
+                            Thread.sleep(100)
+                        }
+                    } catch (_: IOException) {
+                        closed.complete(Unit)
+                    }
+                }
+            }
+            val settings = SchemaImportProperties(readTimeout = Duration.ofSeconds(30), importTimeout = Duration.ofSeconds(1))
+            val target = ConnectionTarget(
+                "127.0.0.1", InetAddress.getLoopbackAddress(), server.localPort, "shop", "reader", "secret", "public", SslMode.DISABLE,
+            )
+
+            val started = System.nanoTime()
+            assertFailsWith<SchemaImportException> { PostgresSchemaReader(settings).read(target) }
+
+            assertTrue(Duration.ofNanos(System.nanoTime() - started) < Duration.ofSeconds(10))
+            closed.get(10, TimeUnit.SECONDS)
         }
     }
 
