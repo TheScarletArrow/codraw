@@ -2,6 +2,7 @@ import { generateKeyBetween } from 'fractional-indexing'
 import * as Y from 'yjs'
 import { modelMessages } from './model.messages.ts'
 import { readViewRule, viewRuleData, type ViewRule } from './viewRule.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /**
  * Board document model in Yjs. It mirrors the mxGraph cell model (and so the `.drawio` format):
@@ -326,8 +327,8 @@ export function dropUnusedElements(doc: Y.Doc, ids: Iterable<string | null>) {
 export const HIDDEN_LAYER_KEY = 'codrawHidden'
 
 /** The style hides its layer for everybody: CoDraw keeps `true`. */
-export function isHiddenLayerStyle(style: Record<string, unknown> | null | undefined): boolean {
-  const value = style?.[HIDDEN_LAYER_KEY]
+export function isHiddenLayerStyle(style: AnyStyle | null | undefined): boolean {
+  const value = style ? styleValues(style)[HIDDEN_LAYER_KEY] : undefined
   return value === true || value === 1 || value === '1'
 }
 

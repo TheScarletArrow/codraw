@@ -36,6 +36,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.UnknownHostException
+import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
@@ -378,7 +379,10 @@ class SchemaImportApiTest(
             SslMode.DISABLE,
         )
 
-        org.postgresql.Driver().connect(driverUrl(target), driverProperties(target, SchemaImportProperties()))!!.use { connection ->
+        // Declared, not inferred: pgjdbc marks the result of `connect` with a nullness annotation of the Checker Framework,
+        // which is not on the classpath of the tests, and Kotlin 2.4 rejects an inferred type that carries it.
+        val pinned: Connection = org.postgresql.Driver().connect(driverUrl(target), driverProperties(target, SchemaImportProperties()))!!
+        pinned.use { connection ->
             fun setting(name: String) = connection.createStatement().use { statement ->
                 statement.executeQuery("SELECT current_setting('$name')").use { rows -> rows.next(); rows.getString(1) }
             }

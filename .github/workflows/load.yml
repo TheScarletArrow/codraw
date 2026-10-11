@@ -38,16 +38,16 @@ jobs:
       CODRAW_COLLAB_BROADCAST_DELAY_MS: ${{ inputs.broadcast-delay }}
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           load: true
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}backend:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=backend
       - name: Build collab
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: collab/Dockerfile
@@ -55,7 +55,7 @@ jobs:
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}collab:${{ env.CODRAW_VERSION }}
           cache-from: type=gha,scope=collab
       - name: Build frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: frontend/Dockerfile
@@ -68,7 +68,7 @@ jobs:
           export CODRAW_COLLAB_TOKEN_SIGNING_KEY="$(cat "$RUNNER_TEMP/signing-key.pem")"
           docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 300
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm

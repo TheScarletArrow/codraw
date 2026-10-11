@@ -1,4 +1,5 @@
 import type { LineDash, Point } from './editor.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /**
  * Style key of a line drawn by hand with the pencil: an edge of draw.io without ends, curved through its points.
@@ -7,8 +8,8 @@ import type { LineDash, Point } from './editor.ts'
 export const FREEHAND_KEY = 'codrawFreehand'
 
 /** The style is that of a line drawn by hand; see {@link FREEHAND_KEY}. */
-export function isFreehandStyle(style: Readonly<Record<string, unknown>> | null | undefined): boolean {
-  const value = style?.[FREEHAND_KEY]
+export function isFreehandStyle(style: AnyStyle | null | undefined): boolean {
+  const value = style ? styleValues(style)[FREEHAND_KEY] : undefined
   return value === true || value === 1 || value === '1'
 }
 

@@ -1,4 +1,4 @@
-import ts from 'typescript'
+import { parseSync } from 'oxc-parser'
 import { describe, expect, it } from 'vitest'
 import { ALLOWED_RUSSIAN } from './allowedRussian.ts'
 
@@ -17,26 +17,38 @@ const CYRILLIC = /[А-Яа-яЁё]/
 const isDictionary = (path: string) =>
   /\/(messages|[^/]*\.messages)\.tsx?$/.test(path) || path.endsWith('.ru.tsx') || path.endsWith('/i18n/allowedRussian.ts')
 
+/** The text of a string literal, a part of a template, a text of JSX or a regular expression; `null` for other nodes. */
+function textOf(node: { type: string; [key: string]: unknown }): string | null {
+  switch (node.type) {
+    case 'Literal':
+      return typeof node.value === 'string' ? node.value : node.regex ? (node.raw as string) : null
+    case 'TemplateElement': {
+      const value = node.value as { cooked: string | null; raw: string }
+      return value.cooked ?? value.raw
+    }
+    case 'JSXText':
+      return (node.raw as string).trim()
+    default:
+      return null
+  }
+}
+
 /** The texts of a source in Russian: its string literals, templates and text of JSX, not its comments. */
 function russianTexts(path: string, source: string): string[] {
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, false, path.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+  const { program, errors } = parseSync(path, source)
+  if (errors.length > 0) throw new Error(`${path}: ${errors[0].message}`)
   const found: string[] = []
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isStringLiteral(node) ||
-      ts.isNoSubstitutionTemplateLiteral(node) ||
-      ts.isTemplateHead(node) ||
-      ts.isTemplateMiddle(node) ||
-      ts.isTemplateTail(node) ||
-      ts.isJsxText(node) ||
-      ts.isRegularExpressionLiteral(node)
-    ) {
-      const text = ts.isJsxText(node) ? node.text.trim() : node.text
-      if (CYRILLIC.test(text)) found.push(text)
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) return value.forEach(visit)
+    if (value === null || typeof value !== 'object') return
+    const node = value as { type?: unknown; [key: string]: unknown }
+    if (typeof node.type === 'string') {
+      const text = textOf(node as { type: string })
+      if (text !== null && CYRILLIC.test(text)) found.push(text)
     }
-    ts.forEachChild(node, visit)
+    for (const key in node) if (key !== 'parent') visit(node[key])
   }
-  visit(file)
+  visit(program)
   return found
 }
 

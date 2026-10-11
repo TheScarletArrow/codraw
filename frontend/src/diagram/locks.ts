@@ -1,5 +1,6 @@
 import type { Cell, CellStyle } from '@maxgraph/core'
 import { modelMessages } from './model.messages.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /**
  * Style key of draw.io that locks a cell against changes, `locked=1` in a file: it cannot be moved, resized, edited,
@@ -14,8 +15,8 @@ export const LOCKED_KEY = 'locked'
 export const LOCKED_BY_KEY = 'codrawLockedBy'
 
 /** The style locks its cell: CoDraw keeps `true`, a file of draw.io may have `1`. */
-export function isLockedStyle(style: Record<string, unknown> | null | undefined): boolean {
-  const value = style?.[LOCKED_KEY]
+export function isLockedStyle(style: AnyStyle | null | undefined): boolean {
+  const value = style ? styleValues(style)[LOCKED_KEY] : undefined
   return value === true || value === 1 || value === '1'
 }
 

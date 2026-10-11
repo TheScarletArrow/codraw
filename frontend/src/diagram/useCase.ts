@@ -2,6 +2,7 @@ import { HOLLOW_TRIANGLE, markerChanges, markerOf } from './edgeMarkers.ts'
 import type { StyleValue } from './model.ts'
 import { shapeOf, type ShapeStyle } from './shapes.ts'
 import { useCaseMessages as m } from './useCase.messages.ts'
+import type { AnyStyle } from './styleValues.ts'
 
 /**
  * Relations of use cases of UML as data, without maxGraph: what an edge is by its line, its markers and its label, and
@@ -43,7 +44,7 @@ export function stereotypeOf(label: string): Stereotype | null {
  * without markers, a generalization a solid line with a hollow triangle at its end, an inclusion and an extension a
  * dashed line with an open arrow at its end and their stereotype. The sizes of the markers and the color do not count.
  */
-export function relationOf(style: Readonly<Record<string, unknown>>, label: string): UmlRelation | null {
+export function relationOf(style: AnyStyle, label: string): UmlRelation | null {
   if (markerOf(style, 'start') !== 'none') return null
   const end = markerOf(style, 'end')
   const stereotype = stereotypeOf(label)
@@ -54,7 +55,7 @@ export function relationOf(style: Readonly<Record<string, unknown>>, label: stri
 }
 
 /** An edge that is one of the relations only use cases have: any line without markers is an association. */
-export function isUseCaseRelation(style: Readonly<Record<string, unknown>>, label: string): boolean {
+export function isUseCaseRelation(style: AnyStyle, label: string): boolean {
   const relation = relationOf(style, label)
   return relation !== null && relation !== 'association'
 }
@@ -84,10 +85,7 @@ export function relationChanges(
 }
 
 /** A new edge between an actor and a use case, either way round, is an association: a line without markers. */
-export function isAssociationPair(
-  source: Readonly<Record<string, unknown>> | null,
-  target: Readonly<Record<string, unknown>> | null,
-): boolean {
+export function isAssociationPair(source: AnyStyle | null, target: AnyStyle | null): boolean {
   const ids = [source, target].map((style) => (style ? shapeOf(style as ShapeStyle)?.id : undefined))
   return ids.includes('uml-actor') && ids.includes('uml-use-case')
 }

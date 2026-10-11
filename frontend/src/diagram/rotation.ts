@@ -1,4 +1,5 @@
 import type { Box } from './editor.ts'
+import { styleValues, type AnyStyle } from './styleValues.ts'
 
 /** The style key of the clockwise rotation of a shape around its centre in degrees, as draw.io names it. */
 export const ROTATION_KEY = 'rotation'
@@ -10,8 +11,8 @@ export function normalizeRotation(angle: number): number | null {
 }
 
 /** The rotation of a shape with `style`, from 0 up to 360; a shape without the key, or with no number in it, is not turned. */
-export function rotationOf(style: Record<string, unknown>): number {
-  const rotation = Number(style[ROTATION_KEY] ?? 0)
+export function rotationOf(style: AnyStyle): number {
+  const rotation = Number(styleValues(style)[ROTATION_KEY] ?? 0)
   return Number.isFinite(rotation) ? ((rotation % 360) + 360) % 360 : 0
 }
 
