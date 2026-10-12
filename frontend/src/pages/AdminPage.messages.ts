@@ -4,7 +4,7 @@ export const adminMessages = defineMessages({
   ru: {
     title: 'Администрирование',
     sections: 'Разделы администрирования',
-    tabs: { reports: 'Жалобы', users: 'Пользователи', boards: 'Доски', journal: 'Журнал' },
+    tabs: { reports: 'Жалобы', feedback: 'Отзывы', users: 'Пользователи', boards: 'Доски', journal: 'Журнал' },
     linkAccess: {
       none: 'Только участники',
       view: 'Просмотр по ссылке',
@@ -19,6 +19,7 @@ export const adminMessages = defineMessages({
       'unblock-sharing': 'Снять запрет доступа',
       'trash-board': 'В корзину',
       'resolve-reports': 'Закрыть жалобы',
+      'resolve-feedback': 'Закрыть отзыв',
     },
     bytes: (n: number) => `${n} Б`,
     kilobytes: (n: string) => `${n} КБ`,
@@ -95,13 +96,16 @@ export const adminMessages = defineMessages({
     who: 'Кто',
     what: 'Что',
     target: 'Над чем',
-    targetUser: (label: string) => `Пользователь «${label}»`,
-    targetBoard: (label: string) => `Доска «${label}»`,
+    targets: {
+      user: (label: string) => `Пользователь «${label}»`,
+      board: (label: string) => `Доска «${label}»`,
+      feedback: (label: string) => `Отзыв «${label}»`,
+    },
   },
   en: {
     title: 'Administration',
     sections: 'Administration sections',
-    tabs: { reports: 'Reports', users: 'Users', boards: 'Boards', journal: 'Log' },
+    tabs: { reports: 'Reports', feedback: 'Feedback', users: 'Users', boards: 'Boards', journal: 'Log' },
     linkAccess: {
       none: 'Members only',
       view: 'View by link',
@@ -116,6 +120,7 @@ export const adminMessages = defineMessages({
       'unblock-sharing': 'Lift link access block',
       'trash-board': 'Move to trash',
       'resolve-reports': 'Resolve reports',
+      'resolve-feedback': 'Close feedback',
     },
     bytes: (n: number) => `${n} B`,
     kilobytes: (n: string) => `${n} KB`,
@@ -191,7 +196,10 @@ export const adminMessages = defineMessages({
     who: 'Who',
     what: 'What',
     target: 'Target',
-    targetUser: (label: string) => `User “${label}”`,
-    targetBoard: (label: string) => `Board “${label}”`,
+    targets: {
+      user: (label: string) => `User “${label}”`,
+      board: (label: string) => `Board “${label}”`,
+      feedback: (label: string) => `Feedback “${label}”`,
+    },
   },
 })
