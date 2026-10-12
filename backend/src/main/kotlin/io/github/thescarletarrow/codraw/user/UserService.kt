@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.comment.CommentService
 import io.github.thescarletarrow.codraw.decision.DecisionService
+import io.github.thescarletarrow.codraw.feedback.FeedbackRepository
 import io.github.thescarletarrow.codraw.library.LibraryService
 import io.github.thescarletarrow.codraw.notification.NotificationService
 import io.github.thescarletarrow.codraw.proposal.ProposalService
@@ -26,6 +27,7 @@ class UserService(
     private val proposals: ProposalService,
     private val templates: io.github.thescarletarrow.codraw.template.PersonalTemplateRepository,
     private val libraries: LibraryService,
+    private val feedback: FeedbackRepository,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
 ) {
@@ -47,8 +49,8 @@ class UserService(
     /**
      * Signs in with [profile] in a session where the user [previousUserId] was signed in. When that was a guest,
      * the boards of the guest, the boards the guest opened through links or is a member of, the changes of the guest
-     * that versions of boards name, the comments, the decisions, the notifications, the proposals of changes and the
-     * libraries of shapes of the guest pass to the user signing in.
+     * that versions of boards name, the comments, the decisions, the notifications, the proposals of changes, the
+     * libraries of shapes and the feedback of the guest pass to the user signing in.
      */
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {
@@ -63,6 +65,7 @@ class UserService(
             proposals.transfer(guest.id, user.id)
             templates.transfer(guest.id, user.id)
             libraries.transfer(guest.id, user.id)
+            feedback.transfer(guest.id, user.id)
         }
         return user
     }
