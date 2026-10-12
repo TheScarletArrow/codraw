@@ -8,6 +8,8 @@ import io.github.thescarletarrow.codraw.decision.DecisionService
 import io.github.thescarletarrow.codraw.feedback.FeedbackRepository
 import io.github.thescarletarrow.codraw.library.LibraryService
 import io.github.thescarletarrow.codraw.notification.NotificationService
+import io.github.thescarletarrow.codraw.product.DailyCount
+import io.github.thescarletarrow.codraw.product.ProductActivity
 import io.github.thescarletarrow.codraw.proposal.ProposalService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -30,6 +32,7 @@ class UserService(
     private val feedback: FeedbackRepository,
     private val metrics: CodrawMetrics,
     private val clock: Clock,
+    private val activity: ProductActivity,
 ) {
 
     /**
@@ -57,6 +60,8 @@ class UserService(
         val user = signIn(profile)
         val guest = previousUserId?.let(users::findById)?.takeIf { it.guest }
         if (guest != null && guest.id != user.id) {
+            // The statistics of the installation count the guest who became a user, without anybody's id.
+            activity.count(DailyCount.GUEST_CONVERSION)
             boards.transfer(guest.id, user.id)
             versions.transfer(guest.id, user.id)
             comments.transfer(guest.id, user.id)

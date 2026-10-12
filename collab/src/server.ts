@@ -10,6 +10,7 @@ import {
 import type { TokenVerifier } from "./auth.js";
 import { checkUserOnConnect, createUserChecks } from "./users.js";
 import { BoardNotFoundError, type BackendClient } from "./backend-client.js";
+import { createCoEditing } from "./coediting.js";
 import { documentOf, type CollabDocument } from "./documents.js";
 import { createDocumentEditors } from "./editors.js";
 import { log } from "./log.js";
@@ -108,6 +109,7 @@ export function createCollabServer({
   const checkUsers = createUserChecks(backend, metrics);
   const sizes = createDocumentSizes(documentSizeLimit);
   const editors = createDocumentEditors();
+  const coEditing = createCoEditing((boardId) => backend.reportCoEdited(boardId));
   let accessChecks: NodeJS.Timeout | undefined;
   /** The awareness client id each connection speaks for. */
   const awarenessClients = new WeakMap<object, number>();
@@ -244,14 +246,30 @@ export function createCollabServer({
     },
     // Who changed the document of a board goes to the backend with its next store. Hocuspocus calls this for every
     // change it applies, before the store that the change schedules; read-only connections change nothing, so viewers
-    // are never among them. A draft has no versions to name them in.
+    // are never among them. A draft has no versions to name them in, and is not counted as a board edited together.
     async onChange({ documentName, context }) {
       const user = (context as Partial<ConnectionContext>).user;
-      if (user && documentOf(documentName)?.kind === "board") editors.add(documentName, user.id);
+      if (user && documentOf(documentName)?.kind === "board") {
+        editors.add(documentName, user.id);
+        coEditing.changed(documentName);
+      }
+    },
+    // The users whose connections may edit a board, for telling the backend that it was edited together. The access of a
+    // connection never changes: a change of access closes it, and the client connects again.
+    async connected({ documentName, context }) {
+      const { user, access } = context as Partial<ConnectionContext>;
+      if (user && access === "edit" && documentOf(documentName)?.kind === "board") {
+        coEditing.connected(documentName, user.id, context as object);
+      }
+    },
+    async onDisconnect({ documentName, context }) {
+      const user = (context as Partial<ConnectionContext>).user;
+      if (user) coEditing.disconnected(documentName, user.id, context as object);
     },
     async afterUnloadDocument({ documentName }) {
       sizes.forget(documentName);
       editors.forget(documentName);
+      coEditing.forget(documentName);
       snapshots.close(documentName);
     },
     // A connection speaks for the one client id it announced first, which no other connection has; its user is the one

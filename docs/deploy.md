@@ -347,6 +347,9 @@ CODRAW_ADMINS=github:583231,google:109876543210987654321,oidc:https://sso.exampl
 - **Журнал** — каждое действие администратора, которое что-то меняет, с тем, кто, что, когда и над чем; имена
   сохраняются и после удаления учётных записей и досок. Записи журнала и закрытые жалобы хранятся
   `CODRAW_ADMIN_RETENTION` (365 дней), этот срок называет политика конфиденциальности.
+- **Статистика** — активные пользователи, новые учётные записи, переходы гостей, удержание первой недели и совместная
+  правка досок, посчитанные самой установкой без сторонних сервисов; те же числа — метрики `codraw_product_*` (см.
+  «Мониторинг и журналы»). Настраивать нечего; дни активности хранятся 42 дня.
 
 ## 2. OAuth
 
@@ -416,6 +419,25 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
 | `backend:8080/actuator/prometheus` | HTTP-запросы (`http_server_requests_seconds_*`), JVM, пул соединений с базой (`hikaricp_*`); созданные доски и гости (`codraw_board_creations_total`, `codraw_guest_creations_total`), удалённые учётные записи (`codraw_accounts_deleted_total`), размеры сохранённых документов (`codraw_documents_stored_bytes_*`), сработавшие пределы (`codraw_limits_reached_total{limit}`, в том числе `image`, `images`, `libraries`, `library-components`, `library-component`, `libraries-size`, `reports` и `board-reports`), удалённое уборкой гостей (`codraw_guests_cleanup_deleted_total{kind}`), ошибки браузеров участников (`codraw_client_errors_total{kind}`: `error`, `unhandledrejection`, `render`), размеры новых картинок досок (`codraw_images_stored_bytes_*`) и картинки удалённых досок, убранные из хранилища (`codraw_images_cleanup_deleted_total`), загрузки схем из баз по результатам (`codraw_schema_imports_total{result}`) |
 | `backup:9187/metrics.txt` | резервные копии: время и результат последней попытки, время последней удачной копии, размер и длительность (`codraw_backup_*`, см. «Резервные копии») |
 | `collab:1234/metrics` | подключения (`codraw_collab_connections`), открытые доски и черновики предложений (`codraw_collab_documents`), сохранения документов по результату и их время — кодирование в потоке сохранений и запись в `backend` (`codraw_collab_stores_total{result}`, `codraw_collab_store_duration_seconds`; `proposal_closed` — правки черновика после решения по предложению, их `backend` не сохраняет), отказы по причинам (`codraw_collab_rejections_total{reason}`, в том числе `account-deleted` — соединения пользователей, удаливших учётную запись, и `user-blocked` — заблокированные пользователи), тексты досок для поиска, переданные `backend`, по результату (`codraw_collab_search_texts_total{result}`: `stored`, `kept` — у доски уже был текст, `failed`), метрики процесса Node.js |
+
+**Продуктовые метрики** `backend` — те же числа, что на вкладке «Статистика» администраторов: фоновая задача
+пересчитывает их раз в 5 минут, а не при каждом опросе. Дни — по UTC, период из N дней — сегодня и N − 1 предыдущих.
+
+| Метрика | Что |
+|---|---|
+| `codraw_product_active_users{period,kind}` | пользователи, которые обращались к API в периоде (`1d`, `7d`, `28d`): учётные записи (`accounts`) и гости (`guests`) |
+| `codraw_product_new_accounts{period}` | учётные записи, созданные за `7d` и `28d` |
+| `codraw_product_guest_conversions{period}` | гости, которые вошли через провайдера, и их доски перешли к учётной записи |
+| `codraw_product_edited_boards{period}`, `codraw_product_coedited_boards{period}` | доски с правками пользователей и доски, которые в день правки одновременно с правом правки открывали хотя бы два разных пользователя |
+| `codraw_product_coedited_share{period}` | доля совместно изменённых досок, `NaN` без изменённых |
+| `codraw_product_week1_retention{cohort}`, `codraw_product_week1_cohort_accounts{cohort}` | доля учётных записей недельной когорты, которые работали с 7-го по 13-й день после создания, и размер когорты; когорта `1` — созданные 14–20 дней назад, `4` — 35–41; `NaN` у пустой когорты и у той, для дней которой активность ещё не собиралась |
+
+Для них `backend` хранит дни активности пользователей (пользователь и день, не больше записи в сутки), дни правки
+досок с признаком совместной правки (о ней сообщает `collab` запросом `POST /internal/boards/{id}/co-edited` не чаще
+раза в сутки на доску) и число переходов гостей за день. Строки старше 42 дней удаляет уборка раз в час; срок задан в
+приложении и не настраивается. Удалённые учётные записи и гости, которых убрала уборка гостей, выпадают из чисел
+вместе со своими днями, а после обновления статистика копится с нуля: первые недели когорты неполные. Правил
+оповещений на эти метрики нет — их падение не авария, но их можно вывести на графики Prometheus.
 
 **Prometheus** и **Alertmanager** поднимаются вместе со стеком с профилем `monitoring`. Положите рядом с
 `docker-compose.prod.yml` каталоги `deploy/prometheus` и `deploy/alertmanager` из репозитория:

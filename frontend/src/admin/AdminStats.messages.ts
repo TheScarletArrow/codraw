@@ -1,0 +1,58 @@
+import { defineMessages, pluralEn, pluralRu } from '../i18n/i18n.ts'
+
+export const adminStatsMessages = defineMessages({
+  ru: {
+    activeUsers: 'Активные пользователи',
+    accounts: 'Учётные записи',
+    guests: 'Гости',
+    period: (days: number) => `${days} ${pluralRu(days, 'день', 'дня', 'дней')}`,
+    growth: 'Новые учётные записи',
+    newAccounts: 'Созданы',
+    guestConversions: 'Гости, вошедшие в учётную запись',
+    collaboration: 'Совместная работа',
+    editedBoards: 'Изменённые доски',
+    coEditedBoards: 'Доски, которые правили вместе',
+    coEditedShare: 'Доля правки вместе',
+    collaborationHint:
+      'Вместе — когда в день правки к доске одновременно были подключены с правом правки хотя бы два разных пользователя.',
+    retention: 'Удержание первой недели',
+    retentionHint: 'Учётная запись вернулась, если работала с 7-го по 13-й день после создания.',
+    cohort: (from: string, to: string) => `Созданы ${from} – ${to}`,
+    cohortAccounts: 'Учётных записей',
+    cohortReturned: 'Вернулись',
+    cohortShare: 'Доля',
+    noData: 'нет данных',
+    periods: (today: string) => `Дни считаются по UTC, сегодняшний — ${today} — входит в каждый период.`,
+    collectedSince: (day: string) => `Дни активности собираются с ${day}: раньше данных нет.`,
+    notCollected: 'Дней активности пока нет.',
+    privacy:
+      'Удалённые учётные записи и гости, которых уже убрала уборка, не учитываются. Для статистики CoDraw хранит только дни, когда пользователь заходил, и дни правки досок — 42 дня; содержимое досок и действия в редакторе не записываются.',
+  },
+  en: {
+    activeUsers: 'Active users',
+    accounts: 'Accounts',
+    guests: 'Guests',
+    period: (days: number) => `${days} ${pluralEn(days, 'day', 'days')}`,
+    growth: 'New accounts',
+    newAccounts: 'Created',
+    guestConversions: 'Guests who signed in to an account',
+    collaboration: 'Collaboration',
+    editedBoards: 'Edited boards',
+    coEditedBoards: 'Boards edited together',
+    coEditedShare: 'Share edited together',
+    collaborationHint:
+      'Together means that on a day of edits at least two different users were connected to the board with edit rights at the same time.',
+    retention: 'First-week retention',
+    retentionHint: 'An account came back if it was used from the 7th to the 13th day after it was created.',
+    cohort: (from: string, to: string) => `Created ${from} – ${to}`,
+    cohortAccounts: 'Accounts',
+    cohortReturned: 'Came back',
+    cohortShare: 'Share',
+    noData: 'no data',
+    periods: (today: string) => `Days are counted in UTC; today, ${today}, is part of every period.`,
+    collectedSince: (day: string) => `Days of activity are collected since ${day}: there is no data before.`,
+    notCollected: 'No days of activity yet.',
+    privacy:
+      'Deleted accounts and guests already removed by the cleanup are not counted. For statistics CoDraw keeps only the days a user visited and the days boards were edited, for 42 days; board content and actions in the editor are not recorded.',
+  },
+})
