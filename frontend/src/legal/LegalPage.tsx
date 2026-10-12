@@ -5,6 +5,13 @@ import { fetchLegal, type LegalInfo } from '../api/legal.ts'
 import { perLocale } from '../i18n/i18n.ts'
 import { legalMessages as m } from './messages.ts'
 
+/**
+ * How many days the statistics of the installation keep the days of activity of users, the days of changes of boards
+ * and the counts of guests who signed in: `ProductCleanup.RETENTION_DAYS` of the backend, a constant there rather than a
+ * setting, so `/api/legal` does not carry it.
+ */
+export const STATISTICS_RETENTION_DAYS = 42
+
 const dayFormat = perLocale((tag) => new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long', year: 'numeric' }))
 
 /** `9 октября 2026 г.` or `October 9, 2026` for `2026-10-09`. */

@@ -171,7 +171,7 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'У учётной записи хранится и язык интерфейса — выбранный в меню «Язык», а если вы его не выбирали, язык браузера при входе, — чтобы письма и сообщения уведомлений приходили на нём',
     )
-    expect(screen.getByText('Обновлено 10 октября 2026 г.')).toBeInTheDocument()
+    expect(screen.getByText('Обновлено 12 октября 2026 г.')).toBeInTheDocument()
     expect(screen.queryByText(/This is a translation/)).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
@@ -227,6 +227,57 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Жалобы и журнал действий администраторов видят только администраторы этой установки',
     )
+  })
+
+  it('names feedback, its recipients and the retention of closed feedback of the installation', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ adminRetentionDays: 180 }) } })
+    renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent(
+      'Обратная связь. Отзыв, отправленный кнопкой «Обратная связь»: вид — «Ошибка», «Идея» или «Другое», — текст, адрес страницы без параметров, версия CoDraw, сведения о браузере (User-Agent), время и учётная запись отправителя, в том числе гостевая; сетевой адрес отправителя с отзывом не хранится.',
+    )
+    expect(data).toHaveTextContent('Отзывы гостя переходят к учётной записи, через которую он входит')
+    expect(data).toHaveTextContent('чтобы ограничивать число новых гостей, жалоб, отзывов и отчётов об ошибках с одного адреса')
+    expect(data).toHaveTextContent('с какой учётной записью, доской или отзывом — с их именами на тот момент, а у отзыва — с началом его текста, до 80 символов, без имени автора')
+    expect(screen.getByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'Отзыв — пока администратор его не закроет, а закрытый — 180 дней после закрытия, в том числе после удаления учётной записи отправителя',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Жалобы и журнал действий администраторов видят только администраторы этой установки, которых назначает её оператор. Отзывы с именем отправителя тоже видят только они.',
+    )
+    const account = screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })
+    expect(account).toHaveTextContent('предложения изменений, отзывы — без имени администратора, который их закрыл, — библиотеки фигур')
+    expect(account).toHaveTextContent('Ваши жалобы и отзывы остаются у администраторов без автора до закрытия и конца срока хранения')
+  })
+
+  it('names the days of activity of the statistics, kept 42 days whatever the settings of the installation', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal({ adminRetentionDays: 180 }) } })
+    renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent(
+      'Дни активности и статистика. Чтобы администраторы видели, сколько людей работает в этой установке, возвращаются ли новые пользователи и правят ли доски вместе',
+    )
+    expect(data).toHaveTextContent(
+      'дни (по UTC), в которые вы — с учётной записью или гостем — заходили в CoDraw, только даты, без времени, сетевого адреса, страниц, досок и действий',
+    )
+    expect(data).toHaveTextContent('без того, кто её менял; и сколько гостей за день вошли в учётную запись, — числом, без того, кто это был')
+    expect(data).toHaveTextContent(
+      'Сторонней аналитики в CoDraw нет: эти данные никуда не уходят, а что вы рисуете и пишете на досках, куда нажимаете и какими функциями пользуетесь, не записывается',
+    )
+    expect(screen.getByRole('region', { name: 'Сколько хранятся данные' })).toHaveTextContent(
+      'Дни активности, дни правки досок и числа гостей за день — 42 дня при любых настройках установки; дни активности — не дольше учётной записи, дни правки доски — не дольше самой доски',
+    )
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'только общими числами, без пользователей и досок; свои дни активности видите только вы, в архиве «Скачать мои данные»',
+    )
+    expect(screen.getByRole('region', { name: 'Cookie' })).toHaveTextContent(
+      'Сторонней аналитики, рекламы и трекеров в CoDraw нет, а статистику установки сервер считает сам, без отдельных cookie',
+    )
+    const account = screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })
+    expect(account).toHaveTextContent('уведомления и их настройки, дни активности — в JSON')
+    expect(account).toHaveTextContent('реакции, ваши предложения изменений и дни активности')
   })
 
   it('names the token of GitHub and linked issues only when the installation links issues', async () => {
@@ -328,7 +379,7 @@ describe('legal pages', () => {
 
     expect(await screen.findByRole('heading', { name: 'Privacy policy', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText(/The operator of the service is ООО «Пример»/)).toBeInTheDocument()
-    expect(screen.getByText('Updated October 10, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Updated October 12, 2026')).toBeInTheDocument()
     expect(screen.getByText('This is a translation for convenience; the Russian version prevails.')).toBeInTheDocument()
     for (const section of ['What data we process', 'Cookies', 'Copies of boards in the browser', 'How long the data is kept', 'Your rights']) {
       expect(screen.getByRole('region', { name: section })).toBeInTheDocument()
@@ -339,6 +390,21 @@ describe('legal pages', () => {
     expect(retention).toHaveTextContent('Notifications — no longer than 60 days and no more than the last 200 of a user')
     expect(retention).toHaveTextContent('The GitHub token — until you disconnect GitHub')
     expect(retention).toHaveTextContent('Database credentials — only for the time of one connection to it')
+    expect(retention).toHaveTextContent('Feedback — until an administrator closes it, and closed feedback for 365 days after it is closed')
+    expect(retention).toHaveTextContent(
+      'Days of activity, days of changes of boards and the numbers of guests per day — 42 days whatever the settings of the installation',
+    )
+    const data = screen.getByRole('region', { name: 'What data we process' })
+    expect(data).toHaveTextContent('Feedback. Feedback sent with the “Feedback” button: the kind — “Bug”, “Idea” or “Other”')
+    expect(data).toHaveTextContent('and for feedback with the beginning of its text, up to 80 characters, without the name of its author')
+    expect(data).toHaveTextContent('only the dates, without the time, the network address, pages, boards or actions')
+    expect(data).toHaveTextContent('There is no third-party analytics in CoDraw')
+    expect(screen.getByRole('region', { name: 'Who receives the data' })).toHaveTextContent(
+      'Feedback with the name of the sender is also seen only by them. The statistics of the installation are seen by administrators in the “Statistics” tab and by the operator in their monitoring, only as totals, without users or boards',
+    )
+    expect(screen.getByRole('region', { name: 'Downloading your data and deleting the account' })).toHaveTextContent(
+      'feedback — without the name of the administrator who closed it',
+    )
     const copies = screen.getByRole('region', { name: 'Copies of boards in the browser' })
     expect(copies).toHaveTextContent(
       'The browser also remembers the language of the interface chosen in the “Language” menu (localStorage, key codraw.locale), so that CoDraw opens in it at once',
