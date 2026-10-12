@@ -5,6 +5,7 @@ import {
   collabToken,
   connectToCollab,
   createBoard,
+  listedBoardLink,
   openBoard,
   openBoardList,
   userPage,
@@ -76,7 +77,7 @@ test('closing the link shows the participant «Нет доступа», and an e
   await bob.reload()
   await expect(bob.getByRole('alert')).toHaveText('Нет доступа: владелец закрыл доступ к доске по ссылке')
   expect(await openBoardList(bob)).not.toContain(boardId)
-  await expect(bob.locator(`a[href="/boards/${boardId}"]`)).toHaveCount(0)
+  await expect(bob.locator(listedBoardLink(`/boards/${boardId}`))).toHaveCount(0)
 
   await setLinkAccess(alice, 'Редактирование')
   await bob.goBack()

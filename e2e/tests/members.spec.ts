@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, createBoard, csrfHeaders, openBoardList, userPage, vertices } from './helpers.ts'
+import { addShape, createBoard, csrfHeaders, listedBoardLink, openBoardList, userPage, vertices } from './helpers.ts'
 
 // Users of their own: a member who becomes an owner gets boards, and other tests expect Алиса and Боб to have none of
 // theirs or a list of shared boards of their own.
@@ -80,7 +80,7 @@ test('an invited editor edits a board closed to others, becomes a viewer at once
   expect(await openBoardList(owner)).toContain(boardId)
   await expect(owner.getByRole('region', { name: 'Общие со мной' }).locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
   expect(await openBoardList(member)).not.toContain(boardId)
-  await expect(member.locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
+  await expect(member.locator(listedBoardLink(`/boards/${boardId}`))).toBeVisible()
 
   await Promise.all([owner.context().close(), member.context().close()])
 })

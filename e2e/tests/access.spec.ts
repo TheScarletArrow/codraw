@@ -7,6 +7,7 @@ import {
   createBoard,
   createBoardViaApi,
   csrfHeaders,
+  listedBoardLink,
   openBoard,
   userPage,
   vertices,
@@ -47,7 +48,7 @@ test('another user opens a board through its link and edits it together with the
   await expect(bob.getByText('Досок пока нет')).toBeVisible()
   await expect(bob.getByRole('region', { name: 'Общие со мной' }).locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
   await alice.goto('/')
-  await expect(alice.locator(`a[href="/boards/${boardId}"]`)).toBeVisible()
+  await expect(alice.locator(listedBoardLink(`/boards/${boardId}`))).toBeVisible()
 
   await Promise.all([alice.context().close(), bob.context().close()])
 })

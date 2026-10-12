@@ -5,7 +5,9 @@ import { addShape, cellBox, center, createBoard, createBoardViaApi, csrfHeaders,
 const freshName = (name: string) => `${name} ${Date.now().toString(36)}`
 
 /** The titles of the boards in the list, in their order: own ones, then shared ones. */
-const listedTitles = (page: Page) => page.locator('main a[href^="/boards/"]').allTextContents()
+/** The titles in the lists of boards, without the cards of «Последние использованные доски». */
+const listedTitles = (page: Page) =>
+  page.locator('main a[href^="/boards/"]:not([aria-labelledby="recent-boards"] a)').allTextContents()
 
 /** The row of a board in the list. */
 const row = (page: Page, title: string) =>

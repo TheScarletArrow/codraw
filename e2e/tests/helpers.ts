@@ -10,6 +10,12 @@ export async function signIn(request: APIRequestContext, name: string) {
 }
 
 /**
+ * A link to the board at `href` in the lists of boards of the main page, not its card in «Последние использованные
+ * доски», which repeats the boards opened lately.
+ */
+export const listedBoardLink = (href: string) => `a[href="${href}"]:not([aria-labelledby="recent-boards"] a)`
+
+/**
  * Opens the list of boards and returns the ids of the boards opened through links that it shows. Test users keep the
  * boards of earlier tests, so a check that a board is not in the list needs the list loaded, not just the page.
  */

@@ -3,6 +3,7 @@ import {
   addShape,
   createBoard,
   hasStoredDocument,
+  listedBoardLink,
   openBoard,
   openBoardList,
   twoParticipants,
@@ -11,7 +12,7 @@ import {
 
 /** The row of a board in the list of own boards; test users keep boards of earlier tests with the same titles. */
 const boardRow = (page: Page, boardPath: string) =>
-  page.getByRole('listitem').filter({ has: page.locator(`a[href="${boardPath}"]`) })
+  page.getByRole('listitem').filter({ has: page.locator(listedBoardLink(`${boardPath}`)) })
 
 /**
  * Deletes the board through its menu, confirming the deletion: `scope` is the page of the board or the row of the
@@ -40,10 +41,10 @@ test('the owner renames a board on its page, and a participant sees the new titl
 
   await bob.goto('/')
   const shared = bob.getByRole('region', { name: 'Общие со мной' })
-  await expect(shared.locator(`a[href="${boardPath}"]`)).toHaveText('Платежи')
+  await expect(shared.locator(listedBoardLink(`${boardPath}`))).toHaveText('Платежи')
   await expect(shared).toContainText('Алиса')
   await alice.goto('/')
-  await expect(alice.locator(`a[href="${boardPath}"]`)).toHaveText('Платежи')
+  await expect(alice.locator(listedBoardLink(`${boardPath}`))).toHaveText('Платежи')
 
   await close()
 })
@@ -58,9 +59,9 @@ test('the owner renames a board in the list of boards', async ({ browser }) => {
   await alice.getByRole('textbox', { name: 'Название доски' }).fill('Склад')
   await alice.keyboard.press('Enter')
 
-  await expect(alice.locator(`a[href="${boardPath}"]`)).toHaveText('Склад')
+  await expect(alice.locator(listedBoardLink(`${boardPath}`))).toHaveText('Склад')
   await alice.reload()
-  await expect(alice.locator(`a[href="${boardPath}"]`)).toHaveText('Склад')
+  await expect(alice.locator(listedBoardLink(`${boardPath}`))).toHaveText('Склад')
 
   await alice.context().close()
 })
@@ -72,10 +73,10 @@ test('the owner deletes a board on its page, and a participant on the board sees
   await deleteThroughMenu(alice, alice, 'Новая доска', 'Удалить доску')
 
   await expect(alice).toHaveURL(/\/$/)
-  await expect(alice.locator(`a[href="${boardPath}"]`)).toHaveCount(0)
+  await expect(alice.locator(listedBoardLink(`${boardPath}`))).toHaveCount(0)
   await expect(bob.getByRole('alert')).toHaveText('Доска не найдена')
   expect(await openBoardList(bob)).not.toContain(boardPath.split('/').pop())
-  await expect(bob.locator(`a[href="${boardPath}"]`)).toHaveCount(0)
+  await expect(bob.locator(listedBoardLink(`${boardPath}`))).toHaveCount(0)
   await bob.goto(boardPath)
   await expect(bob.getByRole('alert')).toHaveText('Доска не найдена')
 
@@ -95,7 +96,7 @@ test('a board deleted in the list of boards closes for a participant with their 
   await alice.goto('/')
 
   await deleteThroughMenu(alice, boardRow(alice, boardPath), 'Новая доска', 'Удалить')
-  await expect(alice.locator(`a[href="${boardPath}"]`)).toHaveCount(0)
+  await expect(alice.locator(listedBoardLink(`${boardPath}`))).toHaveCount(0)
   await addShape(bob, 'Прямоугольник')
 
   await expect(bob.getByRole('alert')).toHaveText('Доска не найдена', { timeout: 10_000 })
