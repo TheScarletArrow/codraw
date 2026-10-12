@@ -19,12 +19,14 @@ enum class AdminActionKind(@get:JsonValue val value: String) {
     UNBLOCK_SHARING("unblock-sharing"),
     TRASH_BOARD("trash-board"),
     RESOLVE_REPORTS("resolve-reports"),
+    RESOLVE_FEEDBACK("resolve-feedback"),
 }
 
 /** What an action of an administrator was done to. Stored by its name. */
 enum class AdminTargetKind(@get:JsonValue val value: String) {
     USER("user"),
     BOARD("board"),
+    FEEDBACK("feedback"),
 }
 
 /** An entry of the journal: who did what, when and to what, with the names as they were then. */
@@ -35,7 +37,7 @@ data class AdminAction(
     val action: AdminActionKind,
     val targetKind: AdminTargetKind,
     val targetId: UUID,
-    /** The title of the board or the name of the user. */
+    /** The title of the board, the name of the user or the beginning of the text of feedback. */
     val targetLabel: String,
     /** More about the action, e.g. how many reports it closed. */
     val details: String?,

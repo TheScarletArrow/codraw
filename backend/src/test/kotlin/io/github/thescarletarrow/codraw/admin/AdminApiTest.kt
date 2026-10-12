@@ -55,6 +55,7 @@ class AdminApiTest(
     fun cleanDatabase() {
         jdbcClient.sql("DELETE FROM boards").update()
         jdbcClient.sql("DELETE FROM admin_actions").update()
+        jdbcClient.sql("DELETE FROM feedback").update()
         jdbcClient.sql("DELETE FROM spring_session").update()
         jdbcClient.sql("UPDATE users SET blocked_at = NULL").update()
         admin = users.gitHubUser(IntegrationTest.ADMIN)
@@ -443,7 +444,7 @@ class AdminApiTest(
         clock.advance(Duration.ofDays(366))
         adminPost("/api/admin/users/${bob.id}/block")
 
-        assertEquals(AdminCleanup.Result(actions = 1, reports = 2), cleanup.cleanUp())
+        assertEquals(AdminCleanup.Result(actions = 1, reports = 2, feedback = 0), cleanup.cleanUp())
 
         adminGet("/api/admin/actions").andExpect { jsonPath("$[*].action") { value(contains("block-user")) } }
         // An open report waits for an administrator however old it is.

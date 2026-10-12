@@ -49,6 +49,12 @@ data class LimitProperties(
     /** The most reports of errors in browsers taken from one network address in a minute. */
     @field:Positive
     val clientErrorsPerAddressPerMinute: Int = 30,
+    /** The most feedback taken from one network address in an hour. */
+    @field:Positive
+    val feedbackPerAddressPerHour: Int = 10,
+    /** The most feedback a user sends in a day, from any addresses. */
+    @field:Positive
+    val feedbackPerUserPerDay: Int = 20,
     /** The most comments a board holds, in all its threads. */
     @field:Positive
     val commentsPerBoard: Int = 5000,
