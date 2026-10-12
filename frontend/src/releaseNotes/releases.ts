@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.46.0',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Последние использованные доски',
+          text: 'Вверху списка досок появился раздел «Последние использованные доски»: до шести досок, которые вы открывали последними, ваши и общие с вами. К доске, с которой вы только что работали, теперь не нужно искать путь в общем списке.',
+        },
+        en: {
+          title: 'Recently used boards',
+          text: 'The list of boards now starts with “Recently used boards”: up to six boards you opened last, your own and those shared with you. The board you just worked on is one click away instead of somewhere in the full list.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.44.0',
     date: '2026-10-12',
     items: [

@@ -12,6 +12,7 @@ import {
   highlightMatch,
   isFiltering,
   readBoardSort,
+  recentBoards,
   saveBoardSort,
   sortBoards,
   tagErrorMessage,
@@ -65,6 +66,28 @@ describe('sortBoards', () => {
     sortBoards(boards, 'title')
 
     expect(titles(boards)[0]).toBe('Склад')
+  })
+})
+
+describe('recentBoards', () => {
+  it('keeps opened boards only, the latest opened first, each board once', () => {
+    const boards = [
+      board('a', 'А', { openedAt: '2026-10-03T10:00:00Z' }),
+      board('never', 'Никогда'),
+      board('b', 'Б', { openedAt: '2026-10-05T10:00:00Z' }),
+      board('a', 'А', { openedAt: '2026-10-03T10:00:00Z' }),
+    ]
+
+    expect(recentBoards(boards).map((one) => one.id)).toEqual(['b', 'a'])
+  })
+
+  it('shows at most the limit', () => {
+    const boards = Array.from({ length: 8 }, (_, day) =>
+      board(`d${day}`, `${day}`, { openedAt: `2026-10-0${day + 1}T10:00:00Z` }),
+    )
+
+    expect(recentBoards(boards).map((one) => one.id)).toEqual(['d7', 'd6', 'd5', 'd4', 'd3', 'd2'])
+    expect(recentBoards(boards, 2)).toHaveLength(2)
   })
 })
 

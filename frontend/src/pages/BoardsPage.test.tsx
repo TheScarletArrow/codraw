@@ -63,6 +63,37 @@ describe('BoardsPage', () => {
     expect(links[0]).toHaveAttribute('href', '/boards/b')
   })
 
+  it('shows the recently used boards, own and shared, the latest opened first', async () => {
+    mockFetch({
+      'GET /api/boards': {
+        body: [
+          board('old', 'Вчерашняя', { openedAt: '2026-10-02T09:00:00Z' }),
+          board('never', 'Неоткрытая'),
+          board('new', 'Сегодняшняя', { openedAt: '2026-10-04T09:00:00Z' }),
+        ],
+      },
+      'GET /api/boards/shared': { body: [sharedBoard('s', 'Чужая', 'Боб', { openedAt: '2026-10-03T09:00:00Z' })] },
+    })
+
+    renderRoutes(routes)
+
+    const recent = await screen.findByRole('region', { name: 'Последние использованные доски' })
+    const links = within(recent).getAllByRole('link')
+    expect(links.map((link) => link.querySelector('span')?.textContent)).toEqual(['Сегодняшняя', 'Чужая', 'Вчерашняя'])
+    expect(links[0]).toHaveAttribute('href', '/boards/new')
+    expect(links[1]).toHaveTextContent('Боб')
+  })
+
+  it('hides the recently used boards while the list is filtered and when nothing was opened', async () => {
+    mockFetch({ 'GET /api/boards': { body: [board('a', 'Склад', { openedAt: '2026-10-02T09:00:00Z' })] } })
+
+    renderRoutes(routes)
+
+    await screen.findByRole('region', { name: 'Последние использованные доски' })
+    await userEvent.type(screen.getByRole('searchbox'), 'скл')
+    expect(screen.queryByRole('region', { name: 'Последние использованные доски' })).not.toBeInTheDocument()
+  })
+
   it('shows an empty state when there are no boards', async () => {
     mockFetch({ 'GET /api/boards': { body: [] } })
 
@@ -320,10 +351,11 @@ describe('BoardsPage', () => {
 })
 
 /** The titles of the boards in a part of the page, in their order; links to documents are not boards. */
+/** The titles of the boards in the lists, without «Последние использованные доски». */
 const boardTitles = (scope: HTMLElement) =>
   within(scope)
     .queryAllByRole('link')
-    .filter((link) => link.getAttribute('href')?.startsWith('/boards/'))
+    .filter((link) => link.getAttribute('href')?.startsWith('/boards/') && !link.closest('[aria-labelledby="recent-boards"]'))
     .map((link) => link.textContent)
 
 /** The JSON bodies of the requests sent as `METHOD path`. */
