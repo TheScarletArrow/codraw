@@ -1,7 +1,7 @@
 import type { LegalInfo } from '../api/legal.ts'
 import { pluralEn } from '../i18n/i18n.ts'
 import { LOCAL_COPY_LIMIT } from '../offline/localCopies.ts'
-import { Operator } from './LegalPage.tsx'
+import { Operator, STATISTICS_RETENTION_DAYS } from './LegalPage.tsx'
 import { legalMessages } from './messages.ts'
 
 /** The privacy policy in English: a translation of the Russian one, which prevails. */
@@ -129,7 +129,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           <li>
             <strong>Technical data.</strong> Cookies (see below), the network address and the browser — in the request
             logs of the server, and the address also for a short time in the memory of the server, to limit the number
-            of new guests, reports and error reports from one address.
+            of new guests, reports, feedback and error reports from one address; the server also counts the feedback of
+            each user over a day only in memory.
           </li>
           <li>
             <strong>Error reports.</strong> If an error of CoDraw happens in the browser, the server receives its text,
@@ -142,12 +143,32 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
             with the report. When an administrator closes a report, their name and the time are kept.
           </li>
           <li>
+            <strong>Feedback.</strong> Feedback sent with the “Feedback” button: the kind — “Bug”, “Idea” or “Other” —
+            the text, the address of the page without parameters, the version of CoDraw, information about the browser (
+            <code>User-Agent</code>), the time and the account of the sender, a guest one too; the network address of
+            the sender is not stored with the feedback. The feedback of a guest moves to the account they sign in with.
+            When an administrator closes feedback, their name and the time are kept.
+          </li>
+          <li>
             <strong>Journal of administrators.</strong> What the administrators of this installation did: who, what,
-            when and with which account or board — with their names at that moment. An administrator can block an
+            when and with which account, board or feedback — with their names at that moment, and for feedback with the
+            beginning of its text, up to 80 characters, without the name of its author. An administrator can block an
             account (signing in closes, sessions and connections to boards end) or delete it, as when the user deletes
             it, together with all personal boards, close link access to a board and its live image and move the board
             to the trash; doing so, they see the name, the sign-in provider and the identifier at it, the number of
             boards of the user, and for a board — the owner, the size and the access settings, but not its content.
+          </li>
+          <li>
+            <strong>Days of activity and statistics.</strong> So that administrators can see how many people work in this
+            installation, whether new users come back and whether boards are edited together, CoDraw keeps statistics
+            itself and stores only three things for them: the days (UTC) on which you, with an account or as a guest,
+            visited CoDraw — only the dates, without the time, the network address, pages, boards or actions; the days
+            on which each board changed, and whether at least two users edited it at the same time that day — without
+            who changed it; and how many guests signed in to an account in a day — as a number, without who they were.
+            The server remembers until the end of the day whom and which boards it has already recorded today, and while
+            a board is open, who is connected to it with the right to edit; this is kept only in memory and is not
+            saved. There is no third-party analytics in CoDraw: this data goes nowhere, and what you draw and write on
+            boards, where you click and which features you use is not recorded.
           </li>
           {legal.issues && (
             <li>
@@ -175,8 +196,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <p className="mt-2">
           So that you can sign in, create boards and work on them together with others; to protect the service from
           abuse and overload, to handle reports and to account for the actions of administrators; to find and fix
-          errors. We do not use the data for advertising and do not build profiles
-          of users.
+          errors and to learn from you what does not work and what is missing; to see in totals how the installation is
+          used. We do not use the data for advertising and do not build profiles of users.
         </p>
       </section>
 
@@ -193,7 +214,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           </li>
         </ul>
         <p className="mt-2">
-          There is no analytics, advertising or third-party tracking in CoDraw, so no consent to cookies is asked for.
+          There is no third-party analytics, advertising or tracking in CoDraw, and the server computes the statistics
+          of the installation itself, without separate cookies, so no consent to cookies is asked for.
         </p>
       </section>
 
@@ -320,6 +342,17 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
             of the journal of administrators — {legalMessages.days(legal.adminRetentionDays)}, including after the
             deletion of the account or the board they are about.
           </li>
+          <li>
+            Feedback — until an administrator closes it, and closed feedback for{' '}
+            {legalMessages.days(legal.adminRetentionDays)} after it is closed, including after the deletion of the
+            account of the sender; the entry of the journal about closing it, with the beginning of its text, is deleted
+            at the same time.
+          </li>
+          <li>
+            Days of activity, days of changes of boards and the numbers of guests per day —{' '}
+            {legalMessages.days(STATISTICS_RETENTION_DAYS)} whatever the settings of the installation; days of activity —
+            no longer than the account, days of changes of a board — no longer than the board itself.
+          </li>
           {legal.backupRetentionDays !== null && (
             <li>
               Backups of the database and images — up to {legalMessages.days(legal.backupRetentionDays)}: data you
@@ -354,8 +387,11 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           access “Anyone with the link, without signing in”, the board — its pages with labels, images, statuses of
           elements and who changed the elements — is seen by anyone who has the link, without signing in, including on
           other websites where it is embedded; they do not see comments, members and presence. Reports and the journal of the actions of
-          administrators are seen only by the administrators of this installation, appointed by its operator. A copy of
-          a board made
+          administrators are seen only by the administrators of this installation, appointed by its operator. Feedback
+          with the name of the sender is also seen only by them. The statistics of the installation are seen by
+          administrators in the “Statistics” tab and by the operator in their monitoring, only as totals, without users
+          or boards; your days of activity are seen only by you, in the “Download my data” archive. A copy of a board
+          made
           by its member takes the document with images to their new board, and with it the names of those who changed
           elements, wrote stickies and set statuses; the members of the copy see them. Members, comments, the version
           history and change proposals do not go to the copy. If you have set up
@@ -377,22 +413,24 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
         <p className="mt-2">
           On the “Account” page (the icon next to your name), “Download my data” builds a ZIP archive: the profile,
           your boards in <code>.drawio</code> with images, your comments, reactions, architecture decisions, change
-          proposals, shape libraries, personal templates, folders and tags, membership in boards and workspaces, access
-          requests, notifications and their settings — in JSON; the GitHub token is not included. The archive is
-          built in your browser; it can be downloaded several times a day.
+          proposals, feedback — without the name of the administrator who closed it — shape libraries, personal
+          templates, folders and tags, membership in boards and workspaces, access requests, notifications and their
+          settings, days of activity — in JSON; the GitHub token is not included. The archive is built in your browser;
+          it can be downloaded several times a day.
         </p>
         <p className="mt-2">
           There you also delete the account yourself — at once and without the possibility to restore it. Deleted are
           the profile, your boards without other members and the boards in the trash with their images, membership in
           boards and workspaces, access requests, visits, tags, folders, shape libraries, personal templates,
           notifications, the email address and the webhook for notifications, the GitHub token (the token itself can
-          be revoked in the GitHub settings), reactions and your change proposals. Before deleting, you hand the
-          boards that other people work with over to one of their members or delete them; boards of team workspaces
-          stay with the workspace. Your comments, architecture decisions, issues you linked and the authorship of
-          versions on the boards that stay are kept without an author — signed “Deleted user”; your name that members
-          have already seen in the “Changed” marks and pins of elements and in mentions in other people’s comments
-          stays part of the content of those boards. All your sessions end. A new sign-in with the same provider —
-          GitHub, Google or a corporate one — creates a new empty account.
+          be revoked in the GitHub settings), reactions, your change proposals and days of activity. Before deleting,
+          you hand the boards that other people work with over to one of their members or delete them; boards of team
+          workspaces stay with the workspace. Your comments, architecture decisions, issues you linked and the
+          authorship of versions on the boards that stay are kept without an author — signed “Deleted user”; your name
+          that members have already seen in the “Changed” marks and pins of elements and in mentions in other people’s
+          comments stays part of the content of those boards. Your reports and feedback stay with the administrators
+          without an author until they are closed and their retention period ends. All your sessions end. A new sign-in
+          with the same provider — GitHub, Google or a corporate one — creates a new empty account.
           {legal.backupRetentionDays !== null &&
             ` In backups, deleted data stays up to ${legalMessages.days(legal.backupRetentionDays)}, until the backups are deleted after that period.`}
         </p>
