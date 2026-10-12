@@ -46,6 +46,8 @@ export class FakeBackend {
   failingStores = 0;
   /** How many of the next stores of a text for search fail with 500. */
   failingSearchTexts = 0;
+  /** How many of the next reports of a board edited together fail with 500. */
+  failingCoEditedReports = 0;
   /**
    * How long a store of a board document takes after its body arrived, in milliseconds; the state of a client gone by
    * then is not stored.
@@ -150,6 +152,11 @@ export class FakeBackend {
         await this.handleUserChecks(request, response);
         return;
       }
+      const coEdited = /^\/internal\/boards\/([^/]+)\/co-edited$/.exec(request.url ?? "");
+      if (coEdited && request.method === "POST") {
+        this.handleCoEdited(request, response, decodeURIComponent(coEdited[1]!));
+        return;
+      }
       const match = /^\/internal\/boards\/([^/]+)\/(document|access|search-text)$/.exec(request.url ?? "");
       if (!match) {
         response.writeHead(404).end();
@@ -218,6 +225,25 @@ export class FakeBackend {
       response.writeHead(405).end();
     });
     await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
+  }
+
+  private handleCoEdited(request: IncomingMessage, response: ServerResponse, boardId: string) {
+    this.requests.push({ method: "POST co-edited", boardId });
+    if (request.headers["x-internal-token"] !== this.token) {
+      response.writeHead(401).end();
+      return;
+    }
+    if (this.failingCoEditedReports > 0) {
+      this.failingCoEditedReports--;
+      response.writeHead(500).end();
+      return;
+    }
+    response.writeHead(this.boards.has(boardId) ? 204 : 404).end();
+  }
+
+  /** How many times collab told that the board was edited together. */
+  coEditedReportsFor(boardId: string): number {
+    return this.requests.filter((r) => r.method === "POST co-edited" && r.boardId === boardId).length;
   }
 
   private async handleUserChecks(request: IncomingMessage, response: ServerResponse) {

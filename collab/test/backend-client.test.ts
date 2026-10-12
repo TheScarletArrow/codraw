@@ -83,6 +83,16 @@ describe("backend client", () => {
     await expect(client.checkUsers(["alice"])).rejects.toThrow("500");
   });
 
+  it("tells that a board was edited together, and nothing of a board that is gone", async () => {
+    await client.reportCoEdited(board);
+    await client.reportCoEdited("0199a000-0000-7000-8000-000000000002");
+
+    expect(backend.coEditedReportsFor(board)).toBe(1);
+    expect(backend.coEditedReportsFor("0199a000-0000-7000-8000-000000000002")).toBe(1);
+    backend.failingCoEditedReports = 1;
+    await expect(client.reportCoEdited(board)).rejects.toThrow("backend responded with 500");
+  });
+
   it("fails on other backend errors", async () => {
     const unauthorized = createBackendClient({ baseUrl: backend.url, internalToken: "wrong" });
 
@@ -92,6 +102,7 @@ describe("backend client", () => {
     await expect(unauthorized.storeSearchText(board, "Схема")).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.boardsWithoutSearchText(null, 10)).rejects.toThrow("backend responded with 401");
     await expect(unauthorized.checkUsers([board])).rejects.toThrow("backend responded with 401");
+    await expect(unauthorized.reportCoEdited(board)).rejects.toThrow("backend responded with 401");
   });
 
   it("stores the text of a board for search in UTF-8, and only while it has none when asked so", async () => {

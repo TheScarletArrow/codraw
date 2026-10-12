@@ -25,6 +25,7 @@ import {
 } from '../api/admin.ts'
 import type { LinkAccess } from '../api/boards.ts'
 import { HttpError, isForbidden } from '../api/http.ts'
+import { AdminStats } from '../admin/AdminStats.tsx'
 import { REPORT_REASONS } from '../admin/reports.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
@@ -32,9 +33,9 @@ import { AdminFeedback } from '../feedback/AdminFeedback.tsx'
 import { perLocale } from '../i18n/i18n.ts'
 import { adminMessages as m } from './AdminPage.messages.ts'
 
-type Tab = 'reports' | 'feedback' | 'users' | 'boards' | 'journal'
+type Tab = 'reports' | 'feedback' | 'users' | 'boards' | 'journal' | 'stats'
 
-const TABS: Tab[] = ['reports', 'feedback', 'users', 'boards', 'journal']
+const TABS: Tab[] = ['reports', 'feedback', 'users', 'boards', 'journal', 'stats']
 
 const time = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 const at = (value: string) => time().format(new Date(value))
@@ -98,6 +99,7 @@ export function AdminPage() {
         {tab === 'users' && <Users initialQuery={userQuery} />}
         {tab === 'boards' && <Boards selected={boardId} onSelect={setBoardId} />}
         {tab === 'journal' && <Journal />}
+        {tab === 'stats' && <AdminStats />}
       </div>
     </div>
   )

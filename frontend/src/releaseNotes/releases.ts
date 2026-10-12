@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.44.0',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Статистика установки',
+          text: 'Администраторы видят во вкладке «Статистика» раздела «Администрирование», сколько людей работает в CoDraw за день, неделю и 28 дней, сколько появилось новых учётных записей и гостей, которые вошли в учётную запись, возвращаются ли новички на второй неделе и сколько досок правят вместе. Для этого CoDraw запоминает только дни, когда вы заходили, на 42 дня — без содержимого досок и ваших действий — и никому их не передаёт; эти дни есть в архиве «Скачать мои данные».',
+        },
+        en: {
+          title: 'Installation statistics',
+          text: 'Administrators see in the “Statistics” tab of “Administration” how many people use CoDraw over a day, a week and 28 days, how many new accounts there are and how many guests signed in to an account, whether newcomers come back in their second week, and how many boards are edited together. For this CoDraw remembers only the days you visited, for 42 days, without the content of boards or your actions, and shares them with no one; these days are in the “Download my data” archive.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.43.0',
     date: '2026-10-12',
     items: [

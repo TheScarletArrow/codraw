@@ -115,6 +115,11 @@ export interface BackendClient {
    * installation blocked; one request about all of them, nothing without users.
    */
   checkUsers(userIds: readonly string[]): Promise<UserChecks>;
+  /**
+   * Tells that the board was edited together today, for the statistics of the installation; a board that is gone is
+   * nothing to tell.
+   */
+  reportCoEdited(boardId: string): Promise<void>;
 }
 
 export interface BackendClientOptions {
@@ -253,6 +258,16 @@ export function createBackendClient({ baseUrl, internalToken }: BackendClientOpt
         throw new Error(`Checking users failed: backend responded with ${response.status}`);
       }
       return (await response.json()) as UserChecks;
+    },
+
+    async reportCoEdited(boardId) {
+      const response = await fetch(new URL(`/internal/boards/${encodeURIComponent(boardId)}/co-edited`, baseUrl), {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Reporting board ${boardId} edited together failed: backend responded with ${response.status}`);
+      }
     },
   };
 }

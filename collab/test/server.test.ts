@@ -887,6 +887,41 @@ describe("collab server", () => {
     });
   });
 
+  describe("boards edited together", () => {
+    const BOB = "0199a000-0000-7000-8000-0000000000b1";
+
+    const asUser = (subject: string) => () => backend.issueToken(board, { subject });
+
+    it("tells the backend once that two users who may edit the board changed it", async () => {
+      await startServer();
+      const alice = await connect(board);
+      const bob = await connect(board, asUser(BOB));
+
+      alice.document.getMap("meta").set("title", "Alice");
+      await waitFor(() => backend.coEditedReportsFor(board) === 1);
+      bob.document.getMap("meta").set("description", "Bob");
+      await waitFor(() => backend.storesFor(board) > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(backend.coEditedReportsFor(board)).toBe(1);
+    });
+
+    it("does not tell a board changed next to a viewer, nor in two tabs of one user", async () => {
+      backend.access.set(board, { ownerId: ALICE, linkAccess: "view", members: {} });
+      await startServer();
+      const owner = await connect(board);
+      await connect(board, asUser(BOB));
+      const otherTab = await connect(board);
+
+      owner.document.getMap("meta").set("title", "Owner");
+      otherTab.document.getMap("meta").set("description", "Tab");
+      await waitFor(() => backend.storesFor(board) > 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(backend.coEditedReportsFor(board)).toBe(0);
+    });
+  });
+
   describe("texts for search", () => {
     /** Writes a page named `name` with a shape labelled `label`, as the editor does. */
     function writePage(document: Y.Doc, name: string, label: string) {

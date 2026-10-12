@@ -82,6 +82,10 @@ class AccountExportService(
                     """,
                     "r.\"visitedAt\", r.\"boardId\"",
                 )},
+                'activityDays', (
+                    SELECT coalesce(json_agg(a.day ORDER BY a.day), '[]'::json)
+                    FROM user_activity_days a WHERE a.user_id = u.id
+                ),
                 'workspaces', ${list(
                     """
                     SELECT w.id, w.name, lower(m.role) AS role, m.created_at AS "joinedAt"
