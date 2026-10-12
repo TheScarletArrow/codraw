@@ -56,6 +56,7 @@ class Backend {
       throw new Error("not used");
     },
     checkUsers: async () => ({ missing: [], blocked: [] }),
+    reportCoEdited: async () => {},
   };
 }
 
