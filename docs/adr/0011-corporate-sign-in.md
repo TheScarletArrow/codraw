@@ -23,7 +23,7 @@
 | Данные | имя (`name`, `preferred_username`, `email`, `sub`) и аватар (`picture`) хранятся; почта и группы только сверяются с ограничениями при входе |
 | Ограничения | домены почты (точное совпадение, `email_verified` не `false`) и группы из claim (по умолчанию `groups`); отказ не создаёт учётную запись |
 | Закрытая установка | GitHub и Google включены, только если задано их OAuth-приложение; гостевой вход выключает `codraw.guests.enabled=false` |
-| Выход | по желанию — RP-initiated logout: браузер уходит на `end_session_endpoint` с `id_token_hint` и возвращается на страницу входа |
+| Выход | по умолчанию — RP-initiated logout (`logout=false` выключает): браузер уходит на `end_session_endpoint` с `id_token_hint` и возвращается на страницу входа |
 
 ## Обоснование
 

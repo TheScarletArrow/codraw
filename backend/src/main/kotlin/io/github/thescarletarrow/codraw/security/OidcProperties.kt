@@ -43,6 +43,9 @@ data class OidcProvider(
     val allowedGroups: List<String> = emptyList(),
     /** The claim that lists the groups of the user. */
     val groupsClaim: String = "groups",
-    /** Signing out of CoDraw signs out at the provider too (RP-initiated logout). */
-    val logout: Boolean = false,
+    /**
+     * Signing out of CoDraw signs out at the provider too (RP-initiated logout); without it the session at the provider
+     * stays, and the next «Войти через …» signs the same user in again without asking.
+     */
+    val logout: Boolean = true,
 )

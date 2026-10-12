@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.44.1',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Выход из корпоративной учётной записи',
+          text: 'Если вы вошли через корпоративного провайдера, например Keycloak, «Выйти» теперь завершает и сеанс у него, поэтому следующий вход снова спросит логин и пароль и можно войти другим пользователем.',
+        },
+        en: {
+          title: 'Signing out of a company account',
+          text: 'If you signed in through your company provider, such as Keycloak, “Sign out” now ends your session there too, so the next sign-in asks for your login and password again and you can sign in as someone else.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.44.0',
     date: '2026-10-12',
     items: [
