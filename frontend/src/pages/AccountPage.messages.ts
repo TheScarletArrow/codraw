@@ -7,6 +7,14 @@ export const accountMessages = defineMessages({
     confirmationWord: 'удалить',
     title: 'Учётная запись',
     intro: 'Ваши данные в CoDraw: скачайте их или удалите учётную запись.',
+    adminIntro: 'Вы администратор этой установки CoDraw.',
+    administrator: 'Учётная запись администратора',
+    administratorText:
+      'Права администратора даёт конфигурация сервера — переменная CODRAW_ADMINS, поэтому скачать данные и удалить эту учётную запись здесь нельзя: иначе установка могла бы остаться без администратора.',
+    administratorLeave:
+      'Чтобы скачать свои данные или удалить учётную запись, попросите оператора убрать её из CODRAW_ADMINS и перезапустить сервер — после этого здесь появятся обычные «Скачать мои данные» и «Удалить учётную запись».',
+    openAdministration: 'Открыть администрирование',
+    administrationHelp: 'Справка об администрировании',
     myData: 'Мои данные',
     archive:
       'Архив ZIP: профиль, ваши доски в формате draw.io с изображениями, комментарии, реакции, решения, предложения, библиотеки фигур, шаблоны, папки и теги, участие в досках и пространствах, настройки уведомлений — в JSON.',
@@ -41,6 +49,14 @@ export const accountMessages = defineMessages({
     confirmationWord: 'delete',
     title: 'Account',
     intro: 'Your data in CoDraw: download it or delete the account.',
+    adminIntro: 'You are an administrator of this CoDraw installation.',
+    administrator: 'Administrator account',
+    administratorText:
+      'Administrator rights come from the server configuration, the CODRAW_ADMINS variable, so this account cannot download its data or be deleted here: otherwise the installation could be left without an administrator.',
+    administratorLeave:
+      'To download your data or delete the account, ask the operator to take it out of CODRAW_ADMINS and restart the server; then the usual “Download my data” and “Delete account” appear here.',
+    openAdministration: 'Open administration',
+    administrationHelp: 'Help on administration',
     myData: 'My data',
     archive:
       'A ZIP archive: the profile, your boards in the draw.io format with images, comments, reactions, decisions, proposals, shape libraries, templates, folders and tags, membership in boards and workspaces, notification settings — in JSON.',

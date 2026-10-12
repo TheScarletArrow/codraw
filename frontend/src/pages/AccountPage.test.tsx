@@ -40,6 +40,17 @@ describe('AccountPage', () => {
     vi.unstubAllGlobals()
   })
 
+  it('offers an administrator neither the download nor the deletion, and leads to the administration instead', async () => {
+    const fetchMock = mockFetch({ 'GET /api/me': { body: { ...ALICE, admin: true } } })
+    renderRoutes(routes, '/settings/account')
+
+    expect(await screen.findByRole('heading', { name: 'Учётная запись администратора' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Открыть администрирование' })).toHaveAttribute('href', '/admin')
+    expect(screen.queryByRole('button', { name: 'Скачать мои данные' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Удалить учётную запись' })).not.toBeInTheDocument()
+    expect(requests(fetchMock, 'GET', '/api/me/deletion')).toHaveLength(0)
+  })
+
   it('deletes the account only once the word is typed, and opens the login page that says so', async () => {
     const fetchMock = renderPage({
       'GET /api/me/deletion': { body: nothingShared },

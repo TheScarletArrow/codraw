@@ -22,9 +22,11 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @IntegrationTest
@@ -94,6 +96,31 @@ class AccountDeletionApiTest(
         assertEquals(listOf(DELETED_USER_ID), uuids("SELECT unnest(editors) FROM board_documents"))
         assertEquals(deletedBefore + 1, registry.counter("codraw.accounts.deleted").count())
         mockMvc.get("/api/me") { cookie(cookie) }.andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `refuses an administrator of the installation to delete their account or download its data`() {
+        val admin = users.gitHubUser(IntegrationTest.ADMIN)
+        val own = board(admin, "Админская")
+        val cookie = sessions.signedIn(admin)
+        val refused: ResultActionsDsl.() -> Unit = {
+            andExpect {
+                status { isForbidden() }
+                jsonPath("$.reason") { value("administrator") }
+            }
+        }
+
+        mockMvc.get("/api/me/deletion") { cookie(cookie) }.refused()
+        deleteAccount(cookie).refused()
+        mockMvc.post("/api/me/export") { cookie(cookie); with(csrf()) }.refused()
+        mockMvc.get("/api/me/export/boards/$own") { cookie(cookie) }.refused()
+
+        assertNotNull(users.find(admin.id))
+        assertEquals(1, count("SELECT count(*) FROM boards WHERE id = :id", "id" to own))
+        mockMvc.get("/api/me") { cookie(cookie) }.andExpect {
+            status { isOk() }
+            jsonPath("$.admin") { value(true) }
+        }
     }
 
     @Test
