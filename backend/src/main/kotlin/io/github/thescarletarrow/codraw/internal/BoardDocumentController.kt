@@ -6,6 +6,7 @@ import io.github.thescarletarrow.codraw.board.StoredDocument
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
 import io.github.thescarletarrow.codraw.LimitProperties
+import io.github.thescarletarrow.codraw.product.ProductActivity
 import io.github.thescarletarrow.codraw.readAtMost
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -26,6 +27,7 @@ class BoardDocumentController(
     private val documents: BoardDocumentService,
     private val limits: LimitProperties,
     private val metrics: CodrawMetrics,
+    private val activity: ProductActivity,
 ) {
 
     @GetMapping
@@ -41,7 +43,8 @@ class BoardDocumentController(
     /**
      * Stores the state of the document; a state larger than the limit is refused with 413 and is not read to its end.
      * The ids of the users whose changes the state has since the previous store come in [EDITORS_HEADER], separated by
-     * commas; a store without it changes nothing about who changed the board. An id that is not a UUID gets 400.
+     * commas; a store without it changes nothing about who changed the board. An id that is not a UUID gets 400. A store
+     * with editors makes today a day on which the board was edited, for the statistics of the installation.
      */
     @PutMapping(consumes = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
     fun store(
@@ -57,6 +60,7 @@ class BoardDocumentController(
         }
         if (!documents.save(boardId, state, editors.orEmpty())) return ResponseEntity.notFound().build()
         metrics.documentStored(state.size)
+        if (!editors.isNullOrEmpty()) activity.boardEdited(boardId)
         return ResponseEntity.noContent().build()
     }
 

@@ -247,6 +247,7 @@ class AccountDeletionApiTest(
             "board" to board, "authors" to arrayOf(user.id, other.id),
         )
         sql("INSERT INTO board_visits (user_id, board_id, visited_at) VALUES (:user, :board, now())", "user" to user.id, "board" to board)
+        sql("INSERT INTO user_activity_days (user_id, day) VALUES (:user, current_date) ON CONFLICT DO NOTHING", "user" to user.id)
         sql("INSERT INTO board_reads (user_id, board_id, seen_at, present) VALUES (:user, :board, now(), false)", "user" to user.id, "board" to board)
         sql("INSERT INTO board_members (board_id, user_id, role, created_at) VALUES (:board, :user, 'EDITOR', now())", "board" to board, "user" to user.id)
         sql("INSERT INTO board_access_requests (board_id, user_id, role, created_at) VALUES (:board, :user, 'EDITOR', now())", "board" to board, "user" to user.id)
