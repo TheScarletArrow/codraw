@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.account
 import com.fasterxml.jackson.annotation.JsonValue
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
+import io.github.thescarletarrow.codraw.admin.AdminAccess
 import io.github.thescarletarrow.codraw.board.BoardIds
 import io.github.thescarletarrow.codraw.board.BoardLimitReachedException
 import io.github.thescarletarrow.codraw.board.BoardOwnerChangedException
@@ -27,17 +28,20 @@ import java.util.UUID
 
 /**
  * The account of the signed-in user, guests too: what deleting it would do, deleting it, and the export of their data
- * for «Скачать мои данные».
+ * for «Скачать мои данные». An administrator of the installation gets 403 for all of it: the configuration keeps their
+ * account, and only taking it out of there lets them delete it or download its data.
  */
 @RestController
 class AccountController(
     private val deletion: AccountDeletionService,
     private val export: AccountExportService,
     private val metrics: CodrawMetrics,
+    private val admins: AdminAccess,
 ) {
 
     @GetMapping("/api/me/deletion")
-    fun preview(@AuthenticationPrincipal principal: OAuth2User): DeletionPreview = deletion.preview(principal.userId)
+    fun preview(@AuthenticationPrincipal principal: OAuth2User): DeletionPreview =
+        deletion.preview(notAdministrator(principal))
 
     /**
      * Deletes the account of the user with the decisions about their boards with others, ends their sessions, this one
@@ -57,7 +61,7 @@ class AccountController(
                 DecisionAction.DELETE -> BoardDecision.Delete
             }
         }
-        deletion.delete(principal.userId, decisions)
+        deletion.delete(notAdministrator(principal), decisions)
         // The session is gone from the store already; this clears the security context and the cookie of the request.
         request.logout()
         return ResponseEntity.noContent().build()
@@ -66,8 +70,9 @@ class AccountController(
     /** Everything the tables keep of the user, as many times a day as the limit allows. */
     @PostMapping("/api/me/export", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun export(@AuthenticationPrincipal principal: OAuth2User): ResponseEntity<*> {
-        export.acquire(principal.userId)?.let { wait -> return tooManyExports(wait) }
-        val data = export.export(principal.userId) ?: return ResponseEntity.notFound().build<Void>()
+        val userId = notAdministrator(principal)
+        export.acquire(userId)?.let { wait -> return tooManyExports(wait) }
+        val data = export.export(userId) ?: return ResponseEntity.notFound().build<Void>()
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(data)
     }
 
@@ -75,8 +80,15 @@ class AccountController(
     @GetMapping("/api/me/export/boards/{id}", produces = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
     fun document(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<ByteArray> {
         val boardId = BoardIds.parse(id) ?: return ResponseEntity.notFound().build()
-        val state = export.document(principal.userId, boardId) ?: return ResponseEntity.notFound().build()
+        val state = export.document(notAdministrator(principal), boardId) ?: return ResponseEntity.notFound().build()
         return if (state.isEmpty()) ResponseEntity.noContent().build() else ResponseEntity.ok(state)
+    }
+
+    /** The id of the signed-in user, unless the configuration makes them an administrator. */
+    private fun notAdministrator(principal: OAuth2User): UUID {
+        val userId = principal.userId
+        if (admins.isAdmin(userId)) throw AdministratorAccountException()
+        return userId
     }
 
     private fun tooManyExports(wait: Duration): ResponseEntity<ProblemDetail> {
@@ -104,6 +116,13 @@ class AccountController(
         }
 
     @ExceptionHandler
+    fun administratorAccount(exception: AdministratorAccountException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.message).apply {
+            title = "Administrator account"
+            setProperty("reason", "administrator")
+        }
+
+    @ExceptionHandler
     fun invalidDecision(exception: InvalidDecisionException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.message)
 
@@ -119,6 +138,10 @@ class AccountController(
     fun ownerChanged(exception: BoardOwnerChangedException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.message)
 }
+
+/** The account belongs to an administrator of the installation, whom only the configuration names and unnames. */
+class AdministratorAccountException :
+    RuntimeException("The account of an administrator of the installation is neither deleted nor exported; take it out of the configuration first")
 
 data class DeleteAccountRequest(val boards: List<BoardDecisionRequest> = emptyList())
 

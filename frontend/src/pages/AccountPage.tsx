@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ShieldCheck } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -25,20 +26,52 @@ const ACCOUNT_DELETED_STATE = { accountDeleted: true }
 
 /**
  * «Учётная запись»: the user downloads all their data in an archive, or deletes their account for good, deciding what
- * becomes of the boards that others work on.
+ * becomes of the boards that others work on. An administrator of the installation does neither: the configuration of
+ * the server keeps their account, and the page says so and leads to «Администрирование».
  */
 export function AccountPage() {
   const user = useCurrentUser()
+  const admin = user.data?.admin === true
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 overflow-y-auto p-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">{m.title}</h1>
-        <p className="text-sm text-muted-foreground">{m.intro}</p>
+        {user.data && <p className="text-sm text-muted-foreground">{admin ? m.adminIntro : m.intro}</p>}
       </div>
-      <ExportSection />
-      {user.data && <DeletionSection user={user.data} />}
+      {user.data &&
+        (admin ? (
+          <AdministratorSection />
+        ) : (
+          <>
+            <ExportSection />
+            <DeletionSection user={user.data} />
+          </>
+        ))}
     </div>
+  )
+}
+
+function AdministratorSection() {
+  const id = useId()
+
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border p-4">
+      <h2 id={id} className="flex items-center gap-2 font-semibold">
+        <ShieldCheck className="size-4" aria-hidden />
+        {m.administrator}
+      </h2>
+      <p className="text-sm text-muted-foreground">{m.administratorText}</p>
+      <p className="text-sm text-muted-foreground">{m.administratorLeave}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline">
+          <Link to="/admin">{m.openAdministration}</Link>
+        </Button>
+        <Button asChild variant="ghost">
+          <Link to="/help#admin">{m.administrationHelp}</Link>
+        </Button>
+      </div>
+    </section>
   )
 }
 

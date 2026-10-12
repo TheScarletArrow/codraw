@@ -609,6 +609,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'Значок «Учётная запись» рядом с вашим именем открывает страницу, где «Скачать мои данные» сохраняет архив: доски в draw.io с изображениями, комментарии, решения, библиотеки, шаблоны и всё остальное, что CoDraw о вас хранит.',
               'Там же удаляют учётную запись: доски, с которыми работают другие, передаются участнику или удаляются, а ваши комментарии на чужих досках остаются с подписью «Удалённый пользователь».',
+              'У администратора установки на этой странице вместо выгрузки и удаления — «Учётная запись администратора»: её держит конфигурация сервера, поэтому скачать данные и удалить её можно, только когда оператор уберёт её из списка администраторов.',
             ],
           },
           {
@@ -1227,6 +1228,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'The “Account” icon next to your name opens a page where “Download my data” saves an archive: your boards as draw.io files with images, comments, decisions, libraries, templates and everything else CoDraw keeps about you.',
               'There you can also delete your account: the boards others work on are handed over to a member or deleted, and your comments on other boards stay signed “Deleted user”.',
+              'An administrator of the installation sees “Administrator account” on this page instead of the download and the deletion: the server configuration keeps the account, so its data can be downloaded and it can be deleted only once the operator takes it out of the list of administrators.',
             ],
           },
           {

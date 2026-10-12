@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.45.0',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Учётная запись администратора',
+          text: 'Администратор установки больше не видит на странице «Учётная запись» «Скачать мои данные» и «Удалить учётную запись»: его права даёт конфигурация сервера, и случайно удалить себя нельзя. Вместо этого страница объясняет, откуда права, и ведёт в «Администрирование».',
+        },
+        en: {
+          title: 'Administrator account',
+          text: 'An administrator of the installation no longer sees “Download my data” and “Delete account” on the “Account” page: the server configuration gives the rights, and the account cannot be deleted by accident. Instead the page explains where the rights come from and leads to “Administration”.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.44.1',
     date: '2026-10-12',
     items: [
