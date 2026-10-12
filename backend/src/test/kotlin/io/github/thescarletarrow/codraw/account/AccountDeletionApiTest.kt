@@ -42,6 +42,7 @@ class AccountDeletionApiTest(
     @BeforeEach
     fun cleanDatabase() {
         jdbcClient.sql("DELETE FROM boards").update()
+        jdbcClient.sql("DELETE FROM feedback").update()
         jdbcClient.sql("DELETE FROM workspaces").update()
         jdbcClient.sql("DELETE FROM personal_templates").update()
         jdbcClient.sql("DELETE FROM spring_session").update()
@@ -88,6 +89,7 @@ class AccountDeletionApiTest(
         assertEquals(1, count("SELECT count(*) FROM comments WHERE id = :id AND author_id IS NULL", "id" to comment))
         assertEquals(1, count("SELECT count(*) FROM decisions WHERE author_id IS NULL"))
         assertEquals(1, count("SELECT count(*) FROM issue_links WHERE linked_by IS NULL"))
+        assertEquals(1, count("SELECT count(*) FROM feedback WHERE text = 'Моё' AND user_id IS NULL AND resolved_by IS NULL"))
         assertEquals(listOf(DELETED_USER_ID, bob.id), uuids("SELECT unnest(authors) FROM board_versions"))
         assertEquals(listOf(DELETED_USER_ID), uuids("SELECT unnest(editors) FROM board_documents"))
         assertEquals(deletedBefore + 1, registry.counter("codraw.accounts.deleted").count())
@@ -316,6 +318,11 @@ class AccountDeletionApiTest(
         sql(
             "INSERT INTO board_reports (board_id, reason, reporter_id, created_at, resolved_at, resolved_by, resolved_by_name) VALUES (:board, 'SPAM', :id, now(), now(), :id, 'Alice')",
             "board" to board, "id" to user.id,
+        )
+        // Feedback that the user sent and, as an administrator, closed: it stays without them too.
+        sql(
+            "INSERT INTO feedback (user_id, kind, text, created_at, resolved_at, resolved_by, resolved_by_name) VALUES (:id, 'BUG', 'Моё', now(), now(), :id, 'Alice')",
+            "id" to user.id,
         )
         val workspace = workspace("Платформа", other to "OWNER", user to "EDITOR")
         sql("INSERT INTO boards (title, owner_id, created_at, updated_at, workspace_id) VALUES ('Своя в пространстве', :user, now(), now(), :workspace)", "user" to user.id, "workspace" to workspace)

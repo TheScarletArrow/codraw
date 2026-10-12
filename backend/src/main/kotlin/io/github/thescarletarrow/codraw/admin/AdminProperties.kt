@@ -16,7 +16,7 @@ data class AdminProperties(
      * corporate provider as `oidc:<issuer>:<sub>`. A guest is never one: nothing outside CoDraw tells who a guest is.
      */
     val users: List<String> = emptyList(),
-    /** Entries of the journal and closed reports are deleted once they are this old. */
+    /** Entries of the journal, closed reports and closed feedback are deleted once they are this old. */
     val retention: Duration = Duration.ofDays(365),
 ) {
     /** The accounts of administrators as pairs of the provider and the id at the provider. */

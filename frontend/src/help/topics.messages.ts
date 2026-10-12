@@ -612,6 +612,14 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             ],
           },
           {
+            id: 'feedback',
+            title: 'Обратная связь',
+            paragraphs: [
+              'Кнопка «Обратная связь» в шапке, рядом со «Справкой», отправляет отзыв администраторам этой установки CoDraw: выберите «Ошибка», «Идея» или «Другое» и напишите, что случилось или чего не хватает. Вместе с текстом отправятся страница, на которой вы были, без параметров адреса, версия CoDraw и браузер — окно их называет. На телефоне «Обратная связь» — в меню «Тема».',
+              'Неотправленный текст остаётся в окне, пока открыта вкладка. Ваши отзывы входят в «Скачать мои данные». Администраторы читают отзывы во вкладке «Отзывы» раздела «Администрирование» и закрывают разобранные.',
+            ],
+          },
+          {
             id: 'admin',
             title: 'Администрирование',
             paragraphs: [
@@ -1218,6 +1226,14 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'The “Account” icon next to your name opens a page where “Download my data” saves an archive: your boards as draw.io files with images, comments, decisions, libraries, templates and everything else CoDraw keeps about you.',
               'There you can also delete your account: the boards others work on are handed over to a member or deleted, and your comments on other boards stay signed “Deleted user”.',
+            ],
+          },
+          {
+            id: 'feedback',
+            title: 'Feedback',
+            paragraphs: [
+              'The “Feedback” button in the header, next to “Help”, sends feedback to the administrators of this CoDraw installation: choose “Bug”, “Idea” or “Other” and write what happened or what is missing. The page you were on without the parameters of its address, the version of CoDraw and the browser are sent along with the text, and the window names them. On a phone, “Feedback” is in the “Theme” menu.',
+              'A text you have not sent stays in the window while the tab is open. Your feedback is part of “Download my data”. Administrators read feedback in the “Feedback” tab of “Administration” and close what they have dealt with.',
             ],
           },
           {

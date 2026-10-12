@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.43.0',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Обратная связь',
+          text: 'Кнопка «Обратная связь» в шапке отправляет администраторам установки сообщение об ошибке, идею или что-то ещё прямо из CoDraw — с любой страницы и с телефона, где она в меню «Тема». Страница, версия CoDraw и браузер приложатся сами, а неотправленный текст не пропадёт, если закрыть окно. Администраторы разбирают отзывы в новой вкладке «Отзывы».',
+        },
+        en: {
+          title: 'Feedback',
+          text: 'The “Feedback” button in the header sends a bug report, an idea or anything else to the administrators of the installation right from CoDraw, from any page and from a phone, where it is in the “Theme” menu. The page, the version of CoDraw and the browser go along by themselves, and a text you have not sent stays when the window closes. Administrators go through feedback in the new “Feedback” tab.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.42.0',
     date: '2026-10-11',
     items: [

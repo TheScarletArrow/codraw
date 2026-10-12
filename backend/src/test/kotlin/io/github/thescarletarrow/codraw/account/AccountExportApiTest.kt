@@ -73,6 +73,28 @@ class AccountExportApiTest(
     }
 
     @Test
+    fun `exports the feedback of the user without the administrator who closed it`() {
+        jdbcClient.sql(
+            """
+            INSERT INTO feedback (user_id, kind, text, page, app_version, user_agent, created_at, resolved_at, resolved_by, resolved_by_name)
+            VALUES (:user, 'IDEA', 'Тёмная тема для печати', '/boards/42', '0.43.0', 'Mozilla/5.0', now(), now(), :admin, 'Админ Петров')
+            """,
+        ).param("user", alice.id).param("admin", bob.id).update()
+
+        export(alice).andExpect {
+            status { isOk() }
+            jsonPath("$.feedback[*].text") { value(contains("Тёмная тема для печати")) }
+            jsonPath("$.feedback[0].kind") { value("idea") }
+            jsonPath("$.feedback[0].page") { value("/boards/42") }
+            jsonPath("$.feedback[0].appVersion") { value("0.43.0") }
+            jsonPath("$.feedback[0].userAgent") { value("Mozilla/5.0") }
+            jsonPath("$.feedback[0].resolvedAt") { exists() }
+            content { string(not(containsString("Админ Петров"))) }
+        }
+        export(bob).andExpect { jsonPath("$.feedback") { isEmpty() } }
+    }
+
+    @Test
     fun `gives the document of an own board, and nothing of a board of somebody else`() {
         val own = boards.create("Схема", alice.id)
         val empty = boards.create("Пустая", alice.id)
