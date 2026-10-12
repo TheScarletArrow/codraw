@@ -1,7 +1,18 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, cellBox, connect, createBoard, drag, edges, twoParticipants, userPage, vertices } from './helpers.ts'
+import {
+  addShape,
+  cellBox,
+  connect,
+  createBoard,
+  drag,
+  edges,
+  listedBoardLink,
+  twoParticipants,
+  userPage,
+  vertices,
+} from './helpers.ts'
 
 const fixture = (name: string) => fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url))
 
@@ -88,7 +99,7 @@ test('a draw.io file opens as a new board named after the file', async ({ browse
   await expect.poll(() => tabNames(page)).toEqual(['Контекст', 'Схема БД'])
   const boardPath = new URL(page.url()).pathname
   await page.goto('/')
-  await expect(page.locator(`a[href="${boardPath}"]`)).toHaveText('payments')
+  await expect(page.locator(listedBoardLink(`${boardPath}`))).toHaveText('payments')
 
   await page.context().close()
 })

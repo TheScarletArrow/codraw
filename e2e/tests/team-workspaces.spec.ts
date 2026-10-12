@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, createBoard, userPage, vertices } from './helpers.ts'
+import { addShape, createBoard, listedBoardLink, userPage, vertices } from './helpers.ts'
 
 // Users of their own: other tests expect Алиса and Боб to have no workspaces and boards of theirs.
 const OWNER = 'Зоя'
@@ -40,7 +40,7 @@ test('a team gets a board through its workspace, its access to the workspace lim
   const moved = owner.waitForResponse((response) => response.request().method() === 'PUT' && response.ok())
   await owner.getByRole('menuitem', { name: /Платформа/ }).click()
   await moved
-  await expect(owner.locator(`a[href="/boards/${boardId}"]`)).toHaveCount(0)
+  await expect(owner.locator(listedBoardLink(`/boards/${boardId}`))).toHaveCount(0)
 
   // Илья finds it in the workspace and edits it together with the owner.
   await editor.reload()

@@ -45,6 +45,8 @@ export const boardsPageMessages = defineMessages({
     boardTitle: 'Название доски',
     viewing: 'просмотр',
     editing: 'редактирование',
+    recentBoards: 'Последние использованные доски',
+    openedAt: (at: string) => `Открыта ${at}`,
   },
   en: {
     newBoardTitle: 'New board',
@@ -88,5 +90,7 @@ export const boardsPageMessages = defineMessages({
     boardTitle: 'Board title',
     viewing: 'view',
     editing: 'edit',
+    recentBoards: 'Recently used boards',
+    openedAt: (at: string) => `Opened ${at}`,
   },
 })

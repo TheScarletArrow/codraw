@@ -55,6 +55,21 @@ export function sortBoards<T extends ListedBoard>(boards: T[], sort: BoardSort):
   return boards.toSorted((a, b) => compare[sort](a, b) || 0)
 }
 
+/** How many boards «Последние использованные доски» shows at most. */
+export const RECENT_BOARDS_LIMIT = 6
+
+/**
+ * The boards the user opened last, own and shared together, the latest first: those of «Последние использованные
+ * доски». Boards never opened are not there; a board in both lists counts once.
+ */
+export function recentBoards<T extends ListedBoard>(boards: T[], limit = RECENT_BOARDS_LIMIT): T[] {
+  const unique = [...new Map(boards.map((board) => [board.id, board])).values()]
+  return unique
+    .filter((board) => board.openedAt !== null)
+    .toSorted((a, b) => time(b.openedAt) - time(a.openedAt))
+    .slice(0, limit)
+}
+
 /** The time a row of a board shows: the one the list is ordered by; `null` for a board never opened. */
 export function boardTime(board: ListedBoard, sort: BoardSort): { at: string | null; label: string } {
   return sort === 'opened' ? { at: board.openedAt, label: m.opened } : { at: board.updatedAt, label: m.changed }

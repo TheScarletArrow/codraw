@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createBoard, openBoard, userPage } from './helpers.ts'
+import { createBoard, listedBoardLink, openBoard, userPage } from './helpers.ts'
 
 test('a visitor works as a guest, keeps the boards after closing the browser and opens boards by their links', async ({
   browser,
@@ -24,7 +24,7 @@ test('a visitor works as a guest, keeps the boards after closing the browser and
   await context.close()
   const reopened = await (await browser.newContext({ storageState })).newPage()
   await reopened.goto('/')
-  await expect(reopened.locator(`a[href="${boardPath}"]`)).toHaveText('Новая доска')
+  await expect(reopened.locator(listedBoardLink(`${boardPath}`))).toHaveText('Новая доска')
 
   await openBoard(reopened, aliceBoard)
   await expect(reopened.getByRole('heading', { name: 'Новая доска' })).toBeVisible()

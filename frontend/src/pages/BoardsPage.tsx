@@ -30,6 +30,7 @@ import {
   highlightMatch,
   isFiltering,
   readBoardSort,
+  recentBoards,
   sameLabel,
   saveBoardSort,
   searchQueryOf,
@@ -149,6 +150,7 @@ export function BoardsPage() {
   const ownShown = sortBoards(filterBoards(own, filter, text.matches), sort)
   const sharedShown = sortBoards(filterBoards(others, filter, text.matches), sort)
   const hasBoards = own.length > 0 || others.length > 0
+  const recent = recentBoards([...own, ...others])
   const row: RowContext = {
     sort,
     query,
@@ -213,6 +215,8 @@ export function BoardsPage() {
             : (boardLimitMessage(open.error) ?? m.fromFileFailed)}
         </p>
       )}
+
+      {!filtering && recent.length > 0 && <RecentBoards boards={recent} />}
 
       <WorkspacesSection />
 
@@ -310,6 +314,40 @@ export function BoardsPage() {
         </Link>
       </nav>
       <BoardTrash />
+    </section>
+  )
+}
+
+/**
+ * «Последние использованные доски»: the boards the user opened last, own and shared, as cards that open them; a shared
+ * board names its owner.
+ */
+function RecentBoards({ boards }: { boards: ListedBoard[] }) {
+  return (
+    <section aria-labelledby="recent-boards" className="mt-6">
+      <h3 id="recent-boards" className="text-lg font-semibold">
+        {m.recentBoards}
+      </h3>
+      <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {boards.map((board) => (
+          <li key={board.id} className="min-w-0">
+            <Link
+              to={`/boards/${board.id}`}
+              className="flex h-full flex-col gap-1 rounded-md border p-3 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <span className="truncate font-medium">{board.title}</span>
+              {board.role !== 'owner' && (
+                <span className="truncate text-xs text-muted-foreground">{board.owner.name}</span>
+              )}
+              {board.openedAt && (
+                <time dateTime={board.openedAt} className="truncate text-xs text-muted-foreground">
+                  {m.openedAt(dateFormat().format(new Date(board.openedAt)))}
+                </time>
+              )}
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }

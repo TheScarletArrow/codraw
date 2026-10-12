@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn, userPage } from './helpers.ts'
+import { listedBoardLink, signIn, userPage } from './helpers.ts'
 
 test('participants of a board see each other and the list updates when one leaves', async ({ browser }) => {
   const alicePage = await userPage(browser, 'Алиса')
@@ -42,7 +42,7 @@ test.describe('signed in', () => {
 
     await page.getByRole('link', { name: 'CoDraw' }).click()
 
-    await expect(page.locator(`a[href="${boardUrl}"]`)).toHaveText('Новая доска')
+    await expect(page.locator(listedBoardLink(`${boardUrl}`))).toHaveText('Новая доска')
   })
 
   test('shows "Доска не найдена" for an unknown board', async ({ page }) => {

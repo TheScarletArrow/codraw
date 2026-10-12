@@ -39,6 +39,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Список досок',
             paragraphs: [
               'Главная страница — ваши доски. «Новая доска» создаёт пустую, а «Начать с шаблона» — готовую схему: ER-диаграмму, C4: контейнеры, микросервисы, деплой в Kubernetes, вход через OAuth или варианты использования.',
+              '«Последние использованные доски» вверху страницы — до шести досок, которые вы открывали последними: ваши и общие с вами, без досок пространств. Пока вы ищете или выбрали тег или папку, этого раздела нет.',
               '«Поиск досок» находит доски по названию и по тексту на них. Порядок — «Недавно открытые», «По названию» или «Недавно изменённые». В меню доски — «Переименовать», «Теги», «Переместить в папку», «Создать копию», «Перенести в пространство» и «Удалить». Теги и папки видите только вы.',
             ],
           },
@@ -658,6 +659,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Your boards',
             paragraphs: [
               'The main page lists your boards. “New board” creates an empty one, and “Start from a template” a ready diagram: an ER diagram, C4 containers, microservices, a Kubernetes deployment, an OAuth sign-in or use cases.',
+              '“Recently used boards” at the top of the page shows up to six boards you opened last: your own and those shared with you, without the boards of workspaces. While you search or pick a tag or a folder, the section is hidden.',
               '“Search boards” finds boards by name and by the text on them. The order is “Recently opened”, “By name” or “Recently changed”. The menu of a board has “Rename”, “Tags”, “Move to folder”, “Make a copy”, “Move to workspace” and “Delete”. Only you see your tags and folders.',
             ],
           },
