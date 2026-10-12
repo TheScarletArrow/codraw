@@ -231,10 +231,10 @@ class OidcLoginTest(
             registry.add("codraw.auth.oidc.corp.name") { "Keycloak компании" }
             registry.add("codraw.auth.oidc.corp.allowed-email-domains") { "example.com,example.org" }
             registry.add("codraw.auth.oidc.corp.allowed-groups") { "codraw-users" }
-            registry.add("codraw.auth.oidc.corp.logout") { "true" }
             registry.add("codraw.auth.oidc.partner.issuer-uri") { issuer("partner") }
             registry.add("codraw.auth.oidc.partner.client-id") { "codraw" }
             registry.add("codraw.auth.oidc.partner.client-secret") { "codraw-secret" }
+            registry.add("codraw.auth.oidc.partner.logout") { "false" }
         }
     }
 }
