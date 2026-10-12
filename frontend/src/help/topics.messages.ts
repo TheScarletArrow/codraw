@@ -616,6 +616,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Администрирование',
             paragraphs: [
               'Администраторы установки видят в шапке «Администрирование»: жалобы читателей, поиск пользователей и досок, сведения о доске. Нарушителя можно заблокировать или удалить его учётную запись, а у доски — закрыть доступ по ссылке и живую картинку или перенести её в корзину. Каждое действие записывается в журнал.',
+              'Вкладка «Статистика» показывает, сколько людей работало за день, неделю и 28 дней, новые учётные записи и гостей, которые вошли в учётную запись, сколько новичков вернулось на второй неделе и сколько досок правили вместе. CoDraw считает это сам по дням, когда люди заходили, — без содержимого досок и действий, — и хранит эти дни 42 дня.',
             ],
           },
           {
@@ -1225,6 +1226,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Administration',
             paragraphs: [
               'Administrators of the installation see “Administration” in the header: reports of readers, a search of users and boards, details of a board. An offender can be blocked or have their account deleted, and a board can have its access by the link and its live image turned off or be moved to the trash. Every action is written to a log.',
+              'The “Statistics” tab shows how many people worked over a day, a week and 28 days, the new accounts and the guests who signed in to an account, how many newcomers came back in their second week and how many boards were edited together. CoDraw counts this itself from the days people visited, without the content of boards or actions, and keeps those days for 42 days.',
             ],
           },
           {

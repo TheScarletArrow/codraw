@@ -4,7 +4,7 @@ export const adminMessages = defineMessages({
   ru: {
     title: 'Администрирование',
     sections: 'Разделы администрирования',
-    tabs: { reports: 'Жалобы', users: 'Пользователи', boards: 'Доски', journal: 'Журнал' },
+    tabs: { reports: 'Жалобы', users: 'Пользователи', boards: 'Доски', journal: 'Журнал', stats: 'Статистика' },
     linkAccess: {
       none: 'Только участники',
       view: 'Просмотр по ссылке',
@@ -101,7 +101,7 @@ export const adminMessages = defineMessages({
   en: {
     title: 'Administration',
     sections: 'Administration sections',
-    tabs: { reports: 'Reports', users: 'Users', boards: 'Boards', journal: 'Log' },
+    tabs: { reports: 'Reports', users: 'Users', boards: 'Boards', journal: 'Log', stats: 'Statistics' },
     linkAccess: {
       none: 'Members only',
       view: 'View by link',
