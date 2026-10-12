@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { logout, saveLanguage, type CurrentUser } from './api/auth.ts'
 import { isUnauthorized } from './api/http.ts'
 import { useCurrentUser } from './auth/session.ts'
+import { FeedbackButton } from './feedback/FeedbackButton.tsx'
 import { HeaderSlotProvider } from './headerSlot.tsx'
 import { helpMessages } from './help/messages.ts'
 import { locale } from './i18n/i18n.ts'
@@ -25,6 +26,7 @@ export function Layout() {
   const user = useCurrentUser()
   const location = useLocation()
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   // Another user signed in in this browser, or a guest signed in through a provider: the local copies of the boards of
   // the previous user go.
   const userId = user.data?.id
@@ -46,7 +48,7 @@ export function Layout() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:gap-4 sm:px-4">
+      <header className="relative flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:gap-4 sm:px-4">
         <Link to="/" className="font-bold">
           CoDraw
         </Link>
@@ -61,9 +63,10 @@ export function Layout() {
                 <CircleQuestionMark />
               </a>
             </Button>
+            <FeedbackButton open={feedbackOpen} onOpenChange={setFeedbackOpen} />
             <WhatsNew />
             <NotificationBell />
-            <UserMenu user={user.data} />
+            <UserMenu user={user.data} onFeedback={() => setFeedbackOpen(true)} />
           </>
         )}
       </header>
@@ -80,7 +83,7 @@ export function Layout() {
   )
 }
 
-function UserMenu({ user }: { user: CurrentUser }) {
+function UserMenu({ user, onFeedback }: { user: CurrentUser; onFeedback: () => void }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const signOut = useMutation({
@@ -105,7 +108,7 @@ function UserMenu({ user }: { user: CurrentUser }) {
       {/* A phone keeps the room of the line for who is on the board; the avatar tells who is signed in. */}
       <span className="max-sm:sr-only">{user.name}</span>
       <LanguageMenu />
-      <ThemeMenu />
+      <ThemeMenu onFeedback={onFeedback} />
       {user.admin && (
         <Button asChild variant="ghost" size="icon-sm">
           <Link to="/admin" aria-label={m.admin} title={m.adminHint}>

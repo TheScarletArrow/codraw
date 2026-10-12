@@ -12,7 +12,7 @@ import java.util.UUID
 /**
  * The data of a user for «Скачать мои данные»: everything the tables keep of them, as one JSON document that PostgreSQL
  * builds, and the documents of their boards, which only the app turns into `.drawio`. Tokens and other secrets that the
- * user cannot use outside CoDraw stay out, and so does what others wrote.
+ * user cannot use outside CoDraw stay out, and so does what others wrote or did, e.g. who closed their feedback.
  */
 @Service
 class AccountExportService(
@@ -138,6 +138,15 @@ class AccountExportService(
                            lower(p.status) AS status, p.comment, p.created_at AS "createdAt", p.decided_at AS "decidedAt"
                     FROM proposals p JOIN boards b ON b.id = p.board_id
                     WHERE p.author_id = u.id
+                    """,
+                    "r.\"createdAt\", r.id",
+                )},
+                'feedback', ${list(
+                    """
+                    SELECT f.id, lower(f.kind) AS kind, f.text, f.page, f.app_version AS "appVersion",
+                           f.user_agent AS "userAgent", f.created_at AS "createdAt", f.resolved_at AS "resolvedAt"
+                    FROM feedback f
+                    WHERE f.user_id = u.id
                     """,
                     "r.\"createdAt\", r.id",
                 )},

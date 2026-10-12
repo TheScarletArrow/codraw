@@ -29,12 +29,13 @@ import { AdminStats } from '../admin/AdminStats.tsx'
 import { REPORT_REASONS } from '../admin/reports.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { ConfirmedAction } from '../board/ConfirmedAction.tsx'
+import { AdminFeedback } from '../feedback/AdminFeedback.tsx'
 import { perLocale } from '../i18n/i18n.ts'
 import { adminMessages as m } from './AdminPage.messages.ts'
 
-type Tab = 'reports' | 'users' | 'boards' | 'journal' | 'stats'
+type Tab = 'reports' | 'feedback' | 'users' | 'boards' | 'journal' | 'stats'
 
-const TABS: Tab[] = ['reports', 'users', 'boards', 'journal', 'stats']
+const TABS: Tab[] = ['reports', 'feedback', 'users', 'boards', 'journal', 'stats']
 
 const time = perLocale((tag) => new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }))
 const at = (value: string) => time().format(new Date(value))
@@ -61,11 +62,16 @@ export function AdminPage() {
   const user = useCurrentUser()
   const [tab, setTab] = useState<Tab>('reports')
   const [boardId, setBoardId] = useState<string | null>(null)
+  const [userQuery, setUserQuery] = useState('')
 
   if (!user.data?.admin) return <NoAccess />
   const openBoard = (id: string) => {
     setBoardId(id)
     setTab('boards')
+  }
+  const openUser = (id: string) => {
+    setUserQuery(id)
+    setTab('users')
   }
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 overflow-y-auto p-6">
@@ -89,7 +95,8 @@ export function AdminPage() {
       </div>
       <div role="tabpanel" aria-label={m.tabs[tab]} className="flex flex-col gap-4">
         {tab === 'reports' && <Reports onOpenBoard={openBoard} />}
-        {tab === 'users' && <Users />}
+        {tab === 'feedback' && <AdminFeedback onOpenUser={openUser} />}
+        {tab === 'users' && <Users initialQuery={userQuery} />}
         {tab === 'boards' && <Boards selected={boardId} onSelect={setBoardId} />}
         {tab === 'journal' && <Journal />}
         {tab === 'stats' && <AdminStats />}
@@ -170,8 +177,8 @@ function Reports({ onOpenBoard }: { onOpenBoard: (boardId: string) => void }) {
   )
 }
 
-function Search({ label, onSearch }: { label: string; onSearch: (text: string) => void }) {
-  const [text, setText] = useState('')
+function Search({ label, initial = '', onSearch }: { label: string; initial?: string; onSearch: (text: string) => void }) {
+  const [text, setText] = useState(initial)
   return (
     <form
       role="search"
@@ -195,9 +202,10 @@ function Search({ label, onSearch }: { label: string; onSearch: (text: string) =
   )
 }
 
-function Users() {
+/** The users of the installation, searched by `initialQuery` first when another tab opens one, e.g. the author of feedback. */
+function Users({ initialQuery }: { initialQuery: string }) {
   const queryClient = useQueryClient()
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initialQuery)
   const users = useQuery({ queryKey: adminKey('users', text), queryFn: () => findUsers(text) })
   const change = useMutation({
     mutationFn: ({ user, block }: { user: AdminUser; block: boolean }) => (block ? blockUser(user.id) : unblockUser(user.id)),
@@ -209,7 +217,7 @@ function Users() {
   })
   return (
     <>
-      <Search label={m.userSearch} onSearch={setText} />
+      <Search label={m.userSearch} initial={initialQuery} onSearch={setText} />
       {change.isError && (
         <p role="alert" className="text-sm text-destructive">
           {m.blockFailed}
@@ -443,7 +451,7 @@ function Journal() {
                   {action.details && ` (${action.details})`}
                 </td>
                 <td className="py-1">
-                  {action.targetKind === 'user' ? m.targetUser(action.targetLabel) : m.targetBoard(action.targetLabel)}
+                  {m.targets[action.targetKind](action.targetLabel)}
                 </td>
               </tr>
             ))}

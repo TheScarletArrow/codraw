@@ -1,5 +1,6 @@
 package io.github.thescarletarrow.codraw
 
+import io.github.thescarletarrow.codraw.feedback.FeedbackKind
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.DistributionSummary
 import io.micrometer.core.instrument.MeterRegistry
@@ -40,6 +41,8 @@ enum class Limit(val tag: String) {
     WORKSPACE_BOARDS("workspace-boards"),
     REPORTS("reports"),
     BOARD_REPORTS("board-reports"),
+    FEEDBACK("feedback"),
+    USER_FEEDBACK("feedback-per-user"),
     ACCOUNT_EXPORTS("account-exports"),
 }
 
@@ -149,6 +152,13 @@ class CodrawMetrics(registry: MeterRegistry) {
             .register(registry)
     }
 
+    private val feedbackReceived = FeedbackKind.entries.associateWith { kind ->
+        Counter.builder("codraw.feedback.received")
+            .description("Feedback that users sent to the administrators of the installation")
+            .tag("kind", kind.value)
+            .register(registry)
+    }
+
     private val schemaImports = SchemaImportResult.entries.associateWith { result ->
         Counter.builder("codraw.schema.imports")
             .description("Imports of the schema of a database by users, by how they ended")
@@ -177,6 +187,8 @@ class CodrawMetrics(registry: MeterRegistry) {
     fun limitReached(limit: Limit) = limitsReached.getValue(limit).increment()
 
     fun clientError(kind: ClientErrorKind) = clientErrors.getValue(kind).increment()
+
+    fun feedbackReceived(kind: FeedbackKind) = feedbackReceived.getValue(kind).increment()
 
     fun schemaImport(result: SchemaImportResult) = schemaImports.getValue(result).increment()
 

@@ -80,6 +80,7 @@ export type AdminActionKind =
   | 'unblock-sharing'
   | 'trash-board'
   | 'resolve-reports'
+  | 'resolve-feedback'
 
 /** An entry of the journal of administrators. */
 export interface AdminAction {
@@ -87,7 +88,7 @@ export interface AdminAction {
   adminId: string
   adminName: string
   action: AdminActionKind
-  targetKind: 'user' | 'board'
+  targetKind: 'user' | 'board' | 'feedback'
   targetId: string
   targetLabel: string
   details: string | null
