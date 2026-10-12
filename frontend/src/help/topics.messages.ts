@@ -30,7 +30,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sign-in',
             title: 'Вход',
             paragraphs: [
-              'На странице входа есть кнопки тех способов входа, что включены в этой установке CoDraw: GitHub, Google или корпоративная учётная запись вашей компании, например Keycloak, Microsoft Entra ID или Okta. Через корпоративный вход вы попадаете в свою учётную запись, даже если у вас сменились почта или имя, а «Выйти» может завершить и сеанс у провайдера.',
+              'На странице входа есть кнопки тех способов входа, что включены в этой установке CoDraw: GitHub, Google или корпоративная учётная запись вашей компании, например Keycloak, Microsoft Entra ID или Okta. Через корпоративный вход вы попадаете в свою учётную запись, даже если у вас сменились почта или имя, а «Выйти» завершает и сеанс у провайдера, так что следующий вход снова спросит пароль.',
               '«Продолжить без входа» создаёт гостя вида «Гость 12», который работает с досками так же, как вошедший пользователь. Гостевой сеанс живёт в браузере 30 дней с последнего обращения. Если гость потом войдёт через GitHub, Google или корпоративный вход, его доски, участие в чужих досках и уведомления перейдут к учётной записи.',
             ],
           },
@@ -610,6 +610,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'Значок «Учётная запись» рядом с вашим именем открывает страницу, где «Скачать мои данные» сохраняет архив: доски в draw.io с изображениями, комментарии, решения, библиотеки, шаблоны и всё остальное, что CoDraw о вас хранит.',
               'Там же удаляют учётную запись: доски, с которыми работают другие, передаются участнику или удаляются, а ваши комментарии на чужих досках остаются с подписью «Удалённый пользователь».',
+              'У администратора установки на этой странице вместо выгрузки и удаления — «Учётная запись администратора»: её держит конфигурация сервера, поэтому скачать данные и удалить её можно, только когда оператор уберёт её из списка администраторов.',
             ],
           },
           {
@@ -649,7 +650,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sign-in',
             title: 'Signing in',
             paragraphs: [
-              'The login page has buttons for the ways of signing in that this installation of CoDraw has turned on: GitHub, Google or the corporate account of your company, such as Keycloak, Microsoft Entra ID or Okta. With the corporate sign-in you get into your own account even if your email or name has changed, and “Sign out” can end the session at the provider too.',
+              'The login page has buttons for the ways of signing in that this installation of CoDraw has turned on: GitHub, Google or the corporate account of your company, such as Keycloak, Microsoft Entra ID or Okta. With the corporate sign-in you get into your own account even if your email or name has changed, and “Sign out” ends the session at the provider too, so the next sign-in asks for your password again.',
               '“Continue without signing in” creates a guest such as “Guest 12”, who works with boards just like a signed-in user. A guest session lives in the browser for 30 days after the last visit. If the guest later signs in with GitHub, Google or the corporate sign-in, their boards, their membership of other boards and their notifications move to the account.',
             ],
           },
@@ -1229,6 +1230,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'The “Account” icon next to your name opens a page where “Download my data” saves an archive: your boards as draw.io files with images, comments, decisions, libraries, templates and everything else CoDraw keeps about you.',
               'There you can also delete your account: the boards others work on are handed over to a member or deleted, and your comments on other boards stay signed “Deleted user”.',
+              'An administrator of the installation sees “Administrator account” on this page instead of the download and the deletion: the server configuration keeps the account, so its data can be downloaded and it can be deleted only once the operator takes it out of the list of administrators.',
             ],
           },
           {

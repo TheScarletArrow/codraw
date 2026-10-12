@@ -47,6 +47,38 @@ export const releases: Release[] = [
     ],
   },
   {
+    version: '0.45.0',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Учётная запись администратора',
+          text: 'Администратор установки больше не видит на странице «Учётная запись» «Скачать мои данные» и «Удалить учётную запись»: его права даёт конфигурация сервера, и случайно удалить себя нельзя. Вместо этого страница объясняет, откуда права, и ведёт в «Администрирование».',
+        },
+        en: {
+          title: 'Administrator account',
+          text: 'An administrator of the installation no longer sees “Download my data” and “Delete account” on the “Account” page: the server configuration gives the rights, and the account cannot be deleted by accident. Instead the page explains where the rights come from and leads to “Administration”.',
+        },
+      },
+    ],
+  },
+  {
+    version: '0.44.1',
+    date: '2026-10-12',
+    items: [
+      {
+        ru: {
+          title: 'Выход из корпоративной учётной записи',
+          text: 'Если вы вошли через корпоративного провайдера, например Keycloak, «Выйти» теперь завершает и сеанс у него, поэтому следующий вход снова спросит логин и пароль и можно войти другим пользователем.',
+        },
+        en: {
+          title: 'Signing out of a company account',
+          text: 'If you signed in through your company provider, such as Keycloak, “Sign out” now ends your session there too, so the next sign-in asks for your login and password again and you can sign in as someone else.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.44.0',
     date: '2026-10-12',
     items: [

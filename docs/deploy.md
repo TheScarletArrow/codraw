@@ -68,7 +68,7 @@ CI публикует образы при каждом пуше в `main`:
 | `CODRAW_OIDC_ALLOWED_EMAIL_DOMAINS` | пусто | домены почты через запятую, с которыми корпоративный провайдер пускает в CoDraw; пусто — всех его пользователей |
 | `CODRAW_OIDC_ALLOWED_GROUPS` | пусто | группы через запятую, хотя бы в одной из которых должен быть пользователь; пусто — без проверки групп |
 | `CODRAW_OIDC_GROUPS_CLAIM` | `groups` | claim, в котором провайдер перечисляет группы пользователя |
-| `CODRAW_OIDC_LOGOUT` | `false` | `true` — «Выйти» завершает и сеанс у провайдера (RP-initiated logout) |
+| `CODRAW_OIDC_LOGOUT` | `true` | «Выйти» завершает и сеанс у провайдера (RP-initiated logout), чтобы следующий вход спросил пароль; `false` — завершается только сеанс CoDraw, и следующий вход молча пускает того же пользователя |
 | `CODRAW_GUESTS_BOARD_RETENTION` | `30d` | доска гостя с истёкшим сеансом удаляется, если с ней столько никто не работал; затем удаляется гость без досок |
 | `CODRAW_LIMITS_BOARDS_PER_USER` | `100` | больше досок пользователь не создаст; доски гостя, перешедшие при входе, не ограничиваются |
 | `CODRAW_LIMITS_BOARDS_IN_TRASH_PER_USER` | `100` | досок пользователя в корзине, и личных, и пространств, за которые он отвечает; доска, удалённая сверх, окончательно удаляет его доску, что лежит там дольше всех |
@@ -260,8 +260,9 @@ CODRAW_ISSUES_GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
 Okta, Authentik, ADFS. Решение — [ADR-0011](adr/0011-corporate-sign-in.md).
 
 1. Создайте у провайдера конфиденциальный клиент (client) с потоком «authorization code» и адресом возврата
-   `https://codraw.example.com/api/login/oauth2/code/corp`, где `corp` — id провайдера в настройках CoDraw. Если
-   включаете выход у провайдера, разрешите адрес после выхода `https://codraw.example.com/login`.
+   `https://codraw.example.com/api/login/oauth2/code/corp`, где `corp` — id провайдера в настройках CoDraw, и адресом
+   после выхода `https://codraw.example.com/login`: «Выйти» завершает и сеанс у провайдера, иначе провайдер покажет
+   ошибку вместо возврата на страницу входа.
 2. Задайте `CODRAW_OIDC_ISSUER_URI` — issuer провайдера, по которому открываются его метаданные
    `<issuer>/.well-known/openid-configuration`, — `CODRAW_OIDC_CLIENT_ID`, `CODRAW_OIDC_CLIENT_SECRET` и название
    кнопки `CODRAW_OIDC_NAME`, например «Keycloak компании». Без issuer или client id кнопки нет.
@@ -280,7 +281,6 @@ CODRAW_OIDC_CLIENT_ID=codraw
 CODRAW_OIDC_CLIENT_SECRET=…
 CODRAW_OIDC_NAME=Keycloak компании
 CODRAW_OIDC_ALLOWED_GROUPS=codraw-users
-CODRAW_OIDC_LOGOUT=true
 ```
 
 Для Entra ID issuer — `https://login.microsoftonline.com/<id каталога>/v2.0` (не `/common`), а группы приходят

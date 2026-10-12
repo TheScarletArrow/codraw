@@ -8,4 +8,4 @@
 
 ## 2. Документация
 
-- [x] 2.1 README (список досок, пункт 120 «Плана работ»); проверка: `openspec validate --all --strict`
+- [x] 2.1 README (список досок, пункт 121 «Плана работ»); проверка: `openspec validate --all --strict`
