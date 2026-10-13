@@ -52,8 +52,8 @@ import {
   type BoardListKey,
 } from '../boardList/useBoardOrganization.ts'
 import { useBoardTextSearch } from '../boardList/useBoardTextSearch.ts'
-import { DRAWIO_FILE_TYPES, setPendingImport, titleFromFileName } from '../drawio/files.ts'
-import { DrawioFormatError, parseDrawio } from '../drawio/parse.ts'
+import { BoardFileError } from '../boardFile/format.ts'
+import { BOARD_FILE_TYPES, readOpenedFile, setPendingImport } from '../boardFile/openFile.ts'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { TemplateCards } from '../templates/TemplateCards.tsx'
 import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
@@ -105,9 +105,9 @@ export function BoardsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
   const open = useMutation({
     mutationFn: async (file: File) => {
-      const pages = await parseDrawio(await file.text())
-      const board = await createBoard(titleFromFileName(file.name))
-      setPendingImport(board.id, pages)
+      const opened = await readOpenedFile(file, file.name)
+      const board = await createBoard(opened.title)
+      setPendingImport(board.id, opened)
       return board
     },
     onSuccess: async (board) => {
@@ -119,7 +119,7 @@ export function BoardsPage() {
   const fromTemplate = useMutation({
     mutationFn: async (template: BoardTemplate) => {
       const board = await createBoard(template.title)
-      setPendingImport(board.id, [templatePage(template)])
+      setPendingImport(board.id, { kind: 'drawio', title: template.title, pages: [templatePage(template)] })
       return board
     },
     onSuccess: async (board) => {
@@ -181,8 +181,8 @@ export function BoardsPage() {
           <input
             ref={fileInput}
             type="file"
-            accept={DRAWIO_FILE_TYPES}
-            aria-label={m.drawioFile}
+            accept={BOARD_FILE_TYPES}
+            aria-label={m.boardFile}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0]
@@ -190,8 +190,14 @@ export function BoardsPage() {
               if (file) open.mutate(file)
             }}
           />
-          <Button type="button" variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}>
-            {m.openDrawio}
+          <Button
+            type="button"
+            variant="outline"
+            title={m.openFileTitle}
+            onClick={() => fileInput.current?.click()}
+            disabled={busy}
+          >
+            {m.openFile}
           </Button>
           <Button type="button" onClick={() => create.mutate()} disabled={busy}>
             {m.createBoard}
@@ -210,7 +216,7 @@ export function BoardsPage() {
       )}
       {open.isError && (
         <p role="alert" className="mt-4 text-destructive">
-          {open.error instanceof DrawioFormatError
+          {open.error instanceof BoardFileError
             ? open.error.message
             : (boardLimitMessage(open.error) ?? m.fromFileFailed)}
         </p>

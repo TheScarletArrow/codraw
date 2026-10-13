@@ -116,7 +116,7 @@ test('a participant draws by hand: everybody sees the line, which moves, goes an
   const xml = await readFile((await file.path())!, 'utf8')
   expect(xml).toContain('codrawFreehand=1;edgeStyle=none;curved=1;endArrow=none;strokeColor=#b85450;strokeWidth=2;')
   expect(xml).toContain('as="sourcePoint"')
-  await alice.getByLabel('Файл draw.io').setInputFiles({
+  await alice.getByLabel('Файл CoDraw или draw.io').setInputFiles({
     name: 'Копия.drawio',
     mimeType: 'application/vnd.jgraph.mxfile',
     buffer: Buffer.from(xml),

@@ -127,7 +127,7 @@ test('a link to a page goes to .drawio as a UserObject with data:page/id, and co
   // The file opens as a new board of another participant, whose pages keep their ids and the link its page.
   const eve = await userPage(browser, 'Ева')
   await eve.goto('/')
-  await eve.getByLabel('Файл draw.io').setInputFiles({ name: 'Ссылки.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
+  await eve.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'Ссылки.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(eve.getByRole('heading', { name: 'Ссылки', level: 2 })).toBeVisible()
   await expect(eve.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(() => linkOf(eve, shape)).toBe(`data:page/id,${second}`)

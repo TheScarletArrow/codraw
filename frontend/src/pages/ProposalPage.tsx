@@ -38,7 +38,7 @@ import { StickyPanel } from '../diagram/StickyPanel.tsx'
 import { StickySignatures } from '../diagram/StickySignatures.tsx'
 import { ShapePalette } from '../diagram/ShapePalette.tsx'
 import { ShortcutsHelp } from '../diagram/ShortcutsHelp.tsx'
-import { DrawioActions } from '../drawio/DrawioActions.tsx'
+import { FileActions } from '../boardFile/FileActions.tsx'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { EdgeApiPanel, type EdgeApiRequest } from '../edgeApi/EdgeApiPanel.tsx'
 import { DeleteElementDialog, MergeElementsDialog } from '../elements/ElementDialogs.tsx'
@@ -195,7 +195,7 @@ function DraftWorkspace({ board, proposal, user }: { board: Board; proposal: Pro
             {m.readOnly}
           </span>
         )}
-        <DrawioActions
+        <FileActions
           document={document}
           title={proposal.title}
           onImported={selectPage}

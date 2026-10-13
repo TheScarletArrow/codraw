@@ -173,7 +173,7 @@ test('a saved SVG opens again for editing: its import adds a page with the shape
   const svg = await saveImage(alice, 'SVG')
 
   await createBoard(alice)
-  await alice.getByLabel('Файл draw.io').setInputFiles({ name: svg.name, mimeType: 'image/svg+xml', buffer: svg.bytes })
+  await alice.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: svg.name, mimeType: 'image/svg+xml', buffer: svg.bytes })
 
   // The only page of a new board is empty, so the page of the file takes its place.
   await expect(alice.getByRole('tablist', { name: 'Страницы' }).getByRole('tab')).toHaveCount(1)

@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import type { ListedBoard, SharedBoard } from '../api/boards.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
-import { takePendingImport } from '../drawio/files.ts'
+import { takePendingImport } from '../boardFile/openFile.ts'
+import { boardFileBytes } from '../boardFile/write.ts'
+import { initializeDocument } from '../diagram/model.ts'
+import { renamePage } from '../diagram/pages.ts'
 import { findLocalCopy, openLocalCopy } from '../offline/localCopies.ts'
 import { ALICE, mockFetch as mockAnyFetch, renderRoutes, type MockResponse } from '../test/render.tsx'
 import { BoardsPage } from './BoardsPage.tsx'
@@ -132,12 +135,34 @@ describe('BoardsPage', () => {
     const { router } = renderRoutes(routes)
     await screen.findByText('Досок пока нет')
 
-    await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Платёжный сервис.drawio'))
+    await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File([SAMPLE_DRAWIO], 'Платёжный сервис.drawio'))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/boards/file-id'))
     const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
     expect(JSON.parse(init!.body as string)).toEqual({ title: 'Платёжный сервис' })
-    expect(takePendingImport('file-id')?.map((page) => page.name)).toEqual(['Контекст', 'Слои'])
+    const opened = takePendingImport('file-id')
+    expect(opened?.kind === 'drawio' && opened.pages.map((page) => page.name)).toEqual(['Контекст', 'Слои'])
+  })
+
+  it('opens a .codraw file as a new board with the title the file keeps', async () => {
+    const source = new Y.Doc()
+    initializeDocument(source)
+    renamePage(source, 'page-1', 'Контейнеры')
+    const bytes = await boardFileBytes(source, 'Платежи', async () => null)
+    const fetchMock = mockFetch({
+      'GET /api/boards': { body: [] },
+      'POST /api/boards': { status: 201, body: board('codraw-id', 'Платежи') },
+    })
+    const { router } = renderRoutes(routes)
+    await screen.findByText('Досок пока нет')
+
+    await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File([bytes], 'копия.codraw'))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/boards/codraw-id'))
+    const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(JSON.parse(init!.body as string)).toEqual({ title: 'Платежи' })
+    const opened = takePendingImport('codraw-id')
+    expect(opened?.kind === 'codraw' && opened.board.pages.map((page) => page.name)).toEqual(['Контейнеры'])
   })
 
   it('creates a board from a template, named after it, with the diagram of the template as its page', async () => {
@@ -153,7 +178,8 @@ describe('BoardsPage', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/boards/template-id'))
     const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
     expect(JSON.parse(init!.body as string)).toEqual({ title: 'ER-диаграмма' })
-    const pages = takePendingImport('template-id')!
+    const opened = takePendingImport('template-id')!
+    const pages = opened.kind === 'drawio' ? opened.pages : []
     expect(pages.map((page) => page.name)).toEqual(['ER-диаграмма'])
     expect(pages[0]!.cells.filter((cell) => cell.style.codrawShape === 'table')).toHaveLength(3)
   })
@@ -185,7 +211,7 @@ describe('BoardsPage', () => {
     renderRoutes(routes)
     await screen.findByText('Досок пока нет')
 
-    await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Платёжный сервис.drawio'))
+    await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File([SAMPLE_DRAWIO], 'Платёжный сервис.drawio'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Можно держать не больше 21 доски.')
   })
@@ -195,9 +221,9 @@ describe('BoardsPage', () => {
     renderRoutes(routes)
     await screen.findByText('Досок пока нет')
 
-    await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File(['просто текст'], 'заметки.xml'))
+    await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File(['просто текст'], 'заметки.xml'))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл draw.io')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл CoDraw или draw.io')
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
   })
 

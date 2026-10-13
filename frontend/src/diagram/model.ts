@@ -153,7 +153,7 @@ export interface DetailOf {
 }
 
 /** The element a page names as the one it details, from a value of the document; `undefined` for anything else. */
-function readDetailOf(value: unknown): DetailOf | undefined {
+export function readDetailOf(value: unknown): DetailOf | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const { pageId, cellId, elementId } = value as Record<string, unknown>
   return typeof pageId === 'string' && typeof cellId === 'string' && typeof elementId === 'string' ? { pageId, cellId, elementId } : undefined

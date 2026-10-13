@@ -27,7 +27,9 @@ import { SHAPE_DRAG_TYPE } from '../diagram/shapes.ts'
 import { writeStatus } from '../diagram/status.ts'
 import { shapeData } from '../diagram/testing.ts'
 import { SAMPLE_DRAWIO } from '../drawio/fixtures.ts'
-import { setPendingImport } from '../drawio/files.ts'
+import { setPendingImport } from '../boardFile/openFile.ts'
+import { readBoardFile } from '../boardFile/read.ts'
+import { boardFileBytes } from '../boardFile/write.ts'
 import { parseDrawio } from '../drawio/parse.ts'
 import { findLocalCopy, loadLocalCopy, openLocalCopy, setUnsentEdits } from '../offline/localCopies.ts'
 import type { ImageHost } from '../diagram/images.ts'
@@ -447,7 +449,8 @@ describe('BoardPage', () => {
       expect(screen.queryByRole('complementary', { name: 'Фигуры' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Отменить' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Добавить страницу' })).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Импорт из .drawio' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Импорт из файла' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Сохранить в .codraw' })).toBeEnabled()
       expect(screen.getByRole('button', { name: 'Экспорт в .drawio' })).toBeEnabled()
       expect(screen.getByRole('button', { name: 'Увеличить' })).toBeEnabled()
 
@@ -2612,7 +2615,7 @@ describe('BoardPage', () => {
     })
   })
 
-  describe('draw.io files', () => {
+  describe('board files', () => {
     async function openSynced() {
       const provider = await openBoard()
       act(() => provider.emitConnected())
@@ -2628,7 +2631,7 @@ describe('BoardPage', () => {
         )
       })
 
-      await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File([SAMPLE_DRAWIO], 'Архитектура.drawio'))
+      await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File([SAMPLE_DRAWIO], 'Архитектура.drawio'))
 
       await waitFor(() => expect(tabNames()).toEqual(['Страница 1', 'Контекст', 'Слои']))
       // The tabs follow the document at once; the address, and with it the canvas, switch to the page a moment later.
@@ -2640,9 +2643,9 @@ describe('BoardPage', () => {
     it('reports a file that is not a draw.io diagram and leaves the board as it is', async () => {
       const provider = await openSynced()
 
-      await userEvent.upload(screen.getByLabelText('Файл draw.io'), new File(['<notes>просто заметки</notes>'], 'notes.xml'))
+      await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File(['<notes>просто заметки</notes>'], 'notes.xml'))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл draw.io')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Это не файл CoDraw или draw.io')
       expect(listPages(provider.document)).toHaveLength(1)
     })
 
@@ -2667,8 +2670,58 @@ describe('BoardPage', () => {
       click.mockRestore()
     })
 
+    it('saves the board as a .codraw file named after the board, with all its pages', async () => {
+      const provider = await openSynced()
+      act(() => {
+        renamePage(provider.document, DEFAULT_PAGE_ID, 'Контекст')
+        addPage(provider.document, DEFAULT_PAGE_ID, 'Контейнеры')
+      })
+      const blobs: Blob[] = []
+      vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn((blob: Blob) => (blobs.push(blob), 'blob:test')), revokeObjectURL: vi.fn() }))
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        expect(this.download).toBe('Архитектура.codraw')
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Сохранить в .codraw' }))
+
+      await waitFor(() => expect(click).toHaveBeenCalled())
+      const file = await readBoardFile(new Uint8Array(await blobs[0]!.arrayBuffer()))
+      expect(file.title).toBe('Архитектура')
+      expect(file.pages.map((page) => page.name)).toEqual(['Контекст', 'Контейнеры'])
+      click.mockRestore()
+    })
+
+    it('imports the pages of a .codraw file into the board', async () => {
+      const source = new Y.Doc()
+      initializeDocument(source)
+      act(() => {
+        renamePage(source, DEFAULT_PAGE_ID, 'Платежи')
+      })
+      const bytes = await boardFileBytes(source, 'Платежи', async () => null)
+      const provider = await openSynced()
+      act(() => {
+        provider.document.transact(() =>
+          getCells(provider.document).set('own', new Y.Map<unknown>([['kind', 'vertex'] as [string, unknown]])),
+        )
+      })
+
+      await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File([bytes], 'Платежи.codraw'))
+
+      await waitFor(() => expect(tabNames()).toEqual(['Страница 1', 'Платежи']))
+      expect(listPages(provider.document)[1]!.id).not.toBe(DEFAULT_PAGE_ID)
+    })
+
+    it('reports a damaged .codraw file and leaves the board as it is', async () => {
+      const provider = await openSynced()
+
+      await userEvent.upload(screen.getByLabelText('Файл CoDraw или draw.io'), new File(['PK\x03\x04 обрывок'], 'Платежи.codraw'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Файл .codraw повреждён')
+      expect(listPages(provider.document)).toHaveLength(1)
+    })
+
     it('fills a board created from a file once its document is synced', async () => {
-      setPendingImport(boardId, await parseDrawio(SAMPLE_DRAWIO))
+      setPendingImport(boardId, { kind: 'drawio', title: 'Архитектура', pages: await parseDrawio(SAMPLE_DRAWIO) })
 
       const provider = await openSynced()
 

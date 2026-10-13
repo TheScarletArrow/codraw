@@ -96,7 +96,7 @@ test('a legend goes to .drawio as a frame with samples and names, and comes back
   // Another user opens the file as a board of their own: one service and the legend, which lists it itself.
   const eve = await userPage(browser, 'Ева')
   await eve.goto('/')
-  await eve.getByLabel('Файл draw.io').setInputFiles({ name: 'Легенда.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
+  await eve.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'Легенда.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(eve.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(() => legendRows(eve)).toEqual(['API'])
   expect(await vertices(eve)).toHaveLength(2)

@@ -53,7 +53,7 @@ test('line and text styles reach the other participant and survive a .drawio fil
   const xml = await readFile((await file.path())!, 'utf8')
   const carol = await userPage(browser, 'Ева')
   await carol.goto('/')
-  await carol.getByLabel('Файл draw.io').setInputFiles({ name: 'styles.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
+  await carol.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'styles.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
   await expect(carol.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(async () => (await vertices(carol)).length).toBe(2)
 
@@ -224,7 +224,7 @@ test('the shadow, the rounded corners and the gradient of a shape reach the othe
   expect(xml).toContain('shadow=1;')
   const carol = await userPage(browser, 'Ева')
   await carol.goto('/')
-  await carol.getByLabel('Файл draw.io').setInputFiles({ name: 'effects.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
+  await carol.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'effects.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
   await expect(carol.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(async () => (await vertices(carol)).length).toBe(1)
   expect(await styleOf(carol, shape)).toMatchObject({

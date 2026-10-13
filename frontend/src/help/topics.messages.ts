@@ -190,7 +190,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'images',
             title: 'Изображения',
             paragraphs: [
-              'Скриншот, логотип или макет вставляют на холст из буфера (Ctrl+V), перетаскивают файлом или добавляют кнопкой «Изображение» в панели фигур. Картинка меняет размер с сохранением пропорций и попадает внутрь файлов .drawio, PNG, SVG и PDF.',
+              'Скриншот, логотип или макет вставляют на холст из буфера (Ctrl+V), перетаскивают файлом или добавляют кнопкой «Изображение» в панели фигур. Картинка меняет размер с сохранением пропорций и попадает внутрь файлов .codraw, .drawio, PNG, SVG и PDF.',
             ],
           },
           {
@@ -421,10 +421,18 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
         title: 'Импорт и экспорт',
         topics: [
           {
+            id: 'codraw-file',
+            title: 'Файл доски .codraw',
+            paragraphs: [
+              '«Сохранить в .codraw» на доске сохраняет всю доску в собственный файл CoDraw без потерь: страницы, слои, общие элементы и модель архитектуры, представления модели, детализацию, диаграммы последовательности, легенду, статусы, настройки проверок и изображения. Из такого файла получается та же доска, а не её копия в фигурах draw.io. Каждая картинка лежит в файле один раз, поэтому он в несколько раз меньше .drawio той же доски. Открывает его только CoDraw.',
+              '«Открыть файл» в списке досок создаёт новую доску из файла .codraw или .drawio — формат CoDraw узнаёт сам. «Импорт из файла» на доске добавляет страницы файла к доске; элементы файла остаются отдельными, даже если файл сохранён из этой же доски. В файл не попадают комментарии, история версий, участники и то, кто что изменил, закрепил или отметил статусом.',
+            ],
+          },
+          {
             id: 'drawio',
             title: 'Файлы draw.io',
             paragraphs: [
-              'Доску можно сохранить в .drawio и загрузить файл draw.io в доску. С собой переносятся страницы, слои, свойства, описания API, диаграммы последовательности и вариантов использования и изображения.',
+              '«Экспорт в .drawio» сохраняет доску для draw.io, а файл draw.io загружается в доску через «Импорт из файла» или открывается новой доской через «Открыть файл» в списке досок. С собой переносятся страницы, слои, свойства, описания API, диаграммы последовательности и вариантов использования и изображения.',
             ],
           },
           {
@@ -810,7 +818,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'images',
             title: 'Images',
             paragraphs: [
-              'A screenshot, a logo or a mockup is pasted onto the canvas from the clipboard (Ctrl+V), dragged in as a file or added with the “Image” button in the shape panel. An image is resized keeping its proportions and is embedded in .drawio, PNG, SVG and PDF files.',
+              'A screenshot, a logo or a mockup is pasted onto the canvas from the clipboard (Ctrl+V), dragged in as a file or added with the “Image” button in the shape panel. An image is resized keeping its proportions and is embedded in .codraw, .drawio, PNG, SVG and PDF files.',
             ],
           },
           {
@@ -1041,10 +1049,18 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
         title: 'Import and export',
         topics: [
           {
+            id: 'codraw-file',
+            title: 'The .codraw board file',
+            paragraphs: [
+              '“Save as .codraw” on a board saves the whole board into CoDraw’s own file without losses: pages, layers, shared elements and the architecture model, model views, detail pages, sequence diagrams, the legend, statuses, check settings and images. The file opens as the same board, not as a copy made of draw.io shapes. Each picture is in the file once, so it is several times smaller than the .drawio file of the same board. Only CoDraw opens it.',
+              '“Open file” in the list of boards creates a new board from a .codraw or .drawio file, recognizing the format by itself. “Import from file” on a board adds the pages of the file to the board; the elements of the file stay separate even when the file was saved from this very board. Comments, version history, participants and who changed, locked or set the status of what do not go into the file.',
+            ],
+          },
+          {
             id: 'drawio',
             title: 'draw.io files',
             paragraphs: [
-              'A board can be saved as .drawio, and a draw.io file can be loaded into a board. Pages, layers, properties, API descriptions, sequence and use case diagrams and images travel with it.',
+              '“Export to .drawio” saves the board for draw.io, and a draw.io file is loaded into a board with “Import from file” or opened as a new board with “Open file” in the list of boards. Pages, layers, properties, API descriptions, sequence and use case diagrams and images travel with it.',
             ],
           },
           {

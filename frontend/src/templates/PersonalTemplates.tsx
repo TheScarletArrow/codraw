@@ -10,7 +10,7 @@ import { HttpError } from '../api/http.ts'
 import { deletePersonalTemplate, fetchPersonalTemplate, fetchPersonalTemplates, PERSONAL_TEMPLATES_KEY, savePersonalTemplate, type TemplateInfo } from '../api/templates.ts'
 import type { DiagramEditor } from '../diagram/editor.ts'
 import { storePageImages, type ImageHost } from '../diagram/images.ts'
-import { setPendingImport } from '../drawio/files.ts'
+import { setPendingImport } from '../boardFile/openFile.ts'
 import type { DrawioPage } from '../drawio/parse.ts'
 import { LINK_KEY, pageLink, parseLink } from '../diagram/links.ts'
 import { templatesMessages as m } from './messages.ts'
@@ -66,7 +66,7 @@ export function PersonalTemplates({ document = null, editor = null, title = m.my
   const create = (template: TemplateInfo) => run(async () => {
     const pages = await personalTemplatePages((await fetchPersonalTemplate(template.id)).drawio)
     const board = await createBoard(template.title)
-    setPendingImport(board.id, pages)
+    setPendingImport(board.id, { kind: 'drawio', title: template.title, pages })
     await client.invalidateQueries({ queryKey: ['boards'] })
     setOpen(false)
     await navigate(`/boards/${board.id}`)
