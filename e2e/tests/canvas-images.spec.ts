@@ -159,7 +159,7 @@ test('a .drawio file carries the picture, and the picture is stored on the board
 
   const eva = await userPage(browser, 'Ева')
   await eva.goto('/')
-  await eva.getByLabel('Файл draw.io').setInputFiles({ name: 'Логотип.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
+  await eva.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'Логотип.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(eva.getByRole('heading', { name: 'Логотип', level: 2 })).toBeVisible()
   await expect(eva.getByRole('status')).toHaveText('Синхронизировано')
 

@@ -79,7 +79,7 @@ test('a diagram of use cases goes to draw.io and comes back with its shapes and 
 
   const other = await userPage(browser, 'Вера')
   await other.goto('/')
-  await other.getByLabel('Файл draw.io').setInputFiles({
+  await other.getByLabel('Файл CoDraw или draw.io').setInputFiles({
     name: file.suggestedFilename(),
     mimeType: 'application/vnd.jgraph.mxfile',
     buffer: Buffer.from(xml),

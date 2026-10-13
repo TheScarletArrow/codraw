@@ -333,7 +333,7 @@ test('a shape is turned by a number and by its handle for every participant, and
   expect(xml).toContain('rotation=45;')
   const carol = await userPage(browser, 'Ева')
   await carol.goto('/')
-  await carol.getByLabel('Файл draw.io').setInputFiles({ name: 'turned.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
+  await carol.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'turned.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
   await expect(carol.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(async () => (await vertices(carol)).map((cell) => cell.style.rotation)).toEqual([45])
 

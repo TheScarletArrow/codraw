@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.47.0',
+    date: '2026-10-13',
+    items: [
+      {
+        ru: {
+          title: 'Свой файл доски .codraw',
+          text: 'Кнопка «Сохранить в .codraw» на доске сохраняет всю доску без потерь: модель архитектуры, представления, детализацию, диаграммы последовательности, легенду, статусы и картинки. Файл в несколько раз меньше .drawio и открывается в CoDraw той же доской. «Открыть файл» в списке досок и «Импорт из файла» на доске принимают и .codraw, и .drawio.',
+        },
+        en: {
+          title: 'CoDraw’s own .codraw board file',
+          text: '“Save as .codraw” on a board saves the whole board without losses: the architecture model, views, detail pages, sequence diagrams, the legend, statuses and pictures. The file is several times smaller than .drawio and opens in CoDraw as the same board. “Open file” in the list of boards and “Import from file” on a board take both .codraw and .drawio.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.46.0',
     date: '2026-10-12',
     items: [

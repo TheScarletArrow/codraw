@@ -127,7 +127,7 @@ test('Ctrl and a double click put a sticky; the panel recolors it, a long text w
   expect(xml).not.toContain('Алиса')
   const carol = await userPage(browser, 'Ева')
   await carol.goto('/')
-  await carol.getByLabel('Файл draw.io').setInputFiles({ name: 'retro.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
+  await carol.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'retro.drawio', mimeType: 'application/xml', buffer: Buffer.from(xml) })
   await expect(carol.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(async () => (await stickies(carol)).find((cell) => cell.value === text)?.style).toMatchObject({
     fillColor: '#f8cecc',

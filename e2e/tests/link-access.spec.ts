@@ -48,7 +48,7 @@ test('a link for viewing takes editing from the participant at once, and sync re
   await expect(bob.getByText('Только просмотр')).toBeVisible()
   await expect(palette(bob)).toBeHidden()
   await expect(bob.getByRole('button', { name: 'Добавить страницу' })).toBeHidden()
-  await expect(bob.getByRole('button', { name: 'Импорт из .drawio' })).toBeHidden()
+  await expect(bob.getByRole('button', { name: 'Импорт из файла' })).toBeHidden()
   await expect(bob.getByRole('status')).toHaveText('Синхронизировано')
 
   // The participant still sees the changes of the owner.

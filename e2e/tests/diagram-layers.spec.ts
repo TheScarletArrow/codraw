@@ -135,7 +135,7 @@ test('layers go to .drawio as layers of draw.io, hidden and locked, and come bac
   // Another user opens the file as a board of their own: the layer is there, hidden for everybody and locked.
   const eve = await userPage(browser, 'Ева')
   await eve.goto('/')
-  await eve.getByLabel('Файл draw.io').setInputFiles({ name: 'Заметки и сервисы.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
+  await eve.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name: 'Заметки и сервисы.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(eve.getByRole('status')).toHaveText('Синхронизировано')
   await openLayers(eve)
   await expect(row(eve, 'Заметки')).toContainText('скрыт для всех')

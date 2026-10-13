@@ -165,7 +165,7 @@ test('a sequence diagram goes to .drawio as lifelines, frames and edges of draw.
   const eve = await userPage(browser, 'Ева')
   await eve.goto('/')
   await eve
-    .getByLabel('Файл draw.io')
+    .getByLabel('Файл CoDraw или draw.io')
     .setInputFiles({ name: 'Сценарий входа.drawio', mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(eve.getByRole('status')).toHaveText('Синхронизировано')
   await expect

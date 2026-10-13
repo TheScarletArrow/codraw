@@ -57,7 +57,7 @@ test('a board is exported with all its pages and opens again as a new board from
   // The exported file opens as a board with the same content. Another test expects Bob to own no boards.
   const bob = await userPage(browser, 'Ева')
   await bob.goto('/')
-  await bob.getByLabel('Файл draw.io').setInputFiles({ name, mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
+  await bob.getByLabel('Файл CoDraw или draw.io').setInputFiles({ name, mimeType: 'application/vnd.jgraph.mxfile', buffer: Buffer.from(xml) })
   await expect(bob.getByRole('heading', { name: 'Новая доска', level: 2 })).toBeVisible()
   await expect(bob.getByRole('status')).toHaveText('Синхронизировано')
   await expect.poll(() => tabNames(bob)).toEqual(['Страница 1', 'Страница 2'])
@@ -71,7 +71,7 @@ test('a compressed draw.io file is imported into a board, and the other particip
   const { alice, bob, close } = await twoParticipants(browser)
   await addShape(alice, 'Прямоугольник')
 
-  await alice.getByLabel('Файл draw.io').setInputFiles(fixture('payments.drawio'))
+  await alice.getByLabel('Файл CoDraw или draw.io').setInputFiles(fixture('payments.drawio'))
 
   await expect.poll(() => tabNames(alice)).toEqual(['Страница 1', 'Контекст', 'Схема БД'])
   await expect(tab(alice, 'Контекст')).toHaveAttribute('aria-selected', 'true')
@@ -92,7 +92,7 @@ test('a draw.io file opens as a new board named after the file', async ({ browse
   const page = await userPage(browser, 'Алиса')
   await page.goto('/')
 
-  await page.getByLabel('Файл draw.io').setInputFiles(fixture('payments.drawio'))
+  await page.getByLabel('Файл CoDraw или draw.io').setInputFiles(fixture('payments.drawio'))
 
   await expect(page).toHaveURL(/\/boards\/[0-9a-f-]{36}\?page=payments-context$/)
   await expect(page.getByRole('heading', { name: 'payments', level: 2 })).toBeVisible()
@@ -108,9 +108,9 @@ test('a file that is not a draw.io diagram is refused and the board stays as it 
   const page = await userPage(browser, 'Алиса')
   await createBoard(page)
 
-  await page.getByLabel('Файл draw.io').setInputFiles(fixture('not-a-diagram.xml'))
+  await page.getByLabel('Файл CoDraw или draw.io').setInputFiles(fixture('not-a-diagram.xml'))
 
-  await expect(page.getByRole('alert')).toHaveText('Это не файл draw.io')
+  await expect(page.getByRole('alert')).toHaveText('Это не файл CoDraw или draw.io')
   expect(await tabNames(page)).toEqual(['Страница 1'])
 
   await page.context().close()

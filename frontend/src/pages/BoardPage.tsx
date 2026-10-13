@@ -64,7 +64,6 @@ import { CanvasMenu, type CommentTarget } from '../diagram/CanvasMenu.tsx'
 import { DiagramCanvas } from '../diagram/DiagramCanvas.tsx'
 import type { ContextMenuRequest, DiagramEditor } from '../diagram/editor.ts'
 import { EditorToolbar } from '../diagram/EditorToolbar.tsx'
-import { storePageImages } from '../diagram/images.ts'
 import { FieldPopover } from '../diagram/FieldPopover.tsx'
 import { LastChange } from '../diagram/LastChange.tsx'
 import { LayersButton, LayersPanel } from '../diagram/LayersPanel.tsx'
@@ -80,10 +79,9 @@ import { attachViewKeeper } from '../diagram/viewKeeper.ts'
 import { ViewBar } from '../views/ViewBar.tsx'
 import { ViewRuleDialog } from '../views/ViewRuleDialog.tsx'
 import type { ElementStatus } from '../diagram/status.ts'
-import { DrawioActions } from '../drawio/DrawioActions.tsx'
+import { FileActions } from '../boardFile/FileActions.tsx'
 import { PersonalTemplates } from '../templates/PersonalTemplates.tsx'
-import { takePendingImport } from '../drawio/files.ts'
-import { importPages } from '../drawio/importPages.ts'
+import { applyOpenedFile, takePendingImport } from '../boardFile/openFile.ts'
 import { ImageExportMenu } from '../image/ImageExportMenu.tsx'
 import { SqlMenu } from '../sql/SqlMenu.tsx'
 import { EmptyBoardTemplates } from '../templates/EmptyBoardTemplates.tsx'
@@ -327,8 +325,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   useEffect(() => {
     const pending = document && takePendingImport(board.id)
     if (!pending) return
-    void (imageHost ? storePageImages(pending, imageHost) : Promise.resolve()).then(() => {
-      const [first] = importPages(document, pending, author)
+    void applyOpenedFile(document, pending, imageHost, author).then(([first]) => {
       if (first) selectPage(first)
     })
   }, [document, board.id, selectPage, author, imageHost])
@@ -627,7 +624,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
         {viewer && <EditRequestButton boardId={board.id} />}
         {/* The files, the templates, the images and SQL stand close together, as on a toolbar: the tools need the room. */}
         <div className={cn('flex shrink-0 items-center gap-1', narrowTool)}>
-          <DrawioActions
+          <FileActions
             document={document}
             title={board.title}
             onImported={selectPage}
