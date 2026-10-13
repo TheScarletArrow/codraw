@@ -22,13 +22,13 @@ export type OpenedFile = { kind: 'codraw'; title: string; board: BoardFile } | {
  * `BoardFileError` with words for the user.
  */
 export async function readOpenedFile(file: Blob, name: string): Promise<OpenedFile> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  if (isZip(bytes)) {
-    const board = await readBoardFile(bytes)
+  // The first bytes tell the format; a file of draw.io is read as text, as before there was a format of CoDraw.
+  if (isZip(new Uint8Array(await file.slice(0, 4).arrayBuffer()))) {
+    const board = await readBoardFile(new Uint8Array(await file.arrayBuffer()))
     return { kind: 'codraw', title: board.title || titleFromFileName(name), board }
   }
   try {
-    return { kind: 'drawio', title: titleFromFileName(name), pages: await parseDrawio(new TextDecoder().decode(bytes)) }
+    return { kind: 'drawio', title: titleFromFileName(name), pages: await parseDrawio(await file.text()) }
   } catch (error) {
     throw error instanceof DrawioFormatError ? notBoardFile(error) : error
   }
