@@ -100,7 +100,7 @@ codraw/
 ├── load/       # нагрузочный клиент совместной работы (pnpm load)
 ├── patches/    # исправления зависимостей (pnpm patch)
 ├── openspec/   # спецификации и запланированные изменения (OpenSpec)
-└── docs/       # архитектурные решения (adr/), запуск (running.md), развёртывание (deploy.md) и нагрузка (load-testing.md)
+└── docs/       # архитектурные решения (adr/), запуск (running.md), развёртывание (deploy.md), системные требования (requirements.md) и нагрузка (load-testing.md)
 ```
 
 ## Запуск
@@ -122,6 +122,9 @@ pnpm dev:frontend                  # приложение: http://localhost:5173
 
 Развёртывание на сервере — Docker-образы, nginx, TLS-прокси, обновление и резервные копии — в
 [docs/deploy.md](docs/deploy.md).
+
+Системные требования — процессор, память, диск и сеть сервера, браузеры и экраны пользователей, инструменты
+разработчика — в [docs/requirements.md](docs/requirements.md).
 
 ## Личные шаблоны
 
