@@ -7,7 +7,7 @@ export const connectionsMessages = defineMessages({
     title: 'Подключения',
     intro:
       'Привязывайте задачи GitHub к элементам схемы и веткам обсуждений, создавайте задачи прямо из CoDraw и видьте их номер, название и статус на доске.',
-    guest: 'Подключения доступны после входа через GitHub или Google.',
+    guest: 'Подключения доступны после входа.',
     signIn: 'Войти',
     loading: 'Загрузка…',
     forbidden: 'Подключения доступны после входа',
@@ -39,7 +39,7 @@ export const connectionsMessages = defineMessages({
     title: 'Connections',
     intro:
       'Link GitHub issues to elements of diagrams and to threads, create issues right from CoDraw and see their number, title and status on the board.',
-    guest: 'Connections are available after signing in with GitHub or Google.',
+    guest: 'Connections are available after signing in.',
     signIn: 'Sign in',
     loading: 'Loading…',
     forbidden: 'Connections are available after signing in',

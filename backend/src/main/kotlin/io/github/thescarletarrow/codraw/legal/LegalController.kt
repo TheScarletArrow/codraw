@@ -67,8 +67,10 @@ data class LegalResponse(
 )
 
 data class LegalSignInProvider(
+    /** `github`, `google`, `yandex`, `vk` or the id of a provider of OpenID Connect in the settings. */
+    val id: String,
     val name: String,
-    /** A provider of OpenID Connect that the operator chose, not GitHub or Google. */
+    /** A provider of OpenID Connect that the operator chose, not GitHub, Google, Яндекс ID or VK ID. */
     val corporate: Boolean,
 )
 
@@ -100,7 +102,7 @@ class LegalController(
         adminRetentionDays = admin.retention.toDays(),
         backupRetentionDays = backupRetentionDays(),
         backupOffsite = backupRetentionDays() != null && legal.backupStorage.isNotBlank(),
-        signInProviders = registrations.providers.map { LegalSignInProvider(it.name, it.corporate) },
+        signInProviders = registrations.providers.map { LegalSignInProvider(it.id, it.name, it.corporate) },
         guests = guests.enabled,
     )
 

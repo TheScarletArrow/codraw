@@ -2,13 +2,15 @@ package io.github.thescarletarrow.codraw
 
 import io.github.thescarletarrow.codraw.issue.FakeGitHubConfiguration
 import io.github.thescarletarrow.codraw.notification.RecordingEmailConfiguration
+import io.github.thescarletarrow.codraw.security.FakeSignInProvidersConfiguration
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 
 /**
  * Full application context with MockMvc, a PostgreSQL container, a controllable clock, letters kept in memory and the API
- * of GitHub on this machine, shared by all integration tests; the GitHub user [ADMIN] administers the installation.
+ * of GitHub and the endpoints of Яндекс ID and VK ID on this machine, shared by all integration tests; the GitHub user
+ * [ADMIN] administers the installation.
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
@@ -25,6 +27,7 @@ import org.springframework.context.annotation.Import
     TestClockConfiguration::class,
     RecordingEmailConfiguration::class,
     FakeGitHubConfiguration::class,
+    FakeSignInProvidersConfiguration::class,
 )
 annotation class IntegrationTest {
     companion object {

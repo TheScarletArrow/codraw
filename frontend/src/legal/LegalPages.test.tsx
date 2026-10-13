@@ -27,8 +27,8 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
   backupRetentionDays: null,
   backupOffsite: false,
   signInProviders: [
-    { name: 'GitHub', corporate: false },
-    { name: 'Google', corporate: false },
+    { id: 'github', name: 'GitHub', corporate: false },
+    { id: 'google', name: 'Google', corporate: false },
   ],
   guests: true,
   ...changes,
@@ -171,7 +171,7 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'У учётной записи хранится и язык интерфейса — выбранный в меню «Язык», а если вы его не выбирали, язык браузера при входе, — чтобы письма и сообщения уведомлений приходили на нём',
     )
-    expect(screen.getByText('Обновлено 12 октября 2026 г.')).toBeInTheDocument()
+    expect(screen.getByText('Обновлено 13 октября 2026 г.')).toBeInTheDocument()
     expect(screen.queryByText(/This is a translation/)).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
@@ -184,7 +184,7 @@ describe('legal pages', () => {
     const account = screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })
     expect(account).toHaveTextContent('«Скачать мои данные» собирает архив ZIP')
     expect(account).toHaveTextContent('сохраняются без автора — с подписью «Удалённый пользователь»')
-    expect(account).toHaveTextContent('Новый вход через того же провайдера — GitHub, Google или корпоративный — создаёт новую пустую учётную запись')
+    expect(account).toHaveTextContent('Новый вход через того же провайдера входа создаёт новую пустую учётную запись')
   })
 
   it('names the sign-in providers of the installation, the corporate one as chosen by the operator', async () => {
@@ -194,12 +194,17 @@ describe('legal pages', () => {
     const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
     expect(data).toHaveTextContent('При входе через GitHub или Google — имя, адрес картинки профиля и идентификатор')
     expect(data).not.toHaveTextContent('выбрал оператор')
+    expect(data).not.toHaveTextContent('дату рождения')
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'GitHub и Google узнают о входе через них по своим правилам.',
     )
     unmount()
 
-    mockFetch({ 'GET /api/legal': { body: legal({ signInProviders: [{ name: 'Keycloak компании', corporate: true }], guests: false }) } })
+    mockFetch({
+      'GET /api/legal': {
+        body: legal({ signInProviders: [{ id: 'corp', name: 'Keycloak компании', corporate: true }], guests: false }),
+      },
+    })
     renderRoutes(routes, '/privacy')
     const corporate = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
     expect(corporate).toHaveTextContent(
@@ -210,6 +215,44 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'Провайдер входа, которого выбрал оператор, — Keycloak компании — узнаёт о входе и выходе через него по правилам оператора.',
     )
+  })
+
+  it('names Яндекс ID and VK ID and what else of the profile they send, which CoDraw does not keep', async () => {
+    const russian = legal({
+      signInProviders: [
+        { id: 'yandex', name: 'Яндекс ID', corporate: false },
+        { id: 'vk', name: 'VK ID', corporate: false },
+      ],
+    })
+    mockFetch({ 'GET /api/legal': { body: russian } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent(
+      'При входе через Яндекс ID или VK ID — имя, адрес картинки профиля и идентификатор пользователя у этого сервиса',
+    )
+    expect(data).toHaveTextContent('Яндекс ID присылает вместе с ними логин и пол, VK ID — пол и дату рождения; CoDraw их не хранит.')
+    expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
+      'Яндекс ID и VK ID узнают о входе через них по своим правилам.',
+    )
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal({ signInProviders: [{ id: 'vk', name: 'VK ID', corporate: false }] }) } })
+    const { unmount: unmountVk } = renderRoutes(routes, '/privacy')
+    expect(await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
+      'VK ID присылает вместе с ними пол и дату рождения, а CoDraw их не хранит.',
+    )
+    unmountVk()
+
+    setLocale('en')
+    mockFetch({ 'GET /api/legal': { body: russian } })
+    renderRoutes(routes, '/privacy')
+    const english = await screen.findByRole('region', { name: 'What data we process' })
+    expect(english).toHaveTextContent('When you sign in with Yandex ID or VK ID: the name, the address of the profile picture')
+    expect(english).toHaveTextContent(
+      'Yandex ID also sends the login and the gender, VK ID the gender and the date of birth; CoDraw does not keep them.',
+    )
+    expect(screen.getByRole('main').textContent?.replace('ООО «Пример»', '')).not.toMatch(/[А-Яа-яЁё]/)
   })
 
   it('names the reports, the journal of administrators and their retention of the installation', async () => {
@@ -366,6 +409,10 @@ describe('legal pages', () => {
 
     expect(await screen.findByText(/Оператор этой установки CoDraw не указал свои данные/)).toBeInTheDocument()
     const service = screen.getByRole('region', { name: 'Сервис' })
+    expect(service).toHaveTextContent('Входя в CoDraw или продолжая без входа, вы принимаете эти условия')
+    expect(screen.getByRole('region', { name: 'Учётная запись' })).toHaveTextContent(
+      'За доступ к учётной записи, через которую вы входите в CoDraw, отвечаете вы.',
+    )
     expect(within(service).getByRole('link', { name: 'политику конфиденциальности' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('region', { name: 'Содержимое досок' })).toHaveTextContent(
       'режим «Все, у кого есть ссылка, без входа» открывает доску для просмотра и без входа',
@@ -379,7 +426,7 @@ describe('legal pages', () => {
 
     expect(await screen.findByRole('heading', { name: 'Privacy policy', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText(/The operator of the service is ООО «Пример»/)).toBeInTheDocument()
-    expect(screen.getByText('Updated October 12, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Updated October 13, 2026')).toBeInTheDocument()
     expect(screen.getByText('This is a translation for convenience; the Russian version prevails.')).toBeInTheDocument()
     for (const section of ['What data we process', 'Cookies', 'Copies of boards in the browser', 'How long the data is kept', 'Your rights']) {
       expect(screen.getByRole('region', { name: section })).toBeInTheDocument()
@@ -427,7 +474,7 @@ describe('legal pages', () => {
 
     expect(await screen.findByRole('heading', { name: 'Terms of use', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText(/The operator of this installation of CoDraw has not provided their details/)).toBeInTheDocument()
-    expect(screen.getByText('Updated October 9, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Updated October 13, 2026')).toBeInTheDocument()
     expect(screen.getByText('This is a translation for convenience; the Russian version prevails.')).toBeInTheDocument()
     const service = screen.getByRole('region', { name: 'The service' })
     expect(within(service).getByRole('link', { name: 'privacy policy' })).toHaveAttribute('href', '/privacy')

@@ -17,8 +17,8 @@ pnpm dev:collab                    # синхронизация:  ws://localhost
 pnpm dev:frontend                  # приложение:     http://localhost:5173
 ```
 
-Откройте http://localhost:5173 и войдите. Client id и secret выдаёт OAuth-приложение GitHub или Google — как его
-создать, описано в [README](../README.md#вход-через-github-и-google).
+Откройте http://localhost:5173 и войдите. Client id и secret выдаёт OAuth-приложение GitHub, Google, Яндекс ID или VK
+ID — как его создать, описано в [README](../README.md#вход-через-github-google-яндекс-id-и-vk-id).
 
 ## 1. Что установить
 
@@ -72,8 +72,8 @@ cd backend
 GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… ./gradlew bootRun          # Windows: gradlew.bat bootRun
 ```
 
-Переменные `GITHUB_*` и `GOOGLE_*` — client id и secret OAuth-приложений, через которые входят в CoDraw
-(см. [README](../README.md#вход-через-github-и-google)). Достаточно одного провайдера. Без них backend
+Переменные `GITHUB_*`, `GOOGLE_*`, `YANDEX_*` и `VK_CLIENT_ID` — client id и secret OAuth-приложений, через которые
+входят в CoDraw (см. [README](../README.md#вход-через-github-google-яндекс-id-и-vk-id)). Достаточно одного провайдера. Без них backend
 запускается, а страница входа предлагает только режим гостя. Корпоративный провайдер OpenID Connect (Keycloak и
 другие) задают переменные `CODRAW_AUTH_OIDC_<ID>_*` — см. [README](../README.md#корпоративный-вход).
 

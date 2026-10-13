@@ -12,8 +12,9 @@ import java.time.Duration
 @ConfigurationProperties("codraw.admin")
 data class AdminProperties(
     /**
-     * Accounts of administrators as `<provider>:<id at the provider>`, e.g. `github:583231` (`CODRAW_ADMINS`), and of a
-     * corporate provider as `oidc:<issuer>:<sub>`. A guest is never one: nothing outside CoDraw tells who a guest is.
+     * Accounts of administrators as `<provider>:<id at the provider>`, e.g. `github:583231` or `vk:1234567`
+     * (`CODRAW_ADMINS`), and of a corporate provider as `oidc:<issuer>:<sub>`. A guest is never one: nothing outside
+     * CoDraw tells who a guest is.
      */
     val users: List<String> = emptyList(),
     /** Entries of the journal, closed reports and closed feedback are deleted once they are this old. */
@@ -42,6 +43,12 @@ data class AdminProperties(
 
     private companion object {
         /** The providers whose accounts may administer; the test login exists only in end-to-end tests. */
-        val PROVIDERS = setOf(ProviderProfile.GITHUB, ProviderProfile.GOOGLE, TestLoginController.PROVIDER)
+        val PROVIDERS = setOf(
+            ProviderProfile.GITHUB,
+            ProviderProfile.GOOGLE,
+            ProviderProfile.YANDEX,
+            ProviderProfile.VK,
+            TestLoginController.PROVIDER,
+        )
     }
 }

@@ -24,6 +24,34 @@ spring:
             # Without `openid` Google is used as a plain OAuth2 provider, like GitHub.
             scope: profile
             redirect-uri: "{baseUrl}/api/login/oauth2/code/{registrationId}"
+          # Яндекс ID and VK ID (docs/adr/0015-yandex-vk-sign-in.md).
+          yandex:
+            client-id: ${YANDEX_CLIENT_ID:not-configured}
+            client-secret: ${YANDEX_CLIENT_SECRET:not-configured}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            # The name and the portrait, not the address of email: without a scope Yandex grants every right of the app.
+            scope: login:info,login:avatar
+            redirect-uri: "{baseUrl}/api/login/oauth2/code/{registrationId}"
+          vk:
+            client-id: ${VK_CLIENT_ID:not-configured}
+            # A public client: VK ID exchanges the code with PKCE, without the secret of the app.
+            client-authentication-method: none
+            authorization-grant-type: authorization_code
+            scope: vkid.personal_info
+            redirect-uri: "{baseUrl}/api/login/oauth2/code/{registrationId}"
+        provider:
+          yandex:
+            authorization-uri: https://oauth.yandex.ru/authorize
+            token-uri: https://oauth.yandex.ru/token
+            user-info-uri: https://login.yandex.ru/info?format=json
+            user-name-attribute: id
+          vk:
+            authorization-uri: https://id.vk.ru/authorize
+            token-uri: https://id.vk.ru/oauth2/auth
+            user-info-uri: https://id.vk.ru/oauth2/user_info
+            user-info-authentication-method: form
+            user-name-attribute: user_id
   # The SMTP server of letters about notifications (spring.mail.host, port, username, password): the environment of the
   # deployment sets it, see docs/deploy.md. Without a host letters are off.
   mail:

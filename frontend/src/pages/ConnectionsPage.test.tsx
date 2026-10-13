@@ -80,7 +80,7 @@ describe('ConnectionsPage', () => {
 
   it('asks a guest to sign in and nothing else', async () => {
     const fetchMock = renderPage({ 'GET /api/me': { body: { ...ALICE, guest: true } } })
-    expect(await screen.findByText(/Подключения доступны после входа через GitHub или Google/)).toBeInTheDocument()
+    expect(await screen.findByText(/Подключения доступны после входа\./)).toBeInTheDocument()
     expect(requests(fetchMock, 'GET', settingsUrl)).toHaveLength(0)
   })
 })

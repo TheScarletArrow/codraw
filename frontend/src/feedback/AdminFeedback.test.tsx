@@ -103,7 +103,7 @@ describe('AdminFeedback', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Боб' }))
 
     expect(screen.getByRole('tab', { name: 'Пользователи' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('textbox', { name: 'Имя, id или id у GitHub и Google' })).toHaveValue('bob')
+    expect(screen.getByRole('textbox', { name: 'Имя, id или id у провайдера входа' })).toHaveValue('bob')
     expect(await screen.findByRole('list', { name: 'Пользователи' })).toHaveTextContent('github:583231')
     expect(calls(fetchMock, 'GET', '/api/admin/users?query=bob')).toHaveLength(1)
   })

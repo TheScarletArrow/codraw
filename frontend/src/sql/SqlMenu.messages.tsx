@@ -38,7 +38,7 @@ export const sqlMenuMessages = defineMessages({
         Схему готовой базы снимает {pgDump} или {mysqldump}: откройте полученный файл.
       </>
     ),
-    signInHint: ' Подключиться к базе можно после входа через GitHub или Google.',
+    signInHint: ' Подключиться к базе можно после входа.',
     pageTables: (count: number) => `Таблиц на странице: ${count}`,
     pageViews: (count: number) => `, представлений: ${count}`,
     importSql: 'Импорт SQL…',
@@ -89,7 +89,7 @@ export const sqlMenuMessages = defineMessages({
         The schema of an existing database is taken by {pgDump} or {mysqldump}: open the resulting file.
       </>
     ),
-    signInHint: ' You can connect to a database after signing in with GitHub or Google.',
+    signInHint: ' You can connect to a database after signing in.',
     pageTables: (count: number) => `Tables on the page: ${count}`,
     pageViews: (count: number) => `, views: ${count}`,
     importSql: 'Import SQL…',

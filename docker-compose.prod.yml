@@ -58,6 +58,10 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-not-configured}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-not-configured}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-not-configured}
+      # Яндекс ID and VK ID (README.md); VK ID needs no secret.
+      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-not-configured}
+      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-not-configured}
+      VK_CLIENT_ID: ${VK_CLIENT_ID:-not-configured}
       # A corporate provider of OpenID Connect with the id corp (docs/deploy.md); without an issuer there is none.
       CODRAW_AUTH_OIDC_CORP_ISSUER_URI: ${CODRAW_OIDC_ISSUER_URI:-}
       CODRAW_AUTH_OIDC_CORP_CLIENT_ID: ${CODRAW_OIDC_CLIENT_ID:-}

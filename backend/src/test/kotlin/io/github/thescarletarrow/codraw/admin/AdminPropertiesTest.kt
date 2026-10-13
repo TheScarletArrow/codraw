@@ -16,6 +16,13 @@ class AdminPropertiesTest {
     }
 
     @Test
+    fun `reads accounts of Яндекс ID and VK ID`() {
+        val properties = AdminProperties(users = listOf("yandex:1130000012345678", "vk:1234567"))
+
+        assertEquals(setOf("yandex" to "1130000012345678", "vk" to "1234567"), properties.accounts)
+    }
+
+    @Test
     fun `reads accounts of a corporate provider by its issuer and the subject`() {
         val properties = AdminProperties(users = listOf("oidc:https://sso.example.com:8443/realms/acme:5f2c-a1"))
 

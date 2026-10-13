@@ -59,6 +59,11 @@ export default defineConfig({
         CODRAW_AUTH_OIDC_CORP_CLIENT_ID: 'codraw',
         CODRAW_AUTH_OIDC_CORP_CLIENT_SECRET: 'codraw-secret',
         CODRAW_AUTH_OIDC_CORP_NAME: 'Keycloak компании',
+        // Яндекс ID and VK ID with apps that do not exist: the login page and the privacy policy offer them, and
+        // `YandexVkLoginTest` of the backend signs in through stand-ins of the providers.
+        YANDEX_CLIENT_ID: 'e2e-yandex',
+        YANDEX_CLIENT_SECRET: 'e2e-yandex-secret',
+        VK_CLIENT_ID: 'e2e-vk',
         // The JVM reads the environment in the encoding of the locale; without a UTF-8 one the name above is garbled.
         LANG: process.env.LANG || 'C.UTF-8',
       },

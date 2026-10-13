@@ -30,8 +30,8 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sign-in',
             title: 'Вход',
             paragraphs: [
-              'На странице входа есть кнопки тех способов входа, что включены в этой установке CoDraw: GitHub, Google или корпоративная учётная запись вашей компании, например Keycloak, Microsoft Entra ID или Okta. Через корпоративный вход вы попадаете в свою учётную запись, даже если у вас сменились почта или имя, а «Выйти» завершает и сеанс у провайдера, так что следующий вход снова спросит пароль.',
-              '«Продолжить без входа» создаёт гостя вида «Гость 12», который работает с досками так же, как вошедший пользователь. Гостевой сеанс живёт в браузере 30 дней с последнего обращения. Если гость потом войдёт через GitHub, Google или корпоративный вход, его доски, участие в чужих досках и уведомления перейдут к учётной записи.',
+              'На странице входа есть кнопки тех способов входа, что включены в этой установке CoDraw: GitHub, Google, Яндекс ID, VK ID или корпоративная учётная запись вашей компании, например Keycloak, Microsoft Entra ID или Okta. Яндекс ID и VK ID передают CoDraw только имя, картинку профиля и идентификатор, без почты и пароля. Через корпоративный вход вы попадаете в свою учётную запись, даже если у вас сменились почта или имя, а «Выйти» завершает и сеанс у провайдера, так что следующий вход снова спросит пароль.',
+              '«Продолжить без входа» создаёт гостя вида «Гость 12», который работает с досками так же, как вошедший пользователь. Гостевой сеанс живёт в браузере 30 дней с последнего обращения. Если гость потом войдёт через любой из способов входа, его доски, участие в чужих досках и уведомления перейдут к учётной записи.',
             ],
           },
           {
@@ -658,8 +658,8 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sign-in',
             title: 'Signing in',
             paragraphs: [
-              'The login page has buttons for the ways of signing in that this installation of CoDraw has turned on: GitHub, Google or the corporate account of your company, such as Keycloak, Microsoft Entra ID or Okta. With the corporate sign-in you get into your own account even if your email or name has changed, and “Sign out” ends the session at the provider too, so the next sign-in asks for your password again.',
-              '“Continue without signing in” creates a guest such as “Guest 12”, who works with boards just like a signed-in user. A guest session lives in the browser for 30 days after the last visit. If the guest later signs in with GitHub, Google or the corporate sign-in, their boards, their membership of other boards and their notifications move to the account.',
+              'The login page has buttons for the ways of signing in that this installation of CoDraw has turned on: GitHub, Google, Yandex ID, VK ID or the corporate account of your company, such as Keycloak, Microsoft Entra ID or Okta. Yandex ID and VK ID give CoDraw only the name, the profile picture and the identifier, without the email or the password. With the corporate sign-in you get into your own account even if your email or name has changed, and “Sign out” ends the session at the provider too, so the next sign-in asks for your password again.',
+              '“Continue without signing in” creates a guest such as “Guest 12”, who works with boards just like a signed-in user. A guest session lives in the browser for 30 days after the last visit. If the guest later signs in any of these ways, their boards, their membership of other boards and their notifications move to the account.',
             ],
           },
           {

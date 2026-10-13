@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.48.0',
+    date: '2026-10-13',
+    items: [
+      {
+        ru: {
+          title: 'Вход через Яндекс ID и VK ID',
+          text: 'Если в установке их подключили, на странице входа есть кнопки «Войти через Яндекс ID» и «Войти через VK ID». CoDraw получает от них только имя, картинку профиля и идентификатор, без почты и пароля, а доски гостя переходят в учётную запись, как при любом входе.',
+        },
+        en: {
+          title: 'Sign in with Yandex ID and VK ID',
+          text: 'If the installation has them turned on, the login page has “Sign in with Yandex ID” and “Sign in with VK ID” buttons. CoDraw gets only the name, the profile picture and the identifier from them, without the email or the password, and guest boards move to the account, as with any sign-in.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.47.0',
     date: '2026-10-13',
     items: [

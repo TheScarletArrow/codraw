@@ -72,7 +72,7 @@ export const workspacesMessages = defineMessages({
     removeFromWorkspace: 'Убрать из пространства',
     inviteByLink: 'Пригласить по ссылке',
     inviteHint:
-      'Кто откроет ссылку-приглашение и войдёт через GitHub или Google, станет участником пространства с выбранной ролью и получит доступ к его доскам.',
+      'Кто откроет ссылку-приглашение и войдёт, станет участником пространства с выбранной ролью и получит доступ к его доскам.',
     inviteRole: 'Роль приглашённых',
     createLink: 'Создать ссылку',
     inviteFailed: 'Не удалось создать приглашение',
@@ -87,7 +87,7 @@ export const workspacesMessages = defineMessages({
     revoke: 'Отозвать',
 
     // WorkspacesSection
-    guestHint: 'Командные пространства с общими проектами доступны после входа через GitHub или Google.',
+    guestHint: 'Командные пространства с общими проектами доступны после входа.',
     signIn: 'Войти',
     workspaces: 'Пространства',
     workspaceName: 'Название пространства',
@@ -160,7 +160,7 @@ export const workspacesMessages = defineMessages({
     removeFromWorkspace: 'Remove from the workspace',
     inviteByLink: 'Invite by link',
     inviteHint:
-      'Whoever opens the invitation link and signs in with GitHub or Google becomes a member of the workspace with the chosen role and gets access to its boards.',
+      'Whoever opens the invitation link and signs in becomes a member of the workspace with the chosen role and gets access to its boards.',
     inviteRole: 'Role of the invited',
     createLink: 'Create link',
     inviteFailed: 'Could not create the invitation',
@@ -174,7 +174,7 @@ export const workspacesMessages = defineMessages({
     copy: 'Copy',
     revoke: 'Revoke',
 
-    guestHint: 'Team workspaces with shared projects are available after signing in with GitHub or Google.',
+    guestHint: 'Team workspaces with shared projects are available after signing in.',
     signIn: 'Sign in',
     workspaces: 'Workspaces',
     workspaceName: 'Workspace name',

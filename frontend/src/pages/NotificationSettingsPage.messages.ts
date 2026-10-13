@@ -6,7 +6,7 @@ export const notificationSettingsMessages = defineMessages({
     title: 'Уведомления вне CoDraw',
     intro:
       'Упоминания, ответы, назначенные ветки, доступ к доскам и ревью — на почту и в рабочий чат. Колокольчик CoDraw показывает уведомления как прежде; то, что вы прочитали в нём, не приходит.',
-    guest: 'Уведомления вне CoDraw доступны после входа через GitHub или Google.',
+    guest: 'Уведомления вне CoDraw доступны после входа.',
     signIn: 'Войти',
     loading: 'Загрузка…',
     forbidden: 'Настройки доступны после входа',
@@ -47,7 +47,7 @@ export const notificationSettingsMessages = defineMessages({
     title: 'Notifications outside CoDraw',
     intro:
       'Mentions, replies, assigned threads, access to boards and reviews — by email and to your work chat. The CoDraw bell shows notifications as before; what you have read there is not sent.',
-    guest: 'Notifications outside CoDraw are available after signing in with GitHub or Google.',
+    guest: 'Notifications outside CoDraw are available after signing in.',
     signIn: 'Sign in',
     loading: 'Loading…',
     forbidden: 'Settings are available after signing in',

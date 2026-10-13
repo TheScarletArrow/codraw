@@ -5,7 +5,7 @@ import { TermsEn } from './TermsPage.en.tsx'
 import { TermsRu } from './TermsPage.ru.tsx'
 
 /** The day the terms were last changed. */
-const TERMS_UPDATED = '2026-10-09'
+const TERMS_UPDATED = '2026-10-13'
 
 /** The rules of using this installation of CoDraw, in the language of the interface. */
 export function TermsPage() {

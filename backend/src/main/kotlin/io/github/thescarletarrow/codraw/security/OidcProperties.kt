@@ -24,7 +24,8 @@ data class OidcProperties(
 
     companion object {
         private val ID = Regex("[a-z0-9]+")
-        private val RESERVED_IDS = setOf("github", "google", "guest")
+        // The registrations of Spring Boot and the guests: a provider of the same id would share their callback.
+        private val RESERVED_IDS = setOf("github", "google", "yandex", "vk", "guest")
     }
 }
 

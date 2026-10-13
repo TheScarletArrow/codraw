@@ -13,10 +13,13 @@ export interface CurrentUser {
   language?: Locale
 }
 
-/** A way to sign in that the installation offers: GitHub, Google or a provider of OpenID Connect of the operator. */
+/**
+ * A way to sign in that the installation offers: GitHub, Google, Яндекс ID, VK ID or a provider of OpenID Connect of the
+ * operator.
+ */
 export interface LoginProvider {
   id: string
-  /** Shown as «Войти через {name}». */
+  /** Shown as «Войти через {name}»; Яндекс ID has a name of its own in English, see `providerName`. */
   name: string
 }
 

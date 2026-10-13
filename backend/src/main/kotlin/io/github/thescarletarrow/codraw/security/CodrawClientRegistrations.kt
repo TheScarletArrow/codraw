@@ -13,15 +13,15 @@ import java.util.concurrent.ConcurrentHashMap
 data class SignInProvider(
     val id: String,
     val name: String,
-    /** A provider of OpenID Connect that the operator chose, not GitHub or Google. */
+    /** A provider of OpenID Connect that the operator chose, not GitHub, Google, Яндекс ID or VK ID. */
     val corporate: Boolean,
 )
 
 /**
- * The providers of this installation: GitHub and Google when their OAuth applications are set up, and the providers of
- * OpenID Connect of [OidcProperties]. The metadata of a provider of OpenID Connect are read on its first sign-in and
- * kept, so that a provider that is down does not keep the backend from starting; a failed read is tried again on the
- * next sign-in.
+ * The providers of this installation: GitHub, Google, Яндекс ID and VK ID when their applications are set up, and the
+ * providers of OpenID Connect of [OidcProperties]. The metadata of a provider of OpenID Connect are read on its first
+ * sign-in and kept, so that a provider that is down does not keep the backend from starting; a failed read is tried
+ * again on the next sign-in.
  */
 class CodrawClientRegistrations(
     oauth2: Map<String, ClientRegistration>,
@@ -33,9 +33,14 @@ class CodrawClientRegistrations(
     private val oidc = oidc.enabled
     private val discovered = ConcurrentHashMap<String, ClientRegistration>()
 
-    /** GitHub and Google first, then the providers of OpenID Connect in the order of the settings. */
+    /** GitHub, Google, Яндекс ID and VK ID first, then the providers of OpenID Connect in the order of the settings. */
     val providers: List<SignInProvider> =
-        listOf(ProviderProfile.GITHUB to "GitHub", ProviderProfile.GOOGLE to "Google")
+        listOf(
+            ProviderProfile.GITHUB to "GitHub",
+            ProviderProfile.GOOGLE to "Google",
+            ProviderProfile.YANDEX to "Яндекс ID",
+            ProviderProfile.VK to "VK ID",
+        )
             .filter { (id) -> id in this.oauth2 }
             .map { (id, name) -> SignInProvider(id, name, corporate = false) } +
             this.oidc.map { (id, provider) -> SignInProvider(id, provider.name.ifBlank { id }, corporate = true) }

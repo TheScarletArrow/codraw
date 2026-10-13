@@ -34,8 +34,10 @@ export interface LegalInfo {
 }
 
 export interface LegalSignInProvider {
+  /** `github`, `google`, `yandex`, `vk` or the id of a provider of OpenID Connect of the operator. */
+  id: string
   name: string
-  /** A provider of OpenID Connect that the operator chose, not GitHub or Google. */
+  /** A provider of OpenID Connect that the operator chose, not GitHub, Google, Яндекс ID or VK ID. */
   corporate: boolean
 }
 

@@ -28,8 +28,9 @@ class LegalApiTest(@Autowired private val mockMvc: MockMvc) {
             jsonPath("$.adminRetentionDays") { value(365) }
             jsonPath("$.backupRetentionDays") { value(null) }
             jsonPath("$.backupOffsite") { value(false) }
-            jsonPath("$.signInProviders[*].name") { value(contains("GitHub", "Google")) }
-            jsonPath("$.signInProviders[*].corporate") { value(contains(false, false)) }
+            jsonPath("$.signInProviders[*].id") { value(contains("github", "google", "yandex", "vk")) }
+            jsonPath("$.signInProviders[*].name") { value(contains("GitHub", "Google", "Яндекс ID", "VK ID")) }
+            jsonPath("$.signInProviders[*].corporate") { value(contains(false, false, false, false)) }
             jsonPath("$.guests") { value(true) }
         }
     }

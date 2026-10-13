@@ -4,6 +4,7 @@ import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.CodrawOidcUserService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
 import org.springframework.security.core.AuthenticationException
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException
 import org.springframework.security.web.authentication.AuthenticationFailureHandler
@@ -23,8 +24,15 @@ class SignInFailureHandler : AuthenticationFailureHandler {
         val handler = when ((exception as? OAuth2AuthenticationException)?.error?.errorCode) {
             CodrawOAuth2UserService.BLOCKED -> blocked
             CodrawOidcUserService.ACCESS_DENIED -> denied
-            else -> failed
+            else -> failed.also {
+                // The operator finds here why a provider turned the sign-in away, e.g. a callback address it does not know.
+                log.info("A sign-in at {} failed: {}", request.requestURI, exception.message)
+            }
         }
         handler.onAuthenticationFailure(request, response, exception)
+    }
+
+    private companion object {
+        private val log = LoggerFactory.getLogger(SignInFailureHandler::class.java)
     }
 }

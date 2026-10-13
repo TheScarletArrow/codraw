@@ -38,7 +38,7 @@ export const adminMessages = defineMessages({
     boardDetails: 'Сведения о доске',
     resolveReport: 'Закрыть жалобу',
     find: 'Найти',
-    userSearch: 'Имя, id или id у GitHub и Google',
+    userSearch: 'Имя, id или id у провайдера входа',
     blockFailed: 'Не удалось изменить блокировку',
     soleWorkspaceOwner:
       'Пользователь — единственный владелец пространства с другими участниками: сначала нужно передать роль владельца.',
@@ -139,7 +139,7 @@ export const adminMessages = defineMessages({
     boardDetails: 'Board details',
     resolveReport: 'Resolve report',
     find: 'Search',
-    userSearch: 'Name, id, or GitHub or Google id',
+    userSearch: 'Name, id, or id at the sign-in provider',
     blockFailed: 'Could not change the block',
     soleWorkspaceOwner:
       'The user is the only owner of a workspace with other members: transfer the owner role first.',

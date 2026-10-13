@@ -22,7 +22,7 @@ test('an administrator blocks a user: their board loses its connection, they lea
   const admin = await userPage(browser, ADMIN)
 
   await openAdmin(admin, 'Пользователи')
-  await admin.getByRole('textbox', { name: 'Имя, id или id у GitHub и Google' }).fill(name)
+  await admin.getByRole('textbox', { name: 'Имя, id или id у провайдера входа' }).fill(name)
   await admin.getByRole('button', { name: 'Найти' }).click()
   const user = admin.getByRole('list', { name: 'Пользователи' }).getByRole('listitem').filter({ hasText: name })
   await user.getByRole('button', { name: 'Заблокировать' }).click()
@@ -104,7 +104,7 @@ test('an administrator deletes an account: its connection to a board of others c
   await openBoard(user, await createBoard(admin))
 
   await openAdmin(admin, 'Пользователи')
-  await admin.getByRole('textbox', { name: 'Имя, id или id у GitHub и Google' }).fill(name)
+  await admin.getByRole('textbox', { name: 'Имя, id или id у провайдера входа' }).fill(name)
   await admin.getByRole('button', { name: 'Найти' }).click()
   const row = admin.getByRole('list', { name: 'Пользователи' }).getByRole('listitem').filter({ hasText: name })
   await row.getByRole('button', { name: 'Удалить' }).click()

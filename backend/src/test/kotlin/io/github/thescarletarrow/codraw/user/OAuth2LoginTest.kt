@@ -129,6 +129,60 @@ class OAuth2LoginTest(
     }
 
     @Test
+    fun `signs in through Яндекс ID with the real name and the portrait`() {
+        val yandex = signIn("yandex", yandexProfile())
+
+        mockMvc.get("/api/me") { with(oauth2Login().oauth2User(yandex)) }.andExpect {
+            jsonPath("$.name") { value("Иван Петров") }
+            jsonPath("$.avatarUrl") { value("https://avatars.yandex.net/get-yapic/31804/BYkogAC6AoB17bN1HKRFAyKiM4-1/islands-200") }
+        }
+        assertEquals(listOf("yandex 1130000012345678"), accounts())
+    }
+
+    @Test
+    fun `takes the display name or the login of Яндекс ID and no portrait from a user without one`() {
+        val displayName = signIn("yandex", yandexProfile(realName = null, avatarEmpty = true))
+
+        mockMvc.get("/api/me") { with(oauth2Login().oauth2User(displayName)) }.andExpect {
+            jsonPath("$.name") { value("Ваня") }
+            jsonPath("$.avatarUrl") { value(null) }
+        }
+
+        val login = signIn("yandex", mapOf("id" to "1130000012345678", "login" to "ivan.petrov"))
+
+        mockMvc.get("/api/me") { with(oauth2Login().oauth2User(login)) }.andExpect {
+            jsonPath("$.name") { value("ivan.petrov") }
+            jsonPath("$.avatarUrl") { value(null) }
+        }
+    }
+
+    @Test
+    fun `signs in through VK ID with the first and the last name and the avatar`() {
+        val vk = signIn("vk", vkProfile(lastName = "Смирнова"))
+
+        mockMvc.get("/api/me") { with(oauth2Login().oauth2User(vk)) }.andExpect {
+            jsonPath("$.name") { value("Анна Смирнова") }
+            jsonPath("$.avatarUrl") { value("https://sun1-1.userapi.com/s/v1/ig2/anna.jpg") }
+        }
+
+        // VK ID gives no last name to some users, and a new name on the next sign-in.
+        val again = signIn("vk", vkProfile(lastName = null))
+
+        assertEquals(vk.name, again.name)
+        mockMvc.get("/api/me") { with(oauth2Login().oauth2User(again)) }.andExpect { jsonPath("$.name") { value("Анна") } }
+        assertEquals(listOf("vk 1234567"), accounts())
+    }
+
+    @Test
+    fun `the same id at Яндекс ID and VK ID belongs to two users`() {
+        val yandex = signIn("yandex", yandexProfile(id = "1234567"))
+        val vk = signIn("vk", vkProfile(lastName = "Смирнова"))
+
+        assertNotEquals(yandex.name, vk.name)
+        assertEquals(listOf("vk 1234567", "yandex 1234567"), accounts().sorted())
+    }
+
+    @Test
     fun `boards of a guest pass to the user who signs in from the guest session`() {
         val guest = users.createGuest()
         val board = boards.create("Доска гостя", guest.id)
@@ -266,6 +320,38 @@ class OAuth2LoginTest(
 
     private fun gitHubProfile(name: String?, avatar: String = "https://avatars.githubusercontent.com/u/1001") =
         listOfNotNull("id" to 1001, "login" to "alice", name?.let { "name" to it }, "avatar_url" to avatar).toMap()
+
+    /** The user info of Яндекс ID with the rights `login:info` and `login:avatar`. */
+    private fun yandexProfile(id: String = "1130000012345678", realName: String? = "Иван Петров", avatarEmpty: Boolean = false) =
+        listOfNotNull(
+            "id" to id,
+            "login" to "ivan.petrov",
+            "client_id" to "test-yandex-client",
+            "display_name" to "Ваня",
+            realName?.let { "real_name" to it },
+            "first_name" to "Иван",
+            "last_name" to "Петров",
+            "sex" to "male",
+            "default_avatar_id" to "31804/BYkogAC6AoB17bN1HKRFAyKiM4-1",
+            "is_avatar_empty" to avatarEmpty,
+            "psuid" to "1.AAceCw.tbHgw5DtJ9_zeqPrk-Ba2w.qPWSRC5v2t2IaksPJgnge",
+        ).toMap()
+
+    /** The user of VK ID, as `CodrawOAuth2UserService` gets it from inside `user` of its user info. */
+    private fun vkProfile(lastName: String?) = listOfNotNull(
+        "user_id" to "1234567",
+        "first_name" to "Анна",
+        lastName?.let { "last_name" to it },
+        "avatar" to "https://sun1-1.userapi.com/s/v1/ig2/anna.jpg",
+        "sex" to 1,
+        "verified" to false,
+        "birthday" to "01.02.1990",
+    ).toMap()
+
+    private fun accounts(): List<String> =
+        jdbcClient.sql("SELECT provider, provider_user_id FROM users ORDER BY created_at")
+            .query { rs, _ -> "${rs.getString(1)} ${rs.getString(2)}" }
+            .list()
 
     private fun signIn(registrationId: String, attributes: Map<String, Any>): OAuth2User {
         providerAttributes = attributes

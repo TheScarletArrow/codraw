@@ -5,7 +5,7 @@ import { PrivacyEn } from './PrivacyPage.en.tsx'
 import { PrivacyRu } from './PrivacyPage.ru.tsx'
 
 /** The day the policy was last changed. */
-const PRIVACY_UPDATED = '2026-10-12'
+const PRIVACY_UPDATED = '2026-10-13'
 
 /**
  * What CoDraw does with personal data, as it really does it, in the language of the interface; the settings of the

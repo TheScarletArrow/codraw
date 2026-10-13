@@ -101,7 +101,7 @@ describe('AdminPage', () => {
       'POST /api/admin/users/bob/block': { body: { ...bob, blockedAt: '2026-10-03T12:00:00Z' } },
     })
     await userEvent.click(await screen.findByRole('tab', { name: 'Пользователи' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'Имя, id или id у GitHub и Google' }), 'боб')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Имя, id или id у провайдера входа' }), 'боб')
     await userEvent.click(screen.getByRole('button', { name: 'Найти' }))
     const users = await screen.findByRole('list', { name: 'Пользователи' })
     await waitFor(() => expect(calls(fetchMock, 'GET', '/api/admin/users?query=%D0%B1%D0%BE%D0%B1')).toHaveLength(1))

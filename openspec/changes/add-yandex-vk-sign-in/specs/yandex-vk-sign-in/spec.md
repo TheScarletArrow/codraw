@@ -22,8 +22,8 @@ MUST NOT принимать вход. Адреса провайдеров SHALL 
 
 Вход через Яндекс ID SHALL идти по коду авторизации с правами только `login:info` и `login:avatar`, без почты.
 `backend` SHALL передавать секрет приложения в теле обмена кода и читать профиль `login.yandex.ru/info` с заголовком
-`Authorization: OAuth <токен>`. Имя пользователя SHALL браться из `real_name`, а без него — из `display_name`, логина или
-id; аватар — `https://avatars.yandex.net/get-yapic/<default_avatar_id>/islands-200`, если портрет есть.
+`Authorization: OAuth <токен>`. Имя пользователя SHALL браться из `real_name`, а без него — из `display_name`, логина
+или id; аватар — `https://avatars.yandex.net/get-yapic/<default_avatar_id>/islands-200`, если портрет есть.
 
 #### Scenario: Первый вход через Яндекс ID
 

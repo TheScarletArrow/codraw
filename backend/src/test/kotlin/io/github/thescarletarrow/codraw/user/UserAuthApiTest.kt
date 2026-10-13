@@ -141,7 +141,14 @@ class UserAuthApiTest(
             status { isOk() }
             content {
                 json(
-                    """{"providers": [{"id": "github", "name": "GitHub"}, {"id": "google", "name": "Google"}], "guests": true}""",
+                    """
+                    {"providers": [
+                      {"id": "github", "name": "GitHub"},
+                      {"id": "google", "name": "Google"},
+                      {"id": "yandex", "name": "Яндекс ID"},
+                      {"id": "vk", "name": "VK ID"}
+                    ], "guests": true}
+                    """,
                     JsonCompareMode.STRICT,
                 )
             }

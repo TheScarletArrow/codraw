@@ -13,14 +13,16 @@ import org.springframework.test.web.servlet.post
 import kotlin.test.assertEquals
 
 /**
- * An installation with the corporate sign-in only: no OAuth application of GitHub, Google turned off with an empty id,
- * no guests, and a provider of OpenID Connect whose issuer does not answer.
+ * An installation with the corporate sign-in only: no application of GitHub, Google, Яндекс ID and VK ID, no guests,
+ * and a provider of OpenID Connect whose issuer does not answer.
  */
 @IntegrationTest
 @TestPropertySource(
     properties = [
         "spring.security.oauth2.client.registration.github.client-id=not-configured",
         "spring.security.oauth2.client.registration.google.client-id=not-configured",
+        "spring.security.oauth2.client.registration.yandex.client-id=not-configured",
+        "spring.security.oauth2.client.registration.vk.client-id=not-configured",
         "codraw.guests.enabled=false",
         "codraw.auth.oidc.corp.issuer-uri=http://127.0.0.1:9/realms/acme",
         "codraw.auth.oidc.corp.client-id=codraw",
@@ -57,7 +59,7 @@ class ClosedInstallationTest(
 
     @Test
     fun `sends a sign-in through a provider that is down or off back to the login page`() {
-        for (provider in listOf("corp", "github", "partner", "unknown")) {
+        for (provider in listOf("corp", "github", "yandex", "vk", "partner", "unknown")) {
             mockMvc.get("/api/oauth2/authorization/$provider").andExpect {
                 status { is3xxRedirection() }
                 redirectedUrl("/login?error")
@@ -69,6 +71,7 @@ class ClosedInstallationTest(
     fun `names the corporate provider for the privacy policy`() {
         mockMvc.get(LegalController.PATH).andExpect {
             jsonPath("$.signInProviders.length()") { value(1) }
+            jsonPath("$.signInProviders[0].id") { value("corp") }
             jsonPath("$.signInProviders[0].name") { value("Keycloak компании") }
             jsonPath("$.signInProviders[0].corporate") { value(true) }
             jsonPath("$.guests") { value(false) }

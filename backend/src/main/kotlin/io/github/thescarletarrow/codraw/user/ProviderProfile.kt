@@ -10,6 +10,8 @@ data class ProviderProfile(
     companion object {
         const val GITHUB = "github"
         const val GOOGLE = "google"
+        const val YANDEX = "yandex"
+        const val VK = "vk"
         const val GUEST = "guest"
 
         /** The provider of a user of OpenID Connect is this prefix and the issuer, see `CodrawOidcUserService`. */
@@ -30,6 +32,28 @@ data class ProviderProfile(
                 name = attributes.text("name") ?: attributes.getValue("sub").toString(),
                 avatarUrl = attributes.text("picture"),
             )
+            YANDEX -> {
+                val id = attributes.getValue("id").toString()
+                ProviderProfile(
+                    provider = provider,
+                    providerUserId = id,
+                    name = attributes.text("real_name") ?: attributes.text("display_name") ?: attributes.text("login") ?: id,
+                    // A user without a portrait of their own has the default one of Yandex, which says nothing.
+                    avatarUrl = attributes.text("default_avatar_id")
+                        ?.takeUnless { attributes["is_avatar_empty"] == true }
+                        ?.let { "https://avatars.yandex.net/get-yapic/$it/islands-200" },
+                )
+            }
+            VK -> {
+                val id = attributes.getValue("user_id").toString()
+                ProviderProfile(
+                    provider = provider,
+                    providerUserId = id,
+                    name = listOfNotNull(attributes.text("first_name"), attributes.text("last_name"))
+                        .joinToString(" ") { it.trim() }.ifEmpty { id },
+                    avatarUrl = attributes.text("avatar")?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+                )
+            }
             else -> throw IllegalArgumentException("Unsupported sign-in provider: $provider")
         }
 

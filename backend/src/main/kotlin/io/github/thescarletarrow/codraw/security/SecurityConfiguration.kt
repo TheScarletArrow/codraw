@@ -104,8 +104,13 @@ class SecurityConfiguration {
             oauth2Login {
                 loginPage = "/login"
                 clientRegistrationRepository = registrations
-                authorizationEndpoint { baseUri = SignInProviderFailureFilter.AUTHORIZATION_BASE_URI }
+                authorizationEndpoint {
+                    baseUri = SignInProviderFailureFilter.AUTHORIZATION_BASE_URI
+                    authorizationRequestResolver =
+                        signInAuthorizationRequestResolver(registrations, SignInProviderFailureFilter.AUTHORIZATION_BASE_URI)
+                }
                 redirectionEndpoint { baseUri = "/api/login/oauth2/code/*" }
+                tokenEndpoint { accessTokenResponseClient = signInTokenResponseClient() }
                 userInfoEndpoint {
                     userService = oauth2UserService
                     this.oidcUserService = oidcUserService

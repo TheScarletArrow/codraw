@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryRouter, RouterProvider } from 'react-router'
+import { setLocale } from '../i18n/i18n.ts'
 import { createQueryClient } from '../queryClient.ts'
 import { LOGIN_OPTIONS, mockFetch, renderRoutes } from '../test/render.tsx'
 import { LoginPage } from './LoginPage.tsx'
@@ -50,6 +51,37 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('link', { name: 'Войти через GitHub' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Войти через Google' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Продолжить без входа' })).toBeNull()
+  })
+
+  it('offers Яндекс ID and VK ID, naming Yandex in the language of the interface', async () => {
+    const providers = {
+      'GET /api/auth/providers': {
+        body: {
+          providers: [
+            { id: 'yandex', name: 'Яндекс ID' },
+            { id: 'vk', name: 'VK ID' },
+          ],
+          guests: false,
+        },
+      },
+    }
+    mockFetch(providers)
+    const { unmount } = renderRoutes(routes, '/login')
+
+    expect(await screen.findByRole('link', { name: 'Войти через Яндекс ID' })).toHaveAttribute(
+      'href',
+      '/api/oauth2/authorization/yandex',
+    )
+    expect(screen.getByRole('link', { name: 'Войти через VK ID' })).toHaveAttribute('href', '/api/oauth2/authorization/vk')
+    expect(screen.queryByRole('link', { name: 'Войти через GitHub' })).toBeNull()
+    unmount()
+
+    setLocale('en')
+    mockFetch(providers)
+    renderRoutes(routes, '/login')
+
+    expect(await screen.findByRole('link', { name: 'Sign in with Yandex ID' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sign in with VK ID' })).toBeInTheDocument()
   })
 
   it('says that an installation without any way to sign in is not set up', async () => {

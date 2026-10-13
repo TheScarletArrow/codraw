@@ -483,7 +483,7 @@ describe('SqlMenu', () => {
     await user.click(screen.getByRole('button', { name: 'SQL и Mermaid' }))
     await user.click(screen.getByRole('button', { name: 'Импорт SQL…' }))
 
-    expect(await within(menu()).findByText(/Подключиться к базе можно после входа через GitHub или Google/)).toBeInTheDocument()
+    expect(await within(menu()).findByText(/Подключиться к базе можно после входа\./)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Подключиться к базе…' })).toBeNull()
   })
 

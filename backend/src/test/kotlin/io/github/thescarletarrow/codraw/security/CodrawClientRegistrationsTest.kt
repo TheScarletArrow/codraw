@@ -12,9 +12,11 @@ class CodrawClientRegistrationsTest {
 
     private val gitHub = registration("github", "test-github-client")
     private val google = registration("google", "not-configured")
+    private val yandex = registration("yandex", "test-yandex-client")
+    private val vk = registration("vk", "test-vk-client")
 
     @Test
-    fun `offers GitHub and Google only with their OAuth applications, then the providers of OpenID Connect that are set up`() {
+    fun `offers the providers with their applications in a fixed order, then the providers of OpenID Connect that are set up`() {
         val oidc = OidcProperties(
             mapOf(
                 "corp" to OidcProvider(issuerUri = "https://sso.example.com/realms/acme", clientId = "codraw", name = "Keycloak компании"),
@@ -23,11 +25,15 @@ class CodrawClientRegistrationsTest {
             ),
         )
 
-        val registrations = CodrawClientRegistrations(mapOf("github" to gitHub, "google" to google), oidc) { error("not read") }
+        // In the order of the login page, not of the settings.
+        val oauth2 = mapOf("vk" to vk, "yandex" to yandex, "github" to gitHub, "google" to google)
+        val registrations = CodrawClientRegistrations(oauth2, oidc) { error("not read") }
 
         assertEquals(
             listOf(
                 SignInProvider("github", "GitHub", corporate = false),
+                SignInProvider("yandex", "Яндекс ID", corporate = false),
+                SignInProvider("vk", "VK ID", corporate = false),
                 SignInProvider("corp", "Keycloak компании", corporate = true),
                 SignInProvider("okta", "okta", corporate = true),
             ),
@@ -70,7 +76,7 @@ class CodrawClientRegistrationsTest {
 
     @Test
     fun `rejects ids of providers that clash with others or do not fit into the environment`() {
-        for (id in listOf("github", "guest", "my-corp", "Corp", "")) {
+        for (id in listOf("github", "yandex", "vk", "guest", "my-corp", "Corp", "")) {
             assertThrows<IllegalArgumentException> { OidcProperties(mapOf(id to OidcProvider())) }
         }
     }

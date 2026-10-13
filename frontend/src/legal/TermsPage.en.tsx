@@ -13,8 +13,8 @@ export function TermsEn({ legal }: { legal: LegalInfo }) {
       <section aria-labelledby="terms-service">
         <h2 id="terms-service">The service</h2>
         <p className="mt-2">
-          CoDraw is a diagram editor in which several people work on one board at the same time. By signing in with
-          GitHub or Google or by continuing without signing in, you accept these terms and the{' '}
+          CoDraw is a diagram editor in which several people work on one board at the same time. By signing in to
+          CoDraw or by continuing without signing in, you accept these terms and the{' '}
           <Link to="/privacy" className="underline">
             privacy policy
           </Link>
@@ -28,9 +28,9 @@ export function TermsEn({ legal }: { legal: LegalInfo }) {
       <section aria-labelledby="terms-account">
         <h2 id="terms-account">Account</h2>
         <p className="mt-2">
-          You are responsible for access to your GitHub or Google account. A guest works in their own browser: if they
-          clear the cookies without signing in, their boards become unavailable to them; by signing in, a guest moves
-          their boards and comments to the account.
+          You are responsible for access to the account you sign in to CoDraw with. A guest works in their own browser:
+          if they clear the cookies without signing in, their boards become unavailable to them; by signing in, a guest
+          moves their boards and comments to the account.
         </p>
       </section>
 

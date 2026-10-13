@@ -1,4 +1,5 @@
 import type { LegalInfo } from '../api/legal.ts'
+import { providerName } from '../auth/providerName.ts'
 import { LOCAL_COPY_LIMIT } from '../offline/localCopies.ts'
 import { Operator, STATISTICS_RETENTION_DAYS } from './LegalPage.tsx'
 import { legalMessages } from './messages.ts'
@@ -404,8 +405,7 @@ export function PrivacyRu({ legal }: { legal: LegalInfo }) {
           без автора — с подписью «Удалённый пользователь»; ваше имя, которое участники уже видели в отметках
           «Изменено» и закреплениях элементов и в упоминаниях в чужих комментариях, остаётся частью содержимого этих
           досок. Ваши жалобы и отзывы остаются у администраторов без автора до закрытия и конца срока хранения. Все
-          ваши сеансы завершаются. Новый вход через того же провайдера — GitHub, Google или корпоративный — создаёт
-          новую пустую учётную запись.
+          ваши сеансы завершаются. Новый вход через того же провайдера входа создаёт новую пустую учётную запись.
           {legal.backupRetentionDays !== null &&
             ` В резервных копиях удалённые данные остаются до ${legalMessages.days(legal.backupRetentionDays)}, пока копии не удалятся по сроку.`}
         </p>
@@ -434,16 +434,27 @@ export function PrivacyRu({ legal }: { legal: LegalInfo }) {
 
 /** «GitHub», «GitHub или Google», «A, B или C» of the providers of the installation; empty for none. */
 function providerNames(legal: LegalInfo, corporate: boolean, conjunction = 'или'): string {
-  const names = legal.signInProviders.filter((provider) => provider.corporate === corporate).map((provider) => provider.name)
+  const names = legal.signInProviders.filter((provider) => provider.corporate === corporate).map(providerName)
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} ${conjunction} ${names.at(-1)}` : (names[0] ?? '')
 }
 
-/** What GitHub and Google give CoDraw, when the installation signs in through them. */
+/** What GitHub, Google, Яндекс ID and VK ID give CoDraw, when the installation signs in through them. */
 function publicAccount(legal: LegalInfo): string {
   const names = providerNames(legal, false)
   return names
-    ? `При входе через ${names} — имя, адрес картинки профиля и идентификатор пользователя у этого сервиса. Адрес электронной почты CoDraw у них не запрашивает, пароль от ${names} не получает. `
+    ? `При входе через ${names} — имя, адрес картинки профиля и идентификатор пользователя у этого сервиса. Адрес электронной почты CoDraw у них не запрашивает, пароль от ${names} не получает. ${extraProfile(legal)}`
     : ''
+}
+
+/** What else of the profile Яндекс ID and VK ID send, which CoDraw does not keep; empty without them. */
+function extraProfile(legal: LegalInfo): string {
+  const ids = legal.signInProviders.map((provider) => provider.id)
+  const yandex = ids.includes('yandex')
+  const vk = ids.includes('vk')
+  if (yandex && vk) return 'Яндекс ID присылает вместе с ними логин и пол, VK ID — пол и дату рождения; CoDraw их не хранит. '
+  if (yandex) return 'Яндекс ID присылает вместе с ними логин и пол, а CoDraw их не хранит. '
+  if (vk) return 'VK ID присылает вместе с ними пол и дату рождения, а CoDraw их не хранит. '
+  return ''
 }
 
 /** What the provider that the operator chose gives CoDraw, and what of it CoDraw keeps. */

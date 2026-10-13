@@ -65,7 +65,7 @@ describe('NotificationSettingsPage', () => {
   it('offers a guest to sign in and asks for no settings', async () => {
     const { fetchMock } = renderPage({ 'GET /api/me': { body: { ...ALICE, guest: true } } })
 
-    expect(await screen.findByText(/доступны после входа через GitHub или Google/)).toBeInTheDocument()
+    expect(await screen.findByText(/доступны после входа\./)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Войти' })).toHaveAttribute('href', '/login')
     expect(requests(fetchMock, 'GET', settingsUrl)).toHaveLength(0)
   })
