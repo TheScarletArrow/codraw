@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.admin
 
 import io.github.thescarletarrow.codraw.e2e.TestLoginController
+import io.github.thescarletarrow.codraw.password.PasswordRules
 import io.github.thescarletarrow.codraw.user.ProviderProfile
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
@@ -20,9 +21,43 @@ data class AdminProperties(
     val users: List<String> = emptyList(),
     /** Entries of the journal, closed reports and closed feedback are deleted once they are this old. */
     val retention: Duration = Duration.ofDays(365),
+    /**
+     * The login of the administrator whom the settings make with a password (`CODRAW_ADMIN_LOGIN`): the backend creates
+     * the account at start and keeps its password the [password]; empty for none.
+     */
+    val login: String = "",
+    /** The password of the administrator of [login] (`CODRAW_ADMIN_PASSWORD`); only this setting changes it. */
+    val password: String = "",
 ) {
+    /** The login of the administrator of the settings in lower case, `null` without one. */
+    val configuredLogin: String? = login.trim().takeIf { it.isNotEmpty() }?.let(PasswordRules::normalize)
+
+    init {
+        require(login.isBlank() == password.isEmpty()) {
+            if (login.isBlank()) "codraw.admin.login is not set, and codraw.admin.password is"
+            else "codraw.admin.password is not set"
+        }
+        if (configuredLogin != null) {
+            require(PasswordRules.loginProblem(login.trim()) == null) {
+                "codraw.admin.login: \"$login\" is not 3 to 32 Latin letters, digits, dots, \"_\" and \"-\", " +
+                    "a letter or a digit first"
+            }
+            // Never the password itself in a message.
+            val problem = PasswordRules.passwordProblem(login.trim(), password)
+            require(problem == null) { "codraw.admin.password does not fit the rules of passwords: ${problem?.reason}" }
+        }
+    }
+
     /** The accounts of administrators as pairs of the provider and the id at the provider. */
-    val accounts: Set<Pair<String, String>> = users.map(String::trim).filter(String::isNotEmpty).map(::account).toSet()
+    val accounts: Set<Pair<String, String>> =
+        users.map(String::trim).filter(String::isNotEmpty).map(::account).toSet() +
+            listOfNotNull(configuredLogin?.let { ProviderProfile.PASSWORD to it })
+
+    /** Without the password, which would otherwise reach messages about binding the settings. */
+    override fun toString(): String {
+        val hidden = if (password.isEmpty()) "" else "******"
+        return "AdminProperties(users=$users, retention=$retention, login=$login, password=$hidden)"
+    }
 
     private fun account(entry: String): Pair<String, String> {
         if (entry.startsWith(ProviderProfile.OIDC_PREFIX)) {

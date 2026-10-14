@@ -33,6 +33,11 @@ class PasswordCredentials(private val jdbc: JdbcClient) {
             .param("at", at.atOffset(ZoneOffset.UTC))
             .update() > 0
 
+    /** Ends all sessions of the user [userId], e.g. when the settings gave their account another password. */
+    fun endSessions(userId: UUID): Int = jdbc.sql("DELETE FROM spring_session WHERE principal_name = :userId")
+        .param("userId", userId.toString())
+        .update()
+
     /** Ends the sessions of the user [userId] but the session [keptSessionId], where Spring Session keeps their id. */
     fun endOtherSessions(userId: UUID, keptSessionId: String): Int =
         jdbc.sql("DELETE FROM spring_session WHERE principal_name = :userId AND session_id <> :kept")

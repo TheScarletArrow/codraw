@@ -32,6 +32,8 @@ export const passwordMessages = defineMessages({
     section: 'Пароль',
     sectionText: (login: string) =>
       `Вы входите по логину «${login}» и паролю. После смены пароля остальные ваши сеансы завершатся: на других устройствах нужно будет войти заново.`,
+    fromSettings: (login: string) =>
+      `Вы входите по логину «${login}» и паролю, который задаёт настройка сервера CODRAW_ADMIN_PASSWORD. Здесь его не сменить: оператор меняет настройку и перезапускает сервер, и тогда все ваши сеансы завершатся.`,
     currentPassword: 'Текущий пароль',
     newPassword: 'Новый пароль',
     repeatNewPassword: 'Повторите новый пароль',
@@ -70,6 +72,8 @@ export const passwordMessages = defineMessages({
     section: 'Password',
     sectionText: (login: string) =>
       `You sign in with the login “${login}” and a password. Changing the password ends your other sessions: you will have to sign in again on other devices.`,
+    fromSettings: (login: string) =>
+      `You sign in with the login “${login}” and the password that the server setting CODRAW_ADMIN_PASSWORD sets. It cannot be changed here: the operator changes the setting and restarts the server, which ends all your sessions.`,
     currentPassword: 'Current password',
     newPassword: 'New password',
     repeatNewPassword: 'Repeat the new password',

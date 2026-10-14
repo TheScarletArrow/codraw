@@ -92,6 +92,10 @@ class UserService(
         return user
     }
 
+    /** Lets the user [id] sign in again, e.g. the administrator whom the settings make; `false` when they were not blocked. */
+    @Transactional
+    fun unblock(id: UUID): Boolean = users.unblock(id)
+
     /** The user whom the [provider] knows as [providerUserId], e.g. by the login of a password. */
     fun find(provider: String, providerUserId: String): User? = users.findByProvider(provider, providerUserId)
 

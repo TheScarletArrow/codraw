@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.password
 
 import io.github.thescarletarrow.codraw.CodrawMetrics
 import io.github.thescarletarrow.codraw.Limit
+import io.github.thescarletarrow.codraw.admin.AdminProperties
 import io.github.thescarletarrow.codraw.user.ProviderProfile
 import io.github.thescarletarrow.codraw.user.User
 import io.github.thescarletarrow.codraw.user.UserBlockedException
@@ -36,7 +37,8 @@ data class PasswordChangeRequest(val currentPassword: String = "", val newPasswo
 @RestController
 class PasswordController(
     private val passwords: PasswordService,
-    private val properties: PasswordProperties,
+    private val offered: PasswordSignIn,
+    private val admins: AdminProperties,
     private val limiter: PasswordLimiter,
     private val metrics: CodrawMetrics,
     @param:Value("\${server.servlet.session.timeout:30m}") private val sessionTimeout: Duration,
@@ -50,7 +52,7 @@ class PasswordController(
         request: HttpServletRequest,
         response: HttpServletResponse,
     ): ResponseEntity<*> {
-        if (!properties.enabled || !properties.signUp) return refused(HttpStatus.FORBIDDEN, "sign-up-off")
+        if (!offered.signUp) return refused(HttpStatus.FORBIDDEN, "sign-up-off")
         (PasswordRules.loginProblem(body.login) ?: PasswordRules.passwordProblem(body.login, body.password))
             ?.let { return refused(HttpStatus.BAD_REQUEST, it.reason) }
         if (passwords.reserved(body.login)) return refused(HttpStatus.FORBIDDEN, "login-reserved")
@@ -73,7 +75,7 @@ class PasswordController(
         request: HttpServletRequest,
         response: HttpServletResponse,
     ): ResponseEntity<*> {
-        if (!properties.enabled) return refused(HttpStatus.FORBIDDEN, "password-off")
+        if (!offered.signIn) return refused(HttpStatus.FORBIDDEN, "password-off")
         val login = PasswordRules.normalize(body.login)
         limiter.waitBeforeAttempt(request.remoteAddr, login)?.let { wait -> return tooMany(Limit.PASSWORD_FAILURES, wait) }
         val user = try {
@@ -97,6 +99,8 @@ class PasswordController(
         request: HttpServletRequest,
     ): ResponseEntity<*> {
         val login = passwords.login(principal.userId) ?: return refused(HttpStatus.FORBIDDEN, "no-password")
+        // The next start would bring the password of the settings back.
+        if (login == admins.configuredLogin) return refused(HttpStatus.FORBIDDEN, "password-from-settings")
         limiter.waitBeforeAttempt(request.remoteAddr, login)?.let { wait -> return tooMany(Limit.PASSWORD_FAILURES, wait) }
         PasswordRules.passwordProblem(login, body.newPassword)?.let { return refused(HttpStatus.BAD_REQUEST, it.reason) }
         return when (passwords.change(principal.userId, body.currentPassword, body.newPassword, request.session.id)) {

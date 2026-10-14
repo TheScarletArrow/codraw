@@ -190,6 +190,7 @@ Environment `production`, задача ничего не делает. Наст�
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | backend | OAuth-приложение Google |
 | `CODRAW_AUTH_OIDC_<ID>_ISSUER_URI`, `…_CLIENT_ID`, `…_CLIENT_SECRET`, `…_NAME` | backend | корпоративный провайдер OpenID Connect, см. «Корпоративный вход» |
 | `CODRAW_GUESTS_ENABLED` | backend | `false` выключает «Продолжить без входа» |
+| `CODRAW_ADMIN_LOGIN`, `CODRAW_ADMIN_PASSWORD` | backend | администратор, которого backend создаёт при старте с этим логином и паролем; пароль меняется только этой настройкой, см. «Администраторы установки» в [docs/deploy.md](docs/deploy.md) |
 | `CODRAW_PASSWORDS_ENABLED`, `CODRAW_PASSWORDS_SIGN_UP` | backend | `true` включает вход по логину и паролю (по умолчанию выключен, в профиле `dev` включён); `false` во втором выключает регистрацию |
 | `CODRAW_COLLAB_TOKEN_SIGNING_KEY` | backend | RSA-ключ подписи токенов синхронизации (PEM, PKCS#8) |
 | `CODRAW_COLLAB_TOKEN_PREVIOUS_SIGNING_KEY` | backend | предыдущий ключ подписи на время смены ключа |
@@ -263,7 +264,9 @@ CODRAW_AUTH_OIDC_CORP_CLIENT_SECRET=… CODRAW_AUTH_OIDC_CORP_NAME="Keycloak к�
 `…_PASSWORD_FAILURES_PER_LOGIN_PER_HOUR`, `…_SIGN_UPS_PER_ADDRESS_PER_HOUR`); удачные входы не считаются. Пароль
 меняют на странице «Учётная запись» в разделе «Пароль», и остальные сеансы пользователя завершаются. Сброса пароля
 нет: почту такая учётная запись не хранит. Администратор с паролем — `password:<логин>` в `CODRAW_ADMINS`; такой логин
-нельзя зарегистрировать, поэтому сначала зарегистрируйтесь, а потом впишите его. Настройка — в разделе «Вход по
+нельзя зарегистрировать, поэтому сначала зарегистрируйтесь, а потом впишите его. Проще — администратор из настроек:
+`CODRAW_ADMIN_LOGIN` и `CODRAW_ADMIN_PASSWORD`; backend сам создаёт его при старте, а форма входа по паролю тогда есть
+и без `CODRAW_PASSWORDS_ENABLED`. Настройка — в разделе «Вход по
 логину и паролю» [docs/deploy.md](docs/deploy.md), решение — в [ADR-0015](docs/adr/0015-password-sign-in.md).
 
 ## Доски

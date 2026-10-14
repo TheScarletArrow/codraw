@@ -78,6 +78,27 @@ class PasswordService(
         return PasswordChange.CHANGED
     }
 
+    /**
+     * Makes the account of the [login] with the [password] of the settings: creates it when it is not there, gives it the
+     * [password] when its hash does not match, ending all its sessions then, and lifts a block. Returns the user.
+     */
+    @Transactional
+    fun ensureAccount(login: String, password: String): User {
+        val normalized = PasswordRules.normalize(login)
+        val user = users.signUp(ProviderProfile(ProviderProfile.PASSWORD, normalized, login, null), null)
+            ?: checkNotNull(users.find(ProviderProfile.PASSWORD, normalized)) { "The account $normalized is gone" }
+        val hash = credentials.hashOf(user.id)
+        when {
+            hash == null -> credentials.insert(user.id, checkNotNull(encoder.encode(password)), now())
+            !encoder.matches(password, hash) -> {
+                credentials.update(user.id, checkNotNull(encoder.encode(password)), now())
+                credentials.endSessions(user.id)
+            }
+        }
+        users.unblock(user.id)
+        return user
+    }
+
     /** The login of the user [userId] in lower case, `null` when they do not sign in with a password. */
     fun login(userId: UUID): String? =
         users.find(userId)?.takeIf { it.provider == ProviderProfile.PASSWORD }?.providerUserId

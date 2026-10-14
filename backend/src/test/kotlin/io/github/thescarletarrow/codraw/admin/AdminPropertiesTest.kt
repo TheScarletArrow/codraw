@@ -29,6 +29,28 @@ class AdminPropertiesTest {
         assertEquals(setOf("password" to "admin.smith"), properties.accounts)
     }
 
+    @Test
+    fun `makes the login of the settings an administrator with a password, hiding the password`() {
+        val properties = AdminProperties(login = "Boss", password = "correct horse")
+
+        assertEquals("boss", properties.configuredLogin)
+        assertEquals(setOf("password" to "boss"), properties.accounts)
+        assertEquals(false, properties.toString().contains("correct horse"))
+    }
+
+    @Test
+    fun `wants the login and the password of the settings together and by the rules, never telling the password`() {
+        assertEquals(
+            "codraw.admin.password is not set",
+            assertFailsWith<IllegalArgumentException> { AdminProperties(login = "boss") }.message,
+        )
+        assertFailsWith<IllegalArgumentException> { AdminProperties(password = "correct horse") }
+        assertFailsWith<IllegalArgumentException> { AdminProperties(login = "босс", password = "correct horse") }
+        val short = assertFailsWith<IllegalArgumentException> { AdminProperties(login = "boss", password = "secret1") }
+        assertEquals(false, short.message!!.contains("secret1"))
+        assertEquals(null, AdminProperties().configuredLogin)
+    }
+
     @ParameterizedTest
     @ValueSource(strings = ["guest:5f2c", "583231", "github:", "gitlab:1", ":1", "oidc:5f2c", "oidc:https://sso.example.com:", "password:"])
     fun `refuses an entry that names no account of a sign-in provider`(entry: String) {

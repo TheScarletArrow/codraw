@@ -80,6 +80,9 @@ services:
       # Administrators of the installation as <provider>:<id at the provider>, e.g. github:583231 or password:<login>; see
       # docs/deploy.md.
       CODRAW_ADMINS: ${CODRAW_ADMINS:-}
+      # The administrator whom the backend makes at start with this login and password; both or neither.
+      CODRAW_ADMIN_LOGIN: ${CODRAW_ADMIN_LOGIN:-}
+      CODRAW_ADMIN_PASSWORD: ${CODRAW_ADMIN_PASSWORD:-}
       CODRAW_ADMIN_RETENTION: ${CODRAW_ADMIN_RETENTION:-365d}
       CODRAW_LIMITS_REPORTS_PER_ADDRESS_PER_HOUR: ${CODRAW_LIMITS_REPORTS_PER_ADDRESS_PER_HOUR:-5}
       CODRAW_LIMITS_REPORTS_PER_BOARD: ${CODRAW_LIMITS_REPORTS_PER_BOARD:-50}

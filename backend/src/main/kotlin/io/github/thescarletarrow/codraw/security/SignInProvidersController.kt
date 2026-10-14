@@ -1,6 +1,6 @@
 package io.github.thescarletarrow.codraw.security
 
-import io.github.thescarletarrow.codraw.password.PasswordProperties
+import io.github.thescarletarrow.codraw.password.PasswordSignIn
 import io.github.thescarletarrow.codraw.user.GuestProperties
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
@@ -22,7 +22,7 @@ data class SignInProviderResponse(val id: String, val name: String)
 class SignInProvidersController(
     private val registrations: CodrawClientRegistrations,
     private val guests: GuestProperties,
-    private val passwords: PasswordProperties,
+    private val passwords: PasswordSignIn,
 ) {
 
     /** Open without a sign-in: the login page offers the ways to sign in of this installation. */
@@ -30,7 +30,7 @@ class SignInProvidersController(
     fun providers() = SignInProvidersResponse(
         providers = registrations.providers.map { SignInProviderResponse(it.id, it.name) },
         guests = guests.enabled,
-        password = PasswordSignInOptions(signUp = passwords.signUp).takeIf { passwords.enabled },
+        password = PasswordSignInOptions(signUp = passwords.signUp).takeIf { passwords.signIn },
     )
 
     companion object {

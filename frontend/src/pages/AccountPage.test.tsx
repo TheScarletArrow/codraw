@@ -73,6 +73,17 @@ describe('AccountPage', () => {
     expect(screen.getByText('Пароль удалится, а ваш логин освободится: его сможет зарегистрировать кто угодно.')).toBeInTheDocument()
   })
 
+  it('tells the administrator of the settings where their password is kept, without a form', async () => {
+    mockFetch({
+      'GET /api/me': { body: { ...ALICE, name: 'admin', admin: true, password: true, passwordFromSettings: true } },
+    })
+    renderRoutes(routes, '/settings/account')
+
+    const section = await screen.findByRole('region', { name: 'Пароль' })
+    expect(section).toHaveTextContent('паролю, который задаёт настройка сервера CODRAW_ADMIN_PASSWORD')
+    expect(within(section).queryByRole('button', { name: 'Сменить пароль' })).not.toBeInTheDocument()
+  })
+
   it('shows no password to a user who signs in through a provider', async () => {
     renderPage({ 'GET /api/me/deletion': { body: nothingShared } })
 

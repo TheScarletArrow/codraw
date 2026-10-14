@@ -13,6 +13,8 @@ export interface CurrentUser {
   language?: Locale
   /** The user signs in with a login and a password, which they change on «Учётная запись». */
   password?: boolean
+  /** The settings of the server keep the password of the user, the administrator of `CODRAW_ADMIN_LOGIN`. */
+  passwordFromSettings?: boolean
 }
 
 /** A way to sign in that the installation offers: GitHub, Google or a provider of OpenID Connect of the operator. */

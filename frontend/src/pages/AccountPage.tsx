@@ -42,7 +42,9 @@ export function AccountPage() {
         <h1 className="text-xl font-semibold">{m.title}</h1>
         {user.data && <p className="text-sm text-muted-foreground">{admin ? m.adminIntro : m.intro}</p>}
       </div>
-      {user.data?.password && <PasswordSection login={user.data.name} />}
+      {user.data?.password && (
+        <PasswordSection login={user.data.name} fromSettings={user.data.passwordFromSettings === true} />
+      )}
       {user.data &&
         (admin ? (
           <AdministratorSection />
@@ -56,8 +58,11 @@ export function AccountPage() {
   )
 }
 
-/** The password of a user who signs in with a login and a password: the current one and a new one, twice. */
-function PasswordSection({ login }: { login: string }) {
+/**
+ * The password of a user who signs in with a login and a password: the current one and a new one, twice. The
+ * administrator of the settings of the server only learns where their password is kept.
+ */
+function PasswordSection({ login, fromSettings }: { login: string; fromSettings: boolean }) {
   const id = useId()
   const p = passwordMessages
   const [current, setCurrent] = useState('')
@@ -108,6 +113,16 @@ function PasswordSection({ login }: { login: string }) {
     </div>
   )
 
+  if (fromSettings) {
+    return (
+      <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border p-4">
+        <h2 id={id} className="font-semibold">
+          {p.section}
+        </h2>
+        <p className="text-sm text-muted-foreground">{p.fromSettings(login)}</p>
+      </section>
+    )
+  }
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border p-4">
       <h2 id={id} className="font-semibold">
