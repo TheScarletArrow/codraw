@@ -338,6 +338,7 @@ class AccountDeletionApiTest(
             "id" to user.id,
         )
         sql("INSERT INTO shape_libraries (user_id, name, created_at) VALUES (:id, 'Мои фигуры', now())", "id" to user.id)
+        sql("INSERT INTO password_credentials (user_id, password_hash, changed_at) VALUES (:id, '{bcrypt}x', now())", "id" to user.id)
         sql(
             "INSERT INTO personal_templates (owner_id, title, description, drawio, created_at, updated_at) VALUES (:id, 'Шаблон', '', '<mxfile/>', now(), now())",
             "id" to user.id,

@@ -15,8 +15,9 @@ import org.springframework.context.annotation.Import
 @SpringBootTest(
     properties = [
         "codraw.internal-token=${IntegrationTest.INTERNAL_TOKEN}",
-        // The GitHub user of `gitHubUser(IntegrationTest.ADMIN)` administers the installation.
-        "codraw.admin.users=github:id-${IntegrationTest.ADMIN}",
+        // The GitHub user of `gitHubUser(IntegrationTest.ADMIN)` administers the installation, and so does the login
+        // `root`, which nobody registers then.
+        "codraw.admin.users=github:id-${IntegrationTest.ADMIN},password:${IntegrationTest.RESERVED_LOGIN}",
     ],
 )
 @AutoConfigureMockMvc
@@ -32,5 +33,8 @@ annotation class IntegrationTest {
 
         /** The name of the GitHub user who administers the installation in the tests. */
         const val ADMIN = "Admin"
+
+        /** A login with a password that administers the installation. */
+        const val RESERVED_LOGIN = "root"
     }
 }

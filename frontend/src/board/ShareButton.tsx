@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { fetchAccessRequests } from '../api/accessRequests.ts'
-import { changeLinkAccess, type Board, type LinkAccess } from '../api/boards.ts'
+import { changeLinkAccess, managesBoard, type Board, type LinkAccess } from '../api/boards.ts'
 import type { Embed } from '../api/embed.ts'
 import { EmbedSection } from '../embed/EmbedSection.tsx'
 import { WorkspaceAccessSection } from '../workspaces/WorkspaceAccessSection.tsx'
@@ -68,16 +68,16 @@ export function ShareButton({
   onOpenChange,
 }: ShareButtonProps) {
   const queryClient = useQueryClient()
-  const isOwner = board.role === 'owner'
-  // Requests for access come from users without the board open, so the page of the owner asks for them from time to
-  // time, when the tab is shown again and when the window opens.
+  const manages = managesBoard(board.role)
+  // Requests for access come from users without the board open, so the page of the owner and the lead asks for them
+  // from time to time, when the tab is shown again and when the window opens.
   const requests = useQuery({
     queryKey: accessRequestsKey(board.id),
     queryFn: () => fetchAccessRequests(board.id),
-    enabled: isOwner,
+    enabled: manages,
     refetchInterval: REQUESTS_POLL_INTERVAL,
   })
-  const waiting = isOwner ? (requests.data?.length ?? 0) : 0
+  const waiting = manages ? (requests.data?.length ?? 0) : 0
   const input = useRef<HTMLInputElement>(null)
   const [copied, setCopied] = useState(false)
   // The choice shows at once, before the request starts, so that the radio button does not jump back.
@@ -114,7 +114,7 @@ export function ShareButton({
       open={open}
       onOpenChange={(next) => {
         if (!next) setCopied(false)
-        else if (isOwner) void requests.refetch()
+        else if (manages) void requests.refetch()
         onOpenChange?.(next)
       }}
     >
@@ -167,7 +167,7 @@ export function ShareButton({
             {m.sharingBlocked}
           </p>
         )}
-        {isOwner ? (
+        {manages ? (
           <fieldset className="flex flex-col gap-1" disabled={change.isPending}>
             <legend className="mb-1 text-sm font-medium">{m.linkAccessTitle}</legend>
             {linkAccessOptions().map((option) => (
@@ -211,9 +211,9 @@ export function ShareButton({
         )}
         {board.linkAccess === 'public' && <PublicViewSection boardId={board.id} pageId={pageId} />}
         {board.workspace && <WorkspaceAccessSection board={board} onChanged={onChanged} />}
-        {isOwner && <AccessRequestsSection board={board} requests={requests.data} onChanged={onChanged} />}
+        {manages && <AccessRequestsSection board={board} requests={requests.data} onChanged={onChanged} />}
         <MembersSection board={board} onChanged={onChanged} />
-        {isOwner && <InvitesSection board={board} />}
+        {manages && <InvitesSection board={board} />}
         {/* Nobody turns the live image on while the sharing is blocked. */}
         {!(board.sharingBlocked && !embed) && (
           <EmbedSection board={board} embed={embed} pages={pages} pageId={pageId} document={document} onChanged={onChanged} />

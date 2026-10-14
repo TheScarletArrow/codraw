@@ -129,7 +129,7 @@ class WorkspaceBoardService(
         if (!workspaceBoards.moveOut(boardId, workspaceId, userId)) throw BoardOwnerChangedException()
         members.remove(boardId, userId)
         if (board.ownerId != userId) members.put(boardId, board.ownerId, MemberRole.EDITOR, now())
-        val moved = board.copy(workspaceId = null, projectId = null, ownerId = userId)
+        val moved = board.copy(workspaceId = null, projectId = null, ownerId = userId, leadId = board.leadId.takeIf { it != userId })
         boards.forgetUsersWithoutAccess(moved)
         boards.dropSatisfiedRequests(moved)
         return moved

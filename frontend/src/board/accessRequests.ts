@@ -26,7 +26,7 @@ export const ACCESS_POLL_INTERVAL = 10_000
 export const REQUESTS_POLL_INTERVAL = 30_000
 
 /** The roles from the least to the most allowed. */
-const ROLE_ORDER: (BoardRole | null)[] = [null, 'viewer', 'editor', 'owner']
+const ROLE_ORDER: (BoardRole | null)[] = [null, 'viewer', 'editor', 'lead', 'owner']
 
 /** What the user asks the owner for. */
 export interface AccessWish {

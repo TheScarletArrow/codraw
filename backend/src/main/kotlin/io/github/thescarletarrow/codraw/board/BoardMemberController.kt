@@ -15,13 +15,15 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
 /**
- * Who takes part in a board: its owner and members, the invitation links that make users members, and giving the board
- * to a member. Every participant sees the owner and the members; everything else is for the owner.
+ * Who takes part in a board: its owner, members and lead, the invitation links that make users members, and giving the
+ * board to a member. Every participant sees the owner and the members; the owner and the lead manage the members and
+ * the invitations; only the owner gives the board away and chooses the lead.
  */
 @RestController
 class BoardMemberController(
@@ -42,23 +44,31 @@ class BoardMemberController(
         @PathVariable userId: String,
         @RequestBody request: MemberRequest,
         @AuthenticationPrincipal principal: OAuth2User,
-    ): Participant = members.putMember(boards.ownedBy(id, principal.userId), parseUser(userId), request.role)
+    ): Participant = members.putMember(boards.managedBy(id, principal.userId).board, parseUser(userId), request.role)
 
-    /** The user stops being a member; what the link gives stays theirs. */
+    /**
+     * The user stops being a member, and the lead stops being the lead; what the link gives stays theirs. Only the owner
+     * removes the lead, who would change the lead otherwise.
+     */
     @DeleteMapping("$BOARD/members/{userId}")
     fun removeMember(
         @PathVariable id: String,
         @PathVariable userId: String,
         @AuthenticationPrincipal principal: OAuth2User,
     ): ResponseEntity<Void> {
-        members.removeMember(boards.ownedBy(id, principal.userId), parseUser(userId))
+        val (board, role) = boards.managedBy(id, principal.userId)
+        val member = parseUser(userId)
+        if (member == board.leadId && role != BoardRole.OWNER) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can remove the lead")
+        }
+        members.removeMember(board, member)
         return ResponseEntity.noContent().build()
     }
 
     /** Users who opened the board through its link and are not members yet, for the owner to add them. */
     @GetMapping("$BOARD/visitors")
     fun visitors(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<Visitor> =
-        members.visitors(boards.ownedBy(id, principal.userId))
+        members.visitors(boards.managedBy(id, principal.userId).board)
 
     /** Makes a member the owner; the previous owner stays on the board as an editor. */
     @PutMapping("$BOARD/owner")
@@ -71,10 +81,23 @@ class BoardMemberController(
         return board.toResponse(users.ownerOf(board), checkNotNull(boards.roleOf(board, principal.userId)), boards.workspaceOf(board))
     }
 
+    /** Makes a member the lead in place of any other; returns the participants. */
+    @PutMapping("$BOARD/lead")
+    fun appointLead(
+        @PathVariable id: String,
+        @RequestBody request: LeadRequest,
+        @AuthenticationPrincipal principal: OAuth2User,
+    ): List<Participant> = members.appointLead(boards.ownedBy(id, principal.userId), request.userId)
+
+    /** Leaves the board without a lead, who stays a member; returns the participants. */
+    @DeleteMapping("$BOARD/lead")
+    fun dismissLead(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<Participant> =
+        members.dismissLead(boards.ownedBy(id, principal.userId))
+
     /** The invitation links of the board, oldest first. */
     @GetMapping("$BOARD/invites")
     fun invites(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<InviteResponse> =
-        members.invites(boards.ownedBy(id, principal.userId)).map { it.toResponse() }
+        members.invites(boards.managedBy(id, principal.userId).board).map { it.toResponse() }
 
     @PostMapping("$BOARD/invites")
     fun invite(
@@ -82,7 +105,7 @@ class BoardMemberController(
         @RequestBody request: MemberRequest,
         @AuthenticationPrincipal principal: OAuth2User,
     ): ResponseEntity<InviteResponse> {
-        val invite = members.invite(boards.ownedBy(id, principal.userId), request.role)
+        val invite = members.invite(boards.managedBy(id, principal.userId).board, request.role)
         return ResponseEntity.created(URI.create("/api/boards/${invite.boardId}/invites/${invite.id}")).body(invite.toResponse())
     }
 
@@ -93,7 +116,7 @@ class BoardMemberController(
         @PathVariable inviteId: String,
         @AuthenticationPrincipal principal: OAuth2User,
     ): ResponseEntity<Void> {
-        val board = boards.ownedBy(id, principal.userId)
+        val board = boards.managedBy(id, principal.userId).board
         members.revoke(board, BoardIds.parse(inviteId) ?: throw InviteNotFoundException())
         return ResponseEntity.noContent().build()
     }
@@ -152,6 +175,8 @@ class BoardMemberController(
 data class MemberRequest(val role: MemberRole)
 
 data class OwnerRequest(val userId: UUID)
+
+data class LeadRequest(val userId: UUID)
 
 /** An invitation link of a board. */
 data class InviteResponse(

@@ -38,7 +38,8 @@ const FILTERS: ThreadFilter[] = ['open', 'resolved', 'mentions', 'assigned']
 interface CommentsPanelProps {
   boardId: string
   userId: string
-  isOwner: boolean
+  /** The owner or the lead of the board, who delete any comment. */
+  moderates: boolean
   threads: CommentThread[] | undefined
   /** The threads failed to load. */
   failed: boolean
@@ -66,7 +67,7 @@ interface CommentsPanelProps {
 export function CommentsPanel({
   boardId,
   userId,
-  isOwner,
+  moderates,
   threads,
   failed,
   pages,
@@ -184,7 +185,7 @@ export function CommentsPanel({
                 thread={thread}
                 cell={thread.cellId === null ? null : cellInfo(thread.pageId, thread.cellId)}
                 userId={userId}
-                isOwner={isOwner}
+                moderates={moderates}
                 people={people}
                 highlighted={isFocused(thread, focus)}
                 actions={actions}

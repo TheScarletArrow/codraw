@@ -31,7 +31,8 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Вход',
             paragraphs: [
               'На странице входа есть кнопки тех способов входа, что включены в этой установке CoDraw: GitHub, Google или корпоративная учётная запись вашей компании, например Keycloak, Microsoft Entra ID или Okta. Через корпоративный вход вы попадаете в свою учётную запись, даже если у вас сменились почта или имя, а «Выйти» завершает и сеанс у провайдера, так что следующий вход снова спросит пароль.',
-              '«Продолжить без входа» создаёт гостя вида «Гость 12», который работает с досками так же, как вошедший пользователь. Гостевой сеанс живёт в браузере 30 дней с последнего обращения. Если гость потом войдёт через GitHub, Google или корпоративный вход, его доски, участие в чужих досках и уведомления перейдут к учётной записи.',
+              'Если в установке включён вход по логину и паролю, вверху страницы входа — поля «Логин» и «Пароль». «Зарегистрироваться» заводит учётную запись: логин — от 3 до 32 латинских букв, цифр, точек, «_» и «-», он же ваше имя в CoDraw; пароль — не короче 8 символов и дважды. Почта не нужна, поэтому забытый пароль восстановить нельзя — запомните его. Неверный логин и неверный пароль выглядят одинаково, а после многих неудачных попыток вход ненадолго закрывается.',
+              '«Продолжить без входа» создаёт гостя вида «Гость 12», который работает с досками так же, как вошедший пользователь. Гостевой сеанс живёт в браузере 30 дней с последнего обращения. Если гость потом войдёт через GitHub, Google, корпоративный вход или по логину и паролю, в том числе зарегистрировавшись, его доски, участие в чужих досках и уведомления перейдут к учётной записи.',
             ],
           },
           {
@@ -562,6 +563,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Поделиться доской',
             paragraphs: [
               'Окно «Поделиться» задаёт доступ по ссылке: «Только я», «Просмотр», «Редактирование» или «Все, у кого есть ссылка, без входа». Там же владелец добавляет участников с ролью «Редактирование» или «Просмотр», создаёт ссылки-приглашения с ролью и передаёт владение.',
+              '«Сделать главным» рядом с участником назначает того, кто отвечает за доску. Главный управляет ею как владелец — название, доступ, участники, приглашения и запросы доступа, — но не удаляет и не передаёт доску; снимает его только владелец.',
             ],
           },
           {
@@ -619,6 +621,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'Значок «Учётная запись» рядом с вашим именем открывает страницу, где «Скачать мои данные» сохраняет архив: доски в draw.io с изображениями, комментарии, решения, библиотеки, шаблоны и всё остальное, что CoDraw о вас хранит.',
               'Там же удаляют учётную запись: доски, с которыми работают другие, передаются участнику или удаляются, а ваши комментарии на чужих досках остаются с подписью «Удалённый пользователь».',
+              'Кто входит по логину и паролю, меняет пароль там же, в разделе «Пароль»: текущий пароль и новый дважды. После смены остальные ваши сеансы завершаются, и на других устройствах нужно войти заново.',
               'У администратора установки на этой странице вместо выгрузки и удаления — «Учётная запись администратора»: её держит конфигурация сервера, поэтому скачать данные и удалить её можно, только когда оператор уберёт её из списка администраторов.',
             ],
           },
@@ -660,7 +663,8 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Signing in',
             paragraphs: [
               'The login page has buttons for the ways of signing in that this installation of CoDraw has turned on: GitHub, Google or the corporate account of your company, such as Keycloak, Microsoft Entra ID or Okta. With the corporate sign-in you get into your own account even if your email or name has changed, and “Sign out” ends the session at the provider too, so the next sign-in asks for your password again.',
-              '“Continue without signing in” creates a guest such as “Guest 12”, who works with boards just like a signed-in user. A guest session lives in the browser for 30 days after the last visit. If the guest later signs in with GitHub, Google or the corporate sign-in, their boards, their membership of other boards and their notifications move to the account.',
+              'If the installation has turned on signing in with a login and a password, the login page starts with the “Login” and “Password” fields. “Sign up” creates an account: the login is 3 to 32 Latin letters, digits, dots, “_” and “-”, and it is also your name in CoDraw; the password is at least 8 characters, typed twice. No email is needed, so a forgotten password cannot be recovered: remember it. A wrong login and a wrong password look the same, and after many failed attempts signing in closes for a while.',
+              '“Continue without signing in” creates a guest such as “Guest 12”, who works with boards just like a signed-in user. A guest session lives in the browser for 30 days after the last visit. If the guest later signs in with GitHub, Google, the corporate sign-in or a login and a password, signing up included, their boards, their membership of other boards and their notifications move to the account.',
             ],
           },
           {
@@ -1191,6 +1195,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Sharing a board',
             paragraphs: [
               'The “Share” window sets the access by the link: “Only me”, “Viewing”, “Editing” or “Anyone with the link, without signing in”. There the owner also adds members with the “Editing” or “Viewing” role, creates invitation links with a role and transfers the ownership.',
+              '“Make lead” next to a member makes them responsible for the board. The lead manages it like the owner — the title, the access, the members, the invitations and the requests for access — but neither deletes the board nor gives it away; only the owner removes them as the lead.',
             ],
           },
           {
@@ -1248,6 +1253,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'The “Account” icon next to your name opens a page where “Download my data” saves an archive: your boards as draw.io files with images, comments, decisions, libraries, templates and everything else CoDraw keeps about you.',
               'There you can also delete your account: the boards others work on are handed over to a member or deleted, and your comments on other boards stay signed “Deleted user”.',
+              'If you sign in with a login and a password, you change the password there too, in the “Password” section: the current password and the new one twice. After the change your other sessions end, and you sign in again on other devices.',
               'An administrator of the installation sees “Administrator account” on this page instead of the download and the deletion: the server configuration keeps the account, so its data can be downloaded and it can be deleted only once the operator takes it out of the list of administrators.',
             ],
           },

@@ -31,6 +31,32 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.49.0',
+    date: '2026-10-14',
+    items: [
+      {
+        ru: {
+          title: 'Вход по логину и паролю',
+          text: 'Если оператор установки его включил, на странице входа можно зарегистрироваться и входить по логину и паролю, без GitHub, Google и почты. Доски гостя переходят к новой учётной записи, а пароль меняется на странице «Учётная запись» в разделе «Пароль».',
+        },
+        en: {
+          title: 'Signing in with a login and a password',
+          text: 'If the operator of the installation has turned it on, the login page lets you sign up and sign in with a login and a password, without GitHub, Google or email. Guest boards move to the new account, and the password is changed on the “Account” page, in the “Password” section.',
+        },
+      },
+      {
+        ru: {
+          title: 'Главный на доске',
+          text: 'В окне «Поделиться» владелец доски может сделать участника главным — тем, кто за неё отвечает. Главный переименовывает доску, меняет доступ, управляет участниками, приглашениями и запросами доступа, но не удаляет и не передаёт её.',
+        },
+        en: {
+          title: 'The lead of a board',
+          text: 'In the “Share” window the owner of a board can make a member its lead, the one responsible for it. The lead renames the board, changes the access, manages the members, the invitations and the requests for access, but neither deletes the board nor gives it away.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.48.0',
     date: '2026-10-14',
     items: [

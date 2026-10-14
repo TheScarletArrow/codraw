@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { continueAsGuest } from '../api/auth.ts'
 import { isTooManyRequests } from '../api/http.ts'
 import { ME_QUERY_KEY, useLoginOptions } from '../auth/session.ts'
+import { PasswordForm } from '../auth/PasswordForm.tsx'
+import { passwordMessages } from '../auth/PasswordForm.messages.ts'
 import { SignInButtons } from '../auth/SignInButtons.tsx'
 import { loginMessages as m } from './LoginPage.messages.tsx'
 
@@ -19,14 +21,14 @@ export function LoginPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const options = useLoginOptions()
-  const guest = useMutation({
-    mutationFn: continueAsGuest,
-    onSuccess: async () => {
-      // The profile is loaded again: the visitor now has a session.
-      await queryClient.resetQueries({ queryKey: ME_QUERY_KEY })
-      await navigate(returnPathOf(location.state), { replace: true })
-    },
-  })
+  const signedIn = async () => {
+    // The profile is loaded again: the visitor now has a session.
+    await queryClient.resetQueries({ queryKey: ME_QUERY_KEY })
+    await navigate(returnPathOf(location.state), { replace: true })
+  }
+  const guest = useMutation({ mutationFn: continueAsGuest, onSuccess: signedIn })
+  const password = options.data?.password ?? null
+  const providers = options.data?.providers.length ?? 0
 
   return (
     <main className="flex min-h-dvh items-center justify-center p-4">
@@ -47,13 +49,21 @@ export function LoginPage() {
             {params.get('error') === 'denied' ? m.denied : m.failed}
           </p>
         )}
-        <SignInButtons />
+        {password && <PasswordForm signUpAllowed={password.signUp} onSignedIn={signedIn} />}
+        {password && (providers > 0 || options.data?.guests) && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-hidden>
+            <span className="h-px flex-1 bg-border" />
+            {passwordMessages.or}
+            <span className="h-px flex-1 bg-border" />
+          </p>
+        )}
+        <SignInButtons secondary={password !== null} />
         {options.data?.guests && (
           <Button type="button" variant="ghost" onClick={() => guest.mutate()} disabled={guest.isPending}>
             {m.asGuest}
           </Button>
         )}
-        {options.data && options.data.providers.length === 0 && !options.data.guests && (
+        {options.data && providers === 0 && !options.data.guests && !password && (
           <p className="text-muted-foreground">{m.notConfigured}</p>
         )}
         {options.isError && (
@@ -68,7 +78,7 @@ export function LoginPage() {
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          {m.consent(
+          {(password?.signUp ? m.consentWithSignUp : m.consent)(
             <Link to="/terms" className="underline">
               {m.terms}
             </Link>,

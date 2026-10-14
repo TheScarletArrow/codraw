@@ -69,7 +69,7 @@ interface Setup {
   threads: CommentThread[] | MockResponse[]
   responses?: Record<string, MockResponse | MockResponse[]>
   userId?: string
-  isOwner?: boolean
+  moderates?: boolean
   draft?: ThreadDraft | null
   /** A draft that the button «Другой черновик» puts in place of the current one, as the page of the board does. */
   nextDraft?: ThreadDraft
@@ -81,7 +81,7 @@ function renderPanel({
   threads,
   responses = {},
   userId = 'alice',
-  isOwner = true,
+  moderates = true,
   draft = null,
   nextDraft,
   focus = null,
@@ -109,7 +109,7 @@ function renderPanel({
         <CommentsPanel
           boardId={boardId}
           userId={userId}
-          isOwner={isOwner}
+          moderates={moderates}
           threads={threads.data}
           failed={threads.isError}
           pages={pages}
@@ -311,7 +311,7 @@ describe('CommentsPanel', () => {
     const mine = thread('t1', { comments: [comment('c1', alice, 'Чревовато')] })
     const { fetchMock } = renderPanel({
       threads: [mine],
-      isOwner: false,
+      moderates: false,
       responses: { [`PATCH ${threadsUrl}/t1/comments/c1`]: { body: mine } },
     })
     const card = await screen.findByRole('article')
@@ -345,7 +345,7 @@ describe('CommentsPanel', () => {
   })
 
   it('warns that deleting the first comment deletes the thread, and offers nothing on comments of others', async () => {
-    renderPanel({ threads: [thread('t1')], isOwner: true })
+    renderPanel({ threads: [thread('t1')], moderates: true })
     const card = await screen.findByRole('article')
 
     await userEvent.click(within(card).getByRole('button', { name: 'Удалить' }))
@@ -354,7 +354,7 @@ describe('CommentsPanel', () => {
 
     vi.unstubAllGlobals()
     document.body.innerHTML = ''
-    renderPanel({ threads: [thread('t1')], isOwner: false })
+    renderPanel({ threads: [thread('t1')], moderates: false })
     const other = await screen.findByRole('article')
     expect(within(other).queryByRole('button', { name: 'Удалить' })).toBeNull()
     expect(within(other).queryByRole('button', { name: 'Изменить' })).toBeNull()

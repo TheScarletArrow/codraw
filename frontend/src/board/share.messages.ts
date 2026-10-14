@@ -4,7 +4,7 @@ import { defineMessages, pluralEn, pluralRu } from '../i18n/i18n.ts'
 export const shareMessages = defineMessages({
   ru: {
     /** Roles as the window «Поделиться» names them, in the words of the modes of the link. */
-    roles: { owner: 'Владелец', editor: 'Редактирование', viewer: 'Просмотр' },
+    roles: { owner: 'Владелец', lead: 'Главный', editor: 'Редактирование', viewer: 'Просмотр' },
     cancel: 'Отмена',
     copied: 'Скопировано',
     copy: 'Копировать',
@@ -54,6 +54,9 @@ export const shareMessages = defineMessages({
     boardMembers: 'Участники доски',
     roleOf: (name: string) => `Роль: ${name}`,
     makeOwner: 'Сделать владельцем',
+    makeLead: 'Сделать главным',
+    dismissLead: 'Снять главного',
+    leadFailed: 'Не удалось сменить главного',
     remove: 'Убрать',
     transferring: 'Передача владения',
     transferConfirm: (name: string, role: string) =>
@@ -113,7 +116,7 @@ export const shareMessages = defineMessages({
     sendRequest: 'Отправить запрос',
   },
   en: {
-    roles: { owner: 'Owner', editor: 'Editing', viewer: 'Viewing' },
+    roles: { owner: 'Owner', lead: 'Lead', editor: 'Editing', viewer: 'Viewing' },
     cancel: 'Cancel',
     copied: 'Copied',
     copy: 'Copy',
@@ -159,6 +162,9 @@ export const shareMessages = defineMessages({
     boardMembers: 'Board members',
     roleOf: (name: string) => `Role: ${name}`,
     makeOwner: 'Make owner',
+    makeLead: 'Make lead',
+    dismissLead: 'Remove as lead',
+    leadFailed: 'Could not change the lead',
     remove: 'Remove',
     transferring: 'Transferring the ownership',
     transferConfirm: (name: string, role: string) =>

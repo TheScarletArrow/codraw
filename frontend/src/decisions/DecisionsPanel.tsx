@@ -45,7 +45,8 @@ interface DecisionsPanelProps {
   boardId: string
   boardTitle: string
   userId: string
-  isOwner: boolean
+  /** The owner or the lead of the board, who delete any comment. */
+  moderates: boolean
   /** The owner and the editors write decisions down, change, link and delete them; everybody reads and discusses them. */
   canEdit: boolean
   decisions: Decision[] | undefined
@@ -94,7 +95,7 @@ export function DecisionsPanel({
   boardId,
   boardTitle,
   userId,
-  isOwner,
+  moderates,
   canEdit,
   decisions,
   failed,
@@ -408,7 +409,7 @@ export function DecisionsPanel({
               <DecisionDiscussion
                 boardId={boardId}
                 userId={userId}
-                isOwner={isOwner}
+                moderates={moderates}
                 decisionId={decision.id}
                 threads={decisionThreads(decision.id)}
                 pageId={currentPageId ?? pages[0]?.id ?? null}

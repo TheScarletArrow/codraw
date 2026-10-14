@@ -10,6 +10,7 @@ import io.github.thescarletarrow.codraw.embed.EmbedController
 import io.github.thescarletarrow.codraw.image.BoardImageController
 import io.github.thescarletarrow.codraw.issue.GitHubWebhookController
 import io.github.thescarletarrow.codraw.legal.LegalController
+import io.github.thescarletarrow.codraw.password.PasswordController
 import io.github.thescarletarrow.codraw.user.CodrawOAuth2UserService
 import io.github.thescarletarrow.codraw.user.CodrawOidcUserService
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -80,6 +81,8 @@ class SecurityConfiguration {
                 authorize("/actuator/prometheus", permitAll)
                 authorize(JwksController.PATH, permitAll)
                 authorize(HttpMethod.POST, GuestLoginController.PATH, permitAll)
+                authorize(HttpMethod.POST, PasswordController.SIGN_UP_PATH, permitAll)
+                authorize(HttpMethod.POST, PasswordController.SIGN_IN_PATH, permitAll)
                 authorize(HttpMethod.GET, SignInProvidersController.PATH, permitAll)
                 // The login page breaks too: its errors are reported without a sign-in.
                 authorize(HttpMethod.POST, ClientErrorController.PATH, permitAll)

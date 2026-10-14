@@ -40,6 +40,15 @@ data class LimitProperties(
     /** The most guests created from one network address in an hour. */
     @field:Positive
     val guestsPerAddressPerHour: Int = 20,
+    /** The most failed attempts to sign in with a password, or to change one, from one network address in an hour. */
+    @field:Positive
+    val passwordFailuresPerAddressPerHour: Int = 30,
+    /** The most failed attempts to sign in with a password at one login, from any addresses, in an hour. */
+    @field:Positive
+    val passwordFailuresPerLoginPerHour: Int = 10,
+    /** The most accounts with a login and a password registered from one network address in an hour. */
+    @field:Positive
+    val signUpsPerAddressPerHour: Int = 10,
     /** The most reports of boards taken from one network address in an hour. */
     @field:Positive
     val reportsPerAddressPerHour: Int = 5,

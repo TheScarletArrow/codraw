@@ -29,6 +29,7 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           <li>
             <strong>Account.</strong> {publicAccount(legal)}
             {corporateAccount(legal)}
+            {passwordAccount(legal)}
             The account also stores the language of the interface — the
             one chosen in the “Language” menu or, if you have not chosen one, the language of the browser at sign-in — so
             that emails and messages of notifications arrive in it.
@@ -131,6 +132,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
             logs of the server, and the address also for a short time in the memory of the server, to limit the number
             of new guests, reports, feedback and error reports from one address; the server also counts the feedback of
             each user over a day only in memory.
+            {legal.passwords &&
+              ' Likewise, only in memory and for no more than an hour, the server counts failed attempts to sign in with a password from each address and for each login, and sign-ups from each address.'}
           </li>
           <li>
             <strong>Error reports.</strong> If an error of CoDraw happens in the browser, the server receives its text,
@@ -431,6 +434,8 @@ export function PrivacyEn({ legal }: { legal: LegalInfo }) {
           comments stays part of the content of those boards. Your reports and feedback stay with the administrators
           without an author until they are closed and their retention period ends. All your sessions end. A new sign-in
           with the same provider — GitHub, Google or a corporate one — creates a new empty account.
+          {legal.passwords &&
+            ' The hash of the password is deleted with the account, and the login becomes free: anybody can sign up with it, and that is a new empty account.'}
           {legal.backupRetentionDays !== null &&
             ` In backups, deleted data stays up to ${legalMessages.days(legal.backupRetentionDays)}, until the backups are deleted after that period.`}
         </p>
@@ -476,6 +481,13 @@ function corporateAccount(legal: LegalInfo): string {
   const names = providerNames(legal, true)
   return names
     ? `When you sign in with ${names}, the sign-in provider chosen by the operator of the installation, CoDraw receives from the provider the identifier of the user, the name, the address of the profile picture, the email address and the groups. Stored are the identifier together with the address of the provider, the name and the address of the picture; CoDraw only checks the email and the groups at sign-in against the restrictions set by the operator and does not store them. CoDraw does not receive the password of the provider account. `
+    : ''
+}
+
+/** What CoDraw keeps of an account with a login and a password, when the installation offers them. */
+function passwordAccount(legal: LegalInfo): string {
+  return legal.passwords
+    ? 'When you sign in with a login and a password: the login you chose when signing up and the hash of the password (bcrypt with a salt); the password itself is not stored, not written to logs and not passed to anyone. Members of your boards see the login as your name. CoDraw does not ask for an email address for such an account, so a forgotten password cannot be recovered. '
     : ''
 }
 

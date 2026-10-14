@@ -40,6 +40,57 @@ describe('AccountPage', () => {
     vi.unstubAllGlobals()
   })
 
+  it('changes the password of a user who signs in with one, checking the new one twice', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/me': { body: { ...ALICE, name: 'alice', avatarUrl: null, password: true } },
+      'GET /api/me/deletion': { body: nothingShared },
+      'PUT /api/me/password': [
+        { status: 400, body: { title: 'Bad Request', reason: 'wrong-password' } },
+        { status: 204 },
+      ],
+    })
+    renderRoutes(routes, '/settings/account')
+
+    const section = await screen.findByRole('region', { name: 'Пароль' })
+    expect(section).toHaveTextContent('Вы входите по логину «alice» и паролю')
+    await userEvent.type(within(section).getByLabelText('Текущий пароль'), 'wrong horse')
+    await userEvent.type(within(section).getByLabelText('Новый пароль'), 'battery staple')
+    await userEvent.type(within(section).getByLabelText('Повторите новый пароль'), 'battery stapler')
+    await userEvent.click(within(section).getByRole('button', { name: 'Сменить пароль' }))
+    expect(within(section).getByRole('alert')).toHaveTextContent('Пароли не совпадают.')
+    expect(requests(fetchMock, 'PUT', '/api/me/password')).toHaveLength(0)
+
+    await userEvent.type(within(section).getByLabelText('Повторите новый пароль'), '{Backspace}')
+    await userEvent.click(within(section).getByRole('button', { name: 'Сменить пароль' }))
+    expect(await within(section).findByRole('alert')).toHaveTextContent('Текущий пароль неверен.')
+
+    await userEvent.clear(within(section).getByLabelText('Текущий пароль'))
+    await userEvent.type(within(section).getByLabelText('Текущий пароль'), 'correct horse')
+    await userEvent.click(within(section).getByRole('button', { name: 'Сменить пароль' }))
+    expect(await within(section).findByRole('status')).toHaveTextContent('Пароль сменён. Остальные сеансы завершены.')
+    const [, init] = requests(fetchMock, 'PUT', '/api/me/password').at(-1)!
+    expect(JSON.parse(init!.body as string)).toEqual({ currentPassword: 'correct horse', newPassword: 'battery staple' })
+    expect(screen.getByText('Пароль удалится, а ваш логин освободится: его сможет зарегистрировать кто угодно.')).toBeInTheDocument()
+  })
+
+  it('tells the administrator of the settings where their password is kept, without a form', async () => {
+    mockFetch({
+      'GET /api/me': { body: { ...ALICE, name: 'admin', admin: true, password: true, passwordFromSettings: true } },
+    })
+    renderRoutes(routes, '/settings/account')
+
+    const section = await screen.findByRole('region', { name: 'Пароль' })
+    expect(section).toHaveTextContent('паролю, который задаёт настройка сервера CODRAW_ADMIN_PASSWORD')
+    expect(within(section).queryByRole('button', { name: 'Сменить пароль' })).not.toBeInTheDocument()
+  })
+
+  it('shows no password to a user who signs in through a provider', async () => {
+    renderPage({ 'GET /api/me/deletion': { body: nothingShared } })
+
+    expect(await screen.findByRole('heading', { name: 'Мои данные' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Пароль' })).not.toBeInTheDocument()
+  })
+
   it('offers an administrator neither the download nor the deletion, and leads to the administration instead', async () => {
     const fetchMock = mockFetch({ 'GET /api/me': { body: { ...ALICE, admin: true } } })
     renderRoutes(routes, '/settings/account')

@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Crown, X } from 'lucide-react'
+import { Crown, ShieldCheck, ShieldOff, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { boardLimitOf, SHARED_BOARDS_QUERY_KEY, type Board } from '../api/boards.ts'
+import { boardLimitOf, managesBoard, SHARED_BOARDS_QUERY_KEY, type Board } from '../api/boards.ts'
 import {
+  appointLead,
+  dismissLead,
   fetchMembers,
   fetchVisitors,
   limitOf,
@@ -19,7 +21,8 @@ import { membersKey, visitorsKey } from './members.ts'
 import { shareMessages as m } from './share.messages.ts'
 
 /** Why a change of the members failed, when it ran into a limit. */
-function failureOf(error: unknown, transferring: boolean): string {
+function failureOf(error: unknown, transferring: boolean, leading: boolean): string {
+  if (leading) return m.leadFailed
   if (transferring) {
     const boards = boardLimitOf(error)
     if (boards === null) return m.transferFailed
@@ -37,20 +40,22 @@ interface MembersSectionProps {
 }
 
 /**
- * «Участники»: the owner and the members of the board with their roles. The owner changes the roles, removes members,
- * gives the board to a member and adds those who opened the board through its link; the others see the list only.
+ * «Участники»: the owner and the members of the board with their roles. The owner and the lead change the roles,
+ * remove members and add those who opened the board through its link; only the owner gives the board to a member,
+ * chooses the lead and removes them. The others see the list only.
  */
 export function MembersSection({ board, onChanged }: MembersSectionProps) {
   const queryClient = useQueryClient()
   const isOwner = board.role === 'owner'
+  const manages = managesBoard(board.role)
   const members = useQuery({ queryKey: membersKey(board.id), queryFn: () => fetchMembers(board.id) })
-  const visitors = useQuery({ queryKey: visitorsKey(board.id), queryFn: () => fetchVisitors(board.id), enabled: isOwner })
+  const visitors = useQuery({ queryKey: visitorsKey(board.id), queryFn: () => fetchVisitors(board.id), enabled: manages })
   const workspaceId = board.workspace?.id
   // Who manages a board of a workspace gives its members roles of their own on it, above what the workspace gives.
   const workspaceMembers = useQuery({
     queryKey: workspaceMembersKey(workspaceId ?? ''),
     queryFn: () => fetchWorkspaceMembers(workspaceId ?? ''),
-    enabled: isOwner && workspaceId !== undefined,
+    enabled: manages && workspaceId !== undefined,
   })
   const [confirming, setConfirming] = useState<Participant | null>(null)
   const [adding, setAdding] = useState('')
@@ -83,8 +88,16 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
       await queryClient.invalidateQueries({ queryKey: SHARED_BOARDS_QUERY_KEY })
     },
   })
-  const pending = change.isPending || transfer.isPending
-  const failed = transfer.isError ? transfer.error : change.isError ? change.error : null
+  // A user id makes them the lead, none leaves the board without one.
+  const lead = useMutation({
+    mutationFn: (userId: string | null) => (userId ? appointLead(board.id, userId) : dismissLead(board.id)),
+    onSuccess: (participants) => {
+      queryClient.setQueryData(membersKey(board.id), participants)
+      onChanged()
+    },
+  })
+  const pending = change.isPending || transfer.isPending || lead.isPending
+  const failed = transfer.isError ? transfer.error : change.isError ? change.error : lead.isError ? lead.error : null
 
   return (
     <section aria-labelledby="board-members" className="flex flex-col gap-1.5 border-t pt-3">
@@ -103,31 +116,51 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
             <li key={participant.id} aria-label={participant.name} className="flex items-center gap-2 py-0.5">
               <Avatar person={participant} />
               <span className="min-w-0 flex-1 truncate text-sm">{participant.name}</span>
-              {isOwner && participant.role !== 'owner' ? (
+              {manages && participant.role !== 'owner' && (isOwner || participant.role !== 'lead') ? (
                 <>
-                  <select
-                    aria-label={m.roleOf(participant.name)}
-                    className="h-8 rounded-md border bg-background px-1 text-sm"
-                    value={participant.role}
-                    disabled={pending}
-                    onChange={(event) =>
-                      change.mutate({ userId: participant.id, role: event.target.value as MemberRole })
-                    }
-                  >
-                    <option value="editor">{m.roles.editor}</option>
-                    <option value="viewer">{m.roles.viewer}</option>
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={m.makeOwner}
-                    title={m.makeOwner}
-                    disabled={pending}
-                    onClick={() => setConfirming(participant)}
-                  >
-                    <Crown />
-                  </Button>
+                  {participant.role === 'lead' ? (
+                    // The lead edits whatever their role as a member, which shows again once they are no lead.
+                    <span className="text-xs whitespace-nowrap text-muted-foreground">{m.roles.lead}</span>
+                  ) : (
+                    <select
+                      aria-label={m.roleOf(participant.name)}
+                      className="h-8 rounded-md border bg-background px-1 text-sm"
+                      value={participant.role}
+                      disabled={pending}
+                      onChange={(event) =>
+                        change.mutate({ userId: participant.id, role: event.target.value as MemberRole })
+                      }
+                    >
+                      <option value="editor">{m.roles.editor}</option>
+                      <option value="viewer">{m.roles.viewer}</option>
+                    </select>
+                  )}
+                  {isOwner && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={participant.role === 'lead' ? m.dismissLead : m.makeLead}
+                      title={participant.role === 'lead' ? m.dismissLead : m.makeLead}
+                      disabled={pending}
+                      onClick={() => lead.mutate(participant.role === 'lead' ? null : participant.id)}
+                    >
+                      {participant.role === 'lead' ? <ShieldOff /> : <ShieldCheck />}
+                    </Button>
+                  )}
+                  {isOwner && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={m.makeOwner}
+                      title={m.makeOwner}
+                      disabled={pending}
+                      onClick={() => setConfirming(participant)}
+                    >
+                      <Crown />
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -164,10 +197,10 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
       )}
       {failed && (
         <p role="alert" className="text-sm text-destructive">
-          {failureOf(failed, transfer.isError)}
+          {failureOf(failed, transfer.isError, lead.isError)}
         </p>
       )}
-      {isOwner && workspaceMembers.data && (
+      {manages && workspaceMembers.data && (
         <WorkspaceMemberAdder
           candidates={workspaceMembers.data.filter(
             (member) => !members.data?.some((participant) => participant.id === member.id),
@@ -181,7 +214,7 @@ export function MembersSection({ board, onChanged }: MembersSectionProps) {
           }}
         />
       )}
-      {isOwner && visitors.data && visitors.data.length > 0 && (
+      {manages && visitors.data && visitors.data.length > 0 && (
         <section aria-labelledby="board-visitors" className="mt-1 flex flex-col gap-1">
           <h4 id="board-visitors" className="text-xs font-medium text-muted-foreground">
             {m.visitors}

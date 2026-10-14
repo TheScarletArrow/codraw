@@ -4,7 +4,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { downloadMyData } from '../account/exportArchive.ts'
-import type { CurrentUser } from '../api/auth.ts'
+import { changePassword, type CurrentUser } from '../api/auth.ts'
 import {
   deleteAccount,
   DELETION_PREVIEW_KEY,
@@ -14,6 +14,9 @@ import {
   type SharedBoard,
 } from '../api/account.ts'
 import { HttpError, isTooManyRequests } from '../api/http.ts'
+import { passwordInputClass, reasonOf, ruleMessage } from '../auth/passwordErrors.ts'
+import { passwordMessages } from '../auth/PasswordForm.messages.ts'
+import { passwordProblem } from '../auth/passwordRules.ts'
 import { useCurrentUser } from '../auth/session.ts'
 import { deleteLocalCopiesOf } from '../offline/localCopies.ts'
 import { accountMessages as m } from './AccountPage.messages.ts'
@@ -39,6 +42,9 @@ export function AccountPage() {
         <h1 className="text-xl font-semibold">{m.title}</h1>
         {user.data && <p className="text-sm text-muted-foreground">{admin ? m.adminIntro : m.intro}</p>}
       </div>
+      {user.data?.password && (
+        <PasswordSection login={user.data.name} fromSettings={user.data.passwordFromSettings === true} />
+      )}
       {user.data &&
         (admin ? (
           <AdministratorSection />
@@ -49,6 +55,103 @@ export function AccountPage() {
           </>
         ))}
     </div>
+  )
+}
+
+/**
+ * The password of a user who signs in with a login and a password: the current one and a new one, twice. The
+ * administrator of the settings of the server only learns where their password is kept.
+ */
+function PasswordSection({ login, fromSettings }: { login: string; fromSettings: boolean }) {
+  const id = useId()
+  const p = passwordMessages
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [repeat, setRepeat] = useState('')
+  const [problem, setProblem] = useState<string | null>(null)
+  const change = useMutation({
+    mutationFn: () => changePassword(current, next),
+    onSuccess: () => {
+      setCurrent('')
+      setNext('')
+      setRepeat('')
+    },
+  })
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    const broken = passwordProblem(login, next)
+    if (broken) return setProblem(ruleMessage(broken))
+    if (next !== repeat) return setProblem(p.mismatch)
+    setProblem(null)
+    change.mutate()
+  }
+  const failure = (error: unknown) => {
+    const reason = reasonOf(error)
+    if (isTooManyRequests(error)) return p.tooManyAttempts
+    if (reason === 'wrong-password') return p.wrongPassword
+    if (reason === 'password-short' || reason === 'password-long' || reason === 'password-login') return ruleMessage(reason)
+    return p.changeFailed
+  }
+  const error = problem ?? (change.isError ? failure(change.error) : null)
+  const field = (key: string, label: string, value: string, onChange: (value: string) => void, autoComplete: string) => (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={`${id}-${key}`} className="text-sm">
+        {label}
+      </label>
+      <input
+        id={`${id}-${key}`}
+        type="password"
+        className={passwordInputClass}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value)
+          change.reset()
+        }}
+        autoComplete={autoComplete}
+        required
+      />
+    </div>
+  )
+
+  if (fromSettings) {
+    return (
+      <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border p-4">
+        <h2 id={id} className="font-semibold">
+          {p.section}
+        </h2>
+        <p className="text-sm text-muted-foreground">{p.fromSettings(login)}</p>
+      </section>
+    )
+  }
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border p-4">
+      <h2 id={id} className="font-semibold">
+        {p.section}
+      </h2>
+      <p className="text-sm text-muted-foreground">{p.sectionText(login)}</p>
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        {/* For password managers: the account whose password changes. */}
+        <input type="text" name="username" value={login} autoComplete="username" readOnly hidden />
+        {field('current', p.currentPassword, current, setCurrent, 'current-password')}
+        {field('new', p.newPassword, next, setNext, 'new-password')}
+        {field('repeat', p.repeatNewPassword, repeat, setRepeat, 'new-password')}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {change.isSuccess && (
+          <p role="status" className="text-sm">
+            {p.changed}
+          </p>
+        )}
+        <div>
+          <Button type="submit" variant="outline" disabled={change.isPending}>
+            {change.isPending ? p.changing : p.change}
+          </Button>
+        </div>
+      </form>
+    </section>
   )
 }
 
@@ -125,6 +228,11 @@ function DeletionSection({ user }: { user: CurrentUser }) {
       {!user.guest && (
         <p className="text-sm text-muted-foreground">
           {m.githubToken}
+        </p>
+      )}
+      {user.password && (
+        <p className="text-sm text-muted-foreground">
+          {m.loginFreed}
         </p>
       )}
       {preview.isPending && <p className="text-sm text-muted-foreground">{m.loading}</p>}

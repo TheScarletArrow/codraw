@@ -50,7 +50,7 @@ class BoardVisits(private val jdbc: JdbcClient) {
             SELECT board_id FROM board_members WHERE user_id = :userId
         )
         SELECT b.id, b.title, b.owner_id, b.created_at, b.updated_at, b.link_access,
-               b.workspace_id, b.project_id, b.workspace_access,
+               b.workspace_id, b.project_id, b.workspace_access, b.lead_id,
                u.name AS owner_name, u.avatar_url AS owner_avatar_url, v.visited_at, m.role AS member_role
         FROM shared s
         JOIN boards b ON b.id = s.board_id
@@ -95,6 +95,7 @@ class BoardVisits(private val jdbc: JdbcClient) {
             workspaceId = getObject("workspace_id", UUID::class.java),
             projectId = getObject("project_id", UUID::class.java),
             workspaceAccess = WorkspaceAccess.valueOf(getString("workspace_access")),
+            leadId = getObject("lead_id", UUID::class.java),
         ),
         ownerName = getString("owner_name"),
         ownerAvatarUrl = getString("owner_avatar_url"),

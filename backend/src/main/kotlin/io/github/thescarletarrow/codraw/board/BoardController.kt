@@ -118,7 +118,7 @@ class BoardController(
         @RequestBody request: UpdateBoardRequest,
         @AuthenticationPrincipal principal: OAuth2User,
     ): BoardResponse {
-        val board = ownBoard(id, principal)
+        val (board, role) = boards.managedBy(id, principal.userId)
         if (request.title == null && request.linkAccess == null && request.workspaceAccess == null) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Nothing to change")
         }
@@ -133,12 +133,12 @@ class BoardController(
         if (request.linkAccess != null) updated = boards.changeLinkAccess(updated, request.linkAccess)
         if (request.workspaceAccess != null) updated = boards.changeWorkspaceAccess(updated, request.workspaceAccess)
         if (title != null) updated = boards.rename(updated, title)
-        return updated.toResponse(owner(board), BoardRole.OWNER, boards.workspaceOf(updated))
+        return updated.toResponse(owner(board), role, boards.workspaceOf(updated))
     }
 
     @DeleteMapping("/{id}")
     fun delete(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<Void> {
-        boards.moveToTrash(ownBoard(id, principal))
+        boards.moveToTrash(boards.ownedBy(id, principal.userId))
         return ResponseEntity.noContent().build()
     }
 
@@ -212,8 +212,6 @@ class BoardController(
     @ExceptionHandler
     fun imageStorageUnavailable(exception: ImageStorageException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.message)
-
-    private fun ownBoard(id: String, principal: OAuth2User): Board = boards.ownedBy(id, principal.userId)
 
     private fun currentUser(principal: OAuth2User): User =
         checkNotNull(users.find(principal.userId)) { "Signed-in user ${principal.userId} does not exist" }

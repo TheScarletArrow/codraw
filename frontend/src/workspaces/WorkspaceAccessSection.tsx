@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { cn } from '@/lib/utils'
-import { changeWorkspaceAccess, type Board, type WorkspaceAccess } from '../api/boards.ts'
+import { changeWorkspaceAccess, managesBoard, type Board, type WorkspaceAccess } from '../api/boards.ts'
 import { workspacesMessages as m } from './messages.tsx'
 import { WORKSPACE_ACCESS_VALUES, workspaceAccessOfOthers, workspaceAccessOption, workspacePath } from './workspaces.ts'
 
@@ -38,7 +38,7 @@ export function WorkspaceAccessSection({ board, onChanged }: WorkspaceAccessSect
     </Link>
   )
 
-  if (board.role !== 'owner') {
+  if (!managesBoard(board.role)) {
     return (
       <p className="border-t pt-3 text-sm text-muted-foreground">
         {m.workspaceBoard(name)} {workspaceAccessOfOthers(access)}.

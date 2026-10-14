@@ -12,6 +12,9 @@ data class ProviderProfile(
         const val GOOGLE = "google"
         const val GUEST = "guest"
 
+        /** A user who signs in with a login and a password: the id at the provider is the login in lower case. */
+        const val PASSWORD = "password"
+
         /** The provider of a user of OpenID Connect is this prefix and the issuer, see `CodrawOidcUserService`. */
         const val OIDC_PREFIX = "oidc:"
 

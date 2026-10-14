@@ -2,14 +2,14 @@ import type { Board, BoardRole } from './boards.ts'
 import { HttpError, request } from './http.ts'
 
 /** The role that the owner gives a member of a board: editing or viewing. */
-export type MemberRole = Exclude<BoardRole, 'owner'>
+export type MemberRole = Exclude<BoardRole, 'owner' | 'lead'>
 
 /** The owner or a member of a board, with the role of their own. */
 export interface Participant {
   id: string
   name: string
   avatarUrl: string | null
-  /** `owner` for the owner, the role the owner gave to a member. */
+  /** `owner` for the owner, `lead` for the lead, the role the owner gave to any other member. */
   role: BoardRole
 }
 
@@ -43,7 +43,7 @@ export function fetchMembers(boardId: string): Promise<Participant[]> {
   return request(`${boardPath(boardId)}/members`)
 }
 
-/** Users who opened the board through its link and are not members yet; only the owner sees them. */
+/** Users who opened the board through its link and are not members yet; only the owner and the lead see them. */
 export function fetchVisitors(boardId: string): Promise<Visitor[]> {
   return request(`${boardPath(boardId)}/visitors`)
 }
@@ -63,7 +63,17 @@ export function transferOwnership(boardId: string, userId: string): Promise<Boar
   return request(`${boardPath(boardId)}/owner`, json('PUT', { userId }))
 }
 
-/** The invitation links of the board, oldest first; only the owner sees them. */
+/** Makes a member the lead in place of any other; only the owner does. Returns the participants. */
+export function appointLead(boardId: string, userId: string): Promise<Participant[]> {
+  return request(`${boardPath(boardId)}/lead`, json('PUT', { userId }))
+}
+
+/** Leaves the board without a lead, who stays a member; only the owner does. Returns the participants. */
+export function dismissLead(boardId: string): Promise<Participant[]> {
+  return request(`${boardPath(boardId)}/lead`, { method: 'DELETE' })
+}
+
+/** The invitation links of the board, oldest first; only the owner and the lead see them. */
 export function fetchInvites(boardId: string): Promise<Invite[]> {
   return request(`${boardPath(boardId)}/invites`)
 }

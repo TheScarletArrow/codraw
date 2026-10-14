@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentUser } from '../api/auth.ts'
-import { canEdit, canManageVersions, fetchBoard, type Board } from '../api/boards.ts'
+import { canEdit, canManageVersions, fetchBoard, managesBoard, type Board } from '../api/boards.ts'
 import type { BoardVersion } from '../api/versions.ts'
 import type { CommentThread } from '../api/comments.ts'
 import { isForbidden, isNotFound } from '../api/http.ts'
@@ -193,6 +193,8 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
   // The threads that discuss decisions are in the panel of the decisions.
   const boardThreads = useMemo(() => threads.data?.filter((thread) => !thread.decisionId), [threads.data])
   const isOwner = board.role === 'owner'
+  // The owner and the lead delete any comment and move any mark, as the backend lets them.
+  const moderates = managesBoard(board.role)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState<ThreadDraft | null>(null)
   const [commentFocus, setCommentFocus] = useState<ThreadFocus | null>(null)
@@ -910,7 +912,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
                     showResolved={commentsOpen && commentFilter === 'resolved'}
                     focusedThreadId={commentFocus && 'threadId' in commentFocus ? commentFocus.threadId : null}
                     userId={user.id}
-                    isOwner={isOwner}
+                    moderates={moderates}
                     onOpen={showThreadAtPoint}
                     onChanged={notifyCommentsChanged}
                   />
@@ -1122,7 +1124,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
           <CommentsPanel
             boardId={board.id}
             userId={user.id}
-            isOwner={isOwner}
+            moderates={moderates}
             threads={boardThreads}
             failed={threads.isError}
             pages={pages}
@@ -1142,7 +1144,7 @@ function BoardWorkspace({ board, user }: { board: Board; user: CurrentUser }) {
             boardId={board.id}
             boardTitle={board.title}
             userId={user.id}
-            isOwner={isOwner}
+            moderates={moderates}
             // Decisions are kept by the backend, not in the board document: the role decides.
             canEdit={!viewer}
             decisions={decisions.data}

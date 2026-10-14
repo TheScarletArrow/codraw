@@ -344,7 +344,7 @@ function WorkspaceBoardItem({ board, workspace, projects, showProject }: Workspa
           {board.owner.avatarUrl && <img src={board.owner.avatarUrl} alt="" className="size-4 rounded-full" />}
           <span title={m.responsible}>{board.owner.name}</span>
           <span className="rounded bg-muted px-1.5 text-xs">
-            {board.role === 'owner' ? m.roleOnBoard.owner : board.role === 'editor' ? m.roleOnBoard.editor : m.roleOnBoard.viewer}
+            {m.roleOnBoard[board.role]}
           </span>
           {project && (
             <span className="truncate text-xs">

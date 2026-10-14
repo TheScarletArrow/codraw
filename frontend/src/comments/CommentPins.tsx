@@ -39,8 +39,8 @@ interface CommentPinsProps {
   /** The thread the comments were opened on, e.g. from its mark; its mark is highlighted. */
   focusedThreadId: string | null
   userId: string
-  /** The owner of the board moves any mark. */
-  isOwner: boolean
+  /** The owner or the lead of the board, who move any mark. */
+  moderates: boolean
   /** Shows the thread in the panel. */
   onOpen: (thread: CommentThread) => void
   /** Tells the other participants that the comments changed. */
@@ -60,7 +60,7 @@ export function CommentPins({
   showResolved,
   focusedThreadId,
   userId,
-  isOwner,
+  moderates,
   onOpen,
   onChanged,
 }: CommentPinsProps) {
@@ -81,7 +81,7 @@ export function CommentPins({
   if (pins.length === 0 && !draftPoint) return null
 
   const pointOf = (thread: ThreadAtPoint) => (moving?.threadId === thread.id ? moving.point : thread.point)
-  const movable = (thread: ThreadAtPoint) => isOwner || thread.comments[0]?.author?.id === userId
+  const movable = (thread: ThreadAtPoint) => moderates || thread.comments[0]?.author?.id === userId
 
   const press = (event: PointerEvent<HTMLButtonElement>, thread: ThreadAtPoint) => {
     dragged.current = false

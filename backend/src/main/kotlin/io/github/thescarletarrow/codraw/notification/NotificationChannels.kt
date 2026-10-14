@@ -268,7 +268,7 @@ class NotificationChannels(private val jdbc: JdbcClient) {
     fun mutedBoards(userId: UUID): List<MutedBoard> = jdbc.sql(
         """
         SELECT b.id, b.title, b.owner_id, b.created_at, b.updated_at, b.link_access, m.role AS member_role,
-               b.workspace_id, b.project_id, b.workspace_access, w.role AS workspace_role,
+               b.workspace_id, b.project_id, b.workspace_access, b.lead_id, w.role AS workspace_role,
                mute.created_at AS muted_at
         FROM notification_board_mutes mute
         JOIN boards b ON b.id = mute.board_id
@@ -291,6 +291,7 @@ class NotificationChannels(private val jdbc: JdbcClient) {
                     workspaceId = rs.getObject("workspace_id", UUID::class.java),
                     projectId = rs.getObject("project_id", UUID::class.java),
                     workspaceAccess = WorkspaceAccess.valueOf(rs.getString("workspace_access")),
+                    leadId = rs.getObject("lead_id", UUID::class.java),
                 ),
                 memberRole = rs.getString("member_role")?.let(MemberRole::valueOf),
                 workspaceRole = rs.getString("workspace_role")?.let(WorkspaceRole::valueOf),

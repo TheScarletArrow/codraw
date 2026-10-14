@@ -47,6 +47,16 @@ class AddressRateLimiter(private val window: Duration, private val limit: () -> 
         return wait
     }
 
+    /**
+     * How long [address] has to wait, without counting a request: `null` while its current window has room. For limits
+     * that count only some requests, e.g. failed ones, after the request.
+     */
+    fun waitFor(address: String): Duration? {
+        val now = clock.instant()
+        val open = windows[address]?.takeIf { now < it.end } ?: return null
+        return if (open.count < limit()) null else Duration.between(now, open.end)
+    }
+
     private data class Window(val end: Instant, val count: Int)
 
     companion object {

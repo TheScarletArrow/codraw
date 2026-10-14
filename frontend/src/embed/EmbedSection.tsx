@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import * as Y from 'yjs'
 import { Button } from '@/components/ui/button'
-import type { Board } from '../api/boards.ts'
+import { managesBoard, type Board } from '../api/boards.ts'
 import { disableEmbed, enableEmbed, type Embed } from '../api/embed.ts'
 import { embedKey, embedMarkdown, embedUrl } from './links.ts'
 import { embedMessages as m } from './messages.ts'
@@ -23,7 +23,7 @@ interface EmbedSectionProps {
 }
 
 /**
- * «Живая картинка»: the owner turns on the image of a page that follows the changes of the board, for documents that
+ * «Живая картинка»: the owner and the lead turn on the image of a page that follows the changes of the board, for documents that
  * embed it; everybody copies its address or Markdown once it is on.
  */
 export function EmbedSection({ board, embed, pages, pageId, document, onChanged }: EmbedSectionProps) {
@@ -31,7 +31,7 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
   const [copied, setCopied] = useState<'link' | 'markdown' | null>(null)
   // The choice shows at once, before the request ends, so that the box does not jump back.
   const [wanted, setWanted] = useState<boolean | null>(null)
-  const isOwner = board.role === 'owner'
+  const manages = managesBoard(board.role)
 
   const changed = (next: Embed | null) => {
     queryClient.setQueryData(embedKey(board.id), next)
@@ -59,10 +59,10 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
     }
   }
 
-  if (!isOwner && !embed) return null
+  if (!manages && !embed) return null
   return (
     <section aria-label={m.liveImage} className="flex flex-col gap-1.5 border-t pt-3">
-      {isOwner ? (
+      {manages ? (
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
             type="checkbox"
@@ -89,7 +89,7 @@ export function EmbedSection({ board, embed, pages, pageId, document, onChanged 
       </p>
       {embed && (
         <>
-          {isOwner && (
+          {manages && (
             <label className="flex items-center gap-2 text-sm">
               {m.page}
               <select

@@ -46,6 +46,18 @@ describe('WorkspaceInvitePage', () => {
     expect(screen.queryByRole('link', { name: 'Войти через GitHub' })).toBeNull()
   })
 
+  it('offers a guest to sign in with a login and a password, coming back to the invitation', async () => {
+    mockFetch({
+      [acceptUrl]: { status: 403, body: { title: 'Account required' } },
+      'GET /api/auth/providers': { body: { providers: [], guests: true, password: { signUp: true } } },
+    })
+
+    renderRoutes([...routes, { path: '/login', element: <p>Страница входа</p> }], `/workspace-invite/${token}`)
+
+    const link = await screen.findByRole('link', { name: 'Войти по логину и паролю' })
+    expect(link).toHaveAttribute('href', '/login')
+  })
+
   it('says that a revoked invitation is not valid', async () => {
     mockFetch({ [acceptUrl]: { status: 404 } })
 

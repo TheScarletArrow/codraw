@@ -10,7 +10,8 @@ import { decisionsMessages as m } from './messages.ts'
 interface DecisionDiscussionProps {
   boardId: string
   userId: string
-  isOwner: boolean
+  /** The owner or the lead of the board, who delete any comment. */
+  moderates: boolean
   decisionId: string
   /** The threads about the decision, oldest first. */
   threads: CommentThread[]
@@ -29,7 +30,7 @@ interface DecisionDiscussionProps {
 export function DecisionDiscussion({
   boardId,
   userId,
-  isOwner,
+  moderates,
   decisionId,
   threads,
   pageId,
@@ -52,7 +53,7 @@ export function DecisionDiscussion({
           thread={thread}
           cell={null}
           userId={userId}
-          isOwner={isOwner}
+          moderates={moderates}
           people={people}
           highlighted={thread.id === highlightedThreadId}
           actions={actions}

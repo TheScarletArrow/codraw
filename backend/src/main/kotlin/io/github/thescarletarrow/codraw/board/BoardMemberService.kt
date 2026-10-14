@@ -14,14 +14,16 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
- * Members of boards and the invitation links that make users members. The caller checks that the user may do this:
- * everybody with a role sees the participants, only the owner changes them and manages invitations.
+ * Members of boards, their lead and the invitation links that make users members. The caller checks that the user may
+ * do this: everybody with a role sees the participants, the owner and the lead change them and manage invitations, and
+ * only the owner chooses the lead.
  */
 @Service
 class BoardMemberService(
     private val members: BoardMembers,
     private val invites: BoardInvites,
     private val boards: BoardService,
+    private val boardRepository: BoardRepository,
     private val workspaces: Workspaces,
     private val notifications: NotificationService,
     private val limits: LimitProperties,
@@ -83,6 +85,29 @@ class BoardMemberService(
     fun removeMember(board: Board, userId: UUID) {
         if (!members.remove(board.boardId, userId)) throw MemberNotFoundException()
         boards.forgetUsersWithoutAccess(board)
+    }
+
+    /**
+     * Makes the member [userId] the lead of the [board] in place of any other, see [BoardRole.LEAD]; a viewer becomes an
+     * editor first, as the lead edits. Returns the participants. Throws [MemberNotFoundException] for anybody who is no
+     * member, the owner included.
+     */
+    @Transactional
+    fun appointLead(board: Board, userId: UUID): List<Participant> {
+        val boardId = board.boardId
+        members.lockBoard(boardId)
+        val role = members.roleOf(boardId, userId) ?: throw MemberNotFoundException()
+        if (role < MemberRole.EDITOR) members.put(boardId, userId, MemberRole.EDITOR, now())
+        boardRepository.changeLead(boardId, userId)
+        return participants(board)
+    }
+
+    /** Leaves the [board] without a lead; the lead stays a member with their role. Returns the participants. */
+    @Transactional
+    fun dismissLead(board: Board): List<Participant> {
+        members.lockBoard(board.boardId)
+        boardRepository.changeLead(board.boardId, null)
+        return participants(board)
     }
 
     /** The invitations of the [board], oldest first. */

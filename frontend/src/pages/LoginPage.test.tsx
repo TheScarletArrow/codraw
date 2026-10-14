@@ -124,6 +124,95 @@ describe('LoginPage', () => {
     )
   })
 
+  it('offers only the login and the password of an installation without providers and guests', async () => {
+    mockFetch({ 'GET /api/auth/providers': { body: { providers: [], guests: false, password: { signUp: true } } } })
+    renderRoutes(routes, '/login')
+
+    expect(await screen.findByLabelText('Логин')).toBeInTheDocument()
+    expect(screen.getByLabelText('Пароль')).toHaveAttribute('type', 'password')
+    expect(screen.getByRole('button', { name: 'Войти' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Зарегистрироваться' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Продолжить без входа' })).toBeNull()
+    expect(screen.queryByText('Вход не настроен. Обратитесь к администратору.')).toBeNull()
+    expect(screen.getByText(/Входя, регистрируясь или продолжая без входа, вы принимаете/)).toBeInTheDocument()
+  })
+
+  it('signs in with a login and a password and opens the boards', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/auth/providers': { body: { ...LOGIN_OPTIONS, password: { signUp: false } } },
+      'POST /api/auth/password/sign-in': [{ status: 401, body: { reason: 'invalid-credentials' } }, { status: 204 }],
+    })
+    const { router } = renderRoutes(routes, '/login')
+
+    await userEvent.type(await screen.findByLabelText('Логин'), 'alice')
+    await userEvent.type(screen.getByLabelText('Пароль'), 'wrong horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Войти' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Неверный логин или пароль.')
+    expect(screen.queryByRole('button', { name: 'Зарегистрироваться' })).toBeNull()
+
+    await userEvent.clear(screen.getByLabelText('Пароль'))
+    await userEvent.type(screen.getByLabelText('Пароль'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Войти' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    const [, init] = fetchMock.mock.calls.filter(([input]) => input.toString() === '/api/auth/password/sign-in').at(-1)!
+    expect(JSON.parse(init!.body as string)).toEqual({ login: 'alice', password: 'correct horse' })
+    expect(init!.headers).toMatchObject({ 'X-XSRF-TOKEN': 'test-csrf' })
+  })
+
+  it('registers with the password twice, telling the rules before asking the server', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/auth/providers': { body: { ...LOGIN_OPTIONS, password: { signUp: true } } },
+      'POST /api/auth/password/sign-up': [{ status: 409, body: { reason: 'login-taken' } }, { status: 204 }],
+    })
+    const { router } = renderRoutes(routes, '/login')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Зарегистрироваться' }))
+    await userEvent.type(screen.getByLabelText('Логин'), 'алиса')
+    await userEvent.type(screen.getByLabelText('Пароль'), 'short')
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'short')
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Логин — от 3 до 32 латинских букв')
+
+    await userEvent.clear(screen.getByLabelText('Логин'))
+    await userEvent.type(screen.getByLabelText('Логин'), 'alice')
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Пароль должен быть не короче 8 символов.')
+
+    await userEvent.clear(screen.getByLabelText('Пароль'))
+    await userEvent.type(screen.getByLabelText('Пароль'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Пароли не совпадают.')
+    expect(fetchMock.mock.calls.filter(([input]) => input.toString() === '/api/auth/password/sign-up')).toHaveLength(0)
+
+    await userEvent.clear(screen.getByLabelText('Повторите пароль'))
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Этот логин уже занят.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('says that a blocked user or too many attempts kept the sign-in from happening', async () => {
+    mockFetch({
+      'GET /api/auth/providers': { body: { ...LOGIN_OPTIONS, password: { signUp: false } } },
+      'POST /api/auth/password/sign-in': [
+        { status: 403, body: { reason: 'blocked' } },
+        { status: 429, body: { reason: 'password-failures' } },
+      ],
+    })
+    renderRoutes(routes, '/login')
+
+    await userEvent.type(await screen.findByLabelText('Логин'), 'alice')
+    await userEvent.type(screen.getByLabelText('Пароль'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Войти' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Учётная запись заблокирована администратором установки.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Войти' }))
+    expect(await screen.findByText('Слишком много попыток входа. Попробуйте позже.')).toBeInTheDocument()
+  })
+
   it('says that the sign-in failed when the provider sends the user back with an error', () => {
     mockFetch(PROVIDERS)
     renderRoutes(routes, '/login?error')

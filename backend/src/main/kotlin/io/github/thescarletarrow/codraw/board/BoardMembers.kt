@@ -13,7 +13,7 @@ data class Participant(
     val id: UUID,
     val name: String,
     val avatarUrl: String?,
-    /** [BoardRole.OWNER] for the owner, the role that the owner gave to a member. */
+    /** [BoardRole.OWNER] for the owner, [BoardRole.LEAD] for the lead, the role that the owner gave to any other member. */
     val role: BoardRole,
 )
 
@@ -48,14 +48,14 @@ class BoardMembers(private val jdbc: JdbcClient) {
         .list()
         .toMap()
 
-    /** The owner [ownerId] of the board [boardId] first, then its members in the order they joined. */
+    /** The owner [ownerId] of the board [boardId] first, then its members, its lead among them, in the order they joined. */
     fun participants(boardId: UUID, ownerId: UUID): List<Participant> = jdbc.sql(
         """
         SELECT u.id, u.name, u.avatar_url, 'OWNER' AS role, NULL::timestamptz AS joined_at
         FROM users u WHERE u.id = :ownerId
         UNION ALL
-        SELECT u.id, u.name, u.avatar_url, m.role, m.created_at
-        FROM board_members m JOIN users u ON u.id = m.user_id
+        SELECT u.id, u.name, u.avatar_url, CASE WHEN b.lead_id = m.user_id THEN 'LEAD' ELSE m.role END, m.created_at
+        FROM board_members m JOIN users u ON u.id = m.user_id JOIN boards b ON b.id = m.board_id
         WHERE m.board_id = :boardId
         ORDER BY joined_at NULLS FIRST, id
         """,
@@ -163,6 +163,11 @@ class BoardMembers(private val jdbc: JdbcClient) {
                 created_at = LEAST(board_members.created_at, EXCLUDED.created_at)
             """,
         )
+            .param("fromUserId", fromUserId)
+            .param("toUserId", toUserId)
+            .update()
+        // The lead stays the lead as the new user; on a board of the new user, the lead goes with the membership below.
+        jdbc.sql("UPDATE boards SET lead_id = :toUserId WHERE lead_id = :fromUserId")
             .param("fromUserId", fromUserId)
             .param("toUserId", toUserId)
             .update()

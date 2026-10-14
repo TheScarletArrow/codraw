@@ -31,6 +31,7 @@ const legal = (changes: Partial<LegalInfo> = {}): LegalInfo => ({
     { name: 'Google', corporate: false },
   ],
   guests: true,
+  passwords: false,
   ...changes,
 })
 
@@ -171,7 +172,7 @@ describe('legal pages', () => {
     expect(screen.getByRole('region', { name: 'Какие данные мы обрабатываем' })).toHaveTextContent(
       'У учётной записи хранится и язык интерфейса — выбранный в меню «Язык», а если вы его не выбирали, язык браузера при входе, — чтобы письма и сообщения уведомлений приходили на нём',
     )
-    expect(screen.getByText('Обновлено 12 октября 2026 г.')).toBeInTheDocument()
+    expect(screen.getByText('Обновлено 14 октября 2026 г.')).toBeInTheDocument()
     expect(screen.queryByText(/This is a translation/)).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Кому передаются данные' })).toHaveTextContent(
       'видит любой, у кого есть ссылка, без входа, в том числе на чужих сайтах, куда её встроили; комментарии, участников и присутствие он не видит',
@@ -185,6 +186,25 @@ describe('legal pages', () => {
     expect(account).toHaveTextContent('«Скачать мои данные» собирает архив ZIP')
     expect(account).toHaveTextContent('сохраняются без автора — с подписью «Удалённый пользователь»')
     expect(account).toHaveTextContent('Новый вход через того же провайдера — GitHub, Google или корпоративный — создаёт новую пустую учётную запись')
+  })
+
+  it('names the login and the hash of the password when the installation signs in with passwords', async () => {
+    mockFetch({ 'GET /api/legal': { body: legal() } })
+    const { unmount } = renderRoutes(routes, '/privacy')
+
+    expect(await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })).not.toHaveTextContent('логину и паролю')
+    unmount()
+
+    mockFetch({ 'GET /api/legal': { body: legal({ passwords: true }) } })
+    renderRoutes(routes, '/privacy')
+    const data = await screen.findByRole('region', { name: 'Какие данные мы обрабатываем' })
+    expect(data).toHaveTextContent(
+      'При входе по логину и паролю — логин, который вы выбрали при регистрации, и хеш пароля (bcrypt с солью); сам пароль не хранится',
+    )
+    expect(data).toHaveTextContent('неудачные попытки входа по паролю с каждого адреса и для каждого логина')
+    expect(screen.getByRole('region', { name: 'Выгрузка данных и удаление учётной записи' })).toHaveTextContent(
+      'Хеш пароля удаляется вместе с учётной записью, а логин освобождается',
+    )
   })
 
   it('names the sign-in providers of the installation, the corporate one as chosen by the operator', async () => {
@@ -379,7 +399,7 @@ describe('legal pages', () => {
 
     expect(await screen.findByRole('heading', { name: 'Privacy policy', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText(/The operator of the service is ООО «Пример»/)).toBeInTheDocument()
-    expect(screen.getByText('Updated October 12, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Updated October 14, 2026')).toBeInTheDocument()
     expect(screen.getByText('This is a translation for convenience; the Russian version prevails.')).toBeInTheDocument()
     for (const section of ['What data we process', 'Cookies', 'Copies of boards in the browser', 'How long the data is kept', 'Your rights']) {
       expect(screen.getByRole('region', { name: section })).toBeInTheDocument()

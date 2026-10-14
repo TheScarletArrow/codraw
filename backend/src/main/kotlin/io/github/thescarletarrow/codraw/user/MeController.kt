@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.user
 
 import io.github.thescarletarrow.codraw.admin.AdminAccess
+import io.github.thescarletarrow.codraw.password.PasswordSignIn
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.core.user.OAuth2User
@@ -13,7 +14,11 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @RestController
-class MeController(private val users: UserService, private val admins: AdminAccess) {
+class MeController(
+    private val users: UserService,
+    private val admins: AdminAccess,
+    private val passwords: PasswordSignIn,
+) {
 
     @GetMapping("/api/me")
     fun me(@AuthenticationPrincipal principal: OAuth2User): MeResponse {
@@ -25,6 +30,8 @@ class MeController(private val users: UserService, private val admins: AdminAcce
             guest = user.guest,
             language = user.language.tag,
             admin = admins.isAdmin(user),
+            password = user.provider == ProviderProfile.PASSWORD,
+            passwordFromSettings = passwords.fromSettings(user),
         )
     }
 
@@ -47,6 +54,10 @@ data class MeResponse(
     val language: String,
     /** The configuration of the installation makes the user its administrator. */
     val admin: Boolean,
+    /** The user signs in with a login and a password, which they change on the page of the account. */
+    val password: Boolean,
+    /** The settings of the server keep the password of the user, the administrator of `CODRAW_ADMIN_LOGIN`. */
+    val passwordFromSettings: Boolean,
 )
 
 data class LanguageRequest(val language: String)

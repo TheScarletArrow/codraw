@@ -35,22 +35,27 @@ class BoardAccessController(private val boards: BoardService, private val access
 @Component
 class BoardAccesses(private val members: BoardMembers, private val workspaces: Workspaces) {
 
-    fun of(board: Board): BoardAccess = BoardAccess(
-        ownerId = board.ownerId,
-        linkAccess = board.linkAccess,
-        members = members.roles(checkNotNull(board.id)),
-        workspace = board.workspaceId?.let { WorkspaceBoardAccess(board.workspaceAccess, workspaces.roles(it)) },
-    )
+    fun of(board: Board): BoardAccess {
+        val roles = members.roles(checkNotNull(board.id))
+        // The lead edits whatever their role as a member: collab knows no lead, so it gets them as an editor.
+        val lead = board.leadId?.takeIf { it in roles }
+        return BoardAccess(
+            ownerId = board.ownerId,
+            linkAccess = board.linkAccess,
+            members = if (lead == null) roles else roles + (lead to MemberRole.EDITOR),
+            workspace = board.workspaceId?.let { WorkspaceBoardAccess(board.workspaceAccess, workspaces.roles(it)) },
+        )
+    }
 }
 
 /**
- * The owner always edits the board; anybody else gets the highest of their role as a member, what its link gives and,
- * on a board of a workspace, what their role in the workspace gives, see `Board.roleOf`.
+ * The owner always edits the board, and so does its lead; anybody else gets the highest of their role as a member, what
+ * its link gives and, on a board of a workspace, what their role in the workspace gives, see `Board.roleOf`.
  */
 data class BoardAccess(
     val ownerId: UUID,
     val linkAccess: LinkAccess,
-    /** The roles of the members by their ids. */
+    /** The roles of the members by their ids; the lead is an editor. */
     val members: Map<UUID, MemberRole>,
     /** What the workspace of the board gives its members; `null` for a personal board. */
     val workspace: WorkspaceBoardAccess?,
