@@ -5,6 +5,7 @@ import io.github.thescarletarrow.codraw.admin.AdminProperties
 import io.github.thescarletarrow.codraw.board.BoardVersionService
 import io.github.thescarletarrow.codraw.issue.IssueProperties
 import io.github.thescarletarrow.codraw.notification.NotificationProperties
+import io.github.thescarletarrow.codraw.password.PasswordProperties
 import io.github.thescarletarrow.codraw.schemaimport.SchemaImportProperties
 import io.github.thescarletarrow.codraw.security.CodrawClientRegistrations
 import io.github.thescarletarrow.codraw.user.GuestLoginController
@@ -64,6 +65,8 @@ data class LegalResponse(
     val signInProviders: List<LegalSignInProvider>,
     /** Whether «Продолжить без входа» creates guests. */
     val guests: Boolean,
+    /** Whether users sign in with a login and a password, of which a hash is kept. */
+    val passwords: Boolean,
 )
 
 data class LegalSignInProvider(
@@ -82,6 +85,7 @@ class LegalController(
     private val issues: IssueProperties,
     private val admin: AdminProperties,
     private val registrations: CodrawClientRegistrations,
+    private val passwords: PasswordProperties,
 ) {
 
     /** Open without a sign-in: the privacy policy and the terms of use are read before signing in. */
@@ -102,6 +106,7 @@ class LegalController(
         backupOffsite = backupRetentionDays() != null && legal.backupStorage.isNotBlank(),
         signInProviders = registrations.providers.map { LegalSignInProvider(it.name, it.corporate) },
         guests = guests.enabled,
+        passwords = passwords.enabled,
     )
 
     /** An archive stays while it is the last of its day younger than the days, or of its week younger than the weeks. */

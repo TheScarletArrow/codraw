@@ -40,7 +40,10 @@ class ClosedInstallationTest(
         mockMvc.get(SignInProvidersController.PATH).andExpect {
             status { isOk() }
             content {
-                json("""{"providers": [{"id": "corp", "name": "Keycloak компании"}], "guests": false}""", JsonCompareMode.STRICT)
+                json(
+                    """{"providers": [{"id": "corp", "name": "Keycloak компании"}], "guests": false, "password": null}""",
+                    JsonCompareMode.STRICT,
+                )
             }
         }
     }

@@ -51,7 +51,7 @@ export function WorkspaceInvitePage() {
             {m.signInHint}
           </p>
           <div className="flex flex-wrap gap-2">
-            <SignInButtons />
+            <SignInButtons passwordLink />
           </div>
         </>
       ) : isNotFound(accept.error) ? (

@@ -74,7 +74,7 @@ PBKDF2 без памяти слабее bcrypt против GPU. bcrypt прин
 
 ### API
 
-`PasswordController` в пакете `user`:
+`PasswordController` в новом пакете `password` (там же `PasswordService`, `PasswordCredentials`, `PasswordLimiter`, правила):
 
 - `POST /api/auth/password/sign-up` `{login, password}` — открыт без входа. 204 и сеанс; 409 `login-taken`;
   403 `login-reserved` для логина из `CODRAW_ADMINS`; 400 с причиной из правил; 403, если вход по паролю или

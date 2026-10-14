@@ -31,6 +31,8 @@ export interface LegalInfo {
   signInProviders: LegalSignInProvider[]
   /** Whether «Продолжить без входа» creates guests. */
   guests: boolean
+  /** Whether users sign in with a login and a password, of which a hash is kept. */
+  passwords: boolean
 }
 
 export interface LegalSignInProvider {

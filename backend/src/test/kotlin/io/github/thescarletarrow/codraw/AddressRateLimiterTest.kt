@@ -26,6 +26,19 @@ class AddressRateLimiterTest {
     }
 
     @Test
+    fun `tells how long a key waits without counting a request`() {
+        val limiter = AddressRateLimiter(Duration.ofHours(1), { 1 }, clock)
+
+        assertNull(limiter.waitFor("203.0.113.5"))
+        assertNull(limiter.waitFor("203.0.113.5"))
+        assertNull(limiter.acquire("203.0.113.5"))
+        clock.advance(Duration.ofMinutes(10))
+        assertEquals(Duration.ofMinutes(50), limiter.waitFor("203.0.113.5"))
+        clock.advance(Duration.ofMinutes(50))
+        assertNull(limiter.waitFor("203.0.113.5"))
+    }
+
+    @Test
     fun `counts an IPv6 address by its network of 64 bits, and an IPv4 address by itself`() {
         assertEquals("2001:db8:1:2:0:0:0:0/64", AddressRateLimiter.networkOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd"))
         assertEquals("2001:db8:1:2:0:0:0:0/64", AddressRateLimiter.networkOf("2001:db8:1:2::1"))

@@ -4,6 +4,7 @@ import io.github.thescarletarrow.codraw.e2e.TestLoginController
 import io.github.thescarletarrow.codraw.user.ProviderProfile
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
+import java.util.Locale
 
 /**
  * The administrators of the installation and how long what they do is kept. Only the deployment names administrators:
@@ -12,8 +13,9 @@ import java.time.Duration
 @ConfigurationProperties("codraw.admin")
 data class AdminProperties(
     /**
-     * Accounts of administrators as `<provider>:<id at the provider>`, e.g. `github:583231` (`CODRAW_ADMINS`), and of a
-     * corporate provider as `oidc:<issuer>:<sub>`. A guest is never one: nothing outside CoDraw tells who a guest is.
+     * Accounts of administrators as `<provider>:<id at the provider>`, e.g. `github:583231` (`CODRAW_ADMINS`), of a
+     * corporate provider as `oidc:<issuer>:<sub>`, and of a user with a password as `password:<login>` in any case. A guest
+     * is never one: nothing outside CoDraw tells who a guest is.
      */
     val users: List<String> = emptyList(),
     /** Entries of the journal, closed reports and closed feedback are deleted once they are this old. */
@@ -37,11 +39,13 @@ data class AdminProperties(
             "codraw.admin.users: \"$entry\" is not <provider>:<id> with a provider of ${PROVIDERS.joinToString()}, " +
                 "nor oidc:<issuer>:<sub>"
         }
-        return provider to id
+        // A login is one whatever its case, as the account keeps it.
+        return provider to if (provider == ProviderProfile.PASSWORD) id.lowercase(Locale.ROOT) else id
     }
 
     private companion object {
         /** The providers whose accounts may administer; the test login exists only in end-to-end tests. */
-        val PROVIDERS = setOf(ProviderProfile.GITHUB, ProviderProfile.GOOGLE, TestLoginController.PROVIDER)
+        val PROVIDERS =
+            setOf(ProviderProfile.GITHUB, ProviderProfile.GOOGLE, ProviderProfile.PASSWORD, TestLoginController.PROVIDER)
     }
 }

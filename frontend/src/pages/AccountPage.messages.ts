@@ -26,6 +26,7 @@ export const accountMessages = defineMessages({
     deletionText: (github: boolean) =>
       `Удаление необратимо. Удаляются профиль, ваши доски без других участников и доски в корзине с изображениями, участие в досках и пространствах, библиотеки фигур, шаблоны, папки, теги, уведомления и их настройки${github ? ', подключение GitHub' : ''}. Ваши комментарии, решения и правки на досках других людей остаются с подписью «Удалённый пользователь». Все сеансы завершаются.`,
     githubToken: 'Токен GitHub CoDraw удалит у себя; отозвать его можно в настройках GitHub.',
+    loginFreed: 'Пароль удалится, а ваш логин освободится: его сможет зарегистрировать кто угодно.',
     loading: 'Загрузка…',
     previewFailed: 'Не удалось узнать, что станет с вашими досками',
     deletedBoards: (count: number) => `Удалятся досок без других участников и из корзины: ${count}.`,
@@ -68,6 +69,7 @@ export const accountMessages = defineMessages({
     deletionText: (github: boolean) =>
       `Deletion cannot be undone. Deleted are the profile, your boards without other members and the boards in the trash with images, membership in boards and workspaces, shape libraries, templates, folders, tags, notifications and their settings${github ? ', the GitHub connection' : ''}. Your comments, decisions and edits on other people’s boards stay, signed “Deleted user”. All sessions end.`,
     githubToken: 'CoDraw deletes the GitHub token on its side; you can revoke it in the GitHub settings.',
+    loginFreed: 'The password is deleted, and your login becomes free: anybody can sign up with it.',
     loading: 'Loading…',
     previewFailed: 'Could not find out what becomes of your boards',
     deletedBoards: (count: number) => `Boards without other members and in the trash to be deleted: ${count}.`,

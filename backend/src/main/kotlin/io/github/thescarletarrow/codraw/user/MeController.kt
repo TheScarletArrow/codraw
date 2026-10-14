@@ -25,6 +25,7 @@ class MeController(private val users: UserService, private val admins: AdminAcce
             guest = user.guest,
             language = user.language.tag,
             admin = admins.isAdmin(user),
+            password = user.provider == ProviderProfile.PASSWORD,
         )
     }
 
@@ -47,6 +48,8 @@ data class MeResponse(
     val language: String,
     /** The configuration of the installation makes the user its administrator. */
     val admin: Boolean,
+    /** The user signs in with a login and a password, which they change on the page of the account. */
+    val password: Boolean,
 )
 
 data class LanguageRequest(val language: String)

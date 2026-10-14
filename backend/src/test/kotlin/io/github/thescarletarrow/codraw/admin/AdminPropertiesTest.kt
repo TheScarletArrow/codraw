@@ -22,8 +22,15 @@ class AdminPropertiesTest {
         assertEquals(setOf("oidc:https://sso.example.com:8443/realms/acme" to "5f2c-a1"), properties.accounts)
     }
 
+    @Test
+    fun `reads accounts with a password by the login in lower case`() {
+        val properties = AdminProperties(users = listOf("password:Admin.Smith"))
+
+        assertEquals(setOf("password" to "admin.smith"), properties.accounts)
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = ["guest:5f2c", "583231", "github:", "gitlab:1", ":1", "oidc:5f2c", "oidc:https://sso.example.com:"])
+    @ValueSource(strings = ["guest:5f2c", "583231", "github:", "gitlab:1", ":1", "oidc:5f2c", "oidc:https://sso.example.com:", "password:"])
     fun `refuses an entry that names no account of a sign-in provider`(entry: String) {
         val failure = assertFailsWith<IllegalArgumentException> { AdminProperties(users = listOf(entry)) }
 

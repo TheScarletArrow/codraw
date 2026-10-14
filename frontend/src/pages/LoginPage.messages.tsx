@@ -21,6 +21,11 @@ export const loginMessages = defineMessages({
         Входя или продолжая без входа, вы принимаете {terms} и {privacy}.
       </>
     ),
+    consentWithSignUp: (terms: ReactNode, privacy: ReactNode) => (
+      <>
+        Входя, регистрируясь или продолжая без входа, вы принимаете {terms} и {privacy}.
+      </>
+    ),
     tooManyGuests: 'Слишком много новых гостей с вашего адреса. Попробуйте позже или войдите.',
     guestFailed: 'Не удалось продолжить без входа. Попробуйте ещё раз.',
   },
@@ -40,6 +45,11 @@ export const loginMessages = defineMessages({
     consent: (terms: ReactNode, privacy: ReactNode) => (
       <>
         By signing in or continuing without signing in, you accept the {terms} and the {privacy}.
+      </>
+    ),
+    consentWithSignUp: (terms: ReactNode, privacy: ReactNode) => (
+      <>
+        By signing in, signing up or continuing without signing in, you accept the {terms} and the {privacy}.
       </>
     ),
     tooManyGuests: 'Too many new guests from your address. Try again later or sign in.',

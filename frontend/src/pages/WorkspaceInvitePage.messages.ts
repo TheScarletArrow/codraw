@@ -10,7 +10,7 @@ export const workspaceInviteMessages = defineMessages({
     accepting: 'Принимаем приглашение…',
     signInRequired: 'Нужен вход',
     signInHint:
-      'Командные пространства доступны после входа через GitHub или Google. Войдите и снова откройте ссылку-приглашение — ваши доски гостя останутся с вами.',
+      'Командные пространства доступны только с учётной записью. Войдите и снова откройте ссылку-приглашение — ваши доски гостя останутся с вами.',
     withGithub: 'Войти через GitHub',
     withGoogle: 'Войти через Google',
     invalid: 'Приглашение недействительно',
@@ -27,7 +27,7 @@ export const workspaceInviteMessages = defineMessages({
     accepting: 'Accepting the invitation…',
     signInRequired: 'Sign-in required',
     signInHint:
-      'Team workspaces are available after signing in with GitHub or Google. Sign in and open the invitation link again — your guest boards will stay with you.',
+      'Team workspaces are available with an account only. Sign in and open the invitation link again — your guest boards will stay with you.',
     withGithub: 'Sign in with GitHub',
     withGoogle: 'Sign in with Google',
     invalid: 'The invitation is not valid',

@@ -58,6 +58,44 @@ class UserService(
     @Transactional
     fun signIn(profile: ProviderProfile, previousUserId: UUID?): User {
         val user = signIn(profile)
+        transferGuest(previousUserId, user)
+        return user
+    }
+
+    /**
+     * Creates the user of [profile] in a session where the user [previousUserId] was signed in, with what that guest
+     * had, like [signIn]; `null` when the provider has that user already, e.g. when the login is taken.
+     */
+    @Transactional
+    fun signUp(profile: ProviderProfile, previousUserId: UUID?): User? {
+        val user = users.insertNew(
+            provider = profile.provider,
+            providerUserId = profile.providerUserId,
+            name = profile.name,
+            avatarUrl = profile.avatarUrl,
+            createdAt = clock.instant().truncatedTo(ChronoUnit.MICROS),
+        ) ?: return null
+        transferGuest(previousUserId, user)
+        return user
+    }
+
+    /**
+     * Signs in the user [userId], whom CoDraw checked itself, e.g. by their password, in a session where the user
+     * [previousUserId] was signed in, with what that guest had, like [signIn]. Throws [UserBlockedException] when an
+     * administrator blocked the user; nothing changes then.
+     */
+    @Transactional
+    fun signInExisting(userId: UUID, previousUserId: UUID?): User {
+        val user = checkNotNull(users.findById(userId)) { "User $userId does not exist" }
+        if (user.blockedAt != null) throw UserBlockedException(user.id)
+        transferGuest(previousUserId, user)
+        return user
+    }
+
+    /** The user whom the [provider] knows as [providerUserId], e.g. by the login of a password. */
+    fun find(provider: String, providerUserId: String): User? = users.findByProvider(provider, providerUserId)
+
+    private fun transferGuest(previousUserId: UUID?, user: User) {
         val guest = previousUserId?.let(users::findById)?.takeIf { it.guest }
         if (guest != null && guest.id != user.id) {
             // The statistics of the installation count the guest who became a user, without anybody's id.
@@ -72,7 +110,6 @@ class UserService(
             libraries.transfer(guest.id, user.id)
             feedback.transfer(guest.id, user.id)
         }
-        return user
     }
 
     /**

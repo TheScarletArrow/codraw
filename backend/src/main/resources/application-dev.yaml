@@ -18,6 +18,9 @@ spring:
 
 codraw:
   internal-token: dev-internal-token
+  # Sign-in with a login and a password works without any OAuth application.
+  passwords:
+    enabled: true
   # Letters and messages of chats link to the dev server of the frontend. Letters need an SMTP server too, e.g. Mailpit:
   # SPRING_MAIL_HOST=localhost SPRING_MAIL_PORT=1025 CODRAW_NOTIFICATIONS_EMAIL_FROM="CoDraw <codraw@localhost>".
   notifications:

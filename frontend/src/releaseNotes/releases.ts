@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.48.0',
+    date: '2026-10-14',
+    items: [
+      {
+        ru: {
+          title: 'Вход по логину и паролю',
+          text: 'Если оператор установки его включил, на странице входа можно зарегистрироваться и входить по логину и паролю, без GitHub, Google и почты. Доски гостя переходят к новой учётной записи, а пароль меняется на странице «Учётная запись» в разделе «Пароль».',
+        },
+        en: {
+          title: 'Signing in with a login and a password',
+          text: 'If the operator of the installation has turned it on, the login page lets you sign up and sign in with a login and a password, without GitHub, Google or email. Guest boards move to the new account, and the password is changed on the “Account” page, in the “Password” section.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.47.0',
     date: '2026-10-13',
     items: [

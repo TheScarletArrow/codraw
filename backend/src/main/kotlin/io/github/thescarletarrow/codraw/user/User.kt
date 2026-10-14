@@ -44,6 +44,20 @@ interface UserRepository : Repository<User, UUID> {
     )
     fun upsert(provider: String, providerUserId: String, name: String, avatarUrl: String?, createdAt: Instant): User
 
+    /** Creates a user; `null` when the [provider] has a user with the [providerUserId] already. */
+    @Query(
+        """
+        INSERT INTO users (provider, provider_user_id, name, avatar_url, created_at)
+        VALUES (:provider, :providerUserId, :name, :avatarUrl, :createdAt)
+        ON CONFLICT (provider, provider_user_id) DO NOTHING
+        RETURNING *
+        """,
+    )
+    fun insertNew(provider: String, providerUserId: String, name: String, avatarUrl: String?, createdAt: Instant): User?
+
+    @Query("SELECT * FROM users WHERE provider = :provider AND provider_user_id = :providerUserId")
+    fun findByProvider(provider: String, providerUserId: String): User?
+
     /** Blocks the user [id] at [at]; `false` when they are blocked already or do not exist. */
     @Modifying
     @Query("UPDATE users SET blocked_at = :at WHERE id = :id AND blocked_at IS NULL")

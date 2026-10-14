@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component
 enum class Limit(val tag: String) {
     BOARDS("boards"),
     GUESTS("guests"),
+    PASSWORD_FAILURES("password-failures"),
+    SIGN_UPS("sign-ups"),
     DOCUMENT("document"),
     VERSION("version"),
     CLIENT_ERRORS("client-errors"),

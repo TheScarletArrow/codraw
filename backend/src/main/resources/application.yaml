@@ -78,6 +78,11 @@ codraw:
   # allowed-email-domains, allowed-groups, groups-claim, logout; CODRAW_AUTH_OIDC_<ID>_*). See docs/deploy.md.
   auth:
     oidc: {}
+  passwords:
+    # Signing in with a login and a password (CODRAW_PASSWORDS_ENABLED): off, so that an update does not open a closed
+    # installation; sign-up (CODRAW_PASSWORDS_SIGN_UP) off lets only those who registered before sign in.
+    enabled: false
+    sign-up: true
   guests:
     # «Продолжить без входа» (CODRAW_GUESTS_ENABLED); a closed installation turns it off.
     enabled: true

@@ -141,11 +141,24 @@ class UserAuthApiTest(
             status { isOk() }
             content {
                 json(
-                    """{"providers": [{"id": "github", "name": "GitHub"}, {"id": "google", "name": "Google"}], "guests": true}""",
+                    """{"providers": [{"id": "github", "name": "GitHub"}, {"id": "google", "name": "Google"}], "guests": true, "password": null}""",
                     JsonCompareMode.STRICT,
                 )
             }
         }
+    }
+
+    @Test
+    fun `signs nobody in with a password while the installation does not offer it`() {
+        for (path in listOf("/api/auth/password/sign-in", "/api/auth/password/sign-up")) {
+            mockMvc.post(path) {
+                with(csrf())
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"login": "alice", "password": "correct horse"}"""
+            }.andExpect { status { isForbidden() } }
+        }
+        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM users WHERE provider = 'password'").query(Int::class.java).single())
+        mockMvc.get("/api/legal").andExpect { jsonPath("$.passwords") { value(false) } }
     }
 
     @Test
