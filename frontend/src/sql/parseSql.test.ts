@@ -138,6 +138,58 @@ describe('parsing DDL', () => {
     `)
 
     expect(schema.tables.map((table) => table.name)).toEqual(['notes'])
+    expect(schema.tables[0]!.comment).toBe('Заметки')
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('takes the comments of tables and views, not of their columns or of what is not drawn', () => {
+    const schema = parseSql(`
+      CREATE TABLE notes (id serial PRIMARY KEY);
+      CREATE TABLE tags (id serial PRIMARY KEY);
+      CREATE VIEW recent AS SELECT id FROM notes;
+      CREATE MATERIALIZED VIEW counts AS SELECT count(*) AS total FROM notes;
+      COMMENT ON TABLE public.notes IS 'Заметки
+        пользователей';
+      COMMENT ON TABLE tags IS 'Метки';
+      COMMENT ON TABLE tags IS NULL;
+      COMMENT ON COLUMN notes.id IS 'Номер';
+      COMMENT ON VIEW recent IS E'Последние: O''Reilly';
+      COMMENT ON MATERIALIZED VIEW counts IS $$Счётчики$$;
+      COMMENT ON TABLE gone IS 'Нет такой';
+      COMMENT ON FUNCTION f() IS 'Функция';
+      CREATE OR REPLACE VIEW recent AS SELECT id FROM notes WHERE id > 10;
+      ALTER TABLE notes RENAME TO posts;
+    `)
+
+    expect(schema.tables.map((table) => [table.name, table.comment])).toEqual([
+      ['posts', 'Заметки пользователей'],
+      ['tags', undefined],
+    ])
+    expect(schema.tables[1]).not.toHaveProperty('comment')
+    expect(schema.views.map((view) => [view.name, view.comment])).toEqual([
+      ['counts', 'Счётчики'],
+      ['recent', "Последние: O'Reilly"],
+    ])
+    expect(schema.skipped).toBe(0)
+  })
+
+  it('takes the comment of a table among its options in MySQL and ClickHouse, and from ALTER TABLE', () => {
+    const schema = parseSql(`
+      CREATE TABLE users (
+        id int PRIMARY KEY,
+        email varchar(255) NOT NULL COMMENT 'Почта'
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Учётные записи';
+      CREATE TABLE events (id UInt64, at DateTime) ENGINE = MergeTree ORDER BY (id, at) COMMENT 'События';
+      CREATE TABLE logs (id int) PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (10) COMMENT = 'Часть');
+      ALTER TABLE events COMMENT = 'Журнал событий';
+    `)
+
+    expect(schema.tables.map((table) => [table.name, table.comment])).toEqual([
+      ['users', 'Учётные записи'],
+      ['events', 'Журнал событий'],
+      ['logs', undefined],
+    ])
+    expect(schema.tables[0]!.columns.map((column) => column.type)).toEqual(['int', 'varchar(255)'])
     expect(schema.skipped).toBe(0)
   })
 

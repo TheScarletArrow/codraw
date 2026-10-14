@@ -9,6 +9,7 @@ import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, getElements, writeCell, type Ce
 import { findShape, markedStyle, TABLE_FIELD_STYLE, TABLE_INDEX_KEY, TABLE_STYLE, type ShapeStyle } from '../diagram/shapes.ts'
 import { writeStatus } from '../diagram/status.ts'
 import { boardWith, edgeData, laterState, shapeData } from '../diagram/testing.ts'
+import { TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { setLocale } from '../i18n/i18n.ts'
 import { absoluteBounds, changeItems, edgeLine, ghostCenter, lineMiddle } from './changes.ts'
 import { changeMessages } from './changes.messages.ts'
@@ -227,6 +228,7 @@ describe('items of the list of changes', () => {
     )
     const now = laterState(version, (doc) => {
       cell(doc, 'users').set('value', 'accounts')
+      ;(cell(doc, 'users').get('style') as Y.Map<unknown>).set(TABLE_COMMENT_KEY, 'Клиенты')
       cell(doc, 'users.1').set('value', 'email text NOT NULL')
       cell(doc, 'users.idx').set('value', 'users_email_idx (email) UNIQUE')
       cell(doc, 'fk').set('target', 'users.1')
@@ -234,7 +236,7 @@ describe('items of the list of changes', () => {
     })
 
     expect(changeItems(firstPage(version, now)).map(({ title, kind, details }) => [title, kind, details])).toEqual([
-      ['accounts', 'Таблица', ['название']],
+      ['accounts', 'Таблица', ['название', 'комментарий']],
       ['email text NOT NULL', 'Поле', ['текст']],
       ['users_email_idx (email) UNIQUE', 'Индекс', ['текст']],
       ['Связь', 'Связь', ['конец', 'маркеры']],

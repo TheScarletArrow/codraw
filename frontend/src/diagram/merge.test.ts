@@ -21,6 +21,7 @@ import {
 import { addPage, deletePage, listPages, movePage, renamePage } from './pages.ts'
 import { TABLE_FIELD_HEIGHT, TABLE_HEADER_HEIGHT } from './shapes.ts'
 import { readStatus, writeStatus } from './status.ts'
+import { TABLE_COMMENT_KEY, tableCommentRoom } from './tableComments.ts'
 import { boardWith, edgeData, laterState, shapeData } from './testing.ts'
 
 const BOB = { id: 'bob', name: 'Боб' }
@@ -383,6 +384,23 @@ describe('mergeProposal', () => {
       ])
       expect(laidOut(board, orders.id)).toEqual(stored(board, orders.id))
       expect(stored(board, users.id)).toEqual(untouched)
+    })
+
+    it('stack the fields under the line of a comment that the draft gave the table', () => {
+      let table = { id: '', fields: [] as string[] }
+      const base = boardWith(...built((builder) => (table = builder.table('orders', 0, 0, ['id uuid PK', 'total numeric']))))
+      const { board, accept } = proposal(base, (draft) => {
+        const cell = cellOf(draft, table.id)!
+        change(draft, table.id, { style: { ...cell.style, [TABLE_COMMENT_KEY]: 'Заказы' } })
+      })
+
+      accept()
+
+      const room = tableCommentRoom(13)
+      const merged = stored(board, table.id)
+      expect(merged.rows.map((row) => row.y)).toEqual([TABLE_HEADER_HEIGHT + room, TABLE_HEADER_HEIGHT + room + TABLE_FIELD_HEIGHT])
+      expect(merged.height).toBe(TABLE_HEADER_HEIGHT + room + 2 * TABLE_FIELD_HEIGHT)
+      expect(laidOut(board, table.id)).toEqual(merged)
     })
   })
 

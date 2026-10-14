@@ -1,3 +1,4 @@
+import { normalizeTableComment } from '../diagram/tableComments.ts'
 import { isServiceStatement } from './statementKinds.ts'
 import { defaultIndexName, indexColumnNames, renameIndexColumn, tokenEnd, writtenName } from './tableIndex.ts'
 import { readViewQuery } from './viewQuery.ts'
@@ -40,6 +41,8 @@ export interface SqlTable {
   foreignKeys: SqlForeignKey[]
   /** Indexes but those of the primary key and of unique columns, which their columns show. */
   indexes: SqlIndex[]
+  /** The comment of the table, `COMMENT ON TABLE` or `COMMENT=` of MySQL, as one line; absent without one. */
+  comment?: string
 }
 
 /** A view of a database: a query that the database runs whenever it is read, or whose rows it keeps (materialized). */
@@ -54,6 +57,8 @@ export interface SqlView {
   indexes: SqlIndex[]
   /** Names of the tables and views that the query reads, in the order it names them. */
   dependencies: string[]
+  /** The comment of the view, `COMMENT ON VIEW`, as one line; absent without one. */
+  comment?: string
 }
 
 /** Tables and views of a database, each in the order DDL creates them. */
@@ -510,9 +515,33 @@ function createTable(schema: SqlSchema, reader: Reader): boolean {
   }
   // Constraints of the table may name columns declared after them.
   for (const constraint of constraints) tableConstraint(table, constraint)
+  reader.take(')')
+  tableOptions(table, reader)
   schema.tables = schema.tables.filter((existing) => existing.name !== name)
   schema.tables.push(table)
   return true
+}
+
+/** Sets the comment of a table or a view, or removes it with an empty one. */
+function setComment(target: { comment?: string }, text: string) {
+  const comment = normalizeTableComment(text)
+  if (comment) target.comment = comment
+  else delete target.comment
+}
+
+/**
+ * The options of a table after its columns: `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='…'` of MySQL, `ENGINE =
+ * MergeTree ORDER BY id COMMENT '…'` of ClickHouse; the comment is that of the table, not of a partition in parentheses.
+ */
+function tableOptions(table: SqlTable, reader: Reader) {
+  while (!reader.done) {
+    if (reader.sees('(')) reader.skipGroup()
+    else if (reader.take('COMMENT')) {
+      reader.take('=')
+      const value = reader.next()
+      if (value?.kind === 'string') setComment(table, value.value)
+    } else reader.next()
+  }
 }
 
 function alterTable(schema: SqlSchema, reader: Reader): boolean {
@@ -564,6 +593,11 @@ function alterTable(schema: SqlSchema, reader: Reader): boolean {
         const to = action.identifier()
         if (from !== null && to !== null) renameColumn(schema, table, from, to)
       }
+    } else if (action.take('COMMENT')) {
+      // `ALTER TABLE t COMMENT = '…'` of MySQL.
+      action.take('=')
+      const value = action.next()
+      if (value?.kind === 'string') setComment(table, value.value)
     } else if (action.take('ALTER')) {
       action.take('COLUMN')
       const name = action.identifier()
@@ -746,8 +780,10 @@ function createView(schema: SqlSchema, reader: Reader, materialized: boolean, sq
   // A name the query reads that is neither a table nor a view, e.g. a column of `EXTRACT(… FROM column)`, is not one.
   const dependencies = read.dependencies.filter((dependency) => dependency !== name && relation(dependency) !== null)
   const text = sql.slice(query[0]!.start, tokenEnd(query.at(-1)!, sql)).trim()
+  // `CREATE OR REPLACE VIEW` changes the query of a view, not its comment.
+  const comment = findView(schema, name)?.comment
   schema.views = schema.views.filter((view) => view.name !== name)
-  schema.views.push({ name, columns, query: text, materialized, indexes: [], dependencies })
+  schema.views.push({ name, columns, query: text, materialized, indexes: [], dependencies, ...(comment && { comment }) })
   return true
 }
 
@@ -822,13 +858,34 @@ function statement(schema: SqlSchema, tokens: Token[], sql: string): boolean {
 }
 
 /**
+ * `COMMENT ON TABLE|VIEW|MATERIALIZED VIEW name IS 'text'` of a table or a view of the schema, whichever has the name:
+ * its comment, which `IS NULL` removes. A comment of anything else, or of what the schema does not have, is not one.
+ */
+function commentOn(schema: SqlSchema, tokens: Token[]): boolean {
+  const reader = new Reader(tokens)
+  if (!reader.take('COMMENT', 'ON')) return false
+  if (!reader.take('TABLE') && !reader.take('VIEW') && !reader.take('MATERIALIZED', 'VIEW')) return false
+  const name = reader.name()
+  const target = name === null ? undefined : (findTable(schema, name) ?? findView(schema, name))
+  if (!target || !reader.take('IS')) return false
+  // `E'…'` of PostgreSQL is a string with escapes, which a comment keeps as written.
+  if (reader.peek()?.kind === 'word' && reader.peek()!.value === 'E' && reader.peek(1)?.kind === 'string') reader.next()
+  const value = reader.next()
+  if (value?.kind === 'string') setComment(target, value.value)
+  else if (value?.kind === 'word' && value.value === 'NULL') delete target.comment
+  else return false
+  return true
+}
+
+/**
  * Applies the DDL of PostgreSQL (and the common part of MySQL) to the schema: `CREATE TABLE`, `ALTER TABLE` that adds,
  * drops, renames and changes columns and constraints, `DROP TABLE`, `CREATE INDEX`, `DROP INDEX` and renaming an index,
- * `CREATE [MATERIALIZED] VIEW`, renaming and dropping views. Dumps of pg_dump, mysqldump and mariadb-dump are DDL too. Statements that describe no table, e.g. `SET`, `GRANT` or
+ * `CREATE [MATERIALIZED] VIEW`, renaming and dropping views, comments of tables and views. Dumps of pg_dump, mysqldump and mariadb-dump are DDL too. Statements that describe no table, e.g. `SET`, `GRANT` or
  * `INSERT` (see {@link isServiceStatement}), are passed over; others are counted as skipped.
  */
 export function parseSql(sql: string, schema: SqlSchema = { tables: [], views: [], skipped: 0 }): SqlSchema {
   for (const tokens of statements(tokenize(sql, { script: true }))) {
+    if (commentOn(schema, tokens)) continue
     if (!isServiceStatement(tokens) && !statement(schema, tokens, sql)) schema.skipped++
   }
   return schema

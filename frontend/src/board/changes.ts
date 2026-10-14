@@ -37,6 +37,7 @@ import {
 } from '../diagram/sequence.ts'
 import { isTableIndexStyle, isTableStyle, shapeOf } from '../diagram/shapes.ts'
 import { isElementStatus, STATUS_KEY, STATUS_KEYS, STATUS_LABELS } from '../diagram/status.ts'
+import { TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { changeMessages as m } from './changes.messages.ts'
 
 /** A word for what changed in an element. */
@@ -170,6 +171,7 @@ const STYLE_WORDS: Record<string, Word> = {
   codrawBaseTable: 'baseTable',
   codrawInherited: 'baseTable',
   codrawIndex: 'index',
+  [TABLE_COMMENT_KEY]: 'tableComment',
   [LOCKED_KEY]: 'lock',
   [LOCKED_BY_KEY]: 'lock',
   [LINK_KEY]: 'link',

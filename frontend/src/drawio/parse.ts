@@ -11,6 +11,8 @@ import {
   TECHNOLOGY_KEY,
 } from '../diagram/elementKinds.ts'
 import { LINK_KEY, linkOf } from '../diagram/links.ts'
+import { isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
+import { normalizeTableComment, TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { isViewStyle, viewQueryOf, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import {
   ELEMENT_KEY,
@@ -138,6 +140,8 @@ interface RawCell {
   api: string | null
   /** The `codrawViewQuery` attribute of the element around the cell: the query of a view. */
   query: string | null
+  /** The `codrawTableComment` attribute of the element around the cell: the comment of a table. */
+  comment: string | null
 }
 
 /**
@@ -160,6 +164,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
         link: null,
         api: null,
         query: null,
+        comment: null,
       })
     } else if (element.nodeName === 'object' || element.nodeName === 'UserObject') {
       // A cell with a link or custom properties: the attributes of the wrapper and the cell inside it.
@@ -167,7 +172,9 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
       if (!cell) continue
       const attrs: Record<string, string> = {}
       for (const attribute of Array.from(element.attributes)) {
-        if (!['id', 'label', 'link', 'placeholders', EDGE_API_KEY, VIEW_QUERY_KEY].includes(attribute.name)) attrs[attribute.name] = attribute.value
+        if (!['id', 'label', 'link', 'placeholders', EDGE_API_KEY, VIEW_QUERY_KEY, TABLE_COMMENT_KEY].includes(attribute.name)) {
+          attrs[attribute.name] = attribute.value
+        }
       }
       const label = element.getAttribute('label') ?? ''
       raw.push({
@@ -180,6 +187,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
         link: element.getAttribute('link'),
         api: element.getAttribute(EDGE_API_KEY),
         query: element.getAttribute(VIEW_QUERY_KEY),
+        comment: element.getAttribute(TABLE_COMMENT_KEY),
       })
     }
   }
@@ -233,6 +241,8 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     // A query too long to keep is dropped.
     const query = kind === 'vertex' && isViewStyle(style) ? viewQueryOf({ [VIEW_QUERY_KEY]: cell.query }) : ''
     if (query) style[VIEW_QUERY_KEY] = query
+    const comment = kind === 'vertex' && isTableStyle(style as ShapeStyle) ? normalizeTableComment(cell.comment ?? '') : ''
+    if (comment) style[TABLE_COMMENT_KEY] = comment
     Object.assign(style, kind === 'edge' ? edgePropertiesOf(cell.attrs) : elementPropertiesOf(cell.attrs, style))
     const html = isHtml(styleText)
     const parent = reference(cell.parent)

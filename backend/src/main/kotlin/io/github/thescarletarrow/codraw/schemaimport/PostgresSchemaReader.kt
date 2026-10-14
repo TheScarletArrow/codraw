@@ -87,7 +87,7 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
 
         val serverVersion = jdbc.sql("SELECT current_setting('server_version')").query(String::class.java).single()
         val tables = jdbc.sql(TABLES_QUERY).param("schema", schema).query { row, _ ->
-            Table(row.getString("name"), row.getString("partition_key"))
+            Table(row.getString("name"), row.getString("partition_key"), row.getString("comment"))
         }.list()
         val columns = jdbc.sql(COLUMNS_QUERY).param("schema", schema).query { row, _ ->
             row.getString("table_name") to column(
@@ -107,7 +107,7 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
         }.list().partition { it.first }
         val indexes = jdbc.sql(INDEXES_QUERY).param("schema", schema).query { row, _ -> "${row.getString("definition")};" }.list()
         val views = jdbc.sql(VIEWS_QUERY).param("schema", schema).query { row, _ ->
-            View(row.getString("name"), row.getBoolean("materialized"), row.getString("definition"))
+            View(row.getString("name"), row.getBoolean("materialized"), row.getString("definition"), row.getString("comment"))
         }.list()
         val reads = jdbc.sql(VIEW_DEPENDENCIES_QUERY).param("schema", schema).query { row, _ ->
             row.getString("name") to row.getString("reads")
@@ -123,6 +123,8 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
                 append("\n)")
                 if (table.partitionKey != null) append("\nPARTITION BY ").append(table.partitionKey)
                 append(";\n")
+                // The comment right after the table, as pg_dump writes it after the object.
+                if (table.comment != null) append(commentStatement("TABLE", table.name, table.comment))
             }
             // Views after the tables, as pg_dump writes them; the rows of a materialized view are data.
             for (view in viewOrder(views.map { it.name }, reads).map(viewsByName::getValue)) {
@@ -130,6 +132,9 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
                 append(view.definition.trimEnd().removeSuffix(";"))
                 if (view.materialized) append("\n  WITH NO DATA")
                 append(";\n")
+                if (view.comment != null) {
+                    append(commentStatement(if (view.materialized) "MATERIALIZED VIEW" else "VIEW", view.name, view.comment))
+                }
             }
             // Foreign keys last, as pg_dump writes them: they may refer to any table and to its keys.
             for (statement in constraints.map { it.second } + indexes + foreignKeys.map { it.second }) {
@@ -140,9 +145,9 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
         return SchemaDdl(ddl, tables.size)
     }
 
-    private class Table(val name: String, val partitionKey: String?)
+    private class Table(val name: String, val partitionKey: String?, val comment: String?)
 
-    private class View(val name: String, val materialized: Boolean, val definition: String)
+    private class View(val name: String, val materialized: Boolean, val definition: String, val comment: String?)
 
     companion object {
         /** Closes the sockets of imports that take too long. */
@@ -165,7 +170,8 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
         private const val INDEXED = "n.nspname = :schema AND c.relkind IN ('r', 'p', 'm') AND NOT c.relispartition"
 
         private const val TABLES_QUERY = """
-            SELECT quote_ident(c.relname) AS name, CASE WHEN c.relkind = 'p' THEN pg_get_partkeydef(c.oid) END AS partition_key
+            SELECT quote_ident(c.relname) AS name, CASE WHEN c.relkind = 'p' THEN pg_get_partkeydef(c.oid) END AS partition_key,
+                obj_description(c.oid, 'pg_class') AS comment
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE $TABLES
             ORDER BY c.relname
@@ -217,7 +223,8 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
         """
 
         private const val VIEWS_QUERY = """
-            SELECT quote_ident(c.relname) AS name, c.relkind = 'm' AS materialized, pg_get_viewdef(c.oid) AS definition
+            SELECT quote_ident(c.relname) AS name, c.relkind = 'm' AS materialized, pg_get_viewdef(c.oid) AS definition,
+                obj_description(c.oid, 'pg_class') AS comment
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE $VIEWS
             ORDER BY c.relname
@@ -233,6 +240,13 @@ class PostgresSchemaReader(private val settings: SchemaImportProperties) {
             JOIN pg_class d ON d.oid = dep.refobjid
             WHERE $VIEWS AND d.oid <> c.oid AND d.relkind IN ('v', 'm') AND d.relnamespace = c.relnamespace
         """
+
+        /**
+         * `COMMENT ON [kind] name IS '…';` with the [comment] as a string of SQL, its quotes doubled. Not `quote_literal`,
+         * which writes `E'…'` for a backslash: the import reads a comment as written.
+         */
+        fun commentStatement(kind: String, name: String, comment: String): String =
+            "COMMENT ON $kind $name IS '${comment.replace("'", "''")}';\n"
 
         /**
          * Views in an order that a database takes: each after the views it [reads], otherwise in the order of [names].

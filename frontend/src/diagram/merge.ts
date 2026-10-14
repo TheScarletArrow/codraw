@@ -31,6 +31,8 @@ import {
 import { cellsToRestore } from './restore.ts'
 import { relabelElementCells } from './sharedElements.ts'
 import { isTableIndexStyle, isTableStyle, TABLE_FIELD_HEIGHT, TABLE_INDEX_GAP } from './shapes.ts'
+import { commentRoomOf } from './tableComments.ts'
+import { DEFAULT_FONT_SIZE, numeric } from './textMeasure.ts'
 
 /**
  * Merging a proposal of changes into the board: the changes of its draft since its base, applied to the board as it is
@@ -331,6 +333,10 @@ const isTable = (cell: CellSnapshot) => cell.kind === 'vertex' && isTableStyle(c
 /** The start size of a swimlane without one in its style, as maxGraph has it. */
 const DEFAULT_START_SIZE = 40
 
+/** The height of the header of a table: its start size, and the line of its comment under the name. */
+const headerOf = (table: CellSnapshot) =>
+  Number(table.style.startSize ?? DEFAULT_START_SIZE) + commentRoomOf(table.style, numeric(table.style.fontSize, DEFAULT_FONT_SIZE))
+
 /**
  * Stacks the rows of a table as the editor lays them out (`TableLayout` in `editor.ts`): the fields under the header in
  * the order of their keys, then the indexes after a gap, across the width of the table, and the height of the table to
@@ -343,8 +349,7 @@ function stackTable(cells: Map<string, CellSnapshot>, table: CellSnapshot) {
   if (!geometry) return
   const rows = [...cells.values()].filter((cell) => cell.parent === table.id && cell.kind === 'vertex').sort(compareCells)
   const ordered = [...rows.filter((row) => !isTableIndexStyle(row.style)), ...rows.filter((row) => isTableIndexStyle(row.style))]
-  const header =
-    table.style.shape === 'swimlane' ? Math.min(Number(table.style.startSize ?? DEFAULT_START_SIZE), geometry.height) : 0
+  const header = table.style.shape === 'swimlane' ? Math.min(headerOf(table), geometry.height) : 0
   let y = header
   let indexes = false
   for (const row of ordered) {
@@ -356,7 +361,7 @@ function stackTable(cells: Map<string, CellSnapshot>, table: CellSnapshot) {
     cells.set(row.id, { ...row, geometry: { ...(row.geometry ?? EMPTY_GEOMETRY), x: 0, y, width: geometry.width, height } })
     y += height
   }
-  const height = ordered.length > 0 ? y : Number(table.style.startSize ?? DEFAULT_START_SIZE)
+  const height = ordered.length > 0 ? y : headerOf(table)
   cells.set(table.id, { ...table, geometry: { ...geometry, height } })
 }
 

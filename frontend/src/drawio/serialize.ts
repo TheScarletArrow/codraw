@@ -21,6 +21,8 @@ import {
 import { listPages } from '../diagram/pages.ts'
 import { isLegendStyle } from '../diagram/legend.ts'
 import { isSequenceStyle, sequencePartOf } from '../diagram/sequence.ts'
+import { isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
+import { TABLE_COMMENT_KEY, tableCommentOf } from '../diagram/tableComments.ts'
 import { isViewStyle, viewQueryOf, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { legendDrawioCells } from './legendDrawio.ts'
 import { sequenceDrawioCells } from './sequenceDrawio.ts'
@@ -153,7 +155,16 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
   const inner = (head: string) => (geometry ? `<mxCell${head}>${geometry}</mxCell>` : `<mxCell${head}/>`)
   // The style does not write the link: draw.io keeps it on the element around the cell. A board imported before CoDraw
   // read links keeps it among the custom properties. One that CoDraw would not open is not written.
-  const { id: _id, label: _label, placeholders: _placeholders, [LINK_KEY]: oldLink, [EDGE_API_KEY]: _api, [VIEW_QUERY_KEY]: _query, ...own } = attrs
+  const {
+    id: _id,
+    label: _label,
+    placeholders: _placeholders,
+    [LINK_KEY]: oldLink,
+    [EDGE_API_KEY]: _api,
+    [VIEW_QUERY_KEY]: _query,
+    [TABLE_COMMENT_KEY]: _comment,
+    ...own
+  } = attrs
   const link = linkOf(cell.style) ?? linkOf({ [LINK_KEY]: oldLink })
   // The properties of the element win over custom properties of the same names.
   const properties = { ...own, ...propertyAttributes(cell) }
@@ -163,6 +174,9 @@ function cellXml(cell: CellData, attrs: Record<string, string>, images?: Embedde
   // The query of a view too: draw.io shows it in «Edit Data».
   const query = cell.kind === 'vertex' && isViewStyle(cell.style) ? viewQueryOf(cell.style) : ''
   if (query) properties[VIEW_QUERY_KEY] = query
+  // And the comment of a table.
+  const comment = cell.kind === 'vertex' && isTableStyle(cell.style as ShapeStyle) ? tableCommentOf(cell.style) : ''
+  if (comment) properties[TABLE_COMMENT_KEY] = comment
   if (Object.keys(properties).length === 0 && !link) return inner(attributes({ id: cell.id, value: cell.value }) + body)
   const template = properties[ELEMENT_KEY] ? labelTemplate(cell.value, properties) : null
   // A link alone makes the cell a <UserObject>, as draw.io makes it when a link is set; custom properties make it an

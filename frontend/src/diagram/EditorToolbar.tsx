@@ -258,6 +258,7 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
     index,
     tableBase,
     tableView,
+    tableComment,
     edgeMarkers,
     edgeRelation,
     colors,
@@ -279,7 +280,15 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
       {sequence && <SequenceTools editor={editor} sequence={sequence} />}
       <fieldset disabled={lock?.all ?? false} className="flex shrink-0 items-center gap-1">
         {tableSelected && (
-          <TableTools editor={editor} vendor={tableVendor} field={field} index={index} base={tableBase} view={tableView} />
+          <TableTools
+            editor={editor}
+            vendor={tableVendor}
+            field={field}
+            index={index}
+            base={tableBase}
+            view={tableView}
+            comment={tableComment ?? ''}
+          />
         )}
         {colors && (
           <>

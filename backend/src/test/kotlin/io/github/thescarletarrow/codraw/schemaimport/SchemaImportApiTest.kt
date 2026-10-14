@@ -121,6 +121,10 @@ class SchemaImportApiTest(
                     CREATE MATERIALIZED VIEW shop.order_totals AS SELECT user_id, sum(total) AS total FROM shop.active_orders GROUP BY user_id;
                     CREATE UNIQUE INDEX order_totals_user_id_idx ON shop.order_totals (user_id);
                     CREATE VIEW shop.big_spenders AS SELECT user_id FROM shop.order_totals WHERE total > 100;
+                    COMMENT ON TABLE shop.users IS 'Покупатели и их ''роли'' \ C:\shop';
+                    COMMENT ON VIEW shop.active_orders IS 'Незакрытые заказы';
+                    COMMENT ON MATERIALIZED VIEW shop.order_totals IS 'Суммы по покупателям';
+                    COMMENT ON COLUMN shop.users.email IS 'Почта';
                     CREATE SCHEMA wide;
                     """.trimIndent() + (1..6).joinToString("") { "CREATE TABLE wide.t$it (id int);" },
                 )
@@ -181,7 +185,7 @@ class SchemaImportApiTest(
     private fun pairs(event: ILoggingEvent) = event.keyValuePairs.orEmpty().associate { it.key to it.value }
 
     @Test
-    fun `reads the tables and views of a schema into DDL as pg_dump writes it, with a user who may read nothing else`() {
+    fun `reads the tables, views and their comments into DDL as pg_dump writes it, with a user who may read nothing else`() {
         val user = newUser()
         val succeeded = imports("success")
 
@@ -214,6 +218,7 @@ class SchemaImportApiTest(
                 email text NOT NULL,
                 created_at timestamp with time zone DEFAULT now() NOT NULL
             );
+            COMMENT ON TABLE users IS 'Покупатели и их ''роли'' \ C:\shop';
 
             CREATE VIEW active_orders AS
              SELECT id,
@@ -223,6 +228,7 @@ class SchemaImportApiTest(
                 deleted_at
                FROM shop.orders
               WHERE (deleted_at IS NULL);
+            COMMENT ON VIEW active_orders IS 'Незакрытые заказы';
 
             CREATE MATERIALIZED VIEW order_totals AS
              SELECT user_id,
@@ -230,6 +236,7 @@ class SchemaImportApiTest(
                FROM shop.active_orders
               GROUP BY user_id
               WITH NO DATA;
+            COMMENT ON MATERIALIZED VIEW order_totals IS 'Суммы по покупателям';
 
             CREATE VIEW big_spenders AS
              SELECT user_id

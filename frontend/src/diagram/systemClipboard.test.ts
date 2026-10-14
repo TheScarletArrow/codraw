@@ -6,6 +6,7 @@ import { clipboard } from './clipboard.ts'
 import { clipboardContent, clipboardText, dataToCells, readClipboardText } from './clipboardFormat.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { initializeDocument } from './model.ts'
+import { TABLE_COMMENT_KEY } from './tableComments.ts'
 
 /** A fragment that draw.io puts into the clipboard: two rectangles and an edge between them. */
 const DRAWIO_FRAGMENT =
@@ -133,6 +134,27 @@ describe('clipboard format', () => {
     const [pasted] = content?.kind === 'cells' ? content.cells : []
     expect(pasted!.getChildAt(1).getValue()).toBe('users_id_idx (id)')
     expect(pasted!.getChildAt(1).getStyle()).toMatchObject({ codrawIndex: true })
+  })
+
+  it('keeps the comment of a copied table, and writes it into the SQL of the clipboard', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const editor = createDiagramEditor(container, doc)
+    const table = editor.addShape('table', { x: 100, y: 100 })!
+    editor.graph.setSelectionCell(table)
+    editor.setTableComment('Клиенты; гости = нет')
+
+    const copied = editor.graph.cloneCells([table], false)
+    const { text, html } = clipboardContent(copied)
+    editor.destroy()
+
+    expect(text).toContain("COMMENT ON TABLE \"Таблица\" IS 'Клиенты; гости = нет';")
+    const content = await readClipboardText(clipboardText(copied))
+    const [pasted] = content?.kind === 'cells' ? content.cells : []
+    expect((pasted!.getStyle() as Record<string, unknown>)[TABLE_COMMENT_KEY]).toBe('Клиенты; гости = нет')
+    expect(html).toContain('codrawTableComment')
   })
 
   it('writes tables alone as SQL with the cells in the HTML, and reads the cells back from the HTML', async () => {
