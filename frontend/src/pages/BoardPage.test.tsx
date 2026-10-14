@@ -1605,7 +1605,8 @@ describe('BoardPage', () => {
       fireEvent.keyDown(document.body, { key: '/' })
       const message = screen.getByRole('textbox', { name: 'Сообщение у курсора' })
       fireEvent.change(message, { target: { value: 'смотри сюда' } })
-      expect(local()).toMatchObject({ laser: { strokes: [[[10, 20, 0]]] }, chat: { text: 'смотри сюда' } })
+      // The age of the point is the time since it was drawn, which a slow machine makes more than 0 ms.
+      expect(local()).toMatchObject({ laser: { strokes: [[[10, 20, expect.any(Number)]]] }, chat: { text: 'смотри сюда' } })
 
       act(() => provider.emitStatus('disconnected'))
 
