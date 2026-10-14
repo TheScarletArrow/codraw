@@ -58,21 +58,32 @@ class NotificationService(
         notify(setOf(assigneeId), NotificationKind.ASSIGNED, boardId, actorId, threadId = threadId)
     }
 
-    /** The user [userId] asks the owner of the [board] for the [role]; a notification of their earlier unread request goes. */
+    /**
+     * The user [userId] asks the owner and the lead of the [board] for the [role]; a notification of their earlier unread
+     * request goes.
+     */
     fun accessRequested(board: Board, userId: UUID, role: MemberRole) {
-        notifications.deleteUnread(board.ownerId, board.boardId, userId, NotificationKind.ACCESS_REQUEST)
-        notify(setOf(board.ownerId), NotificationKind.ACCESS_REQUEST, board.boardId, userId, role = role)
+        val answering = answering(board)
+        answering.forEach { notifications.deleteUnread(it, board.boardId, userId, NotificationKind.ACCESS_REQUEST) }
+        notify(answering, NotificationKind.ACCESS_REQUEST, board.boardId, userId, role = role)
     }
 
-    /** The user [userId] no longer asks for access to the [board]: the owner has nothing to answer. */
+    /** The user [userId] no longer asks for access to the [board]: the owner and the lead have nothing to answer. */
     fun accessRequestCancelled(board: Board, userId: UUID) {
-        notifications.deleteUnread(board.ownerId, board.boardId, userId, NotificationKind.ACCESS_REQUEST)
+        answering(board).forEach { notifications.deleteUnread(it, board.boardId, userId, NotificationKind.ACCESS_REQUEST) }
     }
 
-    /** The owner answered the request of the user [userId] for access to the [board], so they have read about it. */
+    /**
+     * The owner or the lead answered the request of the user [userId] for access to the [board], so both have read about
+     * it.
+     */
     fun accessRequestAnswered(board: Board, userId: UUID) {
-        notifications.markReadAbout(board.ownerId, board.boardId, userId, NotificationKind.ACCESS_REQUEST, now())
+        val now = now()
+        answering(board).forEach { notifications.markReadAbout(it, board.boardId, userId, NotificationKind.ACCESS_REQUEST, now) }
     }
+
+    /** Who answers requests for access to the [board]: its owner and its lead. */
+    private fun answering(board: Board): Set<UUID> = setOfNotNull(board.ownerId, board.leadId)
 
     /** The owner of the [board] gave the user [userId] the [role], or a role higher than theirs. */
     fun accessGranted(board: Board, userId: UUID, role: MemberRole) =

@@ -84,14 +84,14 @@ class CommentService(
     }
 
     /**
-     * Deletes a comment; its author or the owner of the board may. The first comment takes the whole thread with it.
-     * Returns the thread that is left, or `null` when the thread is gone.
+     * Deletes a comment; its author, the owner or the lead of the board may. The first comment takes the whole thread
+     * with it. Returns the thread that is left, or `null` when the thread is gone.
      */
     @Transactional
     fun delete(board: Board, threadId: UUID, commentId: UUID, userId: UUID): CommentThread? {
         val comment = comments.comment(board.boardId, threadId, commentId) ?: throw CommentNotFoundException()
-        if (comment.authorId != userId && board.ownerId != userId) {
-            throw CommentForbiddenException("Only the author or the owner of the board can delete the comment")
+        if (comment.authorId != userId && !board.leads(userId)) {
+            throw CommentForbiddenException("Only the author, the owner or the lead of the board can delete the comment")
         }
         if (comment.first) {
             comments.deleteThread(threadId)
@@ -103,16 +103,16 @@ class CommentService(
 
     /**
      * Marks the thread resolved by the user [userId], or open again, when [resolved] is set; any participant may. Moves
-     * the thread to the [point] when it is set; only the author of the thread, who wrote its first comment, or the
-     * owner of the board may, and only a thread that stands at a point.
+     * the thread to the [point] when it is set; only the author of the thread, who wrote its first comment, the owner or
+     * the lead of the board may, and only a thread that stands at a point.
      */
     @Transactional
     fun change(board: Board, threadId: UUID, userId: UUID, resolved: Boolean?, point: ThreadPoint?): CommentThread {
         val thread = comments.storedThread(board.boardId, threadId) ?: throw CommentNotFoundException()
         if (point != null) {
             if (!thread.atPoint) throw ThreadNotAtPointException()
-            if (thread.authorId != userId && board.ownerId != userId) {
-                throw CommentForbiddenException("Only the author of the thread or the owner of the board can move it")
+            if (thread.authorId != userId && !board.leads(userId)) {
+                throw CommentForbiddenException("Only the author of the thread, the owner or the lead of the board can move it")
             }
             comments.move(threadId, point)
         }
@@ -186,6 +186,9 @@ class CommentService(
 
     private val Board.linkOpen: Boolean
         get() = linkAccess != LinkAccess.NONE
+
+    /** Whether the user [userId] owns the board or is its lead, who look after any comment of it. */
+    private fun Board.leads(userId: UUID): Boolean = ownerId == userId || leadId == userId
 
     companion object {
         /** The most people offered for mentions besides the owner. */

@@ -116,7 +116,7 @@ function renderPanel({ decisions = [kafka, rabbit, cache], threads = [], respons
         boardId={boardId}
         boardTitle="Заказы"
         userId="alice"
-        isOwner
+        moderates
         canEdit={canEdit}
         decisions={decisions.data}
         failed={decisions.isError}

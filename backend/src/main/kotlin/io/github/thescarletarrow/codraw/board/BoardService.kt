@@ -243,9 +243,10 @@ class BoardService(
 
     /**
      * Makes the member [newOwnerId] the owner of the [board], which notifies them; its previous owner stays on it as an
-     * editor. Throws [MemberNotFoundException] when [newOwnerId] is no member, [BoardLimitReachedException] when they
-     * own as many boards as the limit allows, and [BoardOwnerChangedException] when the board got another owner since it
-     * was read. A board of a workspace goes to a member of the workspace instead, see [transferWorkspaceBoard].
+     * editor, and a lead who gets the board is no lead any more. Throws [MemberNotFoundException] when [newOwnerId] is no
+     * member, [BoardLimitReachedException] when they own as many boards as the limit allows, and
+     * [BoardOwnerChangedException] when the board got another owner since it was read. A board of a workspace goes to a
+     * member of the workspace instead, see [transferWorkspaceBoard].
      */
     @Transactional
     fun transferOwnership(board: Board, newOwnerId: UUID): Board {
@@ -263,8 +264,9 @@ class BoardService(
         members.remove(boardId, newOwnerId)
         members.put(boardId, board.ownerId, MemberRole.EDITOR, now())
         notifications.ownershipGiven(board, newOwnerId)
-        // The new owner asks for nothing any more.
-        return board.copy(ownerId = newOwnerId).also(::dropSatisfiedRequests)
+        // The new owner asks for nothing any more. The lead who got the board, no member now, is no lead either.
+        val transferred = board.copy(ownerId = newOwnerId, leadId = board.leadId.takeIf { it != newOwnerId })
+        return transferred.also(::dropSatisfiedRequests)
     }
 
     /**
@@ -281,7 +283,7 @@ class BoardService(
         if (newOwnerId == board.ownerId || workspaces.roleOf(workspaceId, newOwnerId) == null) throw MemberNotFoundException()
         if (!boards.changeOwnerOf(boardId, board.ownerId, newOwnerId)) throw BoardOwnerChangedException()
         members.remove(boardId, newOwnerId)
-        val transferred = board.copy(ownerId = newOwnerId)
+        val transferred = board.copy(ownerId = newOwnerId, leadId = board.leadId.takeIf { it != newOwnerId })
         if (roleOf(transferred, board.ownerId) == null) members.put(boardId, board.ownerId, MemberRole.EDITOR, now())
         notifications.ownershipGiven(board, newOwnerId)
         return transferred.also(::dropSatisfiedRequests)

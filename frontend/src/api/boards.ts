@@ -1,10 +1,14 @@
 import { HttpError, request } from './http.ts'
 
 /**
- * What the user may do on a board: its owner manages it, anybody else edits it or only views it, by the higher of their
- * role as a member and what the link of the board gives.
+ * What the user may do on a board: its owner manages it, and so does its lead, the member whom the owner made
+ * responsible for it, short of deleting it, giving it away and choosing the lead; anybody else edits it or only views it,
+ * by the higher of their role as a member and what the link of the board gives.
  */
-export type BoardRole = 'owner' | 'editor' | 'viewer'
+export type BoardRole = 'owner' | 'lead' | 'editor' | 'viewer'
+
+/** The user manages the board: renames it, decides what its link gives, who its members are and what they do. */
+export const managesBoard = (role: BoardRole) => role === 'owner' || role === 'lead'
 
 /**
  * What a link to a board gives to users other than its owner and its members: nothing, viewing, viewing by anybody

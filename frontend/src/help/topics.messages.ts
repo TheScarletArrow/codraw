@@ -562,6 +562,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Поделиться доской',
             paragraphs: [
               'Окно «Поделиться» задаёт доступ по ссылке: «Только я», «Просмотр», «Редактирование» или «Все, у кого есть ссылка, без входа». Там же владелец добавляет участников с ролью «Редактирование» или «Просмотр», создаёт ссылки-приглашения с ролью и передаёт владение.',
+              '«Сделать главным» рядом с участником назначает того, кто отвечает за доску. Главный управляет ею как владелец — название, доступ, участники, приглашения и запросы доступа, — но не удаляет и не передаёт доску; снимает его только владелец.',
             ],
           },
           {
@@ -1192,6 +1193,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Sharing a board',
             paragraphs: [
               'The “Share” window sets the access by the link: “Only me”, “Viewing”, “Editing” or “Anyone with the link, without signing in”. There the owner also adds members with the “Editing” or “Viewing” role, creates invitation links with a role and transfers the ownership.',
+              '“Make lead” next to a member makes them responsible for the board. The lead manages it like the owner — the title, the access, the members, the invitations and the requests for access — but neither deletes the board nor gives it away; only the owner removes them as the lead.',
             ],
           },
           {

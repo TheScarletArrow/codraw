@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { canManageVersions, deleteBoard, renameBoard, type Board } from '../api/boards.ts'
+import { canManageVersions, deleteBoard, managesBoard, renameBoard, type Board } from '../api/boards.ts'
 import { useBoardNotifications } from '../notifications/useBoardNotifications.ts'
 import { deleteLocalCopiesOfBoard } from '../offline/localCopies.ts'
 import { BoardActions } from './BoardActions.tsx'
@@ -51,7 +51,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
     },
   })
 
-  if (board.role !== 'owner') {
+  if (!managesBoard(board.role)) {
     const heading = <h2 className="max-w-64 min-w-24 truncate font-semibold">{board.title}</h2>
     const onHistory = canManageVersions(board) ? onOpenHistory : undefined
     return (
@@ -74,6 +74,7 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
   }
 
   const title = rename.isPending ? rename.variables : board.title
+  const owner = board.role === 'owner'
   return (
     // A long title shortens before the tools of the line lose their room.
     <div className="flex max-w-72 min-w-0 items-center gap-1">
@@ -99,14 +100,15 @@ export function BoardHeading({ board, onChanged, onOpenHistory }: BoardHeadingPr
           </button>
         </h2>
       )}
+      {/* The lead renames the board, but only its owner deletes it. */}
       <BoardActions
         title={board.title}
-        deleteLabel={m.deleteBoard}
+        deleteLabel={owner ? m.deleteBoard : undefined}
         disabled={remove.isPending || copy.pending}
         onRename={() => setRenaming(true)}
         onCopy={copy.copy}
         onHistory={onOpenHistory}
-        onDelete={() => remove.mutate()}
+        onDelete={owner ? () => remove.mutate() : undefined}
         notifications={notifications}
       />
       {(rename.isError || remove.isError || copy.error) && (

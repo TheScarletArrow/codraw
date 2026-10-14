@@ -48,7 +48,7 @@ interface Setup {
   showResolved?: boolean
   focusedThreadId?: string | null
   userId?: string
-  isOwner?: boolean
+  moderates?: boolean
 }
 
 function renderPins({
@@ -59,7 +59,7 @@ function renderPins({
   showResolved = false,
   focusedThreadId = null,
   userId = 'bob',
-  isOwner = false,
+  moderates = false,
 }: Setup) {
   const fetchMock = mockFetch({
     [`GET ${threadsUrl}`]: threads.some((entry) => !('id' in entry)) ? (threads as MockResponse[]) : { body: threads },
@@ -78,7 +78,7 @@ function renderPins({
         showResolved={showResolved}
         focusedThreadId={focusedThreadId}
         userId={userId}
-        isOwner={isOwner}
+        moderates={moderates}
         onOpen={onOpen}
         onChanged={onChanged}
       />
@@ -218,7 +218,7 @@ describe('CommentPins', () => {
     renderPins({
       threads: [thread('a', { comments: [{ ...thread('a').comments[0]!, author: alice }] })],
       userId: 'bob',
-      isOwner: true,
+      moderates: true,
       responses: { [`PATCH ${threadsUrl}/a`]: { body: thread('a') } },
     })
     const owned = await screen.findByRole('button', { name: 'Комментарии в точке: 1' })

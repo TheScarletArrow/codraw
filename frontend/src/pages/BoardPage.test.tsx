@@ -1310,6 +1310,25 @@ describe('BoardPage', () => {
       await waitFor(() => expect(findLocalCopy(ALICE.id, boardId)).toBeNull())
     })
 
+    it('lets the lead rename the board, but not delete it', async () => {
+      const provider = await openBoard({
+        [`GET ${boardUrl}`]: { body: { ...boardOfAnother, role: 'lead' } },
+        [`PATCH ${boardUrl}`]: { body: { ...boardOfAnother, role: 'lead', title: 'Платежи' } },
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Меню доски «Архитектура»' }))
+      const items = within(screen.getByRole('menu', { name: 'Доска «Архитектура»' })).getAllByRole('menuitem')
+      expect(items.map((item) => item.textContent)).not.toContain('Удалить доску')
+      await userEvent.keyboard('{Escape}')
+      await userEvent.click(screen.getByRole('button', { name: 'Архитектура' }))
+      const input = screen.getByRole('textbox', { name: 'Название доски' })
+      await userEvent.clear(input)
+      await userEvent.type(input, 'Платежи{Enter}')
+
+      expect(await screen.findByRole('heading', { name: 'Платежи', level: 2 })).toBeInTheDocument()
+      expect(requests(provider.fetchMock, 'PATCH', boardUrl)).toHaveLength(1)
+    })
+
     it('shows a participant who does not own the board its title, with a menu that only copies it', async () => {
       await openBoard({ [`GET ${boardUrl}`]: { body: boardToView } })
 

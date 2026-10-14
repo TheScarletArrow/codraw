@@ -9,8 +9,8 @@ fun BoardService.existing(id: String): Board =
     BoardIds.parse(id)?.let(::find) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found")
 
 /**
- * The board, which only those with the role [BoardRole.OWNER] on it may change, delete, share with members or give
- * away: its owner, and on a board of a workspace those who manage the workspace too; 403 for anybody else.
+ * The board, which only those with the role [BoardRole.OWNER] on it may delete, give away or give a lead: its owner,
+ * and on a board of a workspace those who manage the workspace too; 403 for anybody else.
  */
 fun BoardService.ownedBy(id: String, userId: UUID): Board {
     val board = existing(id)
@@ -18,6 +18,19 @@ fun BoardService.ownedBy(id: String, userId: UUID): Board {
         throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change the board")
     }
     return board
+}
+
+/**
+ * The board with the role on it of the user [userId], who manages it, see [BoardRole.manages]: renames it, shares it
+ * with members and answers requests for access to it. 403 for anybody else.
+ */
+fun BoardService.managedBy(id: String, userId: UUID): Participation {
+    val board = existing(id)
+    val role = roleOf(board, userId)
+    if (role?.manages != true) {
+        throw ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner and the lead can change the board")
+    }
+    return Participation(board, role)
 }
 
 /**

@@ -74,6 +74,11 @@ interface BoardRepository : ListCrudRepository<Board, UUID> {
     @Query("UPDATE boards SET updated_at = :updatedAt WHERE id = :id AND deleted_at IS NULL")
     fun touch(id: UUID, updatedAt: Instant): Boolean
 
+    /** Makes the member [leadId] the lead of the board [id], or leaves it without one; the time of change stays. */
+    @Modifying
+    @Query("UPDATE boards SET lead_id = :leadId WHERE id = :id AND deleted_at IS NULL")
+    fun changeLead(id: UUID, leadId: UUID?): Boolean
+
     /** Changes only the title and the time of change, so that a concurrent change of the link access stays. */
     @Modifying
     @Query("UPDATE boards SET title = :title, updated_at = :updatedAt WHERE id = :id AND deleted_at IS NULL")

@@ -6,7 +6,7 @@ import io.github.thescarletarrow.codraw.LimitProperties
 import io.github.thescarletarrow.codraw.Tokens
 import io.github.thescarletarrow.codraw.board.BoardService
 import io.github.thescarletarrow.codraw.board.SharingBlockedException
-import io.github.thescarletarrow.codraw.board.ownedBy
+import io.github.thescarletarrow.codraw.board.managedBy
 import io.github.thescarletarrow.codraw.board.participated
 import io.github.thescarletarrow.codraw.readAtMost
 import io.github.thescarletarrow.codraw.user.Language
@@ -88,7 +88,7 @@ class EmbedController(
         @RequestBody request: EnableEmbedRequest,
         @AuthenticationPrincipal principal: OAuth2User,
     ): EmbedResponse {
-        val board = boards.ownedBy(id, principal.userId)
+        val board = boards.managedBy(id, principal.userId).board
         if (board.sharingBlockedAt != null) throw SharingBlockedException()
         if (request.pageId.length !in 1..PAGE_ID_MAX_LENGTH) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "pageId must have 1 to $PAGE_ID_MAX_LENGTH characters")
@@ -98,7 +98,7 @@ class EmbedController(
 
     @DeleteMapping("/api/boards/{id}/embed")
     fun disable(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): ResponseEntity<Void> {
-        embeds.disable(checkNotNull(boards.ownedBy(id, principal.userId).id))
+        embeds.disable(checkNotNull(boards.managedBy(id, principal.userId).board.id))
         return ResponseEntity.noContent().build()
     }
 

@@ -54,7 +54,7 @@ class AccessRequestController(private val boards: BoardService, private val requ
     /** The requests for access to the board that wait for an answer, oldest first. */
     @GetMapping("/access-requests")
     fun pending(@PathVariable id: String, @AuthenticationPrincipal principal: OAuth2User): List<AccessRequest> =
-        requests.pending(boards.ownedBy(id, principal.userId))
+        requests.pending(boards.managedBy(id, principal.userId).board)
 
     /** Gives the user of the request a role, which makes them a member of the board; the request is answered. */
     @PostMapping("/access-requests/{requestId}/grant")
@@ -63,7 +63,7 @@ class AccessRequestController(private val boards: BoardService, private val requ
         @PathVariable requestId: String,
         @RequestBody body: MemberRequest,
         @AuthenticationPrincipal principal: OAuth2User,
-    ): Participant = requests.grant(boards.ownedBy(id, principal.userId), parse(requestId), body.role)
+    ): Participant = requests.grant(boards.managedBy(id, principal.userId).board, parse(requestId), body.role)
 
     /** Declines the request; its user may ask again. */
     @DeleteMapping("/access-requests/{requestId}")
@@ -72,7 +72,7 @@ class AccessRequestController(private val boards: BoardService, private val requ
         @PathVariable requestId: String,
         @AuthenticationPrincipal principal: OAuth2User,
     ): ResponseEntity<Void> {
-        requests.decline(boards.ownedBy(id, principal.userId), parse(requestId))
+        requests.decline(boards.managedBy(id, principal.userId).board, parse(requestId))
         return ResponseEntity.noContent().build()
     }
 

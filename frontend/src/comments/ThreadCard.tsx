@@ -26,8 +26,8 @@ interface ThreadCardProps {
   thread: CommentThread
   cell: CellInfo | null
   userId: string
-  /** The owner of the board deletes any comment. */
-  isOwner: boolean
+  /** The owner or the lead of the board, who delete any comment. */
+  moderates: boolean
   /** Who may be mentioned and assigned. */
   people: Person[]
   /** The thread is about the element the participant came from, e.g. by its badge. */
@@ -41,7 +41,7 @@ interface ThreadCardProps {
  * A thread: what it is about, its assignee, the issues linked to it, its comments with their reactions, an answer and the
  * «Решено» mark.
  */
-export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted, actions, onShow }: ThreadCardProps) {
+export function ThreadCard({ thread, cell, userId, moderates, people, highlighted, actions, onShow }: ThreadCardProps) {
   const target = threadTarget(thread, cell)
   const resolved = thread.resolvedAt !== null
   const [error, setError] = useState<string | null>(null)
@@ -114,7 +114,7 @@ export function ThreadCard({ thread, cell, userId, isOwner, people, highlighted,
             comment={comment}
             first={index === 0}
             mine={comment.author?.id === userId}
-            canDelete={comment.author?.id === userId || isOwner}
+            canDelete={comment.author?.id === userId || moderates}
             userId={userId}
             people={people}
             onEdit={(text) => attempt(() => actions.edit(thread, comment, text), m.editFailed)}

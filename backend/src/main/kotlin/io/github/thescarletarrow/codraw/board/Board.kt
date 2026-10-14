@@ -27,17 +27,23 @@ data class Board(
      * owner opens neither again.
      */
     val sharingBlockedAt: Instant? = null,
+    /**
+     * The member whom the owner made responsible for the board, see [BoardRole.LEAD]; `null` for none. The database keeps
+     * them a member: whatever ends their membership leaves the board without a lead.
+     */
+    val leadId: UUID? = null,
 ) {
     /**
      * The role of the user [userId] on the board, or `null` when it gives them none. Its owner — on a board of a
-     * workspace, the member of the workspace responsible for it — manages it. Anybody else gets the highest of their role
-     * as a member, [memberRole], what the link gives and, on a board of a workspace, what their role in it,
-     * [workspaceRole], gives: each of them only adds to the others.
+     * workspace, the member of the workspace responsible for it — manages it, and so does its lead, short of a few
+     * things. Anybody else gets the highest of their role as a member, [memberRole], what the link gives and, on a board
+     * of a workspace, what their role in it, [workspaceRole], gives: each of them only adds to the others.
      */
     fun roleOf(userId: UUID, memberRole: MemberRole?, workspaceRole: WorkspaceRole?): BoardRole? {
         if (ownerId == userId) return BoardRole.OWNER
+        val lead = BoardRole.LEAD.takeIf { leadId == userId && memberRole != null }
         val inherited = if (workspaceId == null) null else workspaceRole?.let(workspaceAccess::roleOf)
-        return listOfNotNull(memberRole?.role, linkAccess.role, inherited).maxOrNull()
+        return listOfNotNull(memberRole?.role, lead, linkAccess.role, inherited).maxOrNull()
     }
 }
 
@@ -84,12 +90,25 @@ enum class BoardRole(@get:JsonValue val value: String) {
     /** Edits, through the link or as a member. */
     EDITOR("editor"),
 
+    /**
+     * The member whom the owner made responsible for the board: manages it like the owner, but neither deletes it, nor
+     * gives it away, nor changes the lead.
+     */
+    LEAD("lead"),
+
     OWNER("owner"),
     ;
 
     /** Whether the role changes the document of the board. */
     val edits: Boolean
         get() = this >= EDITOR
+
+    /**
+     * Whether the role manages the board: renames it, decides what its link and its workspace give, who its members are
+     * and what they do, and answers requests for access to it.
+     */
+    val manages: Boolean
+        get() = this >= LEAD
 
     /**
      * Whether the role sees, saves, names and restores the versions of the board. Whoever edits the board may wreck

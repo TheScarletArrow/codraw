@@ -228,6 +228,58 @@ describe('ShareButton', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('На доске уже 100 участников — больше добавить нельзя')
     })
 
+    it('lets the owner make a member the lead and tells the other participants', async () => {
+      const { fetchMock, onChanged } = renderShare({
+        [`PUT ${boardUrl}/lead`]: { body: [members[0], { ...members[1], role: 'lead' }] },
+      })
+      const list = await openShare()
+
+      await userEvent.click(within(await within(list).findByRole('listitem', { name: 'Боб' })).getByRole('button', { name: 'Сделать главным' }))
+
+      const bob = await within(list).findByRole('listitem', { name: 'Боб' })
+      await waitFor(() => expect(bob).toHaveTextContent('Главный'))
+      expect(bodyOf(fetchMock, 'PUT', `${boardUrl}/lead`)).toEqual({ userId: 'bob' })
+      expect(onChanged).toHaveBeenCalled()
+      expect(within(bob).queryByRole('combobox')).toBeNull()
+      expect(within(bob).getByRole('button', { name: 'Снять главного' })).toBeInTheDocument()
+    })
+
+    it('lets the owner dismiss the lead, who stays a member', async () => {
+      const { fetchMock } = renderShare({
+        [`GET ${boardUrl}/members`]: { body: [members[0], { ...members[1], role: 'lead' }] },
+        [`DELETE ${boardUrl}/lead`]: { body: members },
+      })
+      const list = await openShare()
+
+      await userEvent.click(within(await within(list).findByRole('listitem', { name: 'Боб' })).getByRole('button', { name: 'Снять главного' }))
+
+      expect(await within(list).findByRole('combobox', { name: 'Роль: Боб' })).toHaveValue('editor')
+      expect(requests(fetchMock, 'DELETE', `${boardUrl}/lead`)).toHaveLength(1)
+    })
+
+    it('lets the lead manage the members, but neither themselves nor who owns the board or leads it', async () => {
+      const lead: Participant[] = [
+        members[0]!,
+        { ...members[1]!, role: 'lead' },
+        { id: 'carol', name: 'Вера', avatarUrl: null, role: 'viewer' },
+      ]
+      const { fetchMock } = renderShare({ [`GET ${boardUrl}/members`]: { body: lead } }, { ...board, role: 'lead' })
+
+      const list = await openShare()
+
+      const vera = await within(list).findByRole('listitem', { name: 'Вера' })
+      expect(within(vera).getByRole('combobox', { name: 'Роль: Вера' })).toHaveValue('viewer')
+      expect(within(vera).getByRole('button', { name: 'Убрать' })).toBeInTheDocument()
+      expect(within(vera).queryByRole('button', { name: 'Сделать главным' })).toBeNull()
+      expect(within(vera).queryByRole('button', { name: 'Сделать владельцем' })).toBeNull()
+      const bob = within(list).getByRole('listitem', { name: 'Боб' })
+      expect(bob).toHaveTextContent('Главный')
+      expect(within(bob).queryByRole('button')).toBeNull()
+      expect(screen.getByRole('region', { name: 'Пригласить по ссылке' })).toBeInTheDocument()
+      expect(screen.getAllByRole('radio')).not.toHaveLength(0)
+      await waitFor(() => expect(requests(fetchMock, 'GET', `${boardUrl}/access-requests`)).not.toHaveLength(0))
+    })
+
     it('shows the others the participants without managing them, and nothing of invitations', async () => {
       const { fetchMock } = renderShare({}, { ...board, role: 'editor' })
 
