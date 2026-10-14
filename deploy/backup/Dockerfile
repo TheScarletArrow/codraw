@@ -5,7 +5,7 @@ FROM rclone/rclone:1.75.2 AS rclone
 
 # The cron of containers: it runs as any user, passes the environment to its jobs and logs them to stdout. Built from its
 # module, verified by the checksum database of Go, with a current Go: the release binaries carry the Go of their day.
-FROM golang:1.26-alpine AS supercronic
+FROM golang:1.27-alpine AS supercronic
 ARG SUPERCRONIC_VERSION=0.2.49
 RUN CGO_ENABLED=0 go install -trimpath -ldflags="-s -w" github.com/aptible/supercronic@v${SUPERCRONIC_VERSION}
 
