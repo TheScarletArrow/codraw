@@ -75,6 +75,7 @@ describe('shortcuts', () => {
     expect(actions).not.toContain('Удалить')
     expect(actions).not.toContain('Дублировать')
     expect(actions).not.toContain('Карандаш')
+    expect(actions).not.toContain('Ластик')
     expect(actions).not.toContain('Добавить стикер')
     expect(shortcutGroups(true).map((group) => group.title)).not.toContain('Текст')
   })

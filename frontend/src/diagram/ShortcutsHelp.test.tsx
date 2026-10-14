@@ -13,6 +13,7 @@ describe('ShortcutsHelp', () => {
     const editing = within(help).getByRole('region', { name: 'Правка' })
     expect(within(editing).getByText('Дублировать').nextElementSibling).toHaveTextContent('Ctrl+D')
     expect(within(editing).getByText('Карандаш').nextElementSibling).toHaveTextContent('P')
+    expect(within(editing).getByText('Ластик').nextElementSibling).toHaveTextContent('E')
     expect(within(editing).getByText('Копировать стиль').nextElementSibling).toHaveTextContent('Ctrl+Alt+C')
     expect(within(editing).getByText('Вставить стиль').nextElementSibling).toHaveTextContent('Ctrl+Alt+V')
     expect(within(editing).getByText('Вставить как тот же элемент').nextElementSibling).toHaveTextContent('Ctrl+Shift+V')
@@ -69,6 +70,7 @@ describe('ShortcutsHelp', () => {
     expect(within(help).getByText('Комментарий')).toBeInTheDocument()
     expect(within(help).queryByText('Удалить')).toBeNull()
     expect(within(help).queryByText('Карандаш')).toBeNull()
+    expect(within(help).queryByText('Ластик')).toBeNull()
   })
 
   it('lists no shortcuts of working together on a page without others', async () => {
@@ -79,6 +81,7 @@ describe('ShortcutsHelp', () => {
     const help = screen.getByRole('dialog', { name: 'Горячие клавиши' })
     expect(within(help).getByText('Дублировать')).toBeInTheDocument()
     expect(within(help).getByText('Карандаш')).toBeInTheDocument()
+    expect(within(help).getByText('Ластик')).toBeInTheDocument()
     expect(within(help).queryByRole('region', { name: 'Совместная работа' })).toBeNull()
     expect(within(help).queryByText('Указка')).toBeNull()
   })

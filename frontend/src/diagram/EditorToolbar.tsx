@@ -5,6 +5,7 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Eraser,
   Italic,
   List,
   ListOrdered,
@@ -71,7 +72,7 @@ export function EditorToolbar({
   filter,
   onFilterChange,
 }: EditorToolbarProps) {
-  const { canUndo, canRedo, scale, laser, commentTool, pencil } = useEditorState(editor)
+  const { canUndo, canRedo, scale, laser, commentTool, pencil, eraser } = useEditorState(editor)
 
   return (
     // Takes the room the line leaves and scrolls beyond it; the tools with a text show it while that room is enough. The
@@ -185,19 +186,34 @@ export function EditorToolbar({
         </>
       )}
       {!readOnly && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={m.pencil}
-          aria-pressed={pencil}
-          title={pencil ? m.pencilOff : m.pencilOn}
-          disabled={!editor}
-          className="aria-pressed:bg-accent"
-          onClick={() => editor?.setPencil(!pencil)}
-        >
-          <Pencil />
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.pencil}
+            aria-pressed={pencil}
+            title={pencil ? m.pencilOff : m.pencilOn}
+            disabled={!editor}
+            className="aria-pressed:bg-accent"
+            onClick={() => editor?.setPencil(!pencil)}
+          >
+            <Pencil />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.eraser}
+            aria-pressed={eraser}
+            title={eraser ? m.eraserOff : m.eraserOn}
+            disabled={!editor}
+            className="aria-pressed:bg-accent"
+            onClick={() => editor?.setEraser(!eraser)}
+          >
+            <Eraser />
+          </Button>
+        </>
       )}
       {!readOnly && <AutoLayoutPicker editor={editor} />}
       {planView && onPlanViewChange && <PlanViewPicker editor={editor} readOnly={readOnly} view={planView} onChange={onPlanViewChange} />}

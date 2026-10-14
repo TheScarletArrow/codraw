@@ -95,6 +95,92 @@ export function strokePoints(drawn: readonly Point[], scale: number): Point[] | 
   return points.length >= 2 ? points : null
 }
 
+/**
+ * How close the eraser takes a line drawn by hand, in pixels of the screen from the edge of the line: the radius of the
+ * pointer of the eraser.
+ */
+export const ERASER_RADIUS = 8
+
+/** Segments of the polyline that a quadratic segment of a curve becomes: far within a pixel for lines drawn by hand. */
+const CURVE_STEPS = 8
+
+/**
+ * The polyline that the curve through `points` is drawn as. maxGraph (`PolylineShape.paintCurvedLine`) and draw.io curve
+ * from the first point to the middle between the second and the third with its vertex at the second, then on to the
+ * next middle, and end at the last point with its vertex at the one before; each of these quadratic segments becomes
+ * {@link CURVE_STEPS} segments. The curve cuts the corners of the polyline through `points`.
+ */
+export function curvePath(points: readonly Point[]): Point[] {
+  if (points.length <= 2) return [...points]
+  let start = points[0]!
+  const path = [start]
+  const curveTo = (vertex: Point, end: Point) => {
+    for (let step = 1; step <= CURVE_STEPS; step++) {
+      const t = step / CURVE_STEPS
+      const u = 1 - t
+      path.push({
+        x: u * u * start.x + 2 * u * t * vertex.x + t * t * end.x,
+        y: u * u * start.y + 2 * u * t * vertex.y + t * t * end.y,
+      })
+    }
+    start = end
+  }
+  for (let index = 1; index < points.length - 2; index++) {
+    const vertex = points[index]!
+    const next = points[index + 1]!
+    curveTo(vertex, { x: (vertex.x + next.x) / 2, y: (vertex.y + next.y) / 2 })
+  }
+  curveTo(points.at(-2)!, points.at(-1)!)
+  return path
+}
+
+/** The polyline along which a line is drawn, and the box around it. */
+export interface DrawnPath {
+  points: Point[]
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/** The path of a line through `points`: along its curve (see {@link curvePath}) when it is `curved`. */
+export function drawnPath(points: readonly Point[], curved: boolean): DrawnPath {
+  const path = curved ? curvePath(points) : [...points]
+  const xs = path.map(({ x }) => x)
+  const ys = path.map(({ y }) => y)
+  return { points: path, left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) }
+}
+
+/** Which side of the line from `a` through `b` the point `p` lies on: the sign, 0 on the line. */
+const side = (a: Point, b: Point, p: Point) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+
+/** Distance between the segment from `a` to `b` and the one from `c` to `d`: 0 when they cross. */
+function segmentsDistance(a: Point, b: Point, c: Point, d: Point): number {
+  if (side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0) return 0
+  return Math.min(segmentDistance(a, c, d), segmentDistance(b, c, d), segmentDistance(c, a, b), segmentDistance(d, a, b))
+}
+
+/**
+ * The eraser, moved from `from` to `to`, or pressed at `from` when they are the same, comes within `distance` of `path`.
+ * The segment between the two points of the pointer covers a fast move, which skips over a line between its events.
+ */
+export function eraserTouches(path: DrawnPath, from: Point, to: Point, distance: number): boolean {
+  if (
+    Math.max(from.x, to.x) < path.left - distance ||
+    Math.min(from.x, to.x) > path.right + distance ||
+    Math.max(from.y, to.y) < path.top - distance ||
+    Math.min(from.y, to.y) > path.bottom + distance
+  ) {
+    return false
+  }
+  const { points } = path
+  if (points.length === 1) return segmentDistance(points[0]!, from, to) <= distance
+  for (let index = 1; index < points.length; index++) {
+    if (segmentsDistance(from, to, points[index - 1]!, points[index]!) <= distance) return true
+  }
+  return false
+}
+
 /** The line that the pencil draws with. */
 export interface PencilLine {
   color: string
