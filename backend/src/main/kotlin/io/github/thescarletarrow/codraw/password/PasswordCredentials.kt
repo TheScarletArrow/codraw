@@ -3,6 +3,7 @@ package io.github.thescarletarrow.codraw.password
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /** The hashes of the passwords of users, apart from `users`: nothing that reads a user or exports their data reads them. */
@@ -20,7 +21,7 @@ class PasswordCredentials(private val jdbc: JdbcClient) {
         jdbc.sql("INSERT INTO password_credentials (user_id, password_hash, changed_at) VALUES (:userId, :hash, :at)")
             .param("userId", userId)
             .param("hash", hash)
-            .param("at", at)
+            .param("at", at.atOffset(ZoneOffset.UTC))
             .update()
     }
 
@@ -29,7 +30,7 @@ class PasswordCredentials(private val jdbc: JdbcClient) {
         jdbc.sql("UPDATE password_credentials SET password_hash = :hash, changed_at = :at WHERE user_id = :userId")
             .param("userId", userId)
             .param("hash", hash)
-            .param("at", at)
+            .param("at", at.atOffset(ZoneOffset.UTC))
             .update() > 0
 
     /** Ends the sessions of the user [userId] but the session [keptSessionId], where Spring Session keeps their id. */

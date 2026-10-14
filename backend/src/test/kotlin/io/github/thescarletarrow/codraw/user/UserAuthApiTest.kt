@@ -154,10 +154,12 @@ class UserAuthApiTest(
             mockMvc.post(path) {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"login": "alice", "password": "correct horse"}"""
+                content = """{"login": "nobody-while-off", "password": "correct horse"}"""
             }.andExpect { status { isForbidden() } }
         }
-        assertEquals(0, jdbcClient.sql("SELECT count(*) FROM users WHERE provider = 'password'").query(Int::class.java).single())
+        val created = jdbcClient.sql("SELECT count(*) FROM users WHERE provider = 'password' AND provider_user_id = 'nobody-while-off'")
+            .query(Int::class.java).single()
+        assertEquals(0, created)
         mockMvc.get("/api/legal").andExpect { jsonPath("$.passwords") { value(false) } }
     }
 
