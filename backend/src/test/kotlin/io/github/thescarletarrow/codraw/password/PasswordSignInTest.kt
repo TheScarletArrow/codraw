@@ -143,7 +143,7 @@ class PasswordSignInTest(
 
         val session = signUp("alice", "correct horse", guest.session()).session()
 
-        mockMvc.get("/api/boards") { cookie(session) }.andExpect { jsonPath("$[*].title") { value(listOf("Доска гостя")) } }
+        mockMvc.get("/api/boards") { cookie(session) }.andExpect { jsonPath("$[*].title") { value(containsInAnyOrder("Доска гостя")) } }
     }
 
     @Test
