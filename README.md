@@ -122,7 +122,11 @@ pnpm dev:frontend                  # приложение: http://localhost:5173
 проблемы — в [docs/running.md](docs/running.md).
 
 Развёртывание на сервере — Docker-образы, nginx, TLS-прокси, обновление и резервные копии — в
-[docs/deploy.md](docs/deploy.md).
+[docs/deploy.md](docs/deploy.md). Каждый коммит `main`, прошедший все проверки CI, задача `deploy` сама выкатывает на
+сервер по SSH: проверяет конфигурацию коммита вместе с `.env.prod` сервера, скачивает образы, снимает резервную копию,
+поднимает стек и, если контейнеры не стали `healthy`, возвращает прежнюю версию. Пока сервер не задан в GitHub
+Environment `production`, задача ничего не делает. Настройка — «Автоматическая выкатка» в [docs/deploy.md](docs/deploy.md),
+решение — [ADR-0016](docs/adr/0016-continuous-deployment.md).
 
 ## Личные шаблоны
 

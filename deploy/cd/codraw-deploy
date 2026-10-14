@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Deploys a version of CoDraw on the server: the images of a commit with the docker-compose.prod.yml and the
+# configurations of deploy/ of that commit, next to the .env.prod of the server, which it never changes. Nothing stops
+# before the configuration, the images and a backup are there; a stack that does not become healthy goes back to the
+# previous version (docs/deploy.md, «Автоматическая выкатка»).
+#
+#   codraw-deploy deploy <version>
+#
+# Run in the directory of the deployment, where .env.prod lives; the files of the version wait in
+# .codraw-deploy/incoming, where the job `deploy` of CI unpacks them. Settings, from the environment:
+#   COMPOSE_PROFILES              the profiles of the stack, e.g. monitoring
+#   CODRAW_DEPLOY_WAIT_TIMEOUT    seconds for the containers to become healthy (300)
+#   CODRAW_DEPLOY_PULL=0          the images are there already, e.g. built by the check of CI
+#   CODRAW_DEPLOY_BACKUP=0        no backup before the deployment
+#   CODRAW_DEPLOY_REGISTRY        the registry that the first line of stdin is a token for, e.g. ghcr.io, with
+#   CODRAW_DEPLOY_REGISTRY_USER   its user; the token stays in a temporary configuration of Docker for the pull
+# Exit codes: 0 deployed; 1 not deployed or rolled back, the stack runs the previous version; 2 the stack needs attention.
+#
+# All of it is a function called on the last line: bash reads the whole file before it runs anything, so replacing
+# deploy/cd on the way does not change the script that runs.
+
+set -euo pipefail
+
+STATE=.codraw-deploy
+INCOMING=$STATE/incoming
+PREVIOUS=$STATE/previous
+# What the version brings and the deployment replaces; .env.prod and docker-compose.override.yml are the operator's.
+MANAGED=(docker-compose.prod.yml deploy/prometheus deploy/alertmanager deploy/cd)
+
+log() { printf '%s codraw-deploy: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
+
+fail() {
+  local code=$1
+  shift
+  log "$*"
+  exit "$code"
+}
+
+# compose <directory of docker-compose.prod.yml> <version> <arguments>: the stack of the deployment directory, with the
+# override of the operator if there is one, at the version.
+compose() {
+  local dir=$1 version=$2
+  shift 2
+  local -a files=(-f "$dir/docker-compose.prod.yml")
+  if [ -f docker-compose.override.yml ]; then files+=(-f docker-compose.override.yml); fi
+  CODRAW_VERSION=$version docker compose --project-directory "$PWD" "${files[@]}" --env-file .env.prod "$@"
+}
+
+# The version that runs now: the last one deployed, or the tag of the image of the running backend of the project.
+previous_version() {
+  if [ -s "$STATE/version" ]; then
+    cat "$STATE/version"
+    return
+  fi
+  local project id image
+  project=$(compose "$INCOMING" "$1" config 2> /dev/null | sed -n 's/^name: *//p' | head -n 1)
+  [ -n "$project" ] || return 0
+  id=$(docker ps -q --filter "label=com.docker.compose.project=$project" \
+    --filter label=com.docker.compose.service=backend | head -n 1)
+  [ -n "$id" ] || return 0
+  image=$(docker inspect --format '{{.Config.Image}}' "$id")
+  image=${image##*/}
+  if [[ $image == *:* ]]; then printf '%s\n' "${image##*:}"; fi
+}
+
+# The images of the version: those of CoDraw are tagged with it. The tag is after the last colon, which may follow the
+# port of a registry too.
+version_images() {
+  compose "$INCOMING" "$1" config --images | sort -u | awk -v version="$1" '{ n = split($0, p, ":"); if (p[n] == version) print }'
+}
+
+# Called in a condition, where `set -e` does not stop a function: every step checks its own status.
+pull_images() {
+  local version=$1 token=$2 config image images status=0
+  images=$(version_images "$version") || return 1
+  # The token of the job lives in this configuration only, for the pull, and goes with it.
+  config=$(mktemp -d) || return 1
+  if [ -n "$token" ]; then
+    printf '%s\n' "$token" |
+      docker --config "$config" login "$CODRAW_DEPLOY_REGISTRY" -u "${CODRAW_DEPLOY_REGISTRY_USER:-codraw}" \
+        --password-stdin > /dev/null || status=1
+  fi
+  for image in $images; do
+    [ "$status" = 0 ] || break
+    if [ -n "$token" ] && [[ $image == "$CODRAW_DEPLOY_REGISTRY/"* ]]; then
+      docker --config "$config" pull -q "$image" > /dev/null || status=1
+    else
+      docker pull -q "$image" > /dev/null || status=1
+    fi
+  done
+  rm -rf "$config"
+  [ "$status" = 0 ] || return 1
+  # Postgres, the storage, Prometheus and Alertmanager of the version, at the tags its file names.
+  compose "$INCOMING" "$version" pull --quiet --ignore-buildable < /dev/null
+}
+
+check_images() {
+  local version=$1 image missing=
+  for image in $(compose "$INCOMING" "$version" config --images | sort -u); do
+    docker image inspect "$image" > /dev/null 2>&1 || missing="$missing $image"
+  done
+  [ -z "$missing" ] || fail 1 "images of $version are not there:$missing"
+}
+
+backup() {
+  local previous=$1
+  if [ "${CODRAW_DEPLOY_BACKUP:-1}" = 0 ] || [ ! -f docker-compose.prod.yml ]; then return; fi
+  if [ -z "$(compose . "$previous" ps -q --status running backup 2> /dev/null)" ]; then
+    log "no running service backup: no backup before the deployment"
+    return
+  fi
+  log "backing up before the deployment"
+  compose . "$previous" exec -T backup codraw-backup now < /dev/null ||
+    fail 1 "the backup before the deployment failed: nothing changed"
+}
+
+switch_files() {
+  local path
+  rm -rf "$PREVIOUS"
+  for path in "${MANAGED[@]}"; do
+    if [ -e "$path" ]; then
+      mkdir -p "$(dirname "$PREVIOUS/$path")"
+      mv "$path" "$PREVIOUS/$path"
+    fi
+    if [ -e "$INCOMING/$path" ]; then
+      mkdir -p "$(dirname "$path")"
+      mv "$INCOMING/$path" "$path"
+    fi
+  done
+}
+
+restore_files() {
+  local path
+  for path in "${MANAGED[@]}"; do
+    rm -rf "$path"
+    if [ -e "$PREVIOUS/$path" ]; then mv "$PREVIOUS/$path" "$path"; fi
+  done
+}
+
+up() { compose . "$1" up -d --wait --wait-timeout "${CODRAW_DEPLOY_WAIT_TIMEOUT:-300}" --no-build < /dev/null; }
+
+# Removes the images of CoDraw of other versions than these, but `latest`; images that containers use stay.
+prune_images() {
+  local version=$1 previous=$2 image repositories=" "
+  for image in $(version_images "$version"); do repositories="$repositories${image%:*} "; done
+  docker image ls --format '{{.Repository}}:{{.Tag}}' | while read -r image; do
+    [[ $repositories == *" ${image%:*} "* ]] || continue
+    case "${image##*:}" in "$version" | "$previous" | latest | "<none>") continue ;; esac
+    docker image rm "$image" > /dev/null 2>&1 || true
+  done
+}
+
+main() {
+  local command=${1:-} version=${2:-} token='' previous
+  [ "$command" = deploy ] && [ -n "$version" ] || fail 1 "usage: codraw-deploy deploy <version>"
+  [[ $version =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || fail 1 "not a tag of images: $version"
+  [ -f .env.prod ] || fail 1 "no .env.prod in $PWD: run in the directory of the deployment"
+  [ -f "$INCOMING/docker-compose.prod.yml" ] || fail 1 "no files of the version in $PWD/$INCOMING"
+  if [ -n "${CODRAW_DEPLOY_REGISTRY:-}" ]; then IFS= read -r token || true; fi
+
+  exec 9> "$STATE/lock"
+  if command -v flock > /dev/null; then flock -n 9 || fail 1 "another deployment is running"; fi
+
+  compose "$INCOMING" "$version" config --quiet || fail 1 "the configuration of $version with .env.prod is not valid"
+  previous=$(previous_version "$version")
+  log "deploying $version over ${previous:-nothing}"
+  if [ "${CODRAW_DEPLOY_PULL:-1}" != 0 ]; then
+    pull_images "$version" "$token" || fail 1 "could not pull the images of $version: nothing changed"
+  fi
+  check_images "$version"
+  backup "$previous"
+
+  switch_files
+  if up "$version"; then
+    printf '%s\n' "$version" > "$STATE/version"
+    prune_images "$version" "$previous"
+    log "deployed $version"
+    return 0
+  fi
+
+  log "$version did not become healthy:"
+  compose . "$version" ps -a >&2 || true
+  [ -n "$previous" ] || fail 2 "no previous version to roll back to: the stack needs attention"
+  restore_files
+  if up "$previous"; then
+    printf '%s\n' "$previous" > "$STATE/version"
+    fail 1 "rolled back to $previous; the logs of the containers are on the server: docker compose logs"
+  fi
+  compose . "$previous" ps -a >&2 || true
+  fail 2 "the rollback to $previous did not become healthy either: the stack needs attention"
+}
+
+main "$@"
+exit

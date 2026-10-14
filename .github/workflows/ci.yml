@@ -246,6 +246,12 @@ jobs:
         run: pnpm --filter @codraw/e2e test:stack
         env:
           STACK_URL: http://localhost:8080
+      # The script of the job `deploy` (docs/deploy.md, «Автоматическая выкатка»): its steps against a fake docker, then
+      # a deployment, a refusal and a rollback against this stack.
+      - name: Check the steps of the deployment script
+        run: deploy/cd/codraw-deploy.test.sh
+      - name: Check a deployment, a refusal and a rollback against the stack
+        run: deploy/cd/check-deploy.sh
       - if: failure()
         run: docker compose -f docker-compose.prod.yml --profile monitoring logs --no-color
       - if: failure()
@@ -292,3 +298,86 @@ jobs:
           for service in backend collab frontend backup; do
             docker buildx imagetools create --tag "${prefix}${service}:latest" "${prefix}${service}:${GITHUB_SHA}"
           done
+
+  deploy:
+    name: deploy
+    # The images of a commit of main that passed every check, once `latest` points to them, go to the server of the
+    # environment `production` over SSH (docs/deploy.md, «Автоматическая выкатка»); without a server the job does nothing.
+    if: github.ref == 'refs/heads/main'
+    needs: [release]
+    runs-on: ubuntu-latest
+    environment: production
+    # One deployment at a time; a newer one that waits replaces an older one that waits.
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DEPLOY_HOST: ${{ vars.CODRAW_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.CODRAW_DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.CODRAW_DEPLOY_PORT || '22' }}
+      DEPLOY_DIR: ${{ vars.CODRAW_DEPLOY_DIR }}
+      DEPLOY_PROFILES: ${{ vars.CODRAW_DEPLOY_PROFILES }}
+      DEPLOY_URL: ${{ vars.CODRAW_DEPLOY_URL }}
+      DEPLOY_SSH_KEY: ${{ secrets.CODRAW_DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.CODRAW_DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - name: Check that a server is set up
+        id: setup
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::notice::No server to deploy to: the environment production has no CODRAW_DEPLOY_HOST (docs/deploy.md)"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          missing=
+          for name in DEPLOY_USER DEPLOY_DIR DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            [ -n "${!name}" ] || missing="$missing CODRAW_$name"
+          done
+          if [ -n "$missing" ]; then echo "::error::The environment production lacks:$missing"; exit 1; fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+      - if: steps.setup.outputs.configured == 'true'
+        uses: actions/checkout@v7
+      - name: Deploy the images of the commit
+        if: steps.setup.outputs.configured == 'true'
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/codraw-deploy
+          chmod 600 ~/.ssh/codraw-deploy
+          # Only the key of the server that the operator checked: a server in its place gets neither the code nor the token.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          server() {
+            ssh -i ~/.ssh/codraw-deploy -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ServerAliveInterval=30 "$DEPLOY_USER@$DEPLOY_HOST" "$@"
+          }
+          dir=$(printf '%q' "$DEPLOY_DIR")
+          # The files of the commit wait in .codraw-deploy/incoming of the deployment directory, next to .env.prod.
+          tar -czf - docker-compose.prod.yml deploy/prometheus deploy/alertmanager deploy/cd |
+            server "cd $dir && rm -rf .codraw-deploy/incoming && mkdir -p .codraw-deploy/incoming &&
+              tar -xzf - -C .codraw-deploy/incoming"
+          # The images that CI published; the token of the job goes on stdin, not on a command line of the server.
+          settings=(
+            "COMPOSE_PROFILES=$(printf '%q' "$DEPLOY_PROFILES")"
+            "CODRAW_IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-"
+            "CODRAW_DEPLOY_REGISTRY=ghcr.io"
+            "CODRAW_DEPLOY_REGISTRY_USER=$(printf '%q' "$GITHUB_ACTOR")"
+          )
+          printf '%s\n' "$REGISTRY_TOKEN" |
+            server "cd $dir && ${settings[*]} bash .codraw-deploy/incoming/deploy/cd/codraw-deploy deploy $GITHUB_SHA"
+      - name: Check the app at its address
+        if: steps.setup.outputs.configured == 'true'
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::notice::No CODRAW_DEPLOY_URL: the app is not checked at its address"
+            exit 0
+          fi
+          # Through the TLS proxy and nginx, which the health of the containers does not cover.
+          get() { curl -fsS --retry 6 --retry-delay 10 --retry-all-errors --max-time 10 "${DEPLOY_URL%/}$1"; }
+          get /api/auth/providers | jq -e '.providers' > /dev/null
+          get /version.json | jq -e . > /dev/null
+      - if: always()
+        run: rm -f ~/.ssh/codraw-deploy
