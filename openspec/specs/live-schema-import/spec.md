@@ -121,9 +121,11 @@ broadcast и адреса базы самого CoDraw SHALL быть разре
 `backend` SHALL читать одну схему: обычные и партиционированные таблицы без секций, их столбцы с типами,
 `NOT NULL`, значениями по умолчанию, identity и вычисляемыми столбцами, первичные и уникальные ключи, `CHECK`,
 индексы (кроме индексов ограничений) таблиц и материализованных представлений, внешние ключи, представления и
-материализованные представления, — и отдавать `{ddl, tables}`: DDL PostgreSQL как у `pg_dump` — `CREATE TABLE`, затем
-`CREATE VIEW … AS` и `CREATE MATERIALIZED VIEW … AS … WITH NO DATA` с определением из `pg_get_viewdef` в порядке
-зависимостей представлений друг от друга (при равенстве — по имени), затем `ALTER TABLE ONLY … ADD CONSTRAINT …` из
+материализованные представления и комментарии таблиц и представлений, — и отдавать `{ddl, tables}`: DDL PostgreSQL
+как у `pg_dump` — `CREATE TABLE`, затем `CREATE VIEW … AS` и `CREATE MATERIALIZED VIEW … AS … WITH NO DATA` с
+определением из `pg_get_viewdef` в порядке зависимостей представлений друг от друга (при равенстве — по имени), за
+каждым `CREATE` объекта с комментарием — `COMMENT ON TABLE`, `COMMENT ON VIEW` или `COMMENT ON MATERIALIZED VIEW` с
+комментарием строкой SQL, затем `ALTER TABLE ONLY … ADD CONSTRAINT …` из
 `pg_get_constraintdef`, `CREATE INDEX` из `pg_get_indexdef` и внешние ключи последними. Столбец с принадлежащей ему
 последовательностью SHALL быть `serial`, `bigserial` или `smallserial`. `tables` и предел числа таблиц SHALL считать
 только таблицы. Нет схемы — 422 `schema-not-found`; больше 500 таблиц или больше 2 МБ DDL — 422 `too-large`; сервер
@@ -143,6 +145,13 @@ broadcast и адреса базы самого CoDraw SHALL быть разре
 - **THEN** DDL после `CREATE TABLE` содержит `CREATE VIEW active_orders AS`, затем `CREATE MATERIALIZED VIEW
   order_totals AS … WITH NO DATA`, затем `CREATE VIEW big_orders AS`, и `CREATE INDEX` индекса `order_totals`, а
   `tables` считает только таблицы
+
+#### Scenario: Комментарии схемы
+
+- **WHEN** в схеме `shop` у таблицы `users` комментарий `Покупатели и их 'роли'`, а у представления `active_orders` —
+  `Незакрытые заказы`
+- **THEN** DDL сразу после `CREATE TABLE users` содержит `COMMENT ON TABLE users IS 'Покупатели и их ''роли''';`, а
+  после `CREATE VIEW active_orders` — `COMMENT ON VIEW active_orders IS 'Незакрытые заказы';`
 
 #### Scenario: Слишком большая схема
 
