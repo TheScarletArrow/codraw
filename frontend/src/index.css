@@ -120,6 +120,16 @@
   cursor: crosshair !important;
 }
 
+/* The eraser points with a circle as large as what it erases, ERASER_RADIUS of diagram/freehand.ts around the pointer:
+   dark, with a white ring around it that shows on a dark canvas. */
+.diagram-canvas.eraser-tool,
+.diagram-canvas.eraser-tool * {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='11' cy='11' r='9.25' fill='none' stroke='%23ffffff' stroke-width='1.5'/%3E%3Ccircle cx='11' cy='11' r='7.75' fill='none' stroke='%231f2328' stroke-width='1.5'/%3E%3C/svg%3E")
+      11 11,
+    crosshair !important;
+}
+
 /* A removed element is hatched: it reads as a ghost without its color. */
 .change-marks .change-ghost {
   background-color: color-mix(in srgb, var(--canvas) 60%, transparent);

@@ -31,7 +31,7 @@ export interface Release {
 
 export const releases: Release[] = [
   {
-    version: '0.48.0',
+    version: '0.49.0',
     date: '2026-10-14',
     items: [
       {
@@ -52,6 +52,22 @@ export const releases: Release[] = [
         en: {
           title: 'The lead of a board',
           text: 'In the “Share” window the owner of a board can make a member its lead, the one responsible for it. The lead renames the board, changes the access, manages the members, the invitations and the requests for access, but neither deletes the board nor gives it away.',
+        },
+      },
+    ],
+  },
+  {
+    version: '0.48.0',
+    date: '2026-10-14',
+    items: [
+      {
+        ru: {
+          title: 'Ластик',
+          text: 'Кнопка «Ластик» рядом с «Карандашом» или клавиша E: проведите по линиям от руки, и задетые линии исчезнут, когда вы отпустите кнопку, — у всех участников сразу. Фигуры и связи ластик не трогает, а Ctrl+Z возвращает всё стёртое одним шагом.',
+        },
+        en: {
+          title: 'Eraser',
+          text: 'The “Eraser” button next to “Pencil” or the E key: swipe across freehand lines, and the lines you touched disappear when you release the button, for all participants at once. The eraser leaves shapes and connectors alone, and Ctrl+Z brings back everything erased in one step.',
         },
       },
     ],

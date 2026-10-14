@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Point } from './editor.ts'
 import {
+  curvePath,
   DEFAULT_PENCIL_LINE,
+  drawnPath,
+  eraserTouches,
   isFreehandStyle,
   MAX_STROKE_POINTS,
   pencilLine,
@@ -120,6 +123,58 @@ describe('strokePoints', () => {
     expect(points.length).toBeGreaterThan(MAX_STROKE_POINTS / 4)
     expect(points[0]).toEqual({ x: 0, y: 0 })
     expect(points.at(-1)).toEqual(scribble.at(-1))
+  })
+})
+
+describe('curvePath', () => {
+  it('leaves a straight line of two points as it is', () => {
+    expect(curvePath([{ x: 0, y: 0 }, { x: 100, y: 50 }])).toEqual([{ x: 0, y: 0 }, { x: 100, y: 50 }])
+  })
+
+  it('curves from the first point to the last, cutting the corner at the point between them', () => {
+    const path = curvePath([{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 200, y: 0 }])
+
+    expect(path).toHaveLength(9)
+    expect(path[0]).toEqual({ x: 0, y: 0 })
+    expect(path[4]).toEqual({ x: 100, y: 50 })
+    expect(path.at(-1)).toEqual({ x: 200, y: 0 })
+  })
+
+  it('goes through the middles between the points inside, as maxGraph and draw.io draw it', () => {
+    const path = curvePath([{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 200, y: 100 }, { x: 300, y: 0 }])
+
+    expect(path).toHaveLength(17)
+    expect(path[8]).toEqual({ x: 150, y: 100 })
+    expect(path.at(-1)).toEqual({ x: 300, y: 0 })
+  })
+})
+
+describe('eraserTouches', () => {
+  const corner = [{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 200, y: 0 }]
+
+  it('touches a curve where it is drawn, not at the corner it cuts', () => {
+    const curve = drawnPath(corner, true)
+    expect(curve).toMatchObject({ left: 0, top: 0, right: 200, bottom: 50 })
+
+    expect(eraserTouches(curve, { x: 100, y: 55 }, { x: 100, y: 55 }, 8)).toBe(true)
+    expect(eraserTouches(curve, { x: 100, y: 100 }, { x: 100, y: 100 }, 8)).toBe(false)
+    expect(eraserTouches(drawnPath(corner, false), { x: 100, y: 100 }, { x: 100, y: 100 }, 8)).toBe(true)
+  })
+
+  it('touches a line that a fast move crosses between two points far from it', () => {
+    const line = drawnPath([{ x: 0, y: 0 }, { x: 200, y: 0 }], true)
+
+    expect(eraserTouches(line, { x: 100, y: -50 }, { x: 100, y: 50 }, 8)).toBe(true)
+    expect(eraserTouches(line, { x: 100, y: -50 }, { x: 100, y: -9 }, 8)).toBe(false)
+  })
+
+  it('touches within the distance only', () => {
+    const line = drawnPath([{ x: 0, y: 0 }, { x: 200, y: 0 }], true)
+
+    expect(eraserTouches(line, { x: 0, y: 20 }, { x: 200, y: 20 }, 8)).toBe(false)
+    expect(eraserTouches(line, { x: 0, y: 20 }, { x: 200, y: 20 }, 20)).toBe(true)
+    expect(eraserTouches(line, { x: 215, y: 0 }, { x: 300, y: 0 }, 20)).toBe(true)
+    expect(eraserTouches(line, { x: 1000, y: 1000 }, { x: 1100, y: 1000 }, 20)).toBe(false)
   })
 })
 

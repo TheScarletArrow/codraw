@@ -182,9 +182,10 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
           },
           {
             id: 'pencil',
-            title: 'Карандаш',
+            title: 'Карандаш и ластик',
             paragraphs: [
               'Кнопка «Карандаш» или клавиша P: обведите область или набросайте стрелку прямо на схеме — линия останется на доске, и её сразу увидят все участники. Esc заканчивает рисовать.',
+              'Кнопка «Ластик» или клавиша E стирает линии от руки: проведите по ним — задетые линии бледнеют и исчезают у всех, когда вы отпустите кнопку. Фигуры, связи и закреплённые линии ластик не трогает, а Ctrl+Z возвращает стёртое.',
             ],
           },
           {
@@ -813,9 +814,10 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
           },
           {
             id: 'pencil',
-            title: 'Pencil',
+            title: 'Pencil and eraser',
             paragraphs: [
               'The “Pencil” button or the P key: circle an area or sketch an arrow right on the diagram — the line stays on the board, and all participants see it at once. Esc stops drawing.',
+              'The “Eraser” button or the E key erases freehand lines: swipe across them — the lines you touch fade and disappear for everybody when you release the button. The eraser leaves shapes, connectors and locked lines alone, and Ctrl+Z brings back what was erased.',
             ],
           },
           {

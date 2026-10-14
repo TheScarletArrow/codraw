@@ -129,7 +129,17 @@ import {
   type ImageHost,
   type StoredImage,
 } from './images.ts'
-import { FREEHAND_KEY, isFreehandStyle, pencilLine, strokePoints, type PencilLine } from './freehand.ts'
+import {
+  drawnPath,
+  ERASER_RADIUS,
+  eraserTouches,
+  FREEHAND_KEY,
+  isFreehandStyle,
+  pencilLine,
+  strokePoints,
+  type DrawnPath,
+  type PencilLine,
+} from './freehand.ts'
 import { commonPlan, PLAN_KEY, planOf, type Plan, type PlanView, type SelectionPlan } from './plan.ts'
 import { configurePlan } from './planView.ts'
 import { impactNode, type ImpactDepth } from './impact.ts'
@@ -822,6 +832,8 @@ export interface EditorState {
   pencil: boolean
   /** The line that the pencil draws with: the color, width and dash last chosen for lines (see {@link pencilLine}). */
   pencilLine: PencilLine
+  /** The eraser is on: dragging on the canvas erases lines drawn by hand instead of selecting or moving anything. */
+  eraser: boolean
   /** How the selection is locked, or `null` when nothing is selected. */
   lock: SelectionLock | null
   /** Who changed the single selected element last, or `null` without one or when it does not keep that. */
@@ -1388,8 +1400,8 @@ export interface DiagramEditor {
    * Turns the pencil on or off. While it is on, dragging with the main button, a pen or a finger selects, moves,
    * connects and edits nothing and draws a line by hand: on release it becomes an edge without ends through the
    * simplified path (see {@link strokePoints}), on top of the page, as one undo step; the pencil stays on for the next
-   * one. The right button and the wheel work as before. The pencil, the laser pointer and the comment tool take the
-   * main button in turns. A participant who may only view has no pencil.
+   * one. The right button and the wheel work as before. The pencil, the eraser, the laser pointer and the comment tool
+   * take the main button in turns. A participant who may only view has no pencil.
    */
   setPencil(on: boolean): void
   /**
@@ -1397,6 +1409,15 @@ export interface DiagramEditor {
    * the color of lines or their width or dash for the selection ({@link setColor}, {@link setLineStyle}) sets them too.
    */
   setPencilLine(changes: Partial<PencilLine>): void
+  /**
+   * Turns the eraser on or off. While it is on, dragging with the main button, a pen or a finger selects, moves,
+   * connects and edits nothing and erases each line drawn by hand that it passes within {@link ERASER_RADIUS} pixels of
+   * the screen from the edge of, as a whole: the lines fade while the button is held and go on release, all of them as
+   * one undo step; the eraser stays on for the next drag. Lines that the participant does not see, that are locked or
+   * in a locked layer stay. The right button and the wheel work as before. The eraser and the other tools take the main
+   * button in turns. A participant who may only view has no eraser.
+   */
+  setEraser(on: boolean): void
   /** The ids of the selected cells, in the order of the selection. */
   selectedCellIds(): string[]
   /** Reports the ids of the selected cells whenever the selection changes. */
@@ -1542,8 +1563,9 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
     collaboration: true,
     run: (editor) => editor.setCommentTool(!editor.getState().commentTool),
   },
-  // The pencil changes the page: a draft of a proposal has it, a participant who may only view does not.
+  // The pencil and the eraser change the page: a draft of a proposal has them, a participant who may only view does not.
   { keys: 'P', editing: true, run: (editor) => editor.setPencil(!editor.getState().pencil) },
+  { keys: 'E', editing: true, run: (editor) => editor.setEraser(!editor.getState().eraser) },
   { keys: 'Delete', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Backspace', editing: true, run: (editor) => editor.deleteSelection() },
   { keys: 'Mod+Z', editing: true, run: (editor) => editor.undo() },
@@ -1609,15 +1631,22 @@ function bindModAltKeys(keyHandler: KeyHandler, modAltKeys: Map<string, () => vo
   }
 }
 
-/** A tool of the canvas that takes the main button from maxGraph: the laser pointer, the comment tool or the pencil. */
-type CanvasTool = 'laser' | 'comment' | 'pencil'
+/**
+ * A tool of the canvas that takes the main button from maxGraph: the laser pointer, the comment tool, the pencil or the
+ * eraser.
+ */
+type CanvasTool = 'laser' | 'comment' | 'pencil' | 'eraser'
 
-/** Classes of the canvas while a tool is on: its pointer is a crosshair over everything. */
+/** Classes of the canvas while a tool is on: its pointer is a crosshair, or the circle of the eraser, over everything. */
 const TOOL_CLASSES: Record<CanvasTool, string> = {
   laser: 'laser-pointer',
   comment: 'comment-tool',
   pencil: 'pencil-tool',
+  eraser: 'eraser-tool',
 }
+
+/** Opacity of the lines that the eraser has touched until it is released. */
+const ERASED_OPACITY = '0.3'
 
 /**
  * Events of the canvas that a tool keeps from maxGraph, besides the press that the tool takes; touch events for iOS,
@@ -1770,6 +1799,7 @@ const CHANGING_COMMANDS = [
   'setGeometry',
   'setRotation',
   'setPencil',
+  'setEraser',
   'setLink',
   'setEdgeApi',
   'setElementProperties',
@@ -2921,6 +2951,7 @@ export function createDiagramEditor(
       commentTool: tool === 'comment',
       pencil: tool === 'pencil',
       pencilLine: pencilLine.get(),
+      eraser: tool === 'eraser',
       lock: selectionLock(),
       attribution: selectionAttribution(),
       canAddImages: !readOnly && images !== null,
@@ -3157,11 +3188,12 @@ export function createDiagramEditor(
   container.addEventListener('pointermove', handlePointerMove, true)
   container.addEventListener('pointerleave', handlePointerLeave)
 
-  // The tools. While the laser pointer, the comment tool or the pencil is on, the main button draws a trail, places a
-  // comment or draws a line, and its presses, releases and double clicks never reach maxGraph, which listens to pointer
-  // events, or to mouse events on macOS: nothing is selected, moved, connected or edited. Moves do not reach it either,
-  // so that it shows no connection points under the pointer; the listener of the cursor above comes first and still
-  // gets them. The right button still pans and opens the menu, and the wheel still scrolls and zooms.
+  // The tools. While the laser pointer, the comment tool, the pencil or the eraser is on, the main button draws a trail,
+  // places a comment, draws a line or erases lines, and its presses, releases and double clicks never reach maxGraph,
+  // which listens to pointer events, or to mouse events on macOS: nothing is selected, moved, connected or edited. Moves
+  // do not reach it either, so that it shows no connection points under the pointer; the listener of the cursor above
+  // comes first and still gets them. The right button still pans and opens the menu, and the wheel still scrolls and
+  // zooms.
   const laserListeners = new Set<(point: Point | null) => void>()
   let drawingLaser = false
   const drawLaser = (event: PointerEvent) => {
@@ -3267,6 +3299,89 @@ export function createDiagramEditor(
     graph.stopEditing(false)
     graph.addEdge(line, graph.getDefaultParent(), null, null)
   }
+  /**
+   * The lines the eraser may erase: those drawn by hand that the canvas shows, that are selected and removed, i.e. not
+   * locked nor in a locked layer, with the paths they are drawn along in diagram coordinates, also inside a group, and
+   * their widths. Gathered for a drag, again once the page has changed (see `drawingVersion` below): another participant
+   * may draw, move or remove a line meanwhile.
+   */
+  let erasable: { version: number; lines: { cell: Cell; path: DrawnPath; width: number }[] } | null = null
+  const erasableLines = () => {
+    if (erasable?.version === drawingVersion) return erasable.lines
+    const view = graph.getView()
+    const { scale, translate } = view
+    const lines = layers()
+      .flatMap((layer) => layer.filterDescendants(isFreehand))
+      .flatMap((cell) => {
+        const state = view.getState(cell)
+        if (!state?.shape || !graph.isCellSelectable(cell) || !graph.isCellDeletable(cell)) return []
+        const points = state.absolutePoints.flatMap((point) =>
+          point ? [{ x: point.x / scale - translate.x, y: point.y / scale - translate.y }] : [],
+        )
+        return [{ cell, path: drawnPath(points, Boolean(state.style.curved)), width: Number(state.style.strokeWidth ?? 1) }]
+      })
+    erasable = { version: drawingVersion, lines }
+    return lines
+  }
+  /** Shows a line faded while the eraser has touched it, or as it is again. */
+  const fadeLine = (cell: Cell, faded: boolean) => {
+    const state = graph.getView().getState(cell)
+    for (const node of [state?.shape?.node, state?.text?.node]) {
+      if (node) node.style.opacity = faded ? ERASED_OPACITY : ''
+    }
+  }
+  /**
+   * The drag of the eraser: the pointer that erases (a mouse, a pen or a finger, not a second finger), where it was last
+   * in diagram coordinates, and the lines it has touched, which go when it is released.
+   */
+  let eraserStroke: { pointerId: number; last: Point | null; touched: Set<Cell> } | null = null
+  const erase = (event: PointerEvent) => {
+    if (event.pointerId !== eraserStroke?.pointerId) return
+    const point = toDiagramPoint(event.clientX, event.clientY)
+    // From where the pointer was: a fast move does not skip a line between its events. A press is a point.
+    const from = eraserStroke.last ?? point
+    eraserStroke.last = point
+    const radius = ERASER_RADIUS / graph.getView().scale
+    for (const { cell, path, width } of erasableLines()) {
+      if (eraserStroke.touched.has(cell) || !eraserTouches(path, from, point, radius + width / 2)) continue
+      eraserStroke.touched.add(cell)
+      fadeLine(cell, true)
+    }
+  }
+  /** Stops erasing and returns the lines touched, shown as they are again. */
+  const stopEraserStroke = (): Cell[] => {
+    if (!eraserStroke) return []
+    const { touched } = eraserStroke
+    eraserStroke = null
+    erasable = null
+    page.removeEventListener('pointermove', erase, true)
+    page.removeEventListener('pointerup', finishEraserStroke, true)
+    page.removeEventListener('pointercancel', cancelEraserStroke, true)
+    touched.forEach((cell) => fadeLine(cell, false))
+    return [...touched]
+  }
+  // The browser took the pointer, e.g. for a gesture: nothing is erased.
+  const cancelEraserStroke = (event: PointerEvent) => {
+    if (event.pointerId === eraserStroke?.pointerId) stopEraserStroke()
+  }
+  /** Removes the lines touched as one undo step, those that another participant has not removed meanwhile. */
+  const finishEraserStroke = (event: PointerEvent) => {
+    if (event.pointerId !== eraserStroke?.pointerId) return
+    erase(event)
+    const lines = stopEraserStroke().filter((cell) => model.contains(cell))
+    if (lines.length === 0) return
+    graph.stopEditing(false)
+    graph.removeCells(lines, true)
+  }
+  const startEraserStroke = (event: PointerEvent) => {
+    if (eraserStroke) return
+    eraserStroke = { pointerId: event.pointerId, last: null, touched: new Set() }
+    // The drag goes on beyond the canvas until the button is released anywhere.
+    page.addEventListener('pointermove', erase, true)
+    page.addEventListener('pointerup', finishEraserStroke, true)
+    page.addEventListener('pointercancel', cancelEraserStroke, true)
+    erase(event)
+  }
   const commentListeners = new Set<(point: Point) => void>()
   /** The main button was pressed on the canvas with the comment tool: its release places a comment. */
   let pressedForComment = false
@@ -3277,6 +3392,7 @@ export function createDiagramEditor(
     event.preventDefault()
     if (tool === 'laser') startLaserStroke(event)
     else if (tool === 'pencil') startPencilStroke(event)
+    else if (tool === 'eraser') startEraserStroke(event)
     else pressedForComment = true
   }
   // The release, not the press: the canvas takes the keyboard on the press, and the field of the new comment that the
@@ -3300,11 +3416,15 @@ export function createDiagramEditor(
   // Before the listeners that keep the release from maxGraph, which stop it for the others.
   container.addEventListener('pointerup', placeComment, true)
   for (const type of TOOL_STOPPED_EVENTS) container.addEventListener(type, stopForTool, true)
-  /** Turns a tool on, which turns the others off, or the tools off with `null`; a line being drawn is not added. */
+  /**
+   * Turns a tool on, which turns the others off, or the tools off with `null`; a line being drawn is not added, and lines
+   * being erased stay.
+   */
   const setTool = (next: CanvasTool | null) => {
     if (next === tool) return
     if (tool === 'laser') endLaserStroke()
     stopPencilStroke()
+    stopEraserStroke()
     pressedForComment = false
     linkClick = null
     tool = next
@@ -3437,7 +3557,7 @@ export function createDiagramEditor(
       const center = visibleCenter()
       editor.centerOn({ x: center.x - dx / scale, y: center.y - dy / scale })
     },
-    canGesture: () => tool !== 'pencil' && tool !== 'laser',
+    canGesture: () => tool !== 'pencil' && tool !== 'eraser' && tool !== 'laser',
   })
   // The label editor keeps the menu of the browser, with its text actions and spelling suggestions.
   const preventBrowserMenu = (event: MouseEvent) => {
@@ -5436,6 +5556,10 @@ export function createDiagramEditor(
       if (dash !== undefined) changes.dash = dash
       if (pencilLine.set(changes)) notify()
     },
+    setEraser(on) {
+      if (on) setTool('eraser')
+      else if (tool === 'eraser') setTool(null)
+    },
     selectedCellIds,
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
@@ -5474,6 +5598,7 @@ export function createDiagramEditor(
       container.removeEventListener('pointerleave', handlePointerLeave)
       endLaserStroke()
       stopPencilStroke()
+      stopEraserStroke()
       container.removeEventListener('pointerdown', pressWithTool, true)
       container.removeEventListener('pointerup', placeComment, true)
       for (const type of TOOL_STOPPED_EVENTS) container.removeEventListener(type, stopForTool, true)

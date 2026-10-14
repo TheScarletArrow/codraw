@@ -86,6 +86,7 @@ export function createFakeEditor({
     commentTool: false,
     pencil: false,
     pencilLine: DEFAULT_PENCIL_LINE,
+    eraser: false,
     lock: null,
     attribution: null,
     canAddImages: false,
@@ -129,6 +130,13 @@ export function createFakeEditor({
   const changeView = () => {
     viewVersion++
     viewListeners.forEach((listener) => listener())
+  }
+  /** Turns a tool of the canvas on, which turns the others off, as in the editor, or off. */
+  const setTool = (tool: 'laser' | 'commentTool' | 'pencil' | 'eraser', on: boolean) => {
+    state = on
+      ? { ...state, laser: false, commentTool: false, pencil: false, eraser: false, [tool]: true }
+      : { ...state, [tool]: false }
+    listeners.forEach((listener) => listener())
   }
   // The sketch of the placed cells, made again once they change.
   let sketch: PageSketch | null = null
@@ -296,26 +304,17 @@ export function createFakeEditor({
       changeView()
     }),
     onPointerMove: (listener) => listen(pointerListeners, listener),
-    // The tools turn each other off, like those of the editor.
-    setLaser: vi.fn((laser: boolean) => {
-      state = { ...state, laser, commentTool: laser ? false : state.commentTool, pencil: laser ? false : state.pencil }
-      listeners.forEach((listener) => listener())
-    }),
+    setLaser: vi.fn((laser: boolean) => setTool('laser', laser)),
     onLaser: (listener) => listen(laserListeners, listener),
-    setCommentTool: vi.fn((commentTool: boolean) => {
-      state = { ...state, commentTool, laser: commentTool ? false : state.laser, pencil: commentTool ? false : state.pencil }
-      listeners.forEach((listener) => listener())
-    }),
+    setCommentTool: vi.fn((commentTool: boolean) => setTool('commentTool', commentTool)),
     onCommentPoint: (listener) => listen(commentListeners, listener),
-    setPencil: vi.fn((pencil: boolean) => {
-      state = { ...state, pencil, laser: pencil ? false : state.laser, commentTool: pencil ? false : state.commentTool }
-      listeners.forEach((listener) => listener())
-    }),
+    setPencil: vi.fn((pencil: boolean) => setTool('pencil', pencil)),
     setPencilLine: vi.fn((changes: Partial<PencilLine>) => {
       const defined = Object.entries(changes).filter(([, value]) => value !== undefined)
       state = { ...state, pencilLine: { ...state.pencilLine, ...Object.fromEntries(defined) } }
       listeners.forEach((listener) => listener())
     }),
+    setEraser: vi.fn((eraser: boolean) => setTool('eraser', eraser)),
     selectedCellIds: () => selection,
     onSelectionChange: (listener) => listen(selectionListeners, listener),
     onViewChange: (listener) => listen(viewListeners, listener),
