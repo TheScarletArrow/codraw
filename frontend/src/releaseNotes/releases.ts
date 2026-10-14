@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.48.0',
+    date: '2026-10-14',
+    items: [
+      {
+        ru: {
+          title: 'Ластик',
+          text: 'Кнопка «Ластик» рядом с «Карандашом» или клавиша E: проведите по линиям от руки, и задетые линии исчезнут, когда вы отпустите кнопку, — у всех участников сразу. Фигуры и связи ластик не трогает, а Ctrl+Z возвращает всё стёртое одним шагом.',
+        },
+        en: {
+          title: 'Eraser',
+          text: 'The “Eraser” button next to “Pencil” or the E key: swipe across freehand lines, and the lines you touched disappear when you release the button, for all participants at once. The eraser leaves shapes and connectors alone, and Ctrl+Z brings back everything erased in one step.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.47.0',
     date: '2026-10-13',
     items: [

@@ -135,3 +135,75 @@ test('a participant draws by hand: everybody sees the line, which moves, goes an
 
   await close()
 })
+
+/** How faded the lines drawn by hand are on the canvas of the participant: the opacity of each, '' when not faded. */
+function lineOpacities(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const container = document.querySelector('[data-testid=diagram-canvas]') as unknown as Record<string, any>
+    const { graph } = container.__codrawEditor
+    return graph
+      .getDefaultParent()
+      .getChildren()
+      .filter((cell: any) => cell.isEdge() && cell.getStyle().codrawFreehand)
+      .map((cell: any) => graph.getView().getState(cell).shape.node.style.opacity as string)
+  })
+}
+
+test('a participant erases lines drawn by hand: they fade, go for everybody at once and come back with one undo', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const shape = await addShape(alice, 'Прямоугольник')
+  const canvas = (await alice.getByTestId('diagram-canvas').boundingBox())!
+  await alice.mouse.click(canvas.x + 20, canvas.y + canvas.height - 20)
+  const placed = (await vertices(alice)).find((cell) => cell.id === shape)!
+
+  // One line over the shape, another one below.
+  const pencil = alice.getByRole('button', { name: 'Карандаш', exact: true })
+  await pencil.click()
+  const box = await cellBox(alice, shape)
+  const overShape = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const below = { x: canvas.x + 40, y: canvas.y + canvas.height - 80 }
+  await drawWave(alice, overShape)
+  await drawWave(alice, below)
+  await expect.poll(async () => (await freehandLines(bob)).length).toBe(2)
+
+  // E turns the eraser on in place of the pencil.
+  await alice.keyboard.press('e')
+  const eraser = alice.getByRole('button', { name: 'Ластик', exact: true })
+  await expect(eraser).toHaveAttribute('aria-pressed', 'true')
+  await expect(pencil).toHaveAttribute('aria-pressed', 'false')
+
+  // Down across the first line, over the shape, then across the second one: both fade while the button is held.
+  await alice.mouse.move(overShape.x + 16, overShape.y - 40)
+  await alice.mouse.down()
+  await alice.mouse.move(overShape.x + 16, overShape.y + 60, { steps: 10 })
+  await alice.mouse.move(below.x + 16, below.y - 40, { steps: 10 })
+  await alice.mouse.move(below.x + 16, below.y + 60, { steps: 10 })
+  expect(await lineOpacities(alice)).toEqual(['0.3', '0.3'])
+  expect(await freehandLines(bob)).toHaveLength(2)
+
+  // The release erases both for Bob too; the shape stays where it was, and nothing is selected.
+  await alice.mouse.up()
+  await expect.poll(async () => (await freehandLines(bob)).length).toBe(0)
+  expect(await freehandLines(alice)).toEqual([])
+  expect((await vertices(bob)).find((cell) => cell.id === shape)).toMatchObject({ x: placed.x, y: placed.y })
+  expect(await selectionCount(alice)).toBe(0)
+  await expect(eraser).toHaveAttribute('aria-pressed', 'true')
+
+  // One Ctrl+Z brings both lines back, not faded.
+  await alice.keyboard.press('ControlOrMeta+z')
+  await expect.poll(async () => (await freehandLines(bob)).length).toBe(2)
+  expect(await lineOpacities(alice)).toEqual(['', ''])
+
+  // Escape while the button is held erases nothing and turns the eraser off.
+  await alice.mouse.move(below.x + 16, below.y - 40)
+  await alice.mouse.down()
+  await alice.mouse.move(below.x + 16, below.y + 60, { steps: 10 })
+  expect(await lineOpacities(alice)).toEqual(['', '0.3'])
+  await alice.keyboard.press('Escape')
+  await alice.mouse.up()
+  await expect(eraser).toHaveAttribute('aria-pressed', 'false')
+  expect(await lineOpacities(alice)).toEqual(['', ''])
+  expect(await freehandLines(bob)).toHaveLength(2)
+
+  await close()
+})

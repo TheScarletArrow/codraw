@@ -676,6 +676,30 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('button', { name: 'Цвет заливки' })).toBeInTheDocument()
   })
 
+  it('turns the eraser on in place of the pencil, and keeps the tools of the selection', async () => {
+    act(() =>
+      editor.setState({
+        colors: { fill: '#ffffff', stroke: '#000000', font: '#000000', fillOpacity: 100, gradient: 'none', gradientDirection: null, hasShapes: true },
+      }),
+    )
+    const pencil = screen.getByRole('button', { name: 'Карандаш' })
+    const eraser = screen.getByRole('button', { name: 'Ластик' })
+    expect(eraser).toHaveAttribute('title', 'Ластик: стереть линии от руки (E)')
+    await userEvent.click(pencil)
+
+    await userEvent.click(eraser)
+
+    expect(editor.setEraser).toHaveBeenCalledWith(true)
+    expect(eraser).toHaveAttribute('aria-pressed', 'true')
+    expect(eraser).toHaveAttribute('title', 'Закончить стирать (E, Esc)')
+    expect(pencil).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Цвет заливки' })).toBeInTheDocument()
+
+    await userEvent.click(eraser)
+    expect(editor.setEraser).toHaveBeenLastCalledWith(false)
+    expect(eraser).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('locks the selection', async () => {
     act(() =>
       editor.setState({
@@ -794,5 +818,6 @@ describe('EditorToolbar', () => {
     expect(within(toolbar).queryByRole('button', { name: 'Указка' })).toBeNull()
     expect(within(toolbar).queryByRole('button', { name: 'Комментарий' })).toBeNull()
     expect(within(toolbar).getByRole('button', { name: 'Карандаш' })).toBeInTheDocument()
+    expect(within(toolbar).getByRole('button', { name: 'Ластик' })).toBeInTheDocument()
   })
 })

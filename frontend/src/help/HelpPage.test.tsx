@@ -41,12 +41,13 @@ describe('help', () => {
 
     await userEvent.type(await screen.findByRole('searchbox', { name: 'Поиск по справке' }), 'слои')
     expect(screen.getByRole('article', { name: 'Слои страницы' })).toBeInTheDocument()
-    expect(screen.queryByRole('article', { name: 'Карандаш' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Карандаш и ластик' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Базы данных', level: 2 })).not.toBeInTheDocument()
 
     expect(searchTopics(helpTopics.sections, 'ТЁМНАЯ тема').flatMap((section) => section.topics.map((topic) => topic.id))).toEqual([
       'language-theme',
     ])
+    expect(searchTopics(helpTopics.sections, 'ластик').flatMap((section) => section.topics.map((topic) => topic.id))).toEqual(['pencil'])
   })
 
   it('tells when nothing is found', async () => {

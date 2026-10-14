@@ -33,6 +33,7 @@ const NO_EDITOR: EditorState = {
   commentTool: false,
   pencil: false,
   pencilLine: DEFAULT_PENCIL_LINE,
+  eraser: false,
   lock: null,
   attribution: null,
   canAddImages: false,

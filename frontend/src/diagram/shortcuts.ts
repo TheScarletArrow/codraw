@@ -53,6 +53,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       entry('group', ['Mod+G'], true),
       entry('ungroup', ['Mod+Shift+G'], true),
       entry('pencil', ['P'], true),
+      entry('eraser', ['E'], true),
       entry('nextMessage', ['Enter'], true),
     ],
   },
