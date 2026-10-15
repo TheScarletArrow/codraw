@@ -1,4 +1,4 @@
-import type { Cell } from '@maxgraph/core'
+import type { Cell, TooltipHandler } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -56,6 +56,24 @@ describe('indexes of tables', () => {
     expect(tableRowsOf(editor.graph, users).get(index!)).toMatchObject({ icons: ['index'], columns: [{ text: '(org_id)' }] })
     expect(tableRowsOf(editor.graph, users).get(users.getChildAt(1))!.icons).toEqual(['index'])
     expect(tableRowsOf(editor.graph, users).get(users.getChildAt(2))!.icons).toEqual([])
+  })
+
+  it('tells what the icon of an index means in a tooltip over it', () => {
+    const editor = open()
+    const builder = new DiagramBuilder()
+    builder.table('users', 0, 0, ['id uuid PK', 'email text'], 300, ['users_email_key (lower(email)) UNIQUE USING btree', 'users_id_idx (id)'])
+    editor.insertCells(builder.build())
+    const [unique, plain] = indexes(tableOf(editor, 'users'))
+    const tooltip = (row: Cell, x: number) => {
+      const { scale } = editor.graph.getView()
+      const state = editor.graph.getView().getState(row)!
+      const tip = editor.graph.getPlugin<TooltipHandler>('TooltipHandler')!.getTooltip(state, state.shape!.node, state.x + x * scale, state.y)
+      return tip instanceof HTMLElement ? tip.textContent : tip
+    }
+
+    expect(tooltip(unique!, 10)).toBe('Ромб — уникальный индекс')
+    expect(tooltip(plain!, 10)).toBe('Молния — индекс')
+    expect(tooltip(plain!, 200)).toBeNull()
   })
 
   it('adds an index at the end of the block, or after the selected index, and starts editing its name', () => {

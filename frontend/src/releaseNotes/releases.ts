@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.53.0',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Подсказки к значкам полей таблиц',
+          text: 'Задержите курсор на значках перед именем поля таблицы базы данных — подсказка объяснит их: ключ — первичный ключ, звено — внешний ключ, ромб — UNIQUE, молния — поле входит в индекс. У строк индексов подсказка различает уникальный индекс и обычный. Значки описаны и в справке «Таблицы и поля».',
+        },
+        en: {
+          title: 'Tooltips for the icons of table fields',
+          text: 'Rest the pointer on the icons before the name of a field of a database table, and a tooltip explains them: a key is a primary key, a link is a foreign key, a diamond is UNIQUE, and a bolt means the field is part of an index. On rows of indexes the tooltip tells a unique index from a plain one. The icons are described in the “Tables and fields” help too.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.52.0',
     date: '2026-10-15',
     items: [
