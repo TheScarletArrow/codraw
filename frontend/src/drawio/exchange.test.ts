@@ -21,6 +21,7 @@ import {
 import { addPage, listPages, renamePage } from '../diagram/pages.ts'
 import { findShape, markedStyle } from '../diagram/shapes.ts'
 import { readStatus, writeStatus } from '../diagram/status.ts'
+import { TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { SAMPLE_DRAWIO } from './fixtures.ts'
 import { IMPORT_ORIGIN, importPages } from './importPages.ts'
@@ -394,6 +395,52 @@ describe('exportDrawio', () => {
     const stats = pageCells(copy, DEFAULT_PAGE_ID).stats!
     expect(stats.style).toMatchObject({ [VIEW_KEY]: true, [MATERIALIZED_KEY]: true, [VIEW_QUERY_KEY]: query })
     expect(stats.attrs).toEqual({})
+  })
+
+  it('writes the comment of a table on an <object>, not in its style, and reads it back', async () => {
+    const comment = 'Заказы; статус = state, «сумма» <в рублях>'
+    const table = { ...fromStyle(markedStyle(findShape('table')!) as never), [TABLE_COMMENT_KEY]: comment }
+    const doc = board()
+    doc.transact(() => writeCell(getCells(doc), cell('orders', { value: 'orders', style: table })))
+
+    const xml = exportDrawio(doc)
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    expect(xml).toContain(`<object label="orders" ${TABLE_COMMENT_KEY}="Заказы; статус = state, «сумма» &lt;в рублях&gt;"`)
+    expect(xml).not.toContain(`${TABLE_COMMENT_KEY}=Заказы`)
+    const orders = pageCells(copy, DEFAULT_PAGE_ID).orders!
+    expect(orders.style[TABLE_COMMENT_KEY]).toBe(comment)
+    expect(orders.attrs).toEqual({})
+  })
+
+  it('reads the comment of a table from a file as one line, and no comment of a shape that is no table', async () => {
+    const xml = `<mxfile><diagram id="p" name="Страница"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+      <object id="t" label="users" ${TABLE_COMMENT_KEY}="  Учётные&#10;записи  "><mxCell style="shape=swimlane;childLayout=stackLayout;startSize=30;" vertex="1" parent="1"><mxGeometry width="200" height="60" as="geometry"/></mxCell></object>
+      <object id="s" label="API" ${TABLE_COMMENT_KEY}="Шлюз"><mxCell style="rounded=1;" vertex="1" parent="1"><mxGeometry x="300" width="120" height="60" as="geometry"/></mxCell></object>
+      </root></mxGraphModel></diagram></mxfile>`
+    const copy = new Y.Doc()
+    importPages(copy, await parseDrawio(xml))
+
+    const cells = Object.values(pageCells(copy, listPages(copy)[0]!.id))
+    expect(cells.find((cell) => cell.value === 'users')!.style[TABLE_COMMENT_KEY]).toBe('Учётные записи')
+    const api = cells.find((cell) => cell.value === 'API')!
+    expect(api.style).not.toHaveProperty(TABLE_COMMENT_KEY)
+    expect(api.attrs ?? {}).toEqual({})
+  })
+
+  it('keeps attributes named like properties of objects as custom properties, without touching any prototype', async () => {
+    const xml = `<mxfile><diagram id="p" name="Страница"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+      <object id="a" label="API" __proto__="polluted" constructor="Конструктор" toString="строка"><mxCell vertex="1" parent="1"><mxGeometry width="120" height="60" as="geometry"/></mxCell></object>
+      </root></mxGraphModel></diagram></mxfile>`
+    const [page] = await parseDrawio(xml)
+
+    const attrs = page!.cells.find((cell) => cell.value === 'API')!.attrs!
+    expect(Object.keys(attrs).sort()).toEqual(['__proto__', 'constructor', 'toString'])
+    expect(Object.getOwnPropertyDescriptor(attrs, '__proto__')?.value).toBe('polluted')
+    expect(Object.getPrototypeOf(attrs)).toBe(Object.prototype)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.prototype.toString.call(attrs)).toBe('[object Object]')
   })
 
   it('writes no link that CoDraw would not open, nor one that a board kept among the custom properties', () => {

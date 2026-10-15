@@ -20,6 +20,7 @@ import {
 } from '../diagram/model.ts'
 import { isTableIndexStyle, isTableStyle, TABLE_INDEX_KEY, type ShapeStyle } from '../diagram/shapes.ts'
 import { SOURCE_KEY, sourceOf } from '../diagram/sources.ts'
+import { TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 import { parseFieldLabel } from '../sql/erDiagram.ts'
 import { plainText } from '../sql/tableField.ts'
@@ -51,6 +52,7 @@ const DATA_STYLE_KEYS = new Set<string>([
   VIEW_KEY,
   MATERIALIZED_KEY,
   VIEW_QUERY_KEY,
+  TABLE_COMMENT_KEY,
 ])
 
 const hasGeometry = (cell: CellData): cell is CellData & { geometry: NonNullable<CellData['geometry']> } => cell.geometry !== null

@@ -1507,7 +1507,7 @@ describe('BoardPage', () => {
       const toolbar = screen.getByRole('toolbar', { name: 'Инструменты' })
       expect(within(toolbar).getByRole('button', { name: 'Отменить' })).toBeDisabled()
       expect(within(toolbar).getByRole('button', { name: 'Повторить' })).toBeDisabled()
-      expect(within(toolbar).getByRole('button', { name: 'Масштаб' })).toHaveTextContent('100%')
+      expect(within(toolbar).getByRole('combobox', { name: 'Масштаб' })).toHaveDisplayValue('100%')
       expect(screen.getByRole('list', { name: 'Участники' })).toBeInTheDocument()
     })
 
@@ -1570,18 +1570,18 @@ describe('BoardPage', () => {
       expect(setData).toHaveBeenCalledWith(SHAPE_DRAG_TYPE, 'rhombus')
     })
 
-    it('zooms with the toolbar buttons and shows the scale', async () => {
+    it('zooms with the toolbar buttons and «Масштаб» and shows the scale', async () => {
       const editor = await openEditor()
 
       await userEvent.click(screen.getByRole('button', { name: 'Увеличить' }))
       await userEvent.click(screen.getByRole('button', { name: 'Уменьшить' }))
-      await userEvent.click(screen.getByRole('button', { name: 'Масштаб' }))
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Масштаб' }), '50%')
       act(() => editor.setState({ scale: 1.5 }))
 
       expect(editor.zoomIn).toHaveBeenCalled()
       expect(editor.zoomOut).toHaveBeenCalled()
-      expect(editor.zoomActual).toHaveBeenCalled()
-      expect(screen.getByRole('button', { name: 'Масштаб' })).toHaveTextContent('150%')
+      expect(editor.zoomTo).toHaveBeenCalledWith(0.5)
+      expect(screen.getByRole('combobox', { name: 'Масштаб' })).toHaveDisplayValue('150%')
     })
 
     it('undoes and redoes when the editor allows it', async () => {

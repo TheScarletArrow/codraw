@@ -3,6 +3,7 @@ import { TECHNOLOGY_KEY } from './elementKinds.ts'
 import { cellElementId, getCells, getElements, type CellMap } from './model.ts'
 import { listPages } from './pages.ts'
 import { readingOrder } from './readingOrder.ts'
+import { TABLE_COMMENT_KEY } from './tableComments.ts'
 
 /** An element of a page whose text has what is searched: a shape, an edge, a table, or a field or index of a table. */
 export interface CanvasMatch {
@@ -20,7 +21,7 @@ export function searchText(text: string): string {
 
 /**
  * The text of the properties of a cell that its label does not show: the technology, description, owner and tags of the
- * element of a shape, the technology of an edge.
+ * element of a shape, the technology of an edge, the comment of a table.
  */
 function propertiesText(doc: Y.Doc, cell: CellMap | undefined): string {
   if (!(cell instanceof Y.Map)) return ''
@@ -29,6 +30,7 @@ function propertiesText(doc: Y.Doc, cell: CellMap | undefined): string {
   const style = cell.get('style')
   const values = map instanceof Y.Map ? ['technology', 'description', 'owner', 'tags'].map((field) => map.get(field)) : []
   if (cell.get('kind') === 'edge' && style instanceof Y.Map) values.push(style.get(TECHNOLOGY_KEY))
+  if (cell.get('kind') === 'vertex' && style instanceof Y.Map) values.push(style.get(TABLE_COMMENT_KEY))
   return values
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
     .filter((value): value is string => typeof value === 'string')

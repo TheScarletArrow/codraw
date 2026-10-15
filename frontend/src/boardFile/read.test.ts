@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EDGE_API_KEY, emptyEdgeApi, writeEdgeApi } from '../diagram/edgeApi.ts'
 import { LOCKED_BY_KEY } from '../diagram/locks.ts'
+import { TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { zipFiles, type ZipFile } from '../lib/zip.ts'
 import { BOARD_JSON, BoardFileError } from './format.ts'
 import { readBoardFile } from './read.ts'
@@ -93,6 +94,29 @@ describe('readBoardFile', () => {
     const picture = file.images.get('images/1.png')!
     expect(picture.type).toBe('image/png')
     expect(Array.from(new Uint8Array(await picture.arrayBuffer()))).toEqual([1, 2, 3])
+  })
+
+  it('keeps the comment of a table as one line, and drops one that is not text', async () => {
+    const file = await readBoardFile(
+      await fileOf(
+        board([
+          {
+            id: 'page-1',
+            name: 'А',
+            cells: [
+              { id: 'orders', value: 'orders', style: { [TABLE_COMMENT_KEY]: '  Заказы\nклиентов ' } },
+              { id: 'users', value: 'users', style: { [TABLE_COMMENT_KEY]: 7 } },
+              { id: 'blank', value: 'blank', style: { [TABLE_COMMENT_KEY]: ' \n ' } },
+            ],
+          },
+        ]),
+      ),
+    )
+
+    const styles = Object.fromEntries(file.pages[0]!.cells.map((cell) => [cell.id, cell.style]))
+    expect(styles.orders).toEqual({ [TABLE_COMMENT_KEY]: 'Заказы клиентов' })
+    expect(styles.users).toEqual({})
+    expect(styles.blank).toEqual({})
   })
 
   it('drops what a file may not bring and puts what it cannot place into the main layer', async () => {

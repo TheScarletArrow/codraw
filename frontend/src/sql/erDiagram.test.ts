@@ -14,6 +14,7 @@ import {
   schemaSql,
 } from './erDiagram.ts'
 import { parseSql } from './parseSql.ts'
+import { TABLE_COMMENT_KEY, tableCommentRoom } from '../diagram/tableComments.ts'
 import { MATERIALIZED_KEY, VIEW_KEY, VIEW_QUERY_KEY } from '../diagram/views.ts'
 
 const DDL = `
@@ -215,6 +216,36 @@ describe('the schema of a diagram', () => {
       ].join('\n\n') + '\n',
     )
     expect(schemaMermaid(schema)).not.toContain('idx')
+  })
+
+  it('puts the comments of tables and views under their names and writes them back after what creates them', async () => {
+    const ddl = `
+      CREATE TABLE orders (id bigint PRIMARY KEY, total numeric);
+      COMMENT ON TABLE orders IS 'Заказы магазина O''Reilly';
+      CREATE TABLE notes (id int PRIMARY KEY);
+      CREATE MATERIALIZED VIEW totals AS SELECT sum(total) AS total FROM orders;
+      COMMENT ON MATERIALIZED VIEW totals IS 'Итоги';
+    `
+    const cells = await schemaCells(parseSql(ddl), { x: 0, y: 0 })
+    const orders = byValue(cells, 'orders')
+    const room = tableCommentRoom(13)
+
+    expect(orders.style[TABLE_COMMENT_KEY]).toBe("Заказы магазина O'Reilly")
+    expect(byValue(cells, 'notes').style).not.toHaveProperty(TABLE_COMMENT_KEY)
+    expect(byValue(cells, 'totals').style).toMatchObject({ [VIEW_KEY]: true, [TABLE_COMMENT_KEY]: 'Итоги' })
+    // The fields are under the line of the comment, and the table is as wide as the line.
+    expect(cells.filter((cell) => cell.parent === orders.id).map((cell) => cell.geometry!.y)).toEqual([30 + room, 56 + room])
+    expect(orders.geometry!.height).toBe(82 + room)
+    expect(orders.geometry!.width).toBeGreaterThanOrEqual("Заказы магазина O'Reilly".length * 6 + 16)
+
+    const sql = schemaSql(diagramSchema(cells))
+    expect(sql).toContain("CREATE TABLE orders (\n    id bigint PRIMARY KEY,\n    total numeric\n);\nCOMMENT ON TABLE orders IS 'Заказы магазина O''Reilly';\n\n")
+    expect(sql).toContain("FROM orders;\nCOMMENT ON MATERIALIZED VIEW totals IS 'Итоги';\n")
+    expect(sql).not.toContain('COMMENT ON TABLE notes')
+    const back = parseSql(sql)
+    expect(back.tables[0]!.comment).toBe("Заказы магазина O'Reilly")
+    expect(back.views[0]!.comment).toBe('Итоги')
+    expect(schemaMermaid(diagramSchema(cells))).not.toContain('Заказы')
   })
 
   it('writes an erDiagram of Mermaid with keys and relations', async () => {

@@ -4,6 +4,7 @@ import { architectureGraph } from '../architecture/importModel.ts'
 import { parseArchitectureFiles } from '../architecture/parseArchitecture.ts'
 import { SHOP_DSL } from '../architecture/testArchitecture.ts'
 import { DEFAULT_PAGE_ID, getCells, initializeDocument, readCell, writeCell } from '../diagram/model.ts'
+import { TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { infraCells } from '../infra/infraCells.ts'
 import { parseTerraform } from '../infra/parseTerraform.ts'
 import { terraformGraph } from '../infra/terraformGraph.ts'
@@ -62,6 +63,22 @@ describe('schema import update', () => {
     expect(updated.id).toBe(view.id)
     expect(updated.geometry).toEqual(view.geometry)
     expect(updated.style.codrawViewQuery).toBe('SELECT id FROM users WHERE deleted_at IS NULL AND id IS NOT NULL')
+  })
+
+  it('sets, changes and removes the comment of a table imported before', async () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const ddl = (comment: string) => `CREATE TABLE users (id uuid PRIMARY KEY); ${comment}`
+    const before = await schemaCells(parseSql(ddl('')), { x: 100, y: 80 }, undefined, [], 'sql')
+    doc.transact(() => before.forEach((cell) => writeCell(getCells(doc, DEFAULT_PAGE_ID), cell)))
+    const users = () => cellsOf(doc).find((cell) => cell.value === 'users')!
+
+    applySchemaUpdate(doc, DEFAULT_PAGE_ID, await schemaCells(parseSql(ddl("COMMENT ON TABLE users IS 'Клиенты';")), { x: 0, y: 0 }, undefined, [], 'sql'))
+    expect(users().style[TABLE_COMMENT_KEY]).toBe('Клиенты')
+    applySchemaUpdate(doc, DEFAULT_PAGE_ID, await schemaCells(parseSql(ddl("COMMENT ON TABLE users IS 'Покупатели';")), { x: 0, y: 0 }, undefined, [], 'sql'))
+    expect(users().style[TABLE_COMMENT_KEY]).toBe('Покупатели')
+    applySchemaUpdate(doc, DEFAULT_PAGE_ID, await schemaCells(parseSql(ddl('')), { x: 0, y: 0 }, undefined, [], 'sql'))
+    expect(users().style).not.toHaveProperty(TABLE_COMMENT_KEY)
   })
 
   it('updates a table of another layer in its layer', async () => {

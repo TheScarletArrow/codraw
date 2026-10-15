@@ -4,6 +4,9 @@ export const tableMessages = defineMessages({
   ru: {
     vendor: 'СУБД',
     tableVendor: 'СУБД таблицы',
+    comment: 'Комментарий',
+    tableComment: 'Комментарий таблицы',
+    commentTitle: 'Комментарий таблицы — строка под её названием; в SQL — COMMENT ON TABLE. Enter — применить, Escape — вернуть',
     addField: 'Добавить поле',
     addIndex: 'Добавить индекс',
     viewTitle: 'Представление (VIEW): столбцы запроса к таблицам; в SQL — CREATE VIEW',
@@ -41,6 +44,9 @@ export const tableMessages = defineMessages({
   en: {
     vendor: 'DBMS',
     tableVendor: 'Table DBMS',
+    comment: 'Comment',
+    tableComment: 'Table comment',
+    commentTitle: 'Table comment, a line under its name; in SQL, COMMENT ON TABLE. Enter applies, Escape reverts',
     addField: 'Add field',
     addIndex: 'Add index',
     viewTitle: 'View (VIEW): the columns of a query of tables; in SQL, CREATE VIEW',

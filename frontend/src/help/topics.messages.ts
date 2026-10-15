@@ -236,7 +236,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Мини-карта и масштаб',
             paragraphs: [
               'В правом нижнем углу холста — уменьшенная страница с рамкой видимой области: щелчок или перетаскивание рамки переносят туда холст, а цветные точки показывают, куда смотрят другие участники. Свернуть её можно кнопкой в углу или клавишей M.',
-              'Масштаб меняют Ctrl+колесо и кнопки «Уменьшить» и «Увеличить», «Показать всё» (Ctrl+Shift+H) вписывает страницу в экран, а щелчок по проценту возвращает 100%.',
+              'Масштаб меняют Ctrl+колесо, кнопки «Уменьшить» и «Увеличить» и список «Масштаб» между ними — в нём от 25 до 400 %, а 100 % возвращает обычный размер. «Показать всё» (Ctrl+Shift+H) вписывает страницу в экран.',
             ],
           },
           {
@@ -378,6 +378,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'Таблица из раздела «База данных» палитры хранит поля с типами, первичными и внешними ключами; связи между таблицами подходят к нужным полям. Поле вводится одной строкой: Enter заканчивает ввод, а «id uuid primary key not null» превращается в «id uuid PK NOT NULL».',
               '«Добавить индекс» на панели таблицы создаёт составные, уникальные и частичные индексы — они видны под полями.',
+              'Поле «Комментарий» на панели таблицы оставляет пояснение к ней — маленькую строку под названием, например «Клиенты магазина». Enter применяет, Escape возвращает прежний, пустое поле убирает комментарий. Длинный комментарий обрезается многоточием, а наведение на заголовок показывает его целиком. В SQL это COMMENT ON TABLE.',
             ],
           },
           {
@@ -398,7 +399,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sql-import',
             title: 'Импорт схемы из SQL и из базы',
             paragraphs: [
-              '«Импорт SQL» в меню «SQL и Mermaid» читает DDL, миграции Flyway и дампы pg_dump --schema-only и mysqldump --no-data: таблицы, представления, связи и индексы появляются на странице.',
+              '«Импорт SQL» в меню «SQL и Mermaid» читает DDL, миграции Flyway и дампы pg_dump --schema-only и mysqldump --no-data: таблицы, представления, связи, индексы и комментарии таблиц появляются на странице.',
               'Если администратор разрешил, «Подключиться к базе…» загружает схему прямо из PostgreSQL.',
             ],
           },
@@ -406,7 +407,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sql-export',
             title: 'Выгрузка в SQL',
             paragraphs: [
-              '«Скопировать SQL» выгружает таблицы, индексы и представления схемы. Скопированные таблицы вставляются в редактор кода или чат как CREATE TABLE, а в CoDraw — снова таблицами.',
+              '«Скопировать SQL» выгружает таблицы, индексы, комментарии и представления схемы. Скопированные таблицы вставляются в редактор кода или чат как CREATE TABLE, а в CoDraw — снова таблицами.',
             ],
           },
           {
@@ -868,7 +869,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Minimap and zoom',
             paragraphs: [
               'The bottom right corner of the canvas shows a small copy of the page with a frame of the visible area: a click or dragging the frame moves the canvas there, and colored dots show where other participants are looking. The button in the corner or the M key collapses it.',
-              'Ctrl+wheel and the “Zoom out” and “Zoom in” buttons change the zoom, “Fit to screen” (Ctrl+Shift+H) fits the page to the screen, and a click on the percentage brings back 100%.',
+              'Ctrl+wheel, the “Zoom out” and “Zoom in” buttons and the “Zoom” list between them, from 25% to 400%, change the zoom; 100% in the list brings back the usual size. “Fit to screen” (Ctrl+Shift+H) fits the page to the screen.',
             ],
           },
           {
@@ -1010,6 +1011,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             paragraphs: [
               'A table from the “Database” section of the palette keeps fields with types, primary and foreign keys; connectors between tables reach the right fields. A field is typed as one line: Enter ends the input, and “id uuid primary key not null” turns into “id uuid PK NOT NULL”.',
               '“Add index” on the toolbar of a table creates composite, unique and partial indexes, shown under the fields.',
+              'The “Comment” field on the toolbar of a table leaves a note about it, a small line under its name, such as “Store customers”. Enter applies it, Escape brings the previous one back, an empty field removes the comment. A long comment is cut with an ellipsis, and hovering over the header shows it whole. In SQL, it is COMMENT ON TABLE.',
             ],
           },
           {
@@ -1030,7 +1032,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sql-import',
             title: 'Importing a schema from SQL and from a database',
             paragraphs: [
-              '“Import SQL” in the “SQL and Mermaid” menu reads DDL, Flyway migrations and pg_dump --schema-only and mysqldump --no-data dumps: tables, views, connectors and indexes appear on the page.',
+              '“Import SQL” in the “SQL and Mermaid” menu reads DDL, Flyway migrations and pg_dump --schema-only and mysqldump --no-data dumps: tables, views, connectors, indexes and table comments appear on the page.',
               'If the administrator allows it, “Connect to database…” loads the schema straight from PostgreSQL.',
             ],
           },
@@ -1038,7 +1040,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'sql-export',
             title: 'Exporting to SQL',
             paragraphs: [
-              '“Copy SQL” exports the tables, indexes and views of the diagram. Copied tables are pasted into a code editor or a chat as CREATE TABLE, and into CoDraw as tables again.',
+              '“Copy SQL” exports the tables, indexes, comments and views of the diagram. Copied tables are pasted into a code editor or a chat as CREATE TABLE, and into CoDraw as tables again.',
             ],
           },
           {

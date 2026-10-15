@@ -21,6 +21,8 @@ import {
   type ShapeId,
   type ShapeStyle,
 } from '../diagram/shapes.ts'
+import { commentRoomOf } from '../diagram/tableComments.ts'
+import { DEFAULT_FONT_SIZE } from '../diagram/textMeasure.ts'
 
 export interface ShapeOptions {
   /** The label; without it, the label made of `element`, or the label of the shape of the palette. */
@@ -83,7 +85,7 @@ export class DiagramBuilder {
 
   /**
    * Adds a table of a database with its fields under the name and the rows of its indexes under the fields, with the keys
-   * of `style` added to its own, e.g. those of a view; returns the ids of the table and of its fields.
+   * of `style` added to its own, e.g. those of a view or a comment; returns the ids of the table and of its fields.
    */
   table(
     name: string,
@@ -94,11 +96,13 @@ export class DiagramBuilder {
     indexes: string[] = [],
     style: Record<string, StyleValue> = {},
   ): { id: string; fields: string[]; indexes: string[] } {
-    const indexesTop = TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT + TABLE_INDEX_GAP
+    // The line of a comment of the style lies under the name, in the header.
+    const header = TABLE_HEADER_HEIGHT + commentRoomOf(style, DEFAULT_FONT_SIZE)
+    const indexesTop = header + fields.length * TABLE_FIELD_HEIGHT + TABLE_INDEX_GAP
     const id = this.shape('table', x, y, {
       value: name,
       width,
-      height: indexes.length > 0 ? indexesTop + indexes.length * TABLE_FIELD_HEIGHT : TABLE_HEADER_HEIGHT + fields.length * TABLE_FIELD_HEIGHT,
+      height: indexes.length > 0 ? indexesTop + indexes.length * TABLE_FIELD_HEIGHT : header + fields.length * TABLE_FIELD_HEIGHT,
       style: style as ShapeStyle,
     })
     const row = (value: string, top: number, style: Record<string, StyleValue>) =>
@@ -109,7 +113,7 @@ export class DiagramBuilder {
         geometry: { x: 0, y: top, width, height: TABLE_FIELD_HEIGHT },
         style: { ...TABLE_FIELD_STYLE, ...style } as Record<string, StyleValue>,
       })
-    const fieldIds = fields.map((field, index) => row(field, TABLE_HEADER_HEIGHT + index * TABLE_FIELD_HEIGHT, {}))
+    const fieldIds = fields.map((field, index) => row(field, header + index * TABLE_FIELD_HEIGHT, {}))
     const indexIds = indexes.map((index, at) => row(index, indexesTop + at * TABLE_FIELD_HEIGHT, { [TABLE_INDEX_KEY]: true }))
     return { id, fields: fieldIds, indexes: indexIds }
   }

@@ -35,6 +35,30 @@ describe('the view of the editor', () => {
     expect(editor.getState().scale).toBe(0.1)
   })
 
+  it('keeps the middle of the view when panning shrinks the scrollable area and the browser takes the scroll back', () => {
+    const editor = open()
+    const container = editor.graph.getContainer()
+    const view = editor.graph.getView()
+    // As in a browser: a canvas of 1100 by 600 pixels that scrolls over a drawing reaching the right edge of a shape at
+    // x 610, and a scroll position the browser keeps within what the drawing allows.
+    const width = () => Math.max(1100, Math.round((610 + view.translate.x) * view.scale))
+    let left = 0
+    container.style.overflow = 'auto'
+    Object.defineProperties(container, {
+      clientWidth: { get: () => 1100 },
+      clientHeight: { get: () => 600 },
+      scrollWidth: { get: width },
+      scrollHeight: { get: () => 600 },
+      scrollLeft: { get: () => Math.min(left, width() - 1100), set: (value: number) => (left = Math.max(0, value)) },
+    })
+    const middle = editor.viewportCenter()
+
+    editor.zoomTo(2)
+
+    expect(editor.viewportCenter().x).toBeCloseTo(middle.x, 0)
+    expect(editor.viewportCenter().y).toBeCloseTo(middle.y, 0)
+  })
+
   const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
   const turnWheel = (editor: DiagramEditor, deltaY: number) =>
     editor.graph.container.dispatchEvent(new WheelEvent('wheel', { deltaY, ctrlKey: true, bubbles: true, cancelable: true }))

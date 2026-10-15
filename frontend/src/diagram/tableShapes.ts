@@ -11,6 +11,7 @@ import { vendorOf } from '../sql/dbVendors.ts'
 import { plainText, sourceRefers, splitField } from '../sql/tableField.ts'
 import { measureLabel, type LabelStyle } from './autoWidth.ts'
 import { isBaseTable } from './baseTables.ts'
+import { COMMENT_PADDING, fitText, tableCommentFontSize, tableCommentOf, tableCommentRoom } from './tableComments.ts'
 import { tableShapeMessages as m } from './tableShapes.messages.ts'
 import { isTableIndexStyle, isTableStyle, TABLE_INDEX_GAP, type ShapeStyle } from './shapes.ts'
 import {
@@ -26,6 +27,7 @@ import {
   type FieldIcon,
   type TableRow,
 } from './tableRows.ts'
+import { DEFAULT_FONT_SIZE, LINE_HEIGHT, numeric } from './textMeasure.ts'
 import { isViewTable, viewBadge } from './views.ts'
 
 /** Shape of a field drawn in columns; set when the field is drawn, never stored. */
@@ -250,24 +252,74 @@ class TableFieldShape extends RectangleShape {
   }
 }
 
+/** The font of the line of the comment of a table drawn with `style`: smaller than its name, in italics. */
+function commentFont(style: { fontSize?: unknown; fontFamily?: unknown }): LabelStyle {
+  return { fontSize: tableCommentFontSize(numeric(style.fontSize, DEFAULT_FONT_SIZE)), fontFamily: style.fontFamily, fontStyle: 2 }
+}
+
+/** The comment of a table as its line shows it in the width `width` of the table: cut with «…» when it does not fit. */
+function shownComment(comment: string, style: { fontSize?: unknown; fontFamily?: unknown }, width: number): string {
+  const font = commentFont(style)
+  return fitText(comment, Math.max(0, width - 2 * COMMENT_PADDING), (text) => measureLabel(text, font))
+}
+
+/** The comment of a table whose line cuts it, for a tooltip that shows it whole; `null` when the line shows it all. */
+export function cutTableComment(graph: AbstractGraph, table: Cell): string | null {
+  const comment = isTable(table) ? tableCommentOf(table.getStyle() as Record<string, unknown>) : ''
+  const width = table.getGeometry()?.width ?? 0
+  return comment && shownComment(comment, graph.getCellStyle(table), width) !== comment ? comment : null
+}
+
+/** Width of the line of a comment with its room on both sides, for the auto width of its table. */
+export function commentWidth(comment: string, style: { fontSize?: unknown; fontFamily?: unknown }): number {
+  return comment ? measureLabel(comment, commentFont(style)) + 2 * COMMENT_PADDING : 0
+}
+
 /**
  * A swimlane that, as a table with a database, has the badge of the database at the left of its header, as a base
- * table the badge of a base at the right, as a view the badge of a view there, and above its indexes a line with their
- * caption.
+ * table the badge of a base at the right, as a view the badge of a view there, the line of its comment under its name,
+ * and above its indexes a line with their caption.
  */
 class TableShape extends SwimlaneShape {
   override paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
     // The swimlane moves the canvas to its top-left corner.
     super.paintVertexShape(c, x, y, w, h)
     const cell = this.state && isTable(this.state.cell) ? this.state.cell : null
+    const comment = cell ? tableCommentOf(cell.getStyle() as Record<string, unknown>) : ''
+    // The style of the state has the header taller by the line of the comment (see `configureTableFields`).
+    const room = comment ? tableCommentRoom(numeric(this.style?.fontSize, DEFAULT_FONT_SIZE)) : 0
+    const title = Math.min(this.getTitleSize(), h)
+    // The badges stay on the line of the name.
+    const top = (Math.max(0, title - room) - BADGE_HEIGHT) / 2
     const vendor = cell ? vendorOf(cell.getStyle()) : null
-    const top = (Math.min(this.getTitleSize(), h) - BADGE_HEIGHT) / 2
     if (vendor) paintBadge(c, BADGE_X, top, vendor.badge, vendor.color, vendor.textColor)
     const view = cell ? viewBadge(cell.getStyle() as Record<string, unknown>) : null
     if (view) paintBadge(c, w - BADGE_X - badgeWidth(view), top, view, VIEW_BADGE_COLOR, '#ffffff')
     else if (isBaseTable(cell)) paintBadge(c, w - BADGE_X - badgeWidth(BASE_BADGE), top, BASE_BADGE, BASE_BADGE_COLOR, '#ffffff')
+    if (room > 0 && title >= room) this.paintComment(c, w, title - room, comment)
     const firstIndex = cell?.getChildren().find(isIndexRow)?.getGeometry()
     if (firstIndex) this.paintIndexesCaption(c, w, firstIndex.y - TABLE_INDEX_GAP)
+  }
+
+  /** The line of the comment from `top`, aligned as the name, cut with «…» when it is wider than the table. */
+  private paintComment(c: AbstractCanvas2D, w: number, top: number, comment: string) {
+    const style = this.style ?? {}
+    const font = commentFont(style)
+    const text = shownComment(comment, style, w)
+    if (!text) return
+    const align = style.align === 'left' || style.align === 'right' ? style.align : 'center'
+    const x = align === 'left' ? COMMENT_PADDING : align === 'right' ? w - COMMENT_PADDING : w / 2
+    c.save()
+    c.setShadow(false)
+    c.setAlpha(MUTED)
+    c.setFontColor(String(style.fontColor ?? '#1f2328'))
+    c.setFontSize(Number(font.fontSize))
+    if (style.fontFamily) c.setFontFamily(style.fontFamily)
+    c.setFontStyle(2)
+    // In the middle of a line of the text, which starts a little closer to the name than the room under it.
+    const middle = top + (Number(font.fontSize) * LINE_HEIGHT) / 2
+    c.text(x, middle, 0, 0, text, align, 'middle', false, '', 'visible', false, 0, '')
+    c.restore()
   }
 
   /** A line across the table at `top` and the caption of the indexes under it. */

@@ -31,12 +31,16 @@ const references = (schema: SqlSchema) =>
 const views = (schema: SqlSchema) =>
   Object.fromEntries(schema.views.map((view) => [view.name, view.columns.map((column) => [column.name, column.type].filter(Boolean).join(' '))]))
 
+/** Comments of tables and views by name. */
+const comments = (schema: SqlSchema) =>
+  Object.fromEntries([...schema.tables, ...schema.views].flatMap((table) => (table.comment ? [[table.name, table.comment]] : [])))
+
 const indexes = (schema: SqlSchema) =>
   schema.tables.flatMap((table) => table.indexes.map((index) => `${table.name}: ${index.name} (${index.columns})${index.unique ? ' UNIQUE' : ''}`))
 
 /**
  * What a diagram shows of a schema whatever the spelling of the types: tables, columns with their keys, references,
- * indexes and views with their columns and what they read, by name.
+ * indexes, views with their columns and what they read, by name, and comments.
  */
 const shape = (schema: SqlSchema) => ({
   tables: Object.fromEntries(
@@ -49,6 +53,7 @@ const shape = (schema: SqlSchema) => ({
     .map((index) => index.replace(/ \(.*\)/, ''))
     .sort(),
   views: schema.views.map((view) => ({ name: view.name, columns: view.columns.map((column) => column.name), reads: view.dependencies })),
+  comments: comments(schema),
 })
 
 describe('dumps of PostgreSQL', () => {
@@ -101,6 +106,8 @@ describe('dumps of PostgreSQL', () => {
       'SELECT id,\n    user_id,\n    status,\n    invoice_number,\n    created_at,\n    deleted_at\n   FROM public.orders\n  WHERE (deleted_at IS NULL)',
     )
     expect(schema.views[0]!.dependencies).toEqual(['orders'])
+    // The comment of a table is its comment; that of a column is not drawn.
+    expect(comments(schema)).toEqual({ users: 'Пользователи магазина' })
     // The type, the function and the trigger; settings, owners, rights, comments, sequences, the partition and the data
     // are not counted.
     expect(schema.skipped).toBe(3)
@@ -141,6 +148,8 @@ describe('dumps of MySQL and MariaDB', () => {
     // The final view of mysqldump replaces its stand-in with columns `1 AS id`.
     expect(views(schema)).toEqual({ paid_orders: ['id int unsigned', 'user_id int unsigned', 'total decimal(12, 2)'] })
     expect(schema.views[0]!.dependencies).toEqual(['orders'])
+    // The comment of the table after its columns, not that of its column `email`.
+    expect(comments(schema)).toEqual({ users: 'Пользователи магазина' })
     // The trigger in comments /*! … */ and the procedure between DELIMITER ;; and DELIMITER ;.
     expect(schema.skipped).toBe(2)
   })
