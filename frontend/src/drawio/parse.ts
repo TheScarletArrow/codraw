@@ -170,12 +170,12 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
       // A cell with a link or custom properties: the attributes of the wrapper and the cell inside it.
       const cell = childElements(element, 'mxCell')[0]
       if (!cell) continue
-      const attrs: Record<string, string> = {}
-      for (const attribute of Array.from(element.attributes)) {
-        if (!['id', 'label', 'link', 'placeholders', EDGE_API_KEY, VIEW_QUERY_KEY, TABLE_COMMENT_KEY].includes(attribute.name)) {
-          attrs[attribute.name] = attribute.value
-        }
-      }
+      // Own properties, as `Object.fromEntries` defines them: an attribute named `__proto__` of a file stays an attribute.
+      const attrs: Record<string, string> = Object.fromEntries(
+        Array.from(element.attributes)
+          .filter((attribute) => !['id', 'label', 'link', 'placeholders', EDGE_API_KEY, VIEW_QUERY_KEY, TABLE_COMMENT_KEY].includes(attribute.name))
+          .map((attribute) => [attribute.name, attribute.value]),
+      )
       const label = element.getAttribute('label') ?? ''
       raw.push({
         id: element.getAttribute('id') ?? '',

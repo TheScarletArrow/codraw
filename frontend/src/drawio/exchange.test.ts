@@ -429,6 +429,20 @@ describe('exportDrawio', () => {
     expect(api.attrs ?? {}).toEqual({})
   })
 
+  it('keeps attributes named like properties of objects as custom properties, without touching any prototype', async () => {
+    const xml = `<mxfile><diagram id="p" name="Страница"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+      <object id="a" label="API" __proto__="polluted" constructor="Конструктор" toString="строка"><mxCell vertex="1" parent="1"><mxGeometry width="120" height="60" as="geometry"/></mxCell></object>
+      </root></mxGraphModel></diagram></mxfile>`
+    const [page] = await parseDrawio(xml)
+
+    const attrs = page!.cells.find((cell) => cell.value === 'API')!.attrs!
+    expect(Object.keys(attrs).sort()).toEqual(['__proto__', 'constructor', 'toString'])
+    expect(Object.getOwnPropertyDescriptor(attrs, '__proto__')?.value).toBe('polluted')
+    expect(Object.getPrototypeOf(attrs)).toBe(Object.prototype)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.prototype.toString.call(attrs)).toBe('[object Object]')
+  })
+
   it('writes no link that CoDraw would not open, nor one that a board kept among the custom properties', () => {
     const doc = board()
     doc.transact(() => {
