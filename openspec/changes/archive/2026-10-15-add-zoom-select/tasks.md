@@ -3,7 +3,7 @@
 ## 1. frontend
 
 - [x] 1.1 frontend: список «Масштаб» вместо кнопки с процентом в `EditorToolbar.tsx` — уровни 25–400 %, текущий масштаб между ними на своём месте, выбор через `editor.zoomTo`; `zoomActual` убран из `DiagramEditor`; `centerOn` добирает сдвигом прокрутку, которую браузер забрал после сдвига; проверка: `EditorToolbar.test.tsx`, `BoardPage.test.tsx`, `viewport.test.ts`
-- [x] 1.2 frontend: абзац темы справки «Мини-карта и масштаб», «Что нового» 0.50.0 и версия в `package.json`; проверка: тесты словарей, справки и версий, `typecheck`, `lint`, `test`
+- [x] 1.2 frontend: абзац темы справки «Мини-карта и масштаб», «Что нового» 0.51.0 и версия в `package.json`; проверка: тесты словарей, справки и версий, `typecheck`, `lint`, `test`
 
 ## 2. e2e
 
@@ -11,4 +11,4 @@
 
 ## 3. Документация
 
-- [x] 3.1 `docs/running.md`, README (раздел «Масштаб», пункт 128 «Плана работ»); проверка: `openspec validate --all --strict`
+- [x] 3.1 `docs/running.md`, README (раздел «Масштаб», пункт 129 «Плана работ»); проверка: `openspec validate --all --strict`
