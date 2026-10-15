@@ -34,8 +34,8 @@ import { AutoLayoutPicker } from './AutoLayoutPicker.tsx'
 import type { PlanView } from './plan.ts'
 import { PlanViewPicker } from './PlanViewPicker.tsx'
 import { ColorPicker } from './ColorPicker.tsx'
-import type { DiagramEditor, EdgeEnd, FontStyleFlag, SelectionLock, SelectionText, TextAlign } from './editor.ts'
-import { EDGE_MARKERS } from './edgeMarkers.ts'
+import type { DiagramEditor, FontStyleFlag, SelectionLock, SelectionText, TextAlign } from './editor.ts'
+import { EdgeMarkerPicker } from './EdgeMarkerPicker.tsx'
 import { UML_RELATIONS, type UmlRelation } from './useCase.ts'
 import { FONT_FAMILIES } from './fonts.ts'
 import { GeometryPicker } from './GeometryPicker.tsx'
@@ -348,6 +348,14 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
             onShapeEffects={(changes) => editor?.setShapeEffects(changes)}
           />
         )}
+        {edgeMarkers && (
+          <EdgeMarkerPicker
+            markers={edgeMarkers}
+            onMarker={(end, marker) => editor?.setEdgeMarker(end, marker)}
+            onMarkers={(markers) => editor?.setEdgeMarkers(markers)}
+            onSwap={() => editor?.swapEdgeMarkers()}
+          />
+        )}
         {text && <TextTools text={text} editor={editor} />}
         {geometry && (
           <GeometryPicker
@@ -363,12 +371,10 @@ function EditingTools({ editor }: { editor: DiagramEditor | null }) {
             onDistribute={(direction) => editor?.distributeShapes(direction)}
           />
         )}
-        {edgeMarkers && (
+        {edgeRelation && (
           <>
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-            <MarkerSelect label={m.start} end="start" value={edgeMarkers.start} editor={editor} />
-            <MarkerSelect label={m.end} end="end" value={edgeMarkers.end} editor={editor} />
-            {edgeRelation && <RelationSelect value={edgeRelation.value} editor={editor} />}
+            <RelationSelect value={edgeRelation.value} editor={editor} />
           </>
         )}
       </fieldset>
@@ -627,34 +633,3 @@ function RelationSelect({ value, editor }: { value: UmlRelation | null; editor: 
   )
 }
 
-/** Marker of one end of the selected edges; empty when they have different markers. */
-function MarkerSelect({
-  label,
-  end,
-  value,
-  editor,
-}: {
-  label: string
-  end: EdgeEnd
-  value: string | null
-  editor: DiagramEditor | null
-}) {
-  return (
-    <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-      {label}
-      <select
-        aria-label={m.ofEdge(label)}
-        className="h-8 rounded-md border bg-background px-2 text-foreground"
-        value={value ?? ''}
-        onChange={(event) => editor?.setEdgeMarker(end, event.target.value)}
-      >
-        {value === null && <option value="">—</option>}
-        {EDGE_MARKERS.map((marker) => (
-          <option key={marker.value} value={marker.value}>
-            {marker.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}

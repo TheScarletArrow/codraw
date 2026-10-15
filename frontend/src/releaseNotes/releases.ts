@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.53.0',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Стрелки связи',
+          text: 'У выделенной связи на панели появилась кнопка «Стрелки». В ней направление ставится одним щелчком — «Вперёд», «Назад», «В обе стороны» или «Без стрелок», — а наконечники начала и конца выбираются по значкам. К прежним добавились закрашенный треугольник, тонкая стрелка, ромб и полый ромб, точка, круг, черта и крест. «Поменять местами» переставляет наконечники концов.',
+        },
+        en: {
+          title: 'Connector arrows',
+          text: 'A selected connector now has an “Arrows” button on the toolbar. One click there sets the direction — “Forward”, “Backward”, “Both ways” or “No arrows” — and the arrowheads of the start and the end are picked by their icons. A filled triangle, a thin arrow, a diamond and a hollow diamond, a dot, a circle, a dash and a cross join the former ones. “Swap ends” swaps the arrowheads of the ends.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.52.0',
     date: '2026-10-15',
     items: [

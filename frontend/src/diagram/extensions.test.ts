@@ -11,7 +11,7 @@ import {
 } from '@maxgraph/core'
 import { describe, expect, it } from 'vitest'
 import { EDGE_MARKERS } from './edgeMarkers.ts'
-import { crowsFoot, registerDiagramExtensions, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
+import { crowsFoot, registerDiagramExtensions, slashes, SYSTEM_DESIGN_SHAPES } from './extensions.ts'
 import { LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_SHAPE } from './sequence.ts'
 import { SHAPES } from './shapes.ts'
@@ -55,10 +55,22 @@ describe('diagram extensions', () => {
 
     expect(ShapeRegistry.get('document')).toBeDefined()
     expect(ShapeRegistry.get('mxgraph.c4.person2')).toBeDefined()
-    // Those of maxGraph too: the open arrow and the triangle of UML.
+    // Those of maxGraph too: the arrows, triangles, diamonds and ovals.
     for (const { arrow } of EDGE_MARKERS.filter((marker) => marker.arrow !== 'none')) {
       expect(EdgeMarkerRegistry.get(arrow)).toBeDefined()
     }
+  })
+
+  it('draw a dash and a cross as draw.io does, with the edge going through them to its end', () => {
+    const dash = recordingCanvas()
+    const end = new Point(100, 0)
+    slashes(1)(dash.canvas, null as unknown as Shape, 'dash', end, 1, 0, 6, false, 1, false)()
+    const cross = recordingCanvas()
+    slashes(2)(cross.canvas, null as unknown as Shape, 'cross', end, 1, 0, 6, false, 1, false)()
+
+    expect(dash.calls).toEqual(['begin()', 'moveTo(96,4)', 'lineTo(88,-4)', 'stroke()'])
+    expect(cross.calls).toEqual(['begin()', 'moveTo(96,4)', 'lineTo(88,-4)', 'moveTo(96,-4)', 'lineTo(88,4)', 'stroke()'])
+    expect(end).toEqual(new Point(100, 0))
   })
 
   it('draw shadows as draw.io does: black and a quarter opaque', () => {

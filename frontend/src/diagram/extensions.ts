@@ -749,6 +749,29 @@ export const crowsFoot =
     }
   }
 
+/**
+ * `dash` and `cross` of draw.io: a slash across the edge from half a marker unit to one and a half units away from the
+ * end, and for a cross a second one the other way. The edge goes through them to its end.
+ */
+export const slashes =
+  (count: 1 | 2): MarkerFactoryFunction =>
+  (c, _shape, _type, pe, unitX, unitY, size, _source, sw) => {
+    const unit = size + sw + 1
+    const nx = unitX * unit
+    const ny = unitY * unit
+    const { x, y } = pe
+    return () => {
+      c.begin()
+      c.moveTo(x - nx / 2 - ny / 2, y - ny / 2 + nx / 2)
+      c.lineTo(x + ny / 2 - (3 * nx) / 2, y - (3 * ny) / 2 - nx / 2)
+      if (count === 2) {
+        c.moveTo(x - nx / 2 + ny / 2, y - ny / 2 - nx / 2)
+        c.lineTo(x - ny / 2 - (3 * nx) / 2, y - (3 * ny) / 2 + nx / 2)
+      }
+      c.stroke()
+    }
+  }
+
 const CROWS_FEET: Record<string, CrowsFoot> = {
   ERone: { bars: [0.5] },
   ERmandOne: { bars: [0.5, 1] },
@@ -829,4 +852,6 @@ export function registerDiagramExtensions() {
   for (const [name, parts] of Object.entries(CROWS_FEET)) {
     EdgeMarkerRegistry.add(name, crowsFoot(parts))
   }
+  EdgeMarkerRegistry.add('dash', slashes(1))
+  EdgeMarkerRegistry.add('cross', slashes(2))
 }
