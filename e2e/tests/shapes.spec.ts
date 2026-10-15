@@ -131,11 +131,39 @@ test('an edge connects fields of two tables and gets crow’s foot markers', asy
   const [edge] = await edges(alice)
 
   await click(alice, await edgeMiddle(alice, edge!.id))
-  await expect(alice.getByRole('combobox', { name: 'Конец связи' })).toHaveValue('classic')
-  await alice.getByRole('combobox', { name: 'Начало связи' }).selectOption({ label: 'Обязательно один' })
-  await alice.getByRole('combobox', { name: 'Конец связи' }).selectOption({ label: 'Ноль или много' })
+  await alice.getByRole('button', { name: 'Стрелки' }).click()
+  const start = alice.getByRole('group', { name: 'Начало связи' })
+  const end = alice.getByRole('group', { name: 'Конец связи' })
+  await expect(end.getByRole('button', { name: 'Стрелка', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await start.getByRole('button', { name: 'Обязательно один' }).click()
+  await end.getByRole('button', { name: 'Ноль или много' }).click()
 
   await expect.poll(async () => (await edges(bob))[0]?.style).toMatchObject({ startArrow: 'ERmandOne', endArrow: 'ERzeroToMany' })
+
+  await close()
+})
+
+test('an edge points both ways and swaps its arrowheads for both participants', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  const order = await addShape(alice, 'Прямоугольник')
+  const customer = await addShape(alice, 'Эллипс')
+  const box = await cellBox(alice, customer)
+  await drag(alice, { x: box.x + 15, y: box.y + 15 }, { x: box.x + 215, y: box.y + 15 })
+  await connect(alice, order, customer)
+  await expect.poll(async () => (await edges(bob)).length).toBe(1)
+  const [edge] = await edges(alice)
+
+  await click(alice, await edgeMiddle(alice, edge!.id))
+  await alice.getByRole('button', { name: 'Стрелки' }).click()
+  await alice.getByRole('group', { name: 'Направление' }).getByRole('button', { name: 'В обе стороны' }).click()
+  await expect.poll(async () => (await edges(bob))[0]?.style).toMatchObject({ startArrow: 'classic', endArrow: 'classic' })
+
+  await alice.getByRole('group', { name: 'Начало связи' }).getByRole('button', { name: 'Полый ромб' }).click()
+  await alice.getByRole('button', { name: 'Поменять местами' }).click()
+
+  await expect
+    .poll(async () => (await edges(bob))[0])
+    .toMatchObject({ source: order, target: customer, style: { startArrow: 'classic', endArrow: 'diamond', endFill: false } })
 
   await close()
 })

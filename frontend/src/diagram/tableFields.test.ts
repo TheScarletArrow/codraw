@@ -1,6 +1,7 @@
-import type { Cell, CellEditorHandler } from '@maxgraph/core'
+import type { Cell, CellEditorHandler, TooltipHandler } from '@maxgraph/core'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import * as Y from 'yjs'
+import { setLocale } from '../i18n/i18n.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
 import { getCells, initializeDocument, readCell } from './model.ts'
@@ -221,5 +222,55 @@ describe('fields of tables', () => {
 
     expect(tableRowsOf(editor.graph, boards).get(owner)!.columns.at(-1)!.text).toBe('→ users.id')
     expect(tableRowsOf(editor.graph, users).get(field(users, 0))!.columns).toHaveLength(2)
+  })
+
+  /** The tooltip over `cell` at `x` from its left edge, unscaled. */
+  const tipAt = (editor: DiagramEditor, cell: Cell, x: number) => {
+    const { scale } = editor.graph.getView()
+    const state = editor.graph.getView().getState(cell)!
+    return editor.graph.getPlugin<TooltipHandler>('TooltipHandler')!.getTooltip(state, state.shape!.node, state.x + x * scale, state.y)
+  }
+  /** The lines of the tooltip over `cell` at `x`. */
+  const tooltipAt = (editor: DiagramEditor, cell: Cell, x: number) => {
+    const tip = tipAt(editor, cell, x)
+    if (!(tip instanceof HTMLElement)) return tip
+    return tip.children.length > 0 ? [...tip.children].map((line) => line.textContent) : [tip.textContent]
+  }
+
+  it('tells what the icons of a field mean over them, selected or not, and who changed it over its name', () => {
+    const doc = new Y.Doc()
+    initializeDocument(doc)
+    const container = document.createElement('div')
+    document.body.append(container)
+    const editor = createDiagramEditor(container, doc, { participantName: 'Алиса', participantId: '0199a000-0000-7000-8000-00000000000a' })
+    editors.push(editor)
+    const builder = new DiagramBuilder()
+    builder.table('boards', 0, 0, ['id uuid PK', 'owner_id uuid FK NOT NULL', 'title text'], 300, ['boards_owner_idx (owner_id, created_at)'])
+    editor.insertCells(builder.build())
+    editor.graph.clearSelection()
+    const boards = editor.graph.getDefaultParent().getChildAt(0)
+    const [id, owner, title] = [0, 1, 2].map((index) => boards.getChildAt(index))
+
+    expect(tooltipAt(editor, owner!, 10)).toEqual(['Звено — внешний ключ', 'Молния — поле входит в индекс'])
+    expect(tooltipAt(editor, id!, 10)).toEqual(['Ключ — первичный ключ'])
+    expect(tooltipAt(editor, owner!, nameX(2) + 1)).toEqual(['Изменено: Алиса (вы), только что'])
+    expect(tooltipAt(editor, title!, 10)).toEqual(['Изменено: Алиса (вы), только что'])
+    editor.graph.setSelectionCell(owner!)
+    expect(tooltipAt(editor, owner!, 10)).toEqual(['Звено — внешний ключ', 'Молния — поле входит в индекс'])
+    editor.graph.zoomTo(2)
+    expect(tooltipAt(editor, owner!, nameX(2) - 1)).toEqual(['Звено — внешний ключ', 'Молния — поле входит в индекс'])
+    editor.setLaser(true)
+    expect(tooltipAt(editor, owner!, 10)).toBeNull()
+  })
+
+  it('tells what the icons mean on a page that is only viewed, in the language of the interface, as text', () => {
+    const { doc, editor } = open()
+    const table = editor.addShape('table', { x: 100, y: 100 })!
+    const viewer = open(true, doc).editor
+    const field = viewer.graph.getDataModel().getCell(table.getChildAt(0).getId()!)!
+    setLocale('en')
+
+    expect(tooltipAt(viewer, field, 10)).toEqual(['Key — primary key'])
+    expect((tipAt(viewer, field, 10) as HTMLElement).firstElementChild!.children).toHaveLength(0)
   })
 })

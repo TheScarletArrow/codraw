@@ -31,7 +31,7 @@ export interface Release {
 
 export const releases: Release[] = [
   {
-    version: '0.52.1',
+    version: '0.54.1',
     date: '2026-10-15',
     items: [
       {
@@ -52,6 +52,38 @@ export const releases: Release[] = [
         en: {
           title: 'The order of shapes sent to the back or brought to the front',
           text: 'When you send several shapes to the back or bring them to the front at once, the other participants, and you after reloading the page, see them in the same order as when you moved them.',
+        },
+      },
+    ],
+  },
+  {
+    version: '0.54.0',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Стрелки связи',
+          text: 'У выделенной связи на панели появилась кнопка «Стрелки». В ней направление ставится одним щелчком — «Вперёд», «Назад», «В обе стороны» или «Без стрелок», — а наконечники начала и конца выбираются по значкам. К прежним добавились закрашенный треугольник, тонкая стрелка, ромб и полый ромб, точка, круг, черта и крест. «Поменять местами» переставляет наконечники концов.',
+        },
+        en: {
+          title: 'Connector arrows',
+          text: 'A selected connector now has an “Arrows” button on the toolbar. One click there sets the direction — “Forward”, “Backward”, “Both ways” or “No arrows” — and the arrowheads of the start and the end are picked by their icons. A filled triangle, a thin arrow, a diamond and a hollow diamond, a dot, a circle, a dash and a cross join the former ones. “Swap ends” swaps the arrowheads of the ends.',
+        },
+      },
+    ],
+  },
+  {
+    version: '0.53.0',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Подсказки к значкам полей таблиц',
+          text: 'Задержите курсор на значках перед именем поля таблицы базы данных — подсказка объяснит их: ключ — первичный ключ, звено — внешний ключ, ромб — UNIQUE, молния — поле входит в индекс. У строк индексов подсказка различает уникальный индекс и обычный. Значки описаны и в справке «Таблицы и поля».',
+        },
+        en: {
+          title: 'Tooltips for the icons of table fields',
+          text: 'Rest the pointer on the icons before the name of a field of a database table, and a tooltip explains them: a key is a primary key, a link is a foreign key, a diamond is UNIQUE, and a bolt means the field is part of an index. On rows of indexes the tooltip tells a unique index from a plain one. The icons are described in the “Tables and fields” help too.',
         },
       },
     ],

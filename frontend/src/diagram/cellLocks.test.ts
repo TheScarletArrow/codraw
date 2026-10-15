@@ -152,10 +152,13 @@ describe('locked cells', () => {
 
     editor.reverseEdge()
     editor.setEdgeMarker('end', 'none')
+    editor.setEdgeMarkers({ start: 'classic', end: 'classic' })
+    editor.swapEdgeMarkers()
 
     expect(editor.graph.isCellBendable(edge)).toBe(false)
     expect([edge.getTerminal(true), edge.getTerminal(false)]).toEqual([a, b])
     expect(edge.getStyle()).not.toHaveProperty('endArrow')
+    expect(edge.getStyle()).not.toHaveProperty('startArrow')
   })
 
   it('changes only the unlocked cells of a mixed selection', () => {

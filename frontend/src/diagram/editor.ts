@@ -152,7 +152,7 @@ import { detachView as detachPageView, isViewPage, showOnView, viewContents, vie
 import { COMPUTED_KEY, type ViewRule } from './viewRule.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { LEGEND_KEY, legendSettings, legendSettingsValue, type LegendItem } from './legend.ts'
-import { DEFAULT_END_ARROW, markerChanges, markerOf, type EdgeEnd } from './edgeMarkers.ts'
+import { DEFAULT_END_ARROW, markerChanges, markerOf, swappedMarkers, type EdgeEnd } from './edgeMarkers.ts'
 import { isAssociationPair, isUseCaseRelation, relationChanges, relationOf, type UmlRelation } from './useCase.ts'
 import {
   configureLegends,
@@ -310,6 +310,7 @@ import {
   commentWidth,
   cutTableComment,
   FIELD_PLACEHOLDER,
+  iconHints,
   INDEX_PLACEHOLDER,
   isColumnField,
   isIndexRow,
@@ -1162,6 +1163,13 @@ export interface DiagramEditor {
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
   setEdgeMarker(end: EdgeEnd, marker: string): void
+  /** Sets the markers of both ends of the selected edges as one undo step. */
+  setEdgeMarkers(markers: Record<EdgeEnd, string>): void
+  /**
+   * Swaps the markers of the start and the end of each selected edge, with their fills and sizes, as one undo step; the
+   * ends of the edges stay where they are.
+   */
+  swapEdgeMarkers(): void
   /** Makes the selected edges the relation of use cases — their line, markers and label — as one undo step. */
   setEdgeRelation(relation: UmlRelation): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
@@ -1790,6 +1798,8 @@ const CHANGING_COMMANDS = [
   'editLabel',
   'deleteSelection',
   'setEdgeMarker',
+  'setEdgeMarkers',
+  'swapEdgeMarkers',
   'setEdgeRelation',
   'setColor',
   'setFillOpacity',
@@ -3059,21 +3069,25 @@ export function createDiagramEditor(
     if (!graph.isSelectionEmpty() && events.some(changed)) notify()
   }
   cells.observeDeep(handleStatuses)
-  // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
-  // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
-  // handles of edges in English. The single selected element shows who changed it under the canvas already.
+  // A second over an element shows who changed it last at the pointer, and over the icons of a row of a table what they
+  // mean, selected or not. The whole tooltip of maxGraph is replaced: it would show the label through `innerHTML`, and
+  // labels and names are text of other participants, and hints of the handles of edges in English. The single selected
+  // element shows who changed it under the canvas already.
   const tooltips = graph.getPlugin<TooltipHandler>('TooltipHandler')
   if (tooltips) {
     tooltips.delay = TOOLTIP_DELAY
-    tooltips.getTooltip = ({ cell }) => {
+    tooltips.getTooltip = (state, _node, x) => {
+      const { cell } = state
+      const left = (x - container.getBoundingClientRect().left + container.scrollLeft - state.x) / graph.getView().scale
+      const hints = tool ? null : iconHints(graph, cell, left)
       const id = cell.getId()
       const onlySelected = graph.getSelectionCount() === 1 && graph.isCellSelected(cell)
       const attribution = id && !tool && !onlySelected ? readAttribution(cells.get(id)) : null
       // The comment of a table that its line cuts, whole, over who changed the table.
       const comment = tool ? null : cutTableComment(graph, cell)
-      if (!attribution && !comment) return null
+      if (!hints && !attribution && !comment) return null
       const tip = container.ownerDocument.createElement('span')
-      if (!comment) {
+      if (!hints && !comment) {
         tip.textContent = attributionLabel(attribution!, Date.now(), isMine(attribution!))
         return tip
       }
@@ -3084,7 +3098,11 @@ export function createDiagramEditor(
         part.textContent = text
         tip.append(part)
       }
-      line(comment, true)
+      if (hints) {
+        hints.forEach((hint) => line(hint, false))
+        return tip
+      }
+      line(comment!, true)
       if (attribution) line(attributionLabel(attribution, Date.now(), isMine(attribution)), false)
       return tip
     }
@@ -4961,6 +4979,20 @@ export function createDiagramEditor(
       // The marker and its fill in one change of the model: a hollow triangle is `block` without a fill.
       const changes = markerChanges(marker, end)
       model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, changes)))
+    },
+    setEdgeMarkers({ start, end }) {
+      const edges = unlocked(selectedEdges())
+      if (edges.length === 0) return
+      graph.stopEditing(false)
+      const changes = { ...markerChanges(start, 'start'), ...markerChanges(end, 'end') }
+      model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, changes)))
+    },
+    swapEdgeMarkers() {
+      const edges = unlocked(selectedEdges())
+      if (edges.length === 0) return
+      graph.stopEditing(false)
+      // The own style: the merged one drops `none`, so it cannot tell an end without a marker from the default.
+      model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, swappedMarkers(edge.getStyle()))))
     },
     setEdgeRelation(relation) {
       const edges = unlocked(selectedConnectors())
