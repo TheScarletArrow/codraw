@@ -125,7 +125,8 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Связи',
             paragraphs: [
               'Связь тянут от края фигуры к другой фигуре. Стрелки вокруг выделенной фигуры добавляют соседнюю фигуру сразу со связью. Ортогональные связи сами обходят фигуры и подходят к нужному полю таблицы.',
-              'На панели инструментов у связи — цвет, толщина и вид линии, форма связи и маркеры «Начало» и «Конец», в том числе открытая стрелка и полый треугольник.',
+              'На панели инструментов у связи — цвет, толщина и вид линии и форма связи, а сразу за «Стилем» — «Стрелки». В «Стрелках» направление ставится одним щелчком: «Вперёд», «Назад», «В обе стороны» или «Без стрелок».',
+              'Ниже — наконечники начала и конца: стрелки, закрашенный и полый треугольник, ромб и полый ромб, точка и круг, черта и крест и «воронья лапка» для таблиц; название показывает подсказка. «Поменять местами» переставляет наконечники концов, а откуда и куда идёт связь, не меняет.',
             ],
           },
           {
@@ -759,7 +760,8 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Connectors',
             paragraphs: [
               'Drag a connector from the edge of a shape to another shape. The arrows around a selected shape add a neighboring shape together with a connector. Orthogonal connectors route around shapes by themselves and reach the right field of a table.',
-              'The toolbar of a connector has its color, width and line style, its shape, and the “Start” and “End” markers, including an open arrow and a hollow triangle.',
+              'The toolbar of a connector has its color, width and line style and its shape, and right after “Style” comes “Arrows”. In “Arrows” one click sets the direction: “Forward”, “Backward”, “Both ways” or “No arrows”.',
+              'Below are the arrowheads of the start and the end: arrows, a filled and a hollow triangle, a diamond and a hollow diamond, a dot and a circle, a dash and a cross, and crow’s feet for tables; the tooltip names each. “Swap ends” swaps the arrowheads of the ends without changing where the connector comes from and goes to.',
             ],
           },
           {

@@ -152,7 +152,7 @@ import { detachView as detachPageView, isViewPage, showOnView, viewContents, vie
 import { COMPUTED_KEY, type ViewRule } from './viewRule.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
 import { LEGEND_KEY, legendSettings, legendSettingsValue, type LegendItem } from './legend.ts'
-import { DEFAULT_END_ARROW, markerChanges, markerOf, type EdgeEnd } from './edgeMarkers.ts'
+import { DEFAULT_END_ARROW, markerChanges, markerOf, swappedMarkers, type EdgeEnd } from './edgeMarkers.ts'
 import { isAssociationPair, isUseCaseRelation, relationChanges, relationOf, type UmlRelation } from './useCase.ts'
 import {
   configureLegends,
@@ -1163,6 +1163,13 @@ export interface DiagramEditor {
   onContextMenu(listener: (request: ContextMenuRequest) => void): () => void
   /** Sets the marker of the start or the end of the selected edges. */
   setEdgeMarker(end: EdgeEnd, marker: string): void
+  /** Sets the markers of both ends of the selected edges as one undo step. */
+  setEdgeMarkers(markers: Record<EdgeEnd, string>): void
+  /**
+   * Swaps the markers of the start and the end of each selected edge, with their fills and sizes, as one undo step; the
+   * ends of the edges stay where they are.
+   */
+  swapEdgeMarkers(): void
   /** Makes the selected edges the relation of use cases — their line, markers and label — as one undo step. */
   setEdgeRelation(relation: UmlRelation): void
   /** Sets the fill (shapes only), line or text color of the selected objects as one undo step. */
@@ -1788,6 +1795,8 @@ const CHANGING_COMMANDS = [
   'editLabel',
   'deleteSelection',
   'setEdgeMarker',
+  'setEdgeMarkers',
+  'swapEdgeMarkers',
   'setEdgeRelation',
   'setColor',
   'setFillOpacity',
@@ -4947,6 +4956,20 @@ export function createDiagramEditor(
       // The marker and its fill in one change of the model: a hollow triangle is `block` without a fill.
       const changes = markerChanges(marker, end)
       model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, changes)))
+    },
+    setEdgeMarkers({ start, end }) {
+      const edges = unlocked(selectedEdges())
+      if (edges.length === 0) return
+      graph.stopEditing(false)
+      const changes = { ...markerChanges(start, 'start'), ...markerChanges(end, 'end') }
+      model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, changes)))
+    },
+    swapEdgeMarkers() {
+      const edges = unlocked(selectedEdges())
+      if (edges.length === 0) return
+      graph.stopEditing(false)
+      // The own style: the merged one drops `none`, so it cannot tell an end without a marker from the default.
+      model.batchUpdate(() => edges.forEach((edge) => setStyleKeys(edge, swappedMarkers(edge.getStyle()))))
     },
     setEdgeRelation(relation) {
       const edges = unlocked(selectedConnectors())

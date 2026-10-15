@@ -234,34 +234,79 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('button', { name: 'NULL' })).toBeDisabled()
   })
 
+  it('offers «Стрелки» right after «Стиль» for the selected edges', () => {
+    act(() =>
+      editor.setState({
+        edgeMarkers: { start: 'none', end: 'classic' },
+        line: { width: 1, dash: 'solid', edgeShape: 'orthogonal', hasEdges: true, shapes: null },
+      }),
+    )
+
+    const labels = within(screen.getByRole('toolbar', { name: 'Инструменты' }))
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label'))
+    expect(labels.slice(labels.indexOf('Стиль линии'), labels.indexOf('Стиль линии') + 2)).toEqual(['Стиль линии', 'Стрелки'])
+    expect(screen.queryByRole('combobox', { name: 'Конец связи' })).toBeNull()
+  })
+
   it('shows the markers of the selected edges and changes them', async () => {
     act(() => editor.setState({ edgeMarkers: { start: 'none', end: 'classic' } }))
+    await userEvent.click(screen.getByRole('button', { name: 'Стрелки' }))
 
-    expect(screen.getByRole('combobox', { name: 'Начало связи' })).toHaveValue('none')
-    expect(screen.getByRole('combobox', { name: 'Конец связи' })).toHaveValue('classic')
-    expect(screen.getAllByRole('option', { name: 'Ноль или много' })).toHaveLength(2)
+    const start = screen.getByRole('group', { name: 'Начало связи' })
+    const end = screen.getByRole('group', { name: 'Конец связи' })
+    expect(within(start).getByRole('button', { name: 'Без маркера' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(end).getByRole('button', { name: 'Стрелка' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(end).getAllByRole('button')).toHaveLength(18)
+    expect(within(end).getByRole('button', { name: 'Ноль или много' })).toHaveAttribute('title', 'Ноль или много')
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Конец связи' }), 'Ноль или много')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Начало связи' }), 'Обязательно один')
+    await userEvent.click(within(end).getByRole('button', { name: 'Ноль или много' }))
+    await userEvent.click(within(start).getByRole('button', { name: 'Полый ромб' }))
 
     expect(editor.setEdgeMarker).toHaveBeenCalledWith('end', 'ERzeroToMany')
-    expect(editor.setEdgeMarker).toHaveBeenCalledWith('start', 'ERmandOne')
+    expect(editor.setEdgeMarker).toHaveBeenCalledWith('start', 'diamondHollow')
   })
 
-  it('shows an empty value when the selected edges have different markers', () => {
+  it('presses no marker of an end where the selected edges have different ones', async () => {
     act(() => editor.setState({ edgeMarkers: { start: 'none', end: null } }))
+    await userEvent.click(screen.getByRole('button', { name: 'Стрелки' }))
 
-    expect(screen.getByRole('combobox', { name: 'Конец связи' })).toHaveValue('')
+    const end = screen.getByRole('group', { name: 'Конец связи' })
+    expect(within(end).queryAllByRole('button', { pressed: true })).toEqual([])
+    expect(within(screen.getByRole('group', { name: 'Направление' })).queryAllByRole('button', { pressed: true })).toEqual([])
   })
 
-  it('offers the open arrow and the hollow triangle of UML for both ends', async () => {
-    act(() => editor.setState({ edgeMarkers: { start: 'open', end: 'blockHollow' } }))
+  it('sets the direction of the selected edges in one click', async () => {
+    act(() => editor.setState({ edgeMarkers: { start: 'none', end: 'classic' } }))
+    await userEvent.click(screen.getByRole('button', { name: 'Стрелки' }))
 
-    expect(screen.getByRole('combobox', { name: 'Начало связи' })).toHaveValue('open')
-    expect(screen.getByRole('combobox', { name: 'Конец связи' })).toHaveDisplayValue('Полый треугольник')
+    const direction = screen.getByRole('group', { name: 'Направление' })
+    expect(within(direction).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Вперёд',
+      'Назад',
+      'В обе стороны',
+      'Без стрелок',
+    ])
+    expect(within(direction).getByRole('button', { name: 'Вперёд' })).toHaveAttribute('aria-pressed', 'true')
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Начало связи' }), 'Полый треугольник')
-    expect(editor.setEdgeMarker).toHaveBeenCalledWith('start', 'blockHollow')
+    await userEvent.click(within(direction).getByRole('button', { name: 'В обе стороны' }))
+    expect(editor.setEdgeMarkers).toHaveBeenCalledWith({ start: 'classic', end: 'classic' })
+    await userEvent.click(within(direction).getByRole('button', { name: 'Без стрелок' }))
+    expect(editor.setEdgeMarkers).toHaveBeenCalledWith({ start: 'none', end: 'none' })
+  })
+
+  it('presses no direction for other arrowheads, and swaps the ends', async () => {
+    act(() => editor.setState({ edgeMarkers: { start: 'none', end: 'blockHollow' } }))
+    await userEvent.click(screen.getByRole('button', { name: 'Стрелки' }))
+
+    expect(within(screen.getByRole('group', { name: 'Направление' })).queryAllByRole('button', { pressed: true })).toEqual([])
+    expect(within(screen.getByRole('group', { name: 'Конец связи' })).getByRole('button', { name: 'Полый треугольник' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Поменять местами' }))
+    expect(editor.swapEdgeMarkers).toHaveBeenCalled()
   })
 
   it('shows the relation of use cases of the selected edges and changes it', async () => {

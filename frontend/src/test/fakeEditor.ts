@@ -216,6 +216,8 @@ export function createFakeEditor({
     exportSvg: vi.fn(() => null),
     onContextMenu: (listener) => listen(menuListeners, listener),
     setEdgeMarker: vi.fn(),
+    setEdgeMarkers: vi.fn(),
+    swapEdgeMarkers: vi.fn(),
     setEdgeRelation: vi.fn(),
     setColor: vi.fn(),
     setFillOpacity: vi.fn(),
