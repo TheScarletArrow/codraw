@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.52.0',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Комментарий таблицы',
+          text: 'У таблицы и представления можно оставить комментарий — маленькую строку под названием. Его вводят в поле «Комментарий» на панели выделенной таблицы; длинный комментарий виден целиком при наведении на заголовок. Импорт SQL берёт комментарии из COMMENT ON TABLE и COMMENT= MySQL, а «Скопировать SQL» пишет их обратно.',
+        },
+        en: {
+          title: 'Table comments',
+          text: 'A table or a view can have a comment, a small line under its name. Type it in the “Comment” field on the toolbar of the selected table; hovering over the header shows a long comment whole. Import SQL takes comments from COMMENT ON TABLE and the COMMENT= of MySQL, and “Copy SQL” writes them back.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.51.0',
     date: '2026-10-15',
     items: [

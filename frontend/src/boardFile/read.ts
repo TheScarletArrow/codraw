@@ -19,6 +19,7 @@ import {
 } from '../diagram/model.ts'
 import { isElementStatus, type ElementStatus } from '../diagram/status.ts'
 import { readViewRule } from '../diagram/viewRule.ts'
+import { normalizeTableComment, TABLE_COMMENT_KEY } from '../diagram/tableComments.ts'
 import { VIEW_QUERY_KEY, viewQueryOf } from '../diagram/views.ts'
 import { TITLE_MAX_LENGTH } from '../board/TitleInput.tsx'
 import { openZip, ZipError, type ZipArchive } from '../lib/zip.ts'
@@ -261,7 +262,8 @@ const isStyleValue = (value: unknown): value is StyleValue =>
 
 /**
  * The style of a cell: values of the types a style holds. A link that CoDraw would not open, a description of API it
- * cannot read and a query too long to keep are dropped, as an import of draw.io drops them, and so is who locked it.
+ * cannot read, a query too long to keep and a comment of a table that is not text are dropped, as an import of draw.io
+ * drops them, and so is who locked it; a comment of a table becomes one line, as CoDraw keeps it.
  */
 function readStyle(value: unknown): Record<string, StyleValue> {
   if (!isObject(value)) return {}
@@ -277,6 +279,11 @@ function readStyle(value: unknown): Record<string, StyleValue> {
   }
   if (EDGE_API_KEY in style && !edgeApiOf(style)) delete style[EDGE_API_KEY]
   if (VIEW_QUERY_KEY in style && !viewQueryOf(style)) delete style[VIEW_QUERY_KEY]
+  if (TABLE_COMMENT_KEY in style) {
+    const comment = typeof style[TABLE_COMMENT_KEY] === 'string' ? normalizeTableComment(style[TABLE_COMMENT_KEY]) : ''
+    if (comment) style[TABLE_COMMENT_KEY] = comment
+    else delete style[TABLE_COMMENT_KEY]
+  }
   return style
 }
 

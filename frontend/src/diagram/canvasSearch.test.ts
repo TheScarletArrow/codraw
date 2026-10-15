@@ -5,6 +5,7 @@ import { INHERITED_KEY } from './baseTables.ts'
 import { searchCanvas, searchText, stepMatch, type CanvasMatch } from './canvasSearch.ts'
 import { DEFAULT_PAGE_ID, ELEMENT_KEY, getCells, initializeDocument, LAYER_CELL_ID, writeCell, type CellData } from './model.ts'
 import { addPage, renamePage } from './pages.ts'
+import { TABLE_COMMENT_KEY } from './tableComments.ts'
 
 function board() {
   const doc = new Y.Doc()
@@ -77,6 +78,16 @@ describe('searching the canvas', () => {
     expect(found(doc, 'order')).toEqual(['orders', 'orders_customer_idx (customer_id)'])
     expect(found(doc, 'customer')).toEqual(['customer_id uuid FK', 'orders_customer_idx (customer_id)'])
     expect(found(doc, 'pk not null')).toEqual(['id uuid PK NOT NULL'])
+  })
+
+  it('finds a table by its comment', () => {
+    const doc = board()
+    const builder = new DiagramBuilder()
+    builder.table('accounts', 0, 0, ['id uuid PK'], 220, [], { [TABLE_COMMENT_KEY]: 'Клиенты магазина' })
+    builder.table('orders', 300, 0, ['id uuid PK'])
+    write(doc, builder)
+
+    expect(found(doc, 'клиенты')).toEqual(['accounts'])
   })
 
   it('finds an inherited field in every table that shows it', () => {

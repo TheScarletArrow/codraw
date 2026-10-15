@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { DB_VENDORS, vendorTypes, type DbVendorId } from '../sql/dbVendors.ts'
 import type { DiagramEditor, SelectedField, SelectedIndex, TableBase, TableView } from './editor.ts'
 import { tableMessages as m } from './TableTools.messages.ts'
+import { MAX_TABLE_COMMENT } from './tableComments.ts'
 import { MAX_VIEW_QUERY } from './views.ts'
 
 interface TableToolsProps {
@@ -20,13 +21,16 @@ interface TableToolsProps {
   base: TableBase | null
   /** The selected table as to views. */
   view: TableView | null
+  /** The comment of the selected table; empty without one. */
+  comment: string
 }
 
 /**
- * The database, the view and the base of the selected table, a new field or index, the type and keys of the selected
- * field, and the columns of the selected index. A view has no base, and a view that is not materialized no indexes.
+ * The database, the comment, the view and the base of the selected table, a new field or index, the type and keys of the
+ * selected field, and the columns of the selected index. A view has no base, and a view that is not materialized no
+ * indexes.
  */
-export function TableTools({ editor, vendor, field, index, base, view }: TableToolsProps) {
+export function TableTools({ editor, vendor, field, index, base, view, comment }: TableToolsProps) {
   const isView = view?.view === true
   return (
     <>
@@ -47,6 +51,7 @@ export function TableTools({ editor, vendor, field, index, base, view }: TableTo
           ))}
         </select>
       </label>
+      <CommentField value={comment} onCommit={(text) => editor?.setTableComment(text)} />
       {view && <ViewTools editor={editor} view={view} />}
       {base && !isView && <BaseTools editor={editor} base={base} />}
       <Button type="button" variant="ghost" size="sm" onClick={() => editor?.addTableField()}>
@@ -298,6 +303,36 @@ export function IndexProps({ editor, index }: { editor: DiagramEditor | null; in
         UNIQUE
       </Button>
     </>
+  )
+}
+
+/** The comment of a table, applied on Enter or when the field loses focus; Escape brings the current one back. */
+function CommentField({ value, onCommit }: { value: string; onCommit: (comment: string) => void }) {
+  // What the participant is typing; `null` while the field shows the current comment.
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    setDraft(null)
+    if (draft !== null && draft.trim() !== value) onCommit(draft)
+  }
+  return (
+    <input
+      aria-label={m.tableComment}
+      title={m.commentTitle}
+      placeholder={m.comment}
+      maxLength={MAX_TABLE_COMMENT}
+      value={draft ?? value}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          commit()
+        } else if (event.key === 'Escape') {
+          setDraft(null)
+        }
+      }}
+      className="h-8 w-40 min-w-0 shrink-0 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    />
   )
 }
 

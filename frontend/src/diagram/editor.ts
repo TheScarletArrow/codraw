@@ -307,6 +307,8 @@ import {
   VIEW_QUERY_KEY,
 } from './views.ts'
 import {
+  commentWidth,
+  cutTableComment,
   FIELD_PLACEHOLDER,
   INDEX_PLACEHOLDER,
   isColumnField,
@@ -318,6 +320,8 @@ import {
   watchTableRows,
 } from './tableShapes.ts'
 import { clampFontSize, nextFontSize, tableFieldHeight, tableHeaderHeight } from './textSize.ts'
+import { DEFAULT_FONT_SIZE, numeric } from './textMeasure.ts'
+import { commentRoomOf, MAX_COMMENT_WIDTH, normalizeTableComment, TABLE_COMMENT_KEY, tableCommentOf } from './tableComments.ts'
 
 export interface Point {
   x: number
@@ -781,6 +785,8 @@ export interface EditorState {
   tableBase: TableBase | null
   /** The selected table, or the table of the selected field, as to views; `null` when none is selected. */
   tableView: TableView | null
+  /** The comment of the selected table, or of the table of the selected field or index; `null` when none is selected. */
+  tableComment: string | null
   /** Markers of the selected edges, or `null` when no edge is selected. */
   edgeMarkers: EdgeMarkers | null
   /**
@@ -1211,6 +1217,11 @@ export interface DiagramEditor {
   setViewMaterialized(enabled: boolean): void
   /** Sets the query of the selected view without the final `;`; an empty one removes it, one too long is not kept. */
   setViewQuery(query: string): void
+  /**
+   * Sets the comment of the selected table, or of the table of the selected field or index, as one line under its name
+   * (see {@link normalizeTableComment}); an empty one removes it.
+   */
+  setTableComment(comment: string): void
   /** Sets the position or size of the selected shapes as one undo step; tables keep the height of their fields. */
   setGeometry(changes: Partial<Box>): void
   /**
@@ -1795,6 +1806,7 @@ const CHANGING_COMMANDS = [
   'setViewTable',
   'setViewMaterialized',
   'setViewQuery',
+  'setTableComment',
   'setGeometry',
   'setRotation',
   'setPencil',
@@ -2226,6 +2238,10 @@ export function createDiagramEditor(
       baseId: baseTableId(table),
       options: baseOptions(table, tables).map((base) => ({ id: base.getId()!, name: plainText(String(base.getValue() ?? '')) })),
     }
+  }
+  const tableCommentOfSelection = (): string | null => {
+    const table = selectedTable()
+    return table ? tableCommentOf(table.getStyle() as Record<string, unknown>) : null
   }
   const selectedTableView = (): TableView | null => {
     const table = selectedTable()
@@ -2660,6 +2676,13 @@ export function createDiagramEditor(
       const badge = Math.max(vendor ? badgeRoom(vendor.badge) : 0, right ? badgeRoom(right) : 0)
       return [fittedWidth(measureLabel(label, style) + 2 * badge, style, gridSize)]
     })
+    // The line of the comment widens a table up to a limit; a longer one is cut.
+    const tableStyle = isTable(shape) ? graph.getCellStyle(shape) : null
+    const comment = tableStyle?.shape === 'swimlane' ? tableCommentOf(shape.getStyle() as Record<string, unknown>) : ''
+    if (comment) {
+      const width = Math.min(MAX_COMMENT_WIDTH, Math.ceil(commentWidth(comment, tableStyle!)))
+      widths.push(gridSize > 0 ? Math.ceil(width / gridSize) * gridSize : width)
+    }
     return widths.length > 0 ? Math.max(...widths) : null
   }
   /**
@@ -2928,6 +2951,7 @@ export function createDiagramEditor(
       index: selectedIndexProps(),
       tableBase: selectedTableBase(),
       tableView: selectedTableView(),
+      tableComment: tableCommentOfSelection(),
       edgeMarkers: edges.length > 0 ? { start: sameMarker(edges, 'start'), end: sameMarker(edges, 'end') } : null,
       edgeRelation: selectionRelation(),
       colors: selectionColors(),
@@ -3039,9 +3063,23 @@ export function createDiagramEditor(
       const id = cell.getId()
       const onlySelected = graph.getSelectionCount() === 1 && graph.isCellSelected(cell)
       const attribution = id && !tool && !onlySelected ? readAttribution(cells.get(id)) : null
-      if (!attribution) return null
+      // The comment of a table that its line cuts, whole, over who changed the table.
+      const comment = tool ? null : cutTableComment(graph, cell)
+      if (!attribution && !comment) return null
       const tip = container.ownerDocument.createElement('span')
-      tip.textContent = attributionLabel(attribution, Date.now(), isMine(attribution))
+      if (!comment) {
+        tip.textContent = attributionLabel(attribution!, Date.now(), isMine(attribution!))
+        return tip
+      }
+      const line = (text: string, wrap: boolean) => {
+        const part = container.ownerDocument.createElement('span')
+        part.style.display = 'block'
+        if (wrap) part.style.whiteSpace = 'normal'
+        part.textContent = text
+        tip.append(part)
+      }
+      line(comment, true)
+      if (attribution) line(attributionLabel(attribution, Date.now(), isMine(attribution)), false)
       return tip
     }
     graph.setTooltips(true)
@@ -4196,6 +4234,15 @@ export function createDiagramEditor(
       if (!table || !isUnlocked(table) || !isViewTable(table) || isMaterializedStyle(style!) === enabled) return
       model.batchUpdate(() => {
         setStyleValue([table], MATERIALIZED_KEY, enabled ? true : undefined)
+        fitAutoWidth([table])
+      })
+    },
+    setTableComment(comment) {
+      const table = selectedTable()
+      const normalized = normalizeTableComment(comment)
+      if (!table || !isUnlocked(table) || normalized === tableCommentOf(table.getStyle() as Record<string, unknown>)) return
+      model.batchUpdate(() => {
+        setStyleValue([table], TABLE_COMMENT_KEY, normalized || undefined)
         fitAutoWidth([table])
       })
     },
@@ -6271,8 +6318,15 @@ function configureTableFields(graph: Graph) {
       const inherited = inheritedFieldId(cell) !== null && { fontColor: INHERITED_FIELD_COLOR }
       return { ...style, shape: TABLE_FIELD_SHAPE, spacing: 0, spacingLeft: row?.nameX ?? nameX(1), spacingRight, ...inherited }
     }
-    if (isBaseTable(cell)) return { ...style, dashed: true, dashPattern: BASE_TABLE_DASH }
-    return style
+    // The header of a table with a comment is taller by its line, under the name, which stays where it was.
+    const swimlane = isTable(cell) && style.shape === 'swimlane'
+    const room = swimlane ? commentRoomOf(cell.getStyle() as Record<string, unknown>, numeric(style.fontSize, DEFAULT_FONT_SIZE)) : 0
+    const commented = room > 0 && {
+      startSize: numeric(style.startSize, StyleDefaultsConfig.startSize) + room,
+      spacingBottom: numeric(style.spacingBottom, 0) + room,
+    }
+    if (isBaseTable(cell)) return { ...style, dashed: true, dashPattern: BASE_TABLE_DASH, ...commented }
+    return commented ? { ...style, ...commented } : style
   }
   // An inherited field is edited in its base table.
   const isCellEditable = graph.isCellEditable.bind(graph)

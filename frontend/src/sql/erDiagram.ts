@@ -3,6 +3,7 @@ import { compareCells, LAYER_CELL_ID, layerIds, type CellData, type StyleValue }
 import { layoutShapes, type LayoutEngine } from '../diagram/layout.ts'
 import { findShape, isTableIndexStyle, isTableStyle, type ShapeStyle } from '../diagram/shapes.ts'
 import { SOURCE_KEY } from '../diagram/sources.ts'
+import { COMMENT_PADDING, MAX_COMMENT_WIDTH, TABLE_COMMENT_KEY, tableCommentOf } from '../diagram/tableComments.ts'
 import { badgeRoom, MATERIALIZED_VIEW_BADGE, tableRows, VIEW_BADGE } from '../diagram/tableRows.ts'
 import { isMaterializedStyle, isViewStyle, viewQueryOf, viewStyle } from '../diagram/views.ts'
 import { DiagramBuilder } from '../templates/builder.ts'
@@ -92,7 +93,8 @@ const estimate = (text: string) => text.length * 7.5
 
 /**
  * Width of a table that fits its name beside the badge of its database and, of a view, the badge of the view, the rows
- * of its fields with their references and the rows of its indexes, estimated from the lengths of their texts.
+ * of its fields with their references, the rows of its indexes and the line of its comment up to its limit, estimated
+ * from the lengths of their texts.
  */
 export function tableWidth(
   name: string,
@@ -100,6 +102,7 @@ export function tableWidth(
   references: (string | null)[] = [],
   indexes: string[] = [],
   view: { materialized: boolean } | null = null,
+  comment = '',
 ): number {
   const rows = tableRows(
     labels.map((text, index) => ({ text, font: {}, reference: references[index] ?? null })),
@@ -111,8 +114,13 @@ export function tableWidth(
   const vendor = badgeRoom(vendorOf(findShape('table')!.style)!.badge)
   const badge = view ? Math.max(vendor, badgeRoom(view.materialized ? MATERIALIZED_VIEW_BADGE : VIEW_BADGE)) : vendor
   const header = estimate(name) + 2 * badge + 24
-  return Math.min(560, Math.max(160, Math.ceil(Math.max(header, ...rows.map((row) => row.width)))))
+  // The comment is smaller than the name: 6 pixels a letter.
+  const commentLine = comment ? Math.min(MAX_COMMENT_WIDTH, comment.length * 6 + 2 * COMMENT_PADDING) : 0
+  return Math.min(560, Math.max(160, Math.ceil(Math.max(header, commentLine, ...rows.map((row) => row.width)))))
 }
+
+/** The key of the comment of a table or a view of a schema for its style; none without a comment. */
+const commentStyle = (comment: string | undefined): Record<string, StyleValue> => (comment ? { [TABLE_COMMENT_KEY]: comment } : {})
 
 /** The column alone identifies a row: it is unique, or the only column of the primary key. */
 function identifies(table: SqlTable, column: SqlColumn | undefined): boolean {
@@ -175,7 +183,8 @@ export async function schemaCells(
       const labels = table.columns.map((column) => fieldLabel(column, referencing(table, column.name)))
       const references = table.columns.map((column) => referenceOf(table, column.name))
       const indexes = table.indexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
-      const built = builder.table(table.name, 0, 0, labels, tableWidth(table.name, labels, references, indexes), indexes)
+      const width = tableWidth(table.name, labels, references, indexes, null, table.comment)
+      const built = builder.table(table.name, 0, 0, labels, width, indexes, commentStyle(table.comment))
       return [
         table.name,
         {
@@ -191,8 +200,8 @@ export async function schemaCells(
       const labels = view.columns.map((column) => fieldLabel(column, false))
       const viewIndexes = view.materialized ? view.indexes : []
       const indexes = viewIndexes.map((index) => indexText({ ...index, nameText: quoteName(index.name) }))
-      const width = tableWidth(view.name, labels, [], indexes, view)
-      const built = builder.table(view.name, 0, 0, labels, width, indexes, viewStyle(view))
+      const width = tableWidth(view.name, labels, [], indexes, view, view.comment)
+      const built = builder.table(view.name, 0, 0, labels, width, indexes, { ...viewStyle(view), ...commentStyle(view.comment) })
       return [
         view.name,
         {
@@ -345,10 +354,11 @@ export function diagramTables(cells: CellData[]): DiagramTable[] {
   const tables: DiagramTable[] = []
   const fieldOf = new Map<string, { table: DiagramTable; field: DiagramField }>()
   for (const tableCell of tableCells) {
+    const comment = tableCommentOf(tableCell.style)
     const table: DiagramTable = {
       id: tableCell.id,
       style: tableCell.style,
-      table: { name: plainText(tableCell.value) || 'table', columns: [], foreignKeys: [], indexes: [] },
+      table: { name: plainText(tableCell.value) || 'table', columns: [], foreignKeys: [], indexes: [], ...(comment && { comment }) },
       fields: [],
       indexes: [],
       references: [],
@@ -414,7 +424,8 @@ export function diagramViews(cells: CellData[]): SqlView[] {
             })
         : []
       const dependencies = query ? readViewQuery(tokenize(query), () => null).dependencies : []
-      return { name: plainText(viewCell.value) || 'view', columns, query, materialized, indexes, dependencies }
+      const comment = tableCommentOf(viewCell.style)
+      return { name: plainText(viewCell.value) || 'view', columns, query, materialized, indexes, dependencies, ...(comment && { comment }) }
     })
 }
 
@@ -425,6 +436,13 @@ export function diagramViews(cells: CellData[]): SqlView[] {
 export function diagramSchema(cells: CellData[]): SqlSchema {
   return { tables: diagramTables(cells).map((entry) => entry.table), views: diagramViews(cells), skipped: 0 }
 }
+
+/** A string of SQL: the text in quotes, its quotes doubled. */
+const sqlString = (text: string) => `'${text.replaceAll("'", "''")}'`
+
+/** `COMMENT ON TABLE|VIEW|MATERIALIZED VIEW name IS 'comment';` after the statement that creates it; none without one. */
+const commentSql = (object: 'TABLE' | 'VIEW' | 'MATERIALIZED VIEW', name: string, comment: string | undefined) =>
+  comment ? [`COMMENT ON ${object} ${quoteName(name)} IS ${sqlString(comment)};`] : []
 
 /** `CREATE [UNIQUE] INDEX name ON table [USING method] (columns) [rest];`. */
 const indexSql = (table: string, index: SqlIndex) =>
@@ -454,8 +472,9 @@ function viewOrder(views: SqlView[]): SqlView[] {
 }
 
 /**
- * `CREATE [MATERIALIZED] VIEW name AS query;` with the indexes of a materialized view. A view without a query is a
- * stand-in that gives its columns without rows, so that the file runs and the columns come back when it is imported.
+ * `CREATE [MATERIALIZED] VIEW name AS query;` with its comment and the indexes of a materialized view. A view without a
+ * query is a stand-in that gives its columns without rows, so that the file runs and the columns come back when it is
+ * imported.
  */
 function viewSql(view: SqlView): string {
   const head = `CREATE ${view.materialized ? 'MATERIALIZED ' : ''}VIEW ${quoteName(view.name)} AS`
@@ -463,12 +482,14 @@ function viewSql(view: SqlView): string {
   const create = view.query
     ? `${head} ${view.query};`
     : `-- ${sqlMessages.viewWithoutQuery(view.name.replace(/\s+/g, ' '))}\n${head} SELECT ${columns.join(', ')};`
-  return [create, ...(view.materialized ? view.indexes.map((index) => indexSql(view.name, index)) : [])].join('\n')
+  const comment = commentSql(view.materialized ? 'MATERIALIZED VIEW' : 'VIEW', view.name, view.comment)
+  return [create, ...comment, ...(view.materialized ? view.indexes.map((index) => indexSql(view.name, index)) : [])].join('\n')
 }
 
 /**
- * DDL of PostgreSQL that creates the tables, then their indexes, then adds their foreign keys, so that the order of
- * tables never matters, then creates the views, each after those it reads, with the indexes of materialized ones.
+ * DDL of PostgreSQL that creates the tables, each with its comment, then their indexes, then adds their foreign keys, so
+ * that the order of tables never matters, then creates the views, each after those it reads, with their comments and the
+ * indexes of materialized ones.
  */
 export function schemaSql(schema: SqlSchema): string {
   const creates = schema.tables.map((table) => {
@@ -485,7 +506,8 @@ export function schemaSql(schema: SqlSchema): string {
         .join(' '),
     )
     if (keys.length > 1) lines.push(`PRIMARY KEY (${keys.map((column) => quoteName(column.name)).join(', ')})`)
-    return `CREATE TABLE ${quoteName(table.name)} (\n${lines.map((line) => `    ${line}`).join(',\n')}\n);`
+    const create = `CREATE TABLE ${quoteName(table.name)} (\n${lines.map((line) => `    ${line}`).join(',\n')}\n);`
+    return [create, ...commentSql('TABLE', table.name, table.comment)].join('\n')
   })
   const indexes = schema.tables.flatMap((table) => table.indexes.map((index) => indexSql(table.name, index)))
   const foreignKeys = schema.tables.flatMap((table) =>

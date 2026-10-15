@@ -186,6 +186,27 @@ describe('EditorToolbar', () => {
     expect(screen.getByRole('button', { name: 'Добавить индекс' })).toBeInTheDocument()
   })
 
+  it('sets the comment of the selected table on Enter or when the field loses focus, and keeps it on Escape', async () => {
+    act(() => editor.setState({ tableSelected: true, tableComment: 'Клиенты' }))
+    const comment = screen.getByRole('textbox', { name: 'Комментарий таблицы' })
+    expect(comment).toHaveValue('Клиенты')
+
+    await userEvent.clear(comment)
+    await userEvent.type(comment, 'Клиенты магазина{Enter}')
+    expect(editor.setTableComment).toHaveBeenLastCalledWith('Клиенты магазина')
+
+    await userEvent.type(comment, ' и гости{Escape}')
+    expect(comment).toHaveValue('Клиенты')
+    expect(editor.setTableComment).toHaveBeenCalledTimes(1)
+
+    await userEvent.clear(comment)
+    fireEvent.blur(comment)
+    expect(editor.setTableComment).toHaveBeenLastCalledWith('')
+
+    act(() => editor.setState({ tableSelected: true, tableComment: '' }))
+    expect(screen.getByRole('textbox', { name: 'Комментарий таблицы' })).toHaveAttribute('placeholder', 'Комментарий')
+  })
+
   it('offers the type alone for a column of a view', () => {
     const field = { cellId: 'field', tableId: 'table', type: 'text', notNull: false, primaryKey: false, unique: false, inheritedFrom: null, inView: true }
     act(() => editor.setState({ tableSelected: true, field, tableView: { view: true, materialized: false, query: '' } }))
