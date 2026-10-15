@@ -310,6 +310,7 @@ import {
   commentWidth,
   cutTableComment,
   FIELD_PLACEHOLDER,
+  iconHints,
   INDEX_PLACEHOLDER,
   isColumnField,
   isIndexRow,
@@ -3062,21 +3063,25 @@ export function createDiagramEditor(
     if (!graph.isSelectionEmpty() && events.some(changed)) notify()
   }
   cells.observeDeep(handleStatuses)
-  // A second over an element shows who changed it last at the pointer. The whole tooltip of maxGraph is replaced: it
-  // would show the label through `innerHTML`, and labels and names are text of other participants, and hints of the
-  // handles of edges in English. The single selected element shows who changed it under the canvas already.
+  // A second over an element shows who changed it last at the pointer, and over the icons of a row of a table what they
+  // mean, selected or not. The whole tooltip of maxGraph is replaced: it would show the label through `innerHTML`, and
+  // labels and names are text of other participants, and hints of the handles of edges in English. The single selected
+  // element shows who changed it under the canvas already.
   const tooltips = graph.getPlugin<TooltipHandler>('TooltipHandler')
   if (tooltips) {
     tooltips.delay = TOOLTIP_DELAY
-    tooltips.getTooltip = ({ cell }) => {
+    tooltips.getTooltip = (state, _node, x) => {
+      const { cell } = state
+      const left = (x - container.getBoundingClientRect().left + container.scrollLeft - state.x) / graph.getView().scale
+      const hints = tool ? null : iconHints(graph, cell, left)
       const id = cell.getId()
       const onlySelected = graph.getSelectionCount() === 1 && graph.isCellSelected(cell)
       const attribution = id && !tool && !onlySelected ? readAttribution(cells.get(id)) : null
       // The comment of a table that its line cuts, whole, over who changed the table.
       const comment = tool ? null : cutTableComment(graph, cell)
-      if (!attribution && !comment) return null
+      if (!hints && !attribution && !comment) return null
       const tip = container.ownerDocument.createElement('span')
-      if (!comment) {
+      if (!hints && !comment) {
         tip.textContent = attributionLabel(attribution!, Date.now(), isMine(attribution!))
         return tip
       }
@@ -3087,7 +3092,11 @@ export function createDiagramEditor(
         part.textContent = text
         tip.append(part)
       }
-      line(comment, true)
+      if (hints) {
+        hints.forEach((hint) => line(hint, false))
+        return tip
+      }
+      line(comment!, true)
       if (attribution) line(attributionLabel(attribution, Date.now(), isMine(attribution)), false)
       return tip
     }

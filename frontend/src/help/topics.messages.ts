@@ -380,6 +380,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
               'Таблица из раздела «База данных» палитры хранит поля с типами, первичными и внешними ключами; связи между таблицами подходят к нужным полям. Поле вводится одной строкой: Enter заканчивает ввод, а «id uuid primary key not null» превращается в «id uuid PK NOT NULL».',
               '«Добавить индекс» на панели таблицы создаёт составные, уникальные и частичные индексы — они видны под полями.',
               'Поле «Комментарий» на панели таблицы оставляет пояснение к ней — маленькую строку под названием, например «Клиенты магазина». Enter применяет, Escape возвращает прежний, пустое поле убирает комментарий. Длинный комментарий обрезается многоточием, а наведение на заголовок показывает его целиком. В SQL это COMMENT ON TABLE.',
+              'Значки перед именем поля: ключ — первичный ключ, звено — внешний ключ, ромб — уникальное значение (UNIQUE), молния — поле входит в индекс. У строки индекса ромб означает уникальный индекс, а молния — обычный. Если задержать курсор на значках, подсказка напомнит, что они значат.',
             ],
           },
           {
@@ -1014,6 +1015,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
               'A table from the “Database” section of the palette keeps fields with types, primary and foreign keys; connectors between tables reach the right fields. A field is typed as one line: Enter ends the input, and “id uuid primary key not null” turns into “id uuid PK NOT NULL”.',
               '“Add index” on the toolbar of a table creates composite, unique and partial indexes, shown under the fields.',
               'The “Comment” field on the toolbar of a table leaves a note about it, a small line under its name, such as “Store customers”. Enter applies it, Escape brings the previous one back, an empty field removes the comment. A long comment is cut with an ellipsis, and hovering over the header shows it whole. In SQL, it is COMMENT ON TABLE.',
+              'The icons before the name of a field: a key is a primary key, a link is a foreign key, a diamond is a unique value (UNIQUE), and a bolt means the field is part of an index. On a row of an index a diamond means a unique index and a bolt a plain one. Rest the pointer on the icons, and a tooltip reminds what they mean.',
             ],
           },
           {

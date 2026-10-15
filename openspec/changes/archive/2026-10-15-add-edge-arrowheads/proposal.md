@@ -44,7 +44,7 @@ UML, точки, круга, черты и креста. Пользовател�
 
 - `frontend`: `diagram/edgeMarkers.ts` (новые наконечники, полые варианты, перестановка концов),
   `diagram/extensions.ts` (маркеры `dash` и `cross`), `diagram/editor.ts` (`setEdgeMarkers`, `swapEdgeMarkers`),
-  новый `diagram/EdgeMarkerPicker.tsx`, `EditorToolbar.tsx`, `test/fakeEditor.ts`, справка, «Что нового» 0.53.0,
+  новый `diagram/EdgeMarkerPicker.tsx`, `EditorToolbar.tsx`, `test/fakeEditor.ts`, справка, «Что нового» 0.54.0,
   README, e2e `shapes.spec.ts`.
 - `backend` и `collab` не меняются: документ доски хранит стили как есть.
 - Вне рамок: свои наконечники пользователя, размер наконечника на панели (`startSize`/`endSize` читаются и
