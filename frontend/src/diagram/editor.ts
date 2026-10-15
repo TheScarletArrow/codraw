@@ -1437,7 +1437,6 @@ export interface DiagramEditor {
   redo(): void
   zoomIn(): void
   zoomOut(): void
-  zoomActual(): void
   /** Scales and scrolls the canvas so that the whole page is visible, at most at 100%. */
   zoomToFit(): void
   getState(): EditorState
@@ -5578,7 +5577,6 @@ export function createDiagramEditor(
     },
     zoomIn: () => graph.zoomIn(),
     zoomOut: () => graph.zoomOut(),
-    zoomActual: () => graph.zoomActual(),
     zoomToFit() {
       fitter?.fit({ margin: FIT_MARGIN })
       notifyView()

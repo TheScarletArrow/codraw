@@ -325,7 +325,6 @@ export function createFakeEditor({
     redo: vi.fn(),
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
-    zoomActual: vi.fn(),
     zoomToFit: vi.fn(),
     getState: () => state,
     subscribe: (listener) => listen(listeners, listener),

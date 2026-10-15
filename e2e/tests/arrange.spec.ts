@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addShape, cellBox, cells, center, connect, drag, twoParticipants, vertices } from './helpers.ts'
+import { addShape, cellBox, cells, center, connect, drag, twoParticipants, vertices, view } from './helpers.ts'
 
 /** Places shapes through the editor of the page, as a participant would by dragging them. */
 function place(page: Page, positions: Record<string, { x: number; y: number }>) {
@@ -105,6 +105,29 @@ test('«Показать всё» brings a far away shape into view', async ({ b
 
   await expect.poll(() => inView(far)).toBe(true)
   expect(await inView(near)).toBe(true)
-  expect(Number((await alice.getByRole('button', { name: 'Масштаб' }).textContent())!.replace('%', ''))).toBeLessThan(100)
+  expect(Number(await alice.getByRole('combobox', { name: 'Масштаб' }).inputValue())).toBeLessThan(100)
+  await close()
+})
+
+test('«Масштаб» zooms to the chosen level around the middle of the view, for the one who chose it', async ({ browser }) => {
+  const { alice, bob, close } = await twoParticipants(browser)
+  await addShape(alice, 'Прямоугольник')
+  const scale = alice.getByRole('combobox', { name: 'Масштаб' })
+  const before = await view(alice)
+  const other = await view(bob)
+
+  await scale.selectOption({ label: '200%' })
+
+  await expect.poll(async () => (await view(alice)).scale).toBe(2)
+  const after = await view(alice)
+  expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(2)
+  expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(2)
+  await expect(scale).toHaveValue('200')
+  expect((await view(bob)).scale).toBe(other.scale)
+
+  // A scale between the levels, after «Уменьшить», is shown in the list in its place.
+  await alice.getByRole('button', { name: 'Уменьшить', exact: true }).click()
+  await expect(scale).toHaveValue('167')
+  await expect(scale.locator('option')).toHaveText(['25%', '50%', '75%', '100%', '125%', '150%', '167%', '200%', '300%', '400%'])
   await close()
 })
