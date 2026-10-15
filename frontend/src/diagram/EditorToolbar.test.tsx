@@ -17,7 +17,7 @@ describe('EditorToolbar', () => {
 
   it('offers no table, edge, color, text or size tools without a selection', () => {
     expect(screen.queryByRole('button', { name: 'Добавить поле' })).toBeNull()
-    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.getAllByRole('combobox').map((select) => select.getAttribute('aria-label'))).toEqual(['Масштаб'])
     expect(screen.queryByRole('button', { name: 'Цвет линии' })).toBeNull()
     expect(screen.queryByRole('spinbutton', { name: 'Размер текста' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Автоширина' })).toBeNull()
@@ -469,6 +469,32 @@ describe('EditorToolbar', () => {
     expect(editor.setTextAlign).toHaveBeenCalledWith('right')
   })
 
+  it('shows the scale in «Масштаб» and zooms to the level chosen there', async () => {
+    const scale = screen.getByRole('combobox', { name: 'Масштаб' })
+    const levels = () => within(scale).getAllByRole('option').map((option) => option.textContent)
+
+    expect(scale).toHaveDisplayValue('100%')
+    expect(levels()).toEqual(['25%', '50%', '75%', '100%', '125%', '150%', '200%', '300%', '400%'])
+    await userEvent.selectOptions(scale, '200%')
+
+    expect(editor.zoomTo).toHaveBeenCalledWith(2)
+    expect(scale).toHaveDisplayValue('200%')
+  })
+
+  it('lists a scale between the levels of «Масштаб» in its place', async () => {
+    act(() => editor.setState({ scale: 0.83 }))
+    const scale = screen.getByRole('combobox', { name: 'Масштаб' })
+
+    expect(scale).toHaveDisplayValue('83%')
+    expect(within(scale).getAllByRole('option').map((option) => option.textContent)).toEqual(
+      ['25%', '50%', '75%', '83%', '100%', '125%', '150%', '200%', '300%', '400%'],
+    )
+    await userEvent.selectOptions(scale, '100%')
+
+    expect(editor.zoomTo).toHaveBeenCalledWith(1)
+    expect(within(scale).queryByRole('option', { name: '83%' })).toBeNull()
+  })
+
   it('fits the page into the canvas', async () => {
     await userEvent.click(screen.getByRole('button', { name: 'Показать всё' }))
 
@@ -803,8 +829,8 @@ describe('EditorToolbar', () => {
       within(toolbar)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Уменьшить', 'Масштаб', 'Увеличить', 'Показать всё', 'Указка', 'Комментарий'])
-    expect(within(toolbar).queryByRole('combobox')).toBeNull()
+    ).toEqual(['Уменьшить', 'Увеличить', 'Показать всё', 'Указка', 'Комментарий'])
+    expect(within(toolbar).getAllByRole('combobox').map((select) => select.getAttribute('aria-label'))).toEqual(['Масштаб'])
     expect(within(toolbar).queryByRole('spinbutton')).toBeNull()
   })
 

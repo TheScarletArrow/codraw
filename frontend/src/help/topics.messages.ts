@@ -236,7 +236,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Мини-карта и масштаб',
             paragraphs: [
               'В правом нижнем углу холста — уменьшенная страница с рамкой видимой области: щелчок или перетаскивание рамки переносят туда холст, а цветные точки показывают, куда смотрят другие участники. Свернуть её можно кнопкой в углу или клавишей M.',
-              'Масштаб меняют Ctrl+колесо и кнопки «Уменьшить» и «Увеличить», «Показать всё» (Ctrl+Shift+H) вписывает страницу в экран, а щелчок по проценту возвращает 100%.',
+              'Масштаб меняют Ctrl+колесо, кнопки «Уменьшить» и «Увеличить» и список «Масштаб» между ними — в нём от 25 до 400 %, а 100 % возвращает обычный размер. «Показать всё» (Ctrl+Shift+H) вписывает страницу в экран.',
             ],
           },
           {
@@ -868,7 +868,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Minimap and zoom',
             paragraphs: [
               'The bottom right corner of the canvas shows a small copy of the page with a frame of the visible area: a click or dragging the frame moves the canvas there, and colored dots show where other participants are looking. The button in the corner or the M key collapses it.',
-              'Ctrl+wheel and the “Zoom out” and “Zoom in” buttons change the zoom, “Fit to screen” (Ctrl+Shift+H) fits the page to the screen, and a click on the percentage brings back 100%.',
+              'Ctrl+wheel, the “Zoom out” and “Zoom in” buttons and the “Zoom” list between them, from 25% to 400%, change the zoom; 100% in the list brings back the usual size. “Fit to screen” (Ctrl+Shift+H) fits the page to the screen.',
             ],
           },
           {

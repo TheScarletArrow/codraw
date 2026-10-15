@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.51.0',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Масштаб из списка',
+          text: 'Процент масштаба на панели инструментов стал списком «Масштаб»: выберите от 25 до 400 %, и не нужно много раз нажимать «Увеличить» или «Уменьшить». Середина экрана остаётся на месте, а 100 % возвращает обычный размер.',
+        },
+        en: {
+          title: 'Zoom from a list',
+          text: 'The zoom percentage on the toolbar is now the “Zoom” list: pick anything from 25% to 400% instead of clicking “Zoom in” or “Zoom out” many times. The middle of the screen stays in place, and 100% brings back the usual size.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.49.0',
     date: '2026-10-14',
     items: [
