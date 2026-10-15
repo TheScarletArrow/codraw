@@ -147,8 +147,8 @@
   font-style: italic;
 }
 
-/* The tooltip of maxGraph over an element, appended to the page: who changed the element last, or what the icons of a
-   row of a table mean. It lets the pointer through to what is under it. */
+/* The tooltip of maxGraph over an element, appended to the page: who changed the element last, the comment of a table,
+   or what the icons of a row of a table mean. It lets the pointer through to what is under it. */
 .mxTooltip {
   position: absolute;
   pointer-events: none;

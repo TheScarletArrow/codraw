@@ -230,9 +230,11 @@ describe('fields of tables', () => {
     const state = editor.graph.getView().getState(cell)!
     return editor.graph.getPlugin<TooltipHandler>('TooltipHandler')!.getTooltip(state, state.shape!.node, state.x + x * scale, state.y)
   }
+  /** The lines of the tooltip over `cell` at `x`. */
   const tooltipAt = (editor: DiagramEditor, cell: Cell, x: number) => {
     const tip = tipAt(editor, cell, x)
-    return tip instanceof HTMLElement ? tip.textContent : tip
+    if (!(tip instanceof HTMLElement)) return tip
+    return tip.children.length > 0 ? [...tip.children].map((line) => line.textContent) : [tip.textContent]
   }
 
   it('tells what the icons of a field mean over them, selected or not, and who changed it over its name', () => {
@@ -249,14 +251,14 @@ describe('fields of tables', () => {
     const boards = editor.graph.getDefaultParent().getChildAt(0)
     const [id, owner, title] = [0, 1, 2].map((index) => boards.getChildAt(index))
 
-    expect(tooltipAt(editor, owner!, 10)).toBe('Звено — внешний ключ\nМолния — поле входит в индекс')
-    expect(tooltipAt(editor, id!, 10)).toBe('Ключ — первичный ключ')
-    expect(tooltipAt(editor, owner!, nameX(2) + 1)).toBe('Изменено: Алиса (вы), только что')
-    expect(tooltipAt(editor, title!, 10)).toBe('Изменено: Алиса (вы), только что')
+    expect(tooltipAt(editor, owner!, 10)).toEqual(['Звено — внешний ключ', 'Молния — поле входит в индекс'])
+    expect(tooltipAt(editor, id!, 10)).toEqual(['Ключ — первичный ключ'])
+    expect(tooltipAt(editor, owner!, nameX(2) + 1)).toEqual(['Изменено: Алиса (вы), только что'])
+    expect(tooltipAt(editor, title!, 10)).toEqual(['Изменено: Алиса (вы), только что'])
     editor.graph.setSelectionCell(owner!)
-    expect(tooltipAt(editor, owner!, 10)).toBe('Звено — внешний ключ\nМолния — поле входит в индекс')
+    expect(tooltipAt(editor, owner!, 10)).toEqual(['Звено — внешний ключ', 'Молния — поле входит в индекс'])
     editor.graph.zoomTo(2)
-    expect(tooltipAt(editor, owner!, nameX(2) - 1)).toBe('Звено — внешний ключ\nМолния — поле входит в индекс')
+    expect(tooltipAt(editor, owner!, nameX(2) - 1)).toEqual(['Звено — внешний ключ', 'Молния — поле входит в индекс'])
     editor.setLaser(true)
     expect(tooltipAt(editor, owner!, 10)).toBeNull()
   })
@@ -268,7 +270,7 @@ describe('fields of tables', () => {
     const field = viewer.graph.getDataModel().getCell(table.getChildAt(0).getId()!)!
     setLocale('en')
 
-    expect(tooltipAt(viewer, field, 10)).toBe('Key — primary key')
-    expect((tipAt(viewer, field, 10) as HTMLElement).children).toHaveLength(0)
+    expect(tooltipAt(viewer, field, 10)).toEqual(['Key — primary key'])
+    expect((tipAt(viewer, field, 10) as HTMLElement).firstElementChild!.children).toHaveLength(0)
   })
 })

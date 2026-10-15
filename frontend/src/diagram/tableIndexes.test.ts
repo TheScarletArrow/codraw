@@ -73,7 +73,7 @@ describe('indexes of tables', () => {
 
     expect(tooltip(unique!, 10)).toBe('Ромб — уникальный индекс')
     expect(tooltip(plain!, 10)).toBe('Молния — индекс')
-    expect(tooltip(plain!, 200)).not.toBe('Молния — индекс')
+    expect(tooltip(plain!, 200)).toBeNull()
   })
 
   it('adds an index at the end of the block, or after the selected index, and starts editing its name', () => {
