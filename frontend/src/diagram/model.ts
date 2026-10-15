@@ -1,4 +1,4 @@
-import { generateKeyBetween } from 'fractional-indexing'
+import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing'
 import * as Y from 'yjs'
 import { modelMessages } from './model.messages.ts'
 import { readViewRule, viewRuleData, type ViewRule } from './viewRule.ts'
@@ -515,6 +515,11 @@ export function deleteCell(cells: CellsMap, id: string) {
 /** Returns an order key that sorts between `before` and `after`; `null` means the start or the end. */
 export function orderBetween(before: string | null, after: string | null): string {
   return generateKeyBetween(before, after)
+}
+
+/** Returns `count` order keys in a row between `before` and `after`, spread so that they stay short. */
+export function ordersBetween(before: string | null, after: string | null, count: number): string[] {
+  return generateNKeysBetween(before, after, count)
 }
 
 /** Sort order of siblings: by order key, then by id, so that equal keys from concurrent inserts are stable. */

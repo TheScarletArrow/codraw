@@ -27,7 +27,7 @@ import {
   isElementStyleKey,
   isHiddenLayerStyle,
   LAYER_CELL_ID,
-  orderBetween,
+  ordersBetween,
   readCell,
   ROOT_CELL_ID,
   writeCell,
@@ -249,9 +249,12 @@ export class DiagramBinding {
   private readonly handleLocalChanges = (_sender: unknown, event: EventObject) => {
     if (this.applyingRemote || this.readOnly) return
     const touched = new Set<Cell>()
+    // Cells put into a parent or in another place among their siblings; the others keep their places, those in them too.
+    const placed = new Set<Cell>()
     for (const change of event.getProperty('changes') as unknown[]) {
       if (change instanceof ChildChange) {
         touched.add(change.child)
+        placed.add(change.child)
         change.child.getDescendants().forEach((cell) => touched.add(cell))
       } else if (
         change instanceof GeometryChange ||
@@ -272,8 +275,8 @@ export class DiagramBinding {
       if (this.find(id) === cell) alive.push(cell)
       else removed.push(id)
     }
-    // Write in drawing order so that each cell finds the order keys of the siblings before it.
-    alive.sort(compareModelPosition)
+    // All the keys before any is written: the key of a cell depends on those of the cells around it.
+    const orders = this.ordersFor(alive, placed)
 
     const doc = this.cells.doc!
     // Cells of this page that the change of an element changed without the model: the other cells of the element.
@@ -291,7 +294,7 @@ export class DiagramBinding {
       const before = new Map<string, ElementData | undefined>()
       const changedElements = new Set<string>()
       for (const cell of alive) {
-        const data = this.toCellData(cell)
+        const data = this.toCellData(cell, orders.get(cell)!)
         // A cell that names another element now leaves the one it named.
         const named = cellElementId(this.cells.get(data.id))
         if (named !== null && named !== data.style[ELEMENT_KEY]) removedElements.push(named)
@@ -429,30 +432,65 @@ export class DiagramBinding {
     })
   }
 
-  /** Keeps the stored order key while it still fits between the neighbours, otherwise makes a new one. */
-  private orderFor(cell: Cell): string {
-    const parent = cell.getParent()!
-    const index = parent.getIndex(cell)
-    let before: string | null = null
-    for (let i = index - 1; i >= 0 && before === null; i--) before = this.storedOrder(parent.getChildAt(i))
-    let after: string | null = null
-    for (let i = index + 1; i < parent.getChildCount() && after === null; i++) after = this.storedOrder(parent.getChildAt(i))
-
-    const storedParent = this.cells.get(cell.getId()!)?.get('parent')
-    const current = storedParent === parent.getId() ? this.storedOrder(cell) : null
-    if (current && (before === null || before < current) && (after === null || current < after)) return current
-    if (before !== null && after !== null && before >= after) return orderBetween(before, null)
-    return orderBetween(before, after)
+  /**
+   * The order keys of the cells that a local change writes, for the order of the model. A cell that keeps its place
+   * keeps its key; the cells put in a place get keys between the keys of the siblings around them that keep theirs (see
+   * {@link keysOfRun}). The stored key of a sibling that was put in a place too is no bound: it may be about to change,
+   * e.g. when several shapes are sent to the back at once.
+   */
+  private ordersFor(cells: readonly Cell[], placed: ReadonlySet<Cell>): Map<Cell, string> {
+    const orders = new Map<Cell, string>()
+    // The cells put in a place, and any that has no key where it is.
+    const placing = new Set<Cell>()
+    for (const cell of cells) {
+      const stored = placed.has(cell) ? null : this.storedOrderIn(cell, cell.getParent()!)
+      if (stored === null) placing.add(cell)
+      else orders.set(cell, stored)
+    }
+    for (const parent of new Set([...placing].map((cell) => cell.getParent()!))) {
+      const children = parent.getChildren()
+      // Keys are read only around the cells put in a place, however many siblings they have. A sibling without a key
+      // bounds nothing: the cells around it are one run.
+      const keyBefore = (index: number) => {
+        for (let i = index - 1; i >= 0; i--) {
+          const order = this.storedOrder(children[i]!)
+          if (order !== null) return order
+        }
+        return null
+      }
+      let start = -1
+      const place = (end: number, after: string | null) => {
+        const run = children.slice(start, end).filter((cell) => placing.has(cell))
+        const keys = keysOfRun(run.map((cell) => this.storedOrderIn(cell, parent)), keyBefore(start), after)
+        run.forEach((cell, index) => orders.set(cell, keys[index]!))
+        start = -1
+      }
+      children.forEach((child, index) => {
+        if (placing.has(child)) {
+          if (start < 0) start = index
+        } else if (start >= 0) {
+          const order = this.storedOrder(child)
+          if (order !== null) place(index, order)
+        }
+      })
+      if (start >= 0) place(children.length, null)
+    }
+    return orders
   }
 
-  private toCellData(cell: Cell): CellData {
+  /** The stored order key of a cell stored in `parent`: a key among the siblings of another parent tells nothing here. */
+  private storedOrderIn(cell: Cell, parent: Cell): string | null {
+    return this.cells.get(cell.getId()!)?.get('parent') === parent.getId() ? this.storedOrder(cell) : null
+  }
+
+  private toCellData(cell: Cell, order: string): CellData {
     const edge = cell.isEdge()
     const value = cell.getValue()
     return {
       id: cell.getId()!,
       kind: edge ? 'edge' : isLayerCell(this.model, cell) ? 'layer' : 'vertex',
       parent: cell.getParent()?.getId() ?? null,
-      order: this.orderFor(cell),
+      order,
       value: value == null ? '' : String(value),
       geometry: fromGeometry(cell.getGeometry()),
       source: edge ? (cell.getTerminal(true)?.getId() ?? null) : null,
@@ -477,25 +515,22 @@ function isConnectable(data: CellData): boolean {
   return data.style.connectable !== false && data.style.connectable !== 0
 }
 
-/** Orders cells by their position in the model tree, parents before children. */
-function compareModelPosition(a: Cell, b: Cell): number {
-  const pa = modelPath(a)
-  const pb = modelPath(b)
-  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
-    if (pa[i] !== pb[i]) return pa[i]! - pb[i]!
-  }
-  return pa.length - pb.length
-}
-
-function modelPath(cell: Cell): number[] {
-  const path: number[] = []
-  let current: Cell | null = cell
-  while (current?.getParent()) {
-    const parent: Cell = current.getParent()!
-    path.unshift(parent.getIndex(current))
-    current = parent
-  }
-  return path
+/**
+ * Order keys for siblings next to each other that a change put in a place, given their stored keys, between the keys
+ * `before` and `after` of the siblings around them; `null` is the start or the end. They keep their keys while those are
+ * still in order between the two, e.g. for shapes sent to the back that were there already; otherwise they get keys
+ * spread evenly between the two, which stay short however many cells move at once and however often.
+ */
+function keysOfRun(stored: readonly (string | null)[], before: string | null, after: string | null): string[] {
+  // Keys around the run out of order, e.g. equal ones of concurrent inserts: the run goes after the one before it.
+  const upper = before !== null && after !== null && before >= after ? null : after
+  let lower = before
+  const inOrder = stored.every((key) => {
+    if (key === null || (lower !== null && key <= lower) || (upper !== null && key >= upper)) return false
+    lower = key
+    return true
+  })
+  return inOrder ? (stored as string[]) : ordersBetween(before, upper, stored.length)
 }
 
 const point = (p: { x: number; y: number }): PointData => ({ x: p.x, y: p.y })

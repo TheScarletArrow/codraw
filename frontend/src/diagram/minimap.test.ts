@@ -198,7 +198,8 @@ describe('the sketch of a page', () => {
 
       workers[0]!.onmessage!({ data: { id: requests.at(-1)!.id, routes: { [cellOf(editor, 'ab').getId()!]: route } } })
 
-      expect(viewChanged).toHaveBeenCalled()
+      // The view tells about it in the next frame.
+      await vi.waitFor(() => expect(viewChanged).toHaveBeenCalled())
       const after = editor.pageSketch()
       expect(after).not.toBe(before)
       expect(after.edges[0]!.points.map(({ x, y }) => ({ x: Math.round(x), y: Math.round(y) }))).toEqual(route)

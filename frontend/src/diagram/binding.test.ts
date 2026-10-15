@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { readAttribution } from './attribution.ts'
 import { createUndoManager, DiagramBinding } from './binding.ts'
 import {
+  compareCells,
   ELEMENT_KEY,
   getCells,
   getElements,
@@ -269,6 +270,81 @@ describe('maxGraph → Yjs (local changes)', () => {
 
     expect(childIds(alice.model)).toEqual([b.getId(), expect.any(String), a.getId()])
     expect(childIds(bob.model)).toEqual(childIds(alice.model))
+  })
+
+  it('keeps the drawing order of cells next to each other that move past each other in one edit', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const main = layer(alice.model)
+    const cells = Array.from({ length: 8 }, (_, index) => addVertex(alice.model, `${index}`))
+    const stored = () =>
+      [...getCells(alice.doc).entries()]
+        .map(([id, entry]) => readCell(id, entry))
+        .filter((data) => data.parent === LAYER_CELL_ID)
+        .sort(compareCells)
+        .map((data) => data.id)
+    const keyOf = (cell: Cell) => getCells(alice.doc).get(cell.getId()!)!.get('order')
+    const keys = cells.map(keyOf)
+
+    // The second half to the back at once, each after the one moved before it, as «На задний план» moves them.
+    alice.model.batchUpdate(() => cells.slice(4).forEach((cell, index) => alice.model.add(main, cell, index)))
+
+    expect(childIds(alice.model)).toEqual([...cells.slice(4), ...cells.slice(0, 4)].map((cell) => cell.getId()))
+    expect(childIds(bob.model)).toEqual(childIds(alice.model))
+    expect(stored()).toEqual(childIds(alice.model))
+    // The cells that stayed keep their keys.
+    expect(cells.slice(0, 4).map(keyOf)).toEqual(keys.slice(0, 4))
+
+    // All of them the other way round.
+    alice.model.batchUpdate(() => [...main.getChildren()].forEach((cell) => alice.model.add(main, cell, 0)))
+
+    expect(childIds(alice.model)).toEqual([...cells.slice(0, 4).reverse(), ...cells.slice(4).reverse()].map((cell) => cell.getId()))
+    expect(childIds(bob.model)).toEqual(childIds(alice.model))
+    expect(stored()).toEqual(childIds(alice.model))
+  })
+
+  it('keeps the order keys short however often cells move past each other', () => {
+    const { model, doc } = createClient()
+    const main = layer(model)
+    Array.from({ length: 100 }, (_, index) => addVertex(model, `${index}`))
+    const keys = () => [...main.getChildren()].map((cell) => getCells(doc).get(cell.getId()!)!.get('order') as string)
+
+    for (let round = 0; round < 20; round++) {
+      // The first and the last stay; those between them come the other way round.
+      model.batchUpdate(() => [...main.getChildren()].slice(1, -1).forEach((cell) => model.add(main, cell, 1)))
+    }
+
+    expect([...keys()].sort()).toEqual(keys())
+    expect(new Set(keys()).size).toBe(100)
+    expect(Math.max(...keys().map((key) => key.length))).toBeLessThanOrEqual(3)
+  })
+
+  it('keeps the drawing order of many cells added in one edit between others, and of those moved into a group', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const existing = Array.from({ length: 6 }, (_, index) => addVertex(alice.model, `${index}`))
+    const group = addVertex(alice.model, 'Группа')
+    const added = Array.from({ length: 6 }, (_, index) => {
+      const cell = new Cell(`new ${index}`, new Geometry(10, 20, 120, 60), {})
+      cell.setVertex(true)
+      return cell
+    })
+    const childrenOf = (model: GraphDataModel, id: string) => model.getCell(id)!.getChildren().map((cell) => cell.getId())
+
+    alice.model.batchUpdate(() => {
+      // A new cell after each one that was there, and two of those into the group.
+      added.forEach((cell, index) => alice.model.add(layer(alice.model), cell, 2 * index + 1))
+      alice.model.add(group, existing[3]!)
+      alice.model.add(group, existing[1]!, 0)
+    })
+
+    const onPage = existing.flatMap((cell, index) => [cell, added[index]!]).filter((cell) => cell !== existing[1] && cell !== existing[3])
+    expect(childIds(alice.model)).toEqual([...onPage, group].map((cell) => cell.getId()))
+    expect(childrenOf(alice.model, group.getId()!)).toEqual([existing[1]!.getId(), existing[3]!.getId()])
+    expect(childIds(bob.model)).toEqual(childIds(alice.model))
+    expect(childrenOf(bob.model, group.getId()!)).toEqual(childrenOf(alice.model, group.getId()!))
   })
 
   it('writes one transaction per model edit and does not echo remote changes', () => {
