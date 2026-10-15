@@ -80,7 +80,7 @@ export function EditorToolbar({
     <div
       role="toolbar"
       aria-label={m.tools}
-      className="@container flex min-w-65 flex-1 items-center gap-1 overflow-x-auto"
+      className="@container flex min-w-69 flex-1 items-center gap-1 overflow-x-auto"
     >
       {!readOnly && (
         <>
@@ -120,18 +120,7 @@ export function EditorToolbar({
       >
         <ZoomOut />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="w-16 tabular-nums"
-        aria-label={m.scale}
-        title={m.scaleTitle}
-        disabled={!editor}
-        onClick={() => editor?.zoomActual()}
-      >
-        {Math.round(scale * 100)}%
-      </Button>
+      <ZoomSelect scale={scale} editor={editor} />
       <Button
         type="button"
         variant="ghost"
@@ -219,6 +208,35 @@ export function EditorToolbar({
       {planView && onPlanViewChange && <PlanViewPicker editor={editor} readOnly={readOnly} view={planView} onChange={onPlanViewChange} />}
       {!readOnly && (pencil ? <PencilTools editor={editor} /> : <EditingTools editor={editor} />)}
     </div>
+  )
+}
+
+/** The zoom levels «Масштаб» offers, in percent, as in draw.io. */
+const ZOOM_PERCENTS = [25, 50, 75, 100, 125, 150, 200, 300, 400]
+
+/**
+ * «Масштаб»: the scale of the canvas, chosen from the usual levels. A scale between them — after «Уменьшить»,
+ * «Увеличить», Ctrl+wheel, a pinch or following another participant — is listed in its place among them.
+ */
+function ZoomSelect({ scale, editor }: { scale: number; editor: DiagramEditor | null }) {
+  const current = Math.round(scale * 100)
+  const percents = ZOOM_PERCENTS.includes(current) ? ZOOM_PERCENTS : [...ZOOM_PERCENTS, current].sort((a, b) => a - b)
+
+  return (
+    <select
+      aria-label={m.scale}
+      title={m.scale}
+      className="h-8 w-20 shrink-0 rounded-md border bg-background px-1 text-sm text-foreground tabular-nums"
+      disabled={!editor}
+      value={current}
+      onChange={(event) => editor?.zoomTo(Number(event.target.value) / 100)}
+    >
+      {percents.map((percent) => (
+        <option key={percent} value={percent}>
+          {percent}%
+        </option>
+      ))}
+    </select>
   )
 }
 

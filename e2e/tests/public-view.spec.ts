@@ -65,14 +65,14 @@ test('a board shown to anybody opens through its link without a sign-in, with it
   await reader.getByRole('tab', { name: 'Страница 2' }).click()
   await expect.poll(async () => (await vertices(reader)).length).toBe(1)
   await reader.getByRole('button', { name: 'Увеличить' }).click()
-  const scale = await reader.getByRole('button', { name: 'Масштаб' }).textContent()
+  const scale = await reader.getByRole('combobox', { name: 'Масштаб' }).inputValue()
 
   // The owner changes the page; the reader gets it when they come back to the tab, at the same scale.
   await addShape(alice, 'Прямоугольник')
   await expect.poll(() => storedVertexCount(boardId), { timeout: 15_000 }).toBe(4)
   await comeBack(reader)
   await expect.poll(async () => (await vertices(reader)).length).toBe(2)
-  await expect(reader.getByRole('button', { name: 'Масштаб' })).toHaveText(scale!)
+  await expect(reader.getByRole('combobox', { name: 'Масштаб' })).toHaveValue(scale)
 
   // Nobody was created for the reader.
   expect((await reader.request.get('/api/me')).status()).toBe(401)
