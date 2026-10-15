@@ -44,6 +44,16 @@ export const releases: Release[] = [
           text: 'On pages with thousands of shapes, selecting, moving and grouping many shapes at once responds faster, and zooming with Ctrl and the mouse wheel or a touchpad pinch is smoother.',
         },
       },
+      {
+        ru: {
+          title: 'Порядок фигур на заднем и переднем плане',
+          text: 'Если отправить на задний план или вынести на передний план несколько фигур сразу, другие участники и вы сами после обновления страницы видите их в том же порядке, что и в момент перестановки.',
+        },
+        en: {
+          title: 'The order of shapes sent to the back or brought to the front',
+          text: 'When you send several shapes to the back or bring them to the front at once, the other participants, and you after reloading the page, see them in the same order as when you moved them.',
+        },
+      },
     ],
   },
   {

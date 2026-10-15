@@ -4,7 +4,8 @@ import * as Y from 'yjs'
 import { parseDrawio } from '../drawio/parse.ts'
 import { importPages } from '../drawio/importPages.ts'
 import { createDiagramEditor, isGroup, type DiagramEditor } from './editor.ts'
-import { getCells, initializeDocument, readCell } from './model.ts'
+import { compareCells, getCells, initializeDocument, LAYER_CELL_ID, readCell } from './model.ts'
+import { connect } from './testing.ts'
 
 describe('arranging shapes', () => {
   const editors: DiagramEditor[] = []
@@ -144,6 +145,34 @@ describe('arranging shapes', () => {
 
     expect(group.getChildren()).toEqual([shapes[0], shapes[2], shapes[3]])
     expect(shapes[1]!.getParent()).toBe(editor.graph.getDefaultParent())
+  })
+
+  it('sends several shapes to the back and brings them to the front in one order for everybody and in the document', () => {
+    const { doc, editor } = open()
+    const other = open(new Y.Doc())
+    connect(doc, other.doc)
+    const shapes = [0, 1, 2, 3, 4, 5].map((index) => shape(editor, index * 150, 0))
+    const order = (of: DiagramEditor) => of.graph.getDefaultParent().getChildren().map((cell) => cell.getId())
+    const stored = () =>
+      [...getCells(doc).entries()]
+        .map(([id, entry]) => readCell(id, entry))
+        .filter((data) => data.parent === LAYER_CELL_ID)
+        .sort(compareCells)
+        .map((data) => data.id)
+
+    editor.graph.setSelectionCells(shapes.slice(3))
+    editor.sendToBack()
+
+    expect(order(editor).slice(0, 3)).toEqual(shapes.slice(3).map((cell) => cell.getId()))
+    expect(order(other.editor)).toEqual(order(editor))
+    expect(stored()).toEqual(order(editor))
+
+    editor.graph.setSelectionCells([shapes[4]!, shapes[0]!, shapes[2]!])
+    editor.bringToFront()
+
+    expect(order(editor).slice(3)).toEqual(expect.arrayContaining([shapes[0], shapes[2], shapes[4]].map((cell) => cell!.getId())))
+    expect(order(other.editor)).toEqual(order(editor))
+    expect(stored()).toEqual(order(editor))
   })
 
   it('moves a group with what it holds', () => {
