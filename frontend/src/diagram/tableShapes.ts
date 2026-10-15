@@ -147,6 +147,18 @@ export function tablesShowing(cell: Cell): Cell[] {
   return [...tables]
 }
 
+/**
+ * What the icons of the field or index `row` mean, a line per icon in the order they are drawn, while `x` — from the left
+ * edge of the row, unscaled — is before its name; `null` elsewhere, for a row without icons and for any other cell.
+ */
+export function iconHints(graph: AbstractGraph, row: Cell, x: number): string[] | null {
+  if (!isColumnField(row) && !isIndexRow(row)) return null
+  const drawn = tableRowsOf(graph, row.getParent()!).get(row)
+  if (!drawn?.icons.length || x >= drawn.nameX) return null
+  if (isIndexRow(row)) return [drawn.icons[0] === 'unique' ? m.uniqueIndexIcon : m.indexIcon]
+  return drawn.icons.map((icon) => m.icons[icon])
+}
+
 function paintIcon(c: AbstractCanvas2D, icon: FieldIcon, x: number, y: number) {
   c.save()
   c.setStrokeWidth(1.5)
