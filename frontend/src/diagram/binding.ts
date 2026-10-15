@@ -272,8 +272,11 @@ export class DiagramBinding {
       if (this.find(id) === cell) alive.push(cell)
       else removed.push(id)
     }
-    // Write in drawing order so that each cell finds the order keys of the siblings before it.
-    alive.sort(compareModelPosition)
+    // Write in drawing order so that each cell finds the order keys of the siblings before it. The model does not change
+    // while they are written, so the positions of the cells among their siblings are found once.
+    const indexOf = childIndexes()
+    const paths = new Map(alive.map((cell) => [cell, modelPath(cell, indexOf)]))
+    alive.sort((a, b) => comparePaths(paths.get(a)!, paths.get(b)!))
 
     const doc = this.cells.doc!
     // Cells of this page that the change of an element changed without the model: the other cells of the element.
@@ -291,7 +294,7 @@ export class DiagramBinding {
       const before = new Map<string, ElementData | undefined>()
       const changedElements = new Set<string>()
       for (const cell of alive) {
-        const data = this.toCellData(cell)
+        const data = this.toCellData(cell, indexOf)
         // A cell that names another element now leaves the one it named.
         const named = cellElementId(this.cells.get(data.id))
         if (named !== null && named !== data.style[ELEMENT_KEY]) removedElements.push(named)
@@ -430,9 +433,9 @@ export class DiagramBinding {
   }
 
   /** Keeps the stored order key while it still fits between the neighbours, otherwise makes a new one. */
-  private orderFor(cell: Cell): string {
+  private orderFor(cell: Cell, indexOf: (cell: Cell) => number): string {
     const parent = cell.getParent()!
-    const index = parent.getIndex(cell)
+    const index = indexOf(cell)
     let before: string | null = null
     for (let i = index - 1; i >= 0 && before === null; i--) before = this.storedOrder(parent.getChildAt(i))
     let after: string | null = null
@@ -445,14 +448,14 @@ export class DiagramBinding {
     return orderBetween(before, after)
   }
 
-  private toCellData(cell: Cell): CellData {
+  private toCellData(cell: Cell, indexOf: (cell: Cell) => number): CellData {
     const edge = cell.isEdge()
     const value = cell.getValue()
     return {
       id: cell.getId()!,
       kind: edge ? 'edge' : isLayerCell(this.model, cell) ? 'layer' : 'vertex',
       parent: cell.getParent()?.getId() ?? null,
-      order: this.orderFor(cell),
+      order: this.orderFor(cell, indexOf),
       value: value == null ? '' : String(value),
       geometry: fromGeometry(cell.getGeometry()),
       source: edge ? (cell.getTerminal(true)?.getId() ?? null) : null,
@@ -477,25 +480,38 @@ function isConnectable(data: CellData): boolean {
   return data.style.connectable !== false && data.style.connectable !== 0
 }
 
-/** Orders cells by their position in the model tree, parents before children. */
-function compareModelPosition(a: Cell, b: Cell): number {
-  const pa = modelPath(a)
-  const pb = modelPath(b)
+/**
+ * The position of a cell among the children of its parent, each parent searched once: `Cell.getIndex` searches the
+ * children again for every cell, and a change of many cells of a large page waited for that. Valid while the model does
+ * not change.
+ */
+function childIndexes(): (cell: Cell) => number {
+  const indexes = new Map<Cell, Map<Cell, number>>()
+  return (cell) => {
+    const parent = cell.getParent()
+    if (!parent) return -1
+    let index = indexes.get(parent)
+    if (!index) {
+      index = new Map(parent.getChildren().map((child, position) => [child, position]))
+      indexes.set(parent, index)
+    }
+    return index.get(cell) ?? -1
+  }
+}
+
+/** Orders cells by their paths in the model tree (see {@link modelPath}), parents before children. */
+function comparePaths(pa: number[], pb: number[]): number {
   for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
     if (pa[i] !== pb[i]) return pa[i]! - pb[i]!
   }
   return pa.length - pb.length
 }
 
-function modelPath(cell: Cell): number[] {
+/** The positions of a cell and of the cells above it among their siblings, from the root down. */
+function modelPath(cell: Cell, indexOf: (cell: Cell) => number): number[] {
   const path: number[] = []
-  let current: Cell | null = cell
-  while (current?.getParent()) {
-    const parent: Cell = current.getParent()!
-    path.unshift(parent.getIndex(current))
-    current = parent
-  }
-  return path
+  for (let current: Cell | null = cell; current?.getParent(); current = current.getParent()) path.push(indexOf(current))
+  return path.reverse()
 }
 
 const point = (p: { x: number; y: number }): PointData => ({ x: p.x, y: p.y })

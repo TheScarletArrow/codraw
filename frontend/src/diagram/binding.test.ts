@@ -271,6 +271,33 @@ describe('maxGraph → Yjs (local changes)', () => {
     expect(childIds(bob.model)).toEqual(childIds(alice.model))
   })
 
+  it('keeps the drawing order of many cells added in one edit between others, and of those moved into a group', () => {
+    const alice = createClient()
+    const bob = createClient()
+    connect(alice.doc, bob.doc)
+    const existing = Array.from({ length: 6 }, (_, index) => addVertex(alice.model, `${index}`))
+    const group = addVertex(alice.model, 'Группа')
+    const added = Array.from({ length: 6 }, (_, index) => {
+      const cell = new Cell(`new ${index}`, new Geometry(10, 20, 120, 60), {})
+      cell.setVertex(true)
+      return cell
+    })
+    const childrenOf = (model: GraphDataModel, id: string) => model.getCell(id)!.getChildren().map((cell) => cell.getId())
+
+    alice.model.batchUpdate(() => {
+      // A new cell after each one that was there, and two of those into the group.
+      added.forEach((cell, index) => alice.model.add(layer(alice.model), cell, 2 * index + 1))
+      alice.model.add(group, existing[3]!)
+      alice.model.add(group, existing[1]!, 0)
+    })
+
+    const onPage = existing.flatMap((cell, index) => [cell, added[index]!]).filter((cell) => cell !== existing[1] && cell !== existing[3])
+    expect(childIds(alice.model)).toEqual([...onPage, group].map((cell) => cell.getId()))
+    expect(childrenOf(alice.model, group.getId()!)).toEqual([existing[1]!.getId(), existing[3]!.getId()])
+    expect(childIds(bob.model)).toEqual(childIds(alice.model))
+    expect(childrenOf(bob.model, group.getId()!)).toEqual(childrenOf(alice.model, group.getId()!))
+  })
+
   it('writes one transaction per model edit and does not echo remote changes', () => {
     const alice = createClient()
     const bob = createClient()

@@ -1,4 +1,15 @@
-import { InternalEvent, type Cell, type Graph } from '@maxgraph/core'
+import {
+  ChildChange,
+  GeometryChange,
+  InternalEvent,
+  StyleChange,
+  TerminalChange,
+  ValueChange,
+  VisibleChange,
+  type Cell,
+  type EventObject,
+  type Graph,
+} from '@maxgraph/core'
 import { cellVisibility, type CellVisibility } from './cellVisibility.ts'
 import { hiddenIn, PLAN_COLORS, planOf, type Plan, type PlanView } from './plan.ts'
 
@@ -6,8 +17,8 @@ import { hiddenIn, PLAN_COLORS, planOf, type Plan, type PlanView } from './plan.
  * The view of the current and the target architecture on the canvas (see `plan.ts`), of this editor alone: in the
  * difference the elements that will appear are outlined in green and those that will go in red and dashed, through a
  * hook of the style; the state now and the target leave out, by hiding them, the elements that will appear or will go,
- * the cells in them and the edges that end at them. A hidden cell is not selected. After every change of the page the
- * view is worked out anew.
+ * the cells in them and the edges that end at them. A hidden cell is not selected. After every change of the page that
+ * has or brings marks the view is worked out anew.
  */
 
 /** How many elements of the page will appear and will go. */
@@ -30,6 +41,28 @@ function planAt(cell: Cell): Plan | null {
     if (plan) return plan
   }
   return null
+}
+
+/** The cell or a cell in it has a mark. */
+function holdsMark(cell: Cell): boolean {
+  return planOf(cell.getStyle() as Record<string, unknown>) !== null || cell.getChildren().some(holdsMark)
+}
+
+/**
+ * Whether changes of a page without marks may have given it some: they added or moved cells with marks, or changed a
+ * style to one; their text, geometry, ends and visibility mark nothing. Other changes, e.g. a new root, may.
+ */
+function bringsMarks(changes: readonly unknown[]): boolean {
+  return changes.some((change) => {
+    if (change instanceof ChildChange) return holdsMark(change.child)
+    if (change instanceof StyleChange) return holdsMark(change.cell)
+    return !(
+      change instanceof ValueChange ||
+      change instanceof GeometryChange ||
+      change instanceof TerminalChange ||
+      change instanceof VisibleChange
+    )
+  })
 }
 
 /**
@@ -126,8 +159,10 @@ export function configurePlan(
   const isCellSelectable = graph.isCellSelectable.bind(graph)
   graph.isCellSelectable = (cell) => cell.isVisible() && isCellSelectable(cell)
 
-  // Changes of the page — own, of others, undone — change the marks and what the view leaves out.
-  const handleChange = () => {
+  // Changes of the page — own, of others, undone — change the marks and what the view leaves out. A page without marks,
+  // as most are, keeps its look until a change brings one: the view is not worked out anew over all its cells.
+  const handleChange = (_sender: unknown, event: EventObject) => {
+    if (drawnAs.size === 0 && !bringsMarks(event.getProperty('changes') as unknown[])) return
     if (apply()) onChange()
   }
   graph.getDataModel().addListener(InternalEvent.CHANGE, handleChange)

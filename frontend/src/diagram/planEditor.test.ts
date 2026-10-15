@@ -1,4 +1,4 @@
-import type { Cell } from '@maxgraph/core'
+import { Cell, Geometry, type CellStyle } from '@maxgraph/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { createDiagramEditor, type DiagramEditor } from './editor.ts'
@@ -59,6 +59,37 @@ describe('the current and the target architecture in the editor', () => {
     expect(stored(doc, db)).toBeUndefined()
     expect(drawn(editor, db).strokeColor).not.toBe(PLAN_COLORS.removed)
     expect(stored(doc, ledger)).toBe('added')
+  })
+
+  it('leaves out a marked shape that comes to a page without marks inside a group, in one change', () => {
+    const { editor } = open()
+    editor.addShape('service', { x: 0, y: 0 })
+    editor.setPlanView('current')
+    const group = new Cell('', new Geometry(300, 0, 200, 100), {})
+    group.setVertex(true)
+    const ledger = new Cell('Ledger', new Geometry(0, 0, 100, 60), { [PLAN_KEY]: 'added' } as CellStyle)
+    ledger.setVertex(true)
+    group.insert(ledger)
+
+    editor.graph.addCell(group)
+
+    expect(editor.getState().plan).toEqual({ view: 'current', added: 1, removed: 0 })
+    expect([shown(editor, group), shown(editor, ledger)]).toEqual([true, false])
+  })
+
+  it('leaves out what another participant marks on a page that had no marks', () => {
+    const { doc, editor } = open()
+    const other = open({ doc: new Y.Doc() })
+    connect(doc, other.doc)
+    const api = editor.addShape('service', { x: 0, y: 0 })!
+    const theirs = other.editor.graph.getDataModel().getCell(api.getId()!)!
+    other.editor.setPlanView('target')
+
+    editor.graph.setSelectionCell(api)
+    editor.setPlan('removed')
+
+    expect(other.editor.getState().plan).toEqual({ view: 'target', added: 0, removed: 1 })
+    expect(shown(other.editor, theirs)).toBe(false)
   })
 
   it('leaves the layers hidden as they are in every view', () => {

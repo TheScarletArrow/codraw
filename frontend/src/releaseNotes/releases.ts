@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.49.1',
+    date: '2026-10-15',
+    items: [
+      {
+        ru: {
+          title: 'Большие доски работают плавнее',
+          text: 'На страницах с тысячами фигур быстрее отзываются выделение, перемещение и группировка многих фигур сразу, а масштаб колесом мыши с Ctrl или жестом на тачпаде меняется плавнее.',
+        },
+        en: {
+          title: 'Smoother large boards',
+          text: 'On pages with thousands of shapes, selecting, moving and grouping many shapes at once responds faster, and zooming with Ctrl and the mouse wheel or a touchpad pinch is smoother.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.49.0',
     date: '2026-10-14',
     items: [

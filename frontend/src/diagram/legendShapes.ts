@@ -51,6 +51,8 @@ export function isLegend(cell: Cell | null | undefined): boolean {
 const layouts = new WeakMap<Cell, LegendLayout>()
 /** The layout each legend was drawn with last. */
 const drawn = new WeakMap<Cell, LegendLayout>()
+/** The legends of each graph with a new layout, until they are drawn with it; see {@link configureLegends}. */
+const undrawn = new WeakMap<object, Set<Cell>>()
 
 /** The cells of the model in drawing order, parents before their children, as records of a legend. */
 export function modelRecords(graph: Graph): LegendRecord[] {
@@ -116,6 +118,7 @@ export class LegendGraphLayout extends GraphLayout {
     const previous = layouts.get(legend)
     const layout = previous && sameLegendLayout(previous, next) ? previous : next
     layouts.set(legend, layout)
+    if (layout !== previous) undrawn.get(graph)?.add(legend)
     const geometry = legend.getGeometry()
     if (!geometry || (geometry.width === layout.width && geometry.height === layout.height)) return
     const sized = geometry.clone()
@@ -265,11 +268,19 @@ export function configureLegends(graph: Graph): () => void {
   const isValidTarget = graph.isValidTarget.bind(graph)
   graph.isValidTarget = (cell) => !isLegend(cell) && isValidTarget(cell)
 
+  // Only the legends whose layout changed: a page without them, as most are, is not walked on every change.
+  const pending = new Set<Cell>()
+  undrawn.set(graph, pending)
   const redraw = (_sender: unknown, _event: EventObject) => {
+    if (pending.size === 0) return
     const view = graph.getView()
-    for (const legend of modelLegends(graph)) {
+    const model = graph.getDataModel()
+    for (const legend of [...pending]) {
       const layout = layouts.get(legend)
-      if (!layout || drawn.get(legend) === layout) continue
+      if (!layout || drawn.get(legend) === layout || model.getCell(legend.getId() ?? '') !== legend) {
+        pending.delete(legend)
+        continue
+      }
       const state = view.getState(legend)
       if (!state) continue
       state.style = graph.getCellStyle(legend)
@@ -277,7 +288,10 @@ export function configureLegends(graph: Graph): () => void {
     }
   }
   graph.getDataModel().addListener(InternalEvent.CHANGE, redraw)
-  return () => graph.getDataModel().removeListener(redraw)
+  return () => {
+    graph.getDataModel().removeListener(redraw)
+    undrawn.delete(graph)
+  }
 }
 
 /** Adds the shape of legends. Safe to call more than once. */

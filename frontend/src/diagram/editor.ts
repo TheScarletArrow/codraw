@@ -1422,7 +1422,10 @@ export interface DiagramEditor {
   selectedCellIds(): string[]
   /** Reports the ids of the selected cells whenever the selection changes. */
   onSelectionChange(listener: (ids: string[]) => void): () => void
-  /** Reports that the picture on the screen moved: scrolling, zooming or changed cells. */
+  /**
+   * Reports that the picture on the screen moved: scrolling, zooming or changed cells. Once a frame, before it is painted,
+   * however many times it moved in it.
+   */
   onViewChange(listener: () => void): () => void
   /** Increases with every view change; lets React re-render positions computed from the view. */
   getViewVersion(): number
@@ -2326,7 +2329,10 @@ export function createDiagramEditor(
     const cells = graph.getSelectionCells().filter((cell) => !isTable(cell.getParent()) && !isSequencePart(cell))
     const parent = cells[0]?.getParent()
     if (!parent) return []
-    return cells.filter((cell) => cell.getParent() === parent).sort((a, b) => parent.getIndex(a) - parent.getIndex(b))
+    // In drawing order: the state of the editor asks on every change, and sorting by `getIndex` would search the children
+    // of the parent for each comparison.
+    const chosen = new Set(cells.filter((cell) => cell.getParent() === parent))
+    return chosen.size < 2 ? [...chosen] : parent.getChildren().filter((cell) => chosen.has(cell))
   }
   /** A group would become the parent of a locked cell, so none is made with one. */
   const canGroup = () => {
@@ -3146,11 +3152,21 @@ export function createDiagramEditor(
   }
   container.addEventListener('pointerdown', focusCanvas, true)
 
+  // A zoom draws every cell of the page again, and a touchpad turns the wheel many times a frame: the steps of a frame
+  // zoom once, by all of them.
+  let wheelSteps = 0
+  let wheelFrame: number | null = null
+  const zoomByWheel = () => {
+    wheelFrame = null
+    const steps = wheelSteps
+    wheelSteps = 0
+    if (steps !== 0) graph.zoom(graph.zoomFactor ** steps)
+  }
   const handleWheel = (event: Event, up: boolean) => {
     const wheel = event as WheelEvent
     if (!wheel.ctrlKey && !wheel.metaKey) return
-    if (up) graph.zoomIn()
-    else graph.zoomOut()
+    wheelSteps += up ? 1 : -1
+    wheelFrame ??= requestAnimationFrame(zoomByWheel)
     InternalEvent.consume(event)
   }
   InternalEvent.addMouseWheelListener(handleWheel, container)
@@ -3575,9 +3591,16 @@ export function createDiagramEditor(
 
   let viewVersion = 0
   const viewListeners = new Set<() => void>()
+  // The layers over the canvas follow the view once a frame: in one the page may scroll, zoom, change and get new routes
+  // of its edges, and each of them would draw all the layers again.
+  let viewFrame: number | null = null
+  const flushView = () => {
+    viewFrame = null
+    viewListeners.forEach((listener) => listener())
+  }
   const notifyView = () => {
     viewVersion++
-    viewListeners.forEach((listener) => listener())
+    viewFrame ??= requestAnimationFrame(flushView)
   }
   container.addEventListener('scroll', notifyView)
   // The sketch of the page is made again only once its cells have changed or its edges got new routes.
@@ -5645,6 +5668,8 @@ export function createDiagramEditor(
       selectionListeners.clear()
       menuListeners.clear()
       viewListeners.clear()
+      if (viewFrame !== null) cancelAnimationFrame(viewFrame)
+      if (wheelFrame !== null) cancelAnimationFrame(wheelFrame)
       editingListeners.clear()
       linkListeners.clear()
       InternalEvent.removeAllListeners(container)

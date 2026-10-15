@@ -135,6 +135,17 @@ describe('arranging shapes', () => {
     expect(editor.graph.getDataModel().getCell(group.getId()!)).toBeFalsy()
   })
 
+  it('groups the selected shapes in their drawing order, whatever order they were selected in', () => {
+    const { editor } = open()
+    const shapes = [100, 300, 500, 700].map((x) => shape(editor, x, 100))
+    editor.graph.setSelectionCells([shapes[3]!, shapes[0]!, shapes[2]!])
+
+    const group = editor.group()!
+
+    expect(group.getChildren()).toEqual([shapes[0], shapes[2], shapes[3]])
+    expect(shapes[1]!.getParent()).toBe(editor.graph.getDefaultParent())
+  })
+
   it('moves a group with what it holds', () => {
     const { editor } = open()
     const a = shape(editor, 100, 100)

@@ -137,6 +137,25 @@ describe('legends in the editor', () => {
     expect(legendSettings(legend.getStyle() as Record<string, unknown>)).toEqual({ names: {}, hidden: [] })
   })
 
+  it('draws its items anew when the shapes of the page change and it does not', () => {
+    const { editor } = open()
+    editor.addShape('service', { x: 0, y: 0 })
+    const cache = editor.addShape('cache', { x: 0, y: 200 })!
+    editor.addShape('legend', { x: 400, y: 0 })
+    const legend = legendOf(editor)
+    const picture = () => editor.graph.getView().getState(legend)!.shape!.node.textContent
+    expect(picture()).toContain('Кэш')
+
+    editor.graph.batchUpdate(() => {
+      editor.graph.removeCells([cache])
+      editor.addShape('queue', { x: 0, y: 200 })
+    })
+
+    expect(labels(editor)).not.toContain('Кэш')
+    for (const label of labels(editor)) expect(picture()).toContain(label)
+    expect(picture()).not.toContain('Кэш')
+  })
+
   it('takes back its size when something else sizes it, e.g. a resized group around it', () => {
     const { editor } = open()
     editor.addShape('service', { x: 0, y: 0 })
