@@ -5487,18 +5487,20 @@ export function createDiagramEditor(
     },
     centerOn({ x, y }) {
       const view = graph.getView()
-      const { scale, translate } = view
-      const left = (x + translate.x) * scale - container.clientWidth / 2
-      const top = (y + translate.y) * scale - container.clientHeight / 2
       const clamp = (value: number, max: number) => Math.max(0, Math.min(value, Math.max(0, max)))
-      const scrollLeft = clamp(left, container.scrollWidth - container.clientWidth)
-      const scrollTop = clamp(top, container.scrollHeight - container.clientHeight)
-      container.scrollLeft = scrollLeft
-      container.scrollTop = scrollTop
-      // What scrolling cannot reach, panning does.
-      const dx = left - container.scrollLeft
-      const dy = top - container.scrollTop
-      if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) view.setTranslate(translate.x - dx / scale, translate.y - dy / scale)
+      // What scrolling cannot reach, panning does. Panning resizes the scrollable area, and the browser may take back
+      // some of the scroll: the point is measured again and what is missing is panned too.
+      for (let step = 0; step < 3; step++) {
+        const { scale, translate } = view
+        const left = (x + translate.x) * scale - container.clientWidth / 2
+        const top = (y + translate.y) * scale - container.clientHeight / 2
+        container.scrollLeft = clamp(left, container.scrollWidth - container.clientWidth)
+        container.scrollTop = clamp(top, container.scrollHeight - container.clientHeight)
+        const dx = left - container.scrollLeft
+        const dy = top - container.scrollTop
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) break
+        view.setTranslate(translate.x - dx / scale, translate.y - dy / scale)
+      }
       notifyView()
     },
     viewportCenter: () => visibleCenter(),
