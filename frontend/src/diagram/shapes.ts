@@ -1,5 +1,7 @@
 import type { CellStyle } from '@maxgraph/core'
 import { STICKY_COLORS } from './colors.ts'
+import { imageStyle } from './images.ts'
+import { INTEGRATION_IMAGES, type IntegrationId } from './integrations.ts'
 import { LEGEND_PRESET, LEGEND_SHAPE } from './legendKeys.ts'
 import { SEQUENCE_PRESET, SEQUENCE_SHAPE } from './sequence.ts'
 import { PROVIDER_SHAPES, type ProviderId } from './providers.ts'
@@ -8,6 +10,7 @@ import { styleValues, type AnyStyle } from './styleValues.ts'
 
 export type ShapeId =
   | ProviderId
+  | IntegrationId
   | 'rectangle'
   | 'rounded'
   | 'ellipse'
@@ -703,6 +706,15 @@ export const SHAPE_SECTIONS: ShapeSection[] = [
     ],
   },
   {
+    id: 'integrations',
+    get title() {
+      return m.sections.integrations
+    },
+    group: 'system',
+    // Pictures with a caption under them, as the logos of the providers, named in the language of the interface.
+    shapes: INTEGRATION_IMAGES.map(([id, image]) => named({ id, width: 64, height: 64, style: imageStyle(image) })),
+  },
+  {
     id: 'providers',
     get title() {
       return m.sections.providers
@@ -719,6 +731,12 @@ export const SHAPES: ShapePreset[] = SHAPE_SECTIONS.flatMap((section) => section
 
 export function findShape(id: string): ShapePreset | undefined {
   return SHAPES.find((shape) => shape.id === id)
+}
+
+/** The picture of a palette shape that is a picture, e.g. the logo of a provider, which is its icon in the palette too. */
+export function shapeImage(id: string): string | undefined {
+  const style = findShape(id)?.style
+  return style?.shape === 'image' ? style.image : undefined
 }
 
 /**
@@ -768,7 +786,7 @@ export function shapeOf(style: ShapeStyle): ShapePreset | null {
   if (isTableStyle(style)) return findShape('table')!
   if (style.pointerEvents === false) return null
   const shape = String(style.shape ?? 'rectangle')
-  if (shape === 'image') return PROVIDER_SHAPES.find((preset) => preset.style.image === style.image) ?? null
+  if (shape === 'image') return SHAPES.find((preset) => preset.style.shape === 'image' && preset.style.image === style.image) ?? null
   if (shape === 'rectangle' && style.fillColor === 'none' && style.strokeColor === 'none') return null
   if (shape.startsWith('mxgraph.c4.')) return findShape('c4-person')!
   return (

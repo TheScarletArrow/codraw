@@ -1,6 +1,6 @@
 import { FRAME_SHAPES } from './elementKinds.ts'
 import { canBeElement, elementProperties } from './elementProps.ts'
-import { imageStyle } from './images.ts'
+import { imageStyle, svgImage } from './images.ts'
 import type { ShapeId, ShapePreset } from './shapes.ts'
 
 /** A logo of a technology of simple-icons: its slug, its title, the color of its brand and its other names. */
@@ -201,9 +201,6 @@ function visibleOnWhite(hex: string): string {
   return luminance > 0.8 ? '#3f3f46' : hex
 }
 
-const svgUrl = (svg: string) =>
-  `data:image/svg+xml;base64,${btoa(Array.from(new TextEncoder().encode(svg), (byte) => String.fromCharCode(byte)).join(''))}`
-
 /** The type of data of a logo dragged from the palette onto the canvas: its slug. */
 export const LOGO_DRAG_TYPE = 'application/x-codraw-logo'
 
@@ -215,7 +212,7 @@ export const BADGE_SIZE = 20
  * that it shows on any fill, in the light and the dark theme alike.
  */
 export function badgeImage(icon: TechIcon, path: string): string {
-  return svgUrl(
+  return svgImage(
     // Four times larger than drawn, so that a picture made of it for a PDF stays sharp.
     `<svg xmlns="http://www.w3.org/2000/svg" width="${BADGE_SIZE * 4}" height="${BADGE_SIZE * 4}" viewBox="0 0 20 20">` +
       '<rect x="0.5" y="0.5" width="19" height="19" rx="4" fill="#ffffff" stroke="#d4d4d8"/>' +
@@ -225,7 +222,7 @@ export function badgeImage(icon: TechIcon, path: string): string {
 
 /** The logo alone, in the color of its brand, as a picture of 96 × 96, sharp in a PDF. */
 export function logoImage(icon: TechIcon, path: string): string {
-  return svgUrl(
+  return svgImage(
     `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24"><title>${escapeXml(icon.title)}</title>` +
       `<path fill="${visibleOnWhite(icon.hex)}" d="${path}"/></svg>`,
   )
