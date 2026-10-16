@@ -1,6 +1,7 @@
 import {
   Cell,
   CellEditorHandler,
+  ChildChange,
   Client,
   ConnectionHandler,
   EdgeHandler,
@@ -151,6 +152,7 @@ import { listPages } from './pages.ts'
 import { detachView as detachPageView, isViewPage, showOnView, viewContents, viewOf, writeViewRule } from './modelViews.ts'
 import { COMPUTED_KEY, type ViewRule } from './viewRule.ts'
 import { frameParents, layoutShapes, type LayoutDirection, type LayoutEdge, type LayoutShape } from './layout.ts'
+import { makeRoom, type RoomShape } from './makeRoom.ts'
 import { LEGEND_KEY, legendSettings, legendSettingsValue, type LegendItem } from './legend.ts'
 import { DEFAULT_END_ARROW, markerChanges, markerOf, swappedMarkers, type EdgeEnd } from './edgeMarkers.ts'
 import { isAssociationPair, isUseCaseRelation, relationChanges, relationOf, type UmlRelation } from './useCase.ts'
@@ -2906,6 +2908,94 @@ export function createDiagramEditor(
   }
   model.addListener(InternalEvent.END_EDIT, fitTexts)
 
+  // Room for what a change of the participant added or grew (see `makeRoom.ts`). Commands that place shapes themselves
+  // make none.
+  let roomSuspended = false
+  const withoutRoom = <T>(run: () => T): T => {
+    const suspended = roomSuspended
+    roomSuspended = true
+    try {
+      return run()
+    } finally {
+      roomSuspended = suspended
+    }
+  }
+  /**
+   * New shapes put at a place of the participant's choice, which make room there (see `RoomShape.placed`), with the frame
+   * quick connect put each into; until the change ends.
+   */
+  const placedShapes = new Map<string, string | undefined>()
+  const boxOf = (cell: Cell) => {
+    const { x, y, width, height } = cell.getGeometry()!
+    return { x, y, width, height }
+  }
+  /** The shapes of the page itself in the layers that are shown and not locked, as autoLayout takes them. */
+  const roomCells = () => openChildren().filter((cell) => cell.isVertex() && cell.getGeometry() && !cell.getGeometry()!.relative)
+  /** The frame each of {@link roomCells} is in, by where they are now. */
+  const pageFrames = () =>
+    frameParents(roomCells().map((cell) => ({ id: cell.getId()!, ...boxOf(cell), frame: isFrame(cell) })))
+  // After the layouts, which run on the same event and were bound before: a table that got a field has grown. The moves
+  // join the change, which the binding writes as one transaction: one undo step, and the others get the result.
+  const makeRoomForChange = (_sender: unknown, event: EventObject) => {
+    const placed = new Map(placedShapes)
+    placedShapes.clear()
+    if (readOnly || roomSuspended || restoring || binding.isApplyingRemote()) return
+    const added = new Set<Cell>()
+    const before = new Map<Cell, Geometry>()
+    for (const change of (event.getProperty('edit') as { changes: object[] }).changes) {
+      if (change instanceof ChildChange) {
+        if (!change.previous && change.child.isVertex() && isLayer(change.parent)) added.add(change.child)
+      } else if (change instanceof GeometryChange && change.previous && !before.has(change.cell)) {
+        if (change.cell.isVertex() && isLayer(change.cell.getParent())) before.set(change.cell, change.previous)
+      }
+    }
+    if (added.size === 0 && before.size === 0) return
+    const shapes: RoomShape[] = roomCells().map((cell) => {
+      const id = cell.getId()!
+      const previous = added.has(cell) ? undefined : before.get(cell)
+      return {
+        id,
+        ...boxOf(cell),
+        frame: isFrame(cell),
+        ...(added.has(cell) ? { added: true, placed: placed.has(id) } : {}),
+        ...(previous ? { before: { x: previous.x, y: previous.y, width: previous.width, height: previous.height } } : {}),
+        ...(placed.get(id) !== undefined ? { parent: placed.get(id) } : {}),
+        ...(isUnlocked(cell) ? {} : { locked: true }),
+        ...(isSticky(cell) ? { floating: true } : {}),
+      }
+    })
+    const boxes = makeRoom(shapes)
+    if (boxes.size === 0) return
+    // The bends of an edge between two shapes that moved together go with them.
+    const shifts = new Map<string, { dx: number; dy: number }>()
+    model.batchUpdate(() => {
+      for (const [id, box] of boxes) {
+        const cell = model.getCell(id)!
+        const geometry = cell.getGeometry()!.clone()
+        if (geometry.width === box.width && geometry.height === box.height) {
+          shifts.set(id, { dx: box.x - geometry.x, dy: box.y - geometry.y })
+        }
+        geometry.x = box.x
+        geometry.y = box.y
+        geometry.width = box.width
+        geometry.height = box.height
+        model.setGeometry(cell, geometry)
+      }
+      for (const edge of pageEdges()) {
+        const geometry = edge.getGeometry()
+        if (!geometry?.points?.length || !isLayer(edge.getParent()) || !isUnlocked(edge)) continue
+        const [source, target] = [edge.getTerminal(true), edge.getTerminal(false)].map((end) => end && pageCell(end))
+        const shift = source && shifts.get(source.getId()!)
+        const other = target && shifts.get(target.getId()!)
+        if (!shift || !other || shift.dx !== other.dx || shift.dy !== other.dy) continue
+        const moved = geometry.clone()
+        moved.points = geometry.points.map((point) => new GraphPoint(point.x + shift.dx, point.y + shift.dy))
+        model.setGeometry(edge, moved)
+      }
+    })
+  }
+  model.addListener(InternalEvent.BEFORE_UNDO, makeRoomForChange)
+
   /**
    * What {@link DiagramEditor.moveSelectionToLayer} moves into `target`: the selected elements of the page that are not
    * locked, and the edges whose both ends are among them, those that are not in `target` already, in drawing order.
@@ -4038,9 +4128,10 @@ export function createDiagramEditor(
 
   /**
    * Adds a shape of the palette in the middle of the view, or at `center`, aside of the shapes there, as one undo step,
-   * and selects it; `marked` marks it as the shape of the palette it is (see `markedStyle`).
+   * and selects it; `marked` marks it as the shape of the palette it is (see `markedStyle`). A shape put at a point of
+   * the participant's choice makes room there; one in the middle of the view only grows its frame.
    */
-  const placeShape = (shape: ShapePreset, center: Point, marked: boolean): Cell => {
+  const placeShape = (shape: ShapePreset, center: Point | undefined, marked: boolean): Cell => {
     const size = graph.getGridSize()
     const snap = (value: number) => Math.round(value / size) * size
     const parent = graph.getDefaultParent()
@@ -4056,7 +4147,7 @@ export function createDiagramEditor(
         )
       })
     // Repeated clicks would stack shapes on top of each other; cascade them instead.
-    let { x: cx, y: cy } = center
+    let { x: cx, y: cy } = center ?? visibleCenter()
     while (occupied(cx, cy)) {
       cx += 2 * size
       cy += 2 * size
@@ -4068,6 +4159,7 @@ export function createDiagramEditor(
     let cell: Cell
     try {
       cell = insertShape(shape, parent, x, y, marked)
+      if (center) placedShapes.set(cell.getId()!, undefined)
     } finally {
       model.endUpdate()
     }
@@ -4112,14 +4204,14 @@ export function createDiagramEditor(
     graph,
     pageId,
     readOnly,
-    addShape(shapeId, center = visibleCenter()) {
+    addShape(shapeId, center) {
       const preset = findShape(shapeId)
       if (!preset) return null
       const shape =
         preset.id === 'sticky' ? { ...preset, style: { ...preset.style, fillColor: stickyColor() } } : preset
       return placeShape(shape, center, true)
     },
-    addLogo(slug, center = visibleCenter()) {
+    addLogo(slug, center) {
       const icon = techIconsNow()?.bySlug.get(slug)
       const path = icon && iconPathNow(slug)
       if (!icon || !path || readOnly) return null
@@ -4450,15 +4542,27 @@ export function createDiagramEditor(
       const source = selected.cell
       graph.stopEditing(false)
       const parent = source.getParent()!
+      // From a shape in a frame, the new shape goes into the frame and round its shapes only: the frame and what is out of
+      // it make room for the new one.
+      const frames = pageFrames()
+      const frame = frames.get(source.getId()!) ?? null
+      const inFrame = (cell: Cell) => {
+        for (let id = frames.get(cell.getId()!) ?? null; id !== null; id = frames.get(id) ?? null) if (id === frame) return true
+        return false
+      }
       const obstacles = parent
         .getChildren()
-        .filter((cell) => cell !== source && cell.isVertex() && blocksPlacement(cell.getStyle() as ShapeStyle))
+        .filter(
+          (cell) =>
+            cell !== source && cell.isVertex() && blocksPlacement(cell.getStyle() as ShapeStyle) && (frame === null || inFrame(cell)),
+        )
         .flatMap((cell) => cell.getGeometry() ?? [])
       const { x, y } = placeConnected(geometry, shape, side, obstacles)
       model.beginUpdate()
       let cell: Cell
       try {
         cell = insertShape(shape, parent, x, y)
+        placedShapes.set(cell.getId()!, frame ?? undefined)
         const style = isAssociationPair(source.getStyle(), cell.getStyle()) ? ASSOCIATION_STYLE : undefined
         graph.insertEdge({ parent, value: '', source, target: cell, style })
       } finally {
@@ -4716,8 +4820,7 @@ export function createDiagramEditor(
       const cells = selected.length >= 2 ? selected : openChildren().filter((cell) => cell.isVertex())
       const candidates: LayoutShape[] = cells.map((cell) => {
         const { x, y, width, height } = cell.getGeometry()!
-        const frame = !isGroup(cell) && (cell.getStyle() as ShapeStyle).pointerEvents === false
-        return { id: cell.getId()!, x, y, width, height, frame }
+        return { id: cell.getId()!, x, y, width, height, frame: isFrame(cell) }
       })
       // Locked shapes stay where they are, and so do the shapes in a locked frame, which could not move around them.
       const frames = frameParents(candidates)
@@ -4742,7 +4845,8 @@ export function createDiagramEditor(
       try {
         const boxes = await layoutShapes(shapes, edges, direction)
         if (destroyed) return
-        model.batchUpdate(() => {
+        // The layout fits the frames around their shapes itself.
+        withoutRoom(() => model.batchUpdate(() => {
           for (const [id, box] of boxes) {
             // Another participant may have deleted the shape meanwhile.
             const cell = model.getCell(id)
@@ -4764,7 +4868,7 @@ export function createDiagramEditor(
             straight.points = []
             model.setGeometry(edge, straight)
           }
-        })
+        }))
       } finally {
         layingOut = false
       }
@@ -4811,8 +4915,9 @@ export function createDiagramEditor(
       const group = new Cell('', new Geometry(), { ...GROUP_STYLE })
       group.setVertex(true)
       group.setConnectable(false)
-      // maxGraph moves the cells into the group relative to it, and edges between them follow (maintainEdgeParent).
-      graph.groupCells(group, 0, groupableCells())
+      // maxGraph moves the cells into the group relative to it, and edges between them follow (maintainEdgeParent). The
+      // group covers its own shapes, and makes no room.
+      withoutRoom(() => graph.groupCells(group, 0, groupableCells()))
       graph.setSelectionCell(group)
       container.focus({ preventScroll: true })
       return group
@@ -4821,7 +4926,7 @@ export function createDiagramEditor(
       const groups = ungroupableCells()
       if (groups.length === 0) return
       graph.stopEditing(false)
-      graph.setSelectionCells(graph.ungroupCells(groups))
+      graph.setSelectionCells(withoutRoom(() => graph.ungroupCells(groups)))
       container.focus({ preventScroll: true })
     },
     setLocked(locked) {
@@ -5419,13 +5524,20 @@ export function createDiagramEditor(
         const width = data.geometry?.width ?? 120
         const height = data.geometry?.height ?? 60
         const snap = (value: number) => graph.snap(value)
-        added = graph.insertVertex({
-          parent: graph.getDefaultParent(),
-          value: data.value,
-          position: [snap(at.x - width / 2), snap(at.y - height / 2)],
-          size: [width, height],
-          style: { ...style, [ELEMENT_KEY]: id } as CellStyle,
-        })
+        // Dropped at a point: it makes room there, in the same change.
+        model.beginUpdate()
+        try {
+          added = graph.insertVertex({
+            parent: graph.getDefaultParent(),
+            value: data.value,
+            position: [snap(at.x - width / 2), snap(at.y - height / 2)],
+            size: [width, height],
+            style: { ...style, [ELEMENT_KEY]: id } as CellStyle,
+          })
+          placedShapes.set(added.getId()!, undefined)
+        } finally {
+          model.endUpdate()
+        }
       }, origin)
       if (!added) return
       graph.setSelectionCell(added)
@@ -5720,6 +5832,7 @@ export function createDiagramEditor(
       graph.removeListener(handleCellsAdded)
       graph.removeListener(handleDoubleClick)
       model.removeListener(fitTexts)
+      model.removeListener(makeRoomForChange)
       model.removeListener(redrawTables)
       model.removeListener(handleRemoteLabel)
       model.removeListener(handleLayerChanges)
@@ -6054,6 +6167,11 @@ function isTable(cell: Cell | null): boolean {
 function indexPartsOf(text: string): IndexParts | null {
   const named = splitIndex(`${text} ()`)
   return splitIndex(text) ?? (named && !named.rest && !named.unique && !named.method ? named : null)
+}
+
+/** A frame that holds the shapes whose centres lie inside it: clicks go through it to them, unlike through a group. */
+function isFrame(cell: Cell): boolean {
+  return !isGroup(cell) && (cell.getStyle() as ShapeStyle).pointerEvents === false
 }
 
 /**

@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.56.0',
+    date: '2026-10-16',
+    items: [
+      {
+        ru: {
+          title: 'Место для новых фигур',
+          text: '«Граница» и другие рамки растут сами вокруг того, что внутри: новой таблицы, таблицы с новыми полями, фигуры, которую в неё поставили. То, на что наехали выросшая рамка или фигура, отодвигается с прежним зазором, а таблица, брошенная из палитры между другими, встаёт как в ряд — остальные уходят вправо. Таблица, созданная стрелкой от таблицы в границе, попадает в ту же границу. «Отменить» возвращает всё одним шагом.',
+        },
+        en: {
+          title: 'Room for new shapes',
+          text: 'A “Boundary” and other frames now grow by themselves around what is inside: a new table, a table with new fields, a shape put into the frame. Whatever a grown frame or shape runs into moves away and keeps its gap, and a table dropped from the palette between others goes in as into a row, moving the rest to the right. A table made with an arrow from a table in a boundary goes into the same boundary. “Undo” brings everything back in one step.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.55.0',
     date: '2026-10-16',
     items: [
