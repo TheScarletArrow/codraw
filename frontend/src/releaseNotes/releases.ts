@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.55.0',
+    date: '2026-10-16',
+    items: [
+      {
+        ru: {
+          title: 'Значки интеграций в палитре',
+          text: 'В панели фигур появился раздел «Интеграции»: значки REST API, SOAP, WebSocket, вебхука, очереди сообщений, Pub/Sub, сервисной шины, email, SMS, push-уведомления, обмена файлами и ETL. Перетащите значок на холст, как логотип из «Провайдеров», — он ляжет картинкой с подписью. «Поиск фигур» находит их и по словам вроде «rest», «очередь», «шина» или «smtp».',
+        },
+        en: {
+          title: 'Integration icons in the palette',
+          text: 'The shape panel has a new “Integrations” section with icons for REST API, SOAP, WebSocket, webhook, message queue, Pub/Sub, service bus, email, SMS, push notification, file transfer and ETL. Drag an icon onto the canvas like a logo from “Providers”, and it lands as a picture with a caption. “Search shapes” finds them by words such as “rest”, “queue”, “bus” or “smtp” too.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.54.1',
     date: '2026-10-15',
     items: [

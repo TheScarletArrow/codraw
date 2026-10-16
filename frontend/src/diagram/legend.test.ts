@@ -22,7 +22,7 @@ import {
 } from './legend.ts'
 import { ELEMENT_STYLE_KEYS } from './model.ts'
 import { SEQUENCE_SHAPE } from './sequence.ts'
-import { TABLE_STYLE } from './shapes.ts'
+import { findShape, markedStyle, TABLE_STYLE } from './shapes.ts'
 
 /** Measures a text by its letters: 7 pixels each, 8 in bold. */
 const measure = (text: string, style: { fontStyle?: unknown }) => text.length * (Number(style.fontStyle) & 1 ? 8 : 7)
@@ -78,6 +78,26 @@ describe('the items of a legend', () => {
     const logo = { id: 'k', kind: 'vertex' as const, parent: '1', style: { shape: 'image', image: 'data:image/svg+xml;base64,PHN2Zy8+', codrawShape: 'provider-kafka' } }
     const picture = { id: 'p', kind: 'vertex' as const, parent: '1', style: { shape: 'image', image: 'https://example.com/a.png' } }
     expect(legendItems([picture, logo]).map((item) => [item.key, item.name])).toEqual([['shape:provider-kafka', 'Kafka']])
+  })
+
+  it('names an icon of an integration in the language of the interface', () => {
+    const icon = { id: 'w', kind: 'vertex' as const, parent: '1', style: { ...markedStyle(findShape('integration-webhook')!) } }
+    expect(legendItems([icon]).map((item) => [item.key, item.name])).toEqual([['shape:integration-webhook', 'Вебхук']])
+    setLocale('en')
+    expect(legendItems([icon]).map((item) => item.name)).toEqual(['Webhook'])
+  })
+
+  it('knows a logo or an icon of the palette by its picture in a file that lost the mark of its shape', () => {
+    const picture = (id: string, image: string | undefined) => ({ id, kind: 'vertex' as const, parent: '1', style: { shape: 'image', image } })
+    const items = legendItems([
+      picture('s', findShape('integration-soap')!.style.image),
+      picture('k', findShape('provider-kafka')!.style.image),
+      picture('p', 'https://example.com/a.png'),
+    ])
+    expect(items.map((item) => [item.key, item.name])).toEqual([
+      ['shape:integration-soap', 'SOAP'],
+      ['shape:provider-kafka', 'Kafka'],
+    ])
   })
 
   it('leaves out text, stickies, pictures, tables with their fields, sequence diagrams, groups, labels and legends', () => {
