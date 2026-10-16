@@ -43,6 +43,7 @@ PostgreSQL и других картинками 64 × 64 с подписью, �
 
 - `frontend/src/diagram/integrationIcons/` — двенадцать SVG, лицензия Lucide (ISC) и описание.
 - `frontend/src/diagram/integrations.ts` — картинки значков; `shapes.ts`, `shapes.messages.ts` — раздел и названия;
-  `shapeSearch.ts` — слова поиска; `ShapeIcon.tsx` — значок палитры; `images.ts` — SVG как `data:`-адрес.
+  `shapeSearch.ts` — слова поиска; `ShapeIcon.tsx` — значок палитры; `images.ts` — SVG как `data:`-адрес; `legend.ts` —
+  картинка палитры без отметки фигуры.
 - `frontend/src/help/topics.messages.ts`, `frontend/src/releaseNotes/releases.ts`, `frontend/package.json`, README.
 - `backend`, `collab`, формат документа доски и API не меняются.

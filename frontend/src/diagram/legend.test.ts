@@ -87,6 +87,19 @@ describe('the items of a legend', () => {
     expect(legendItems([icon]).map((item) => item.name)).toEqual(['Webhook'])
   })
 
+  it('knows a logo or an icon of the palette by its picture in a file that lost the mark of its shape', () => {
+    const picture = (id: string, image: string | undefined) => ({ id, kind: 'vertex' as const, parent: '1', style: { shape: 'image', image } })
+    const items = legendItems([
+      picture('s', findShape('integration-soap')!.style.image),
+      picture('k', findShape('provider-kafka')!.style.image),
+      picture('p', 'https://example.com/a.png'),
+    ])
+    expect(items.map((item) => [item.key, item.name])).toEqual([
+      ['shape:integration-soap', 'SOAP'],
+      ['shape:provider-kafka', 'Kafka'],
+    ])
+  })
+
   it('leaves out text, stickies, pictures, tables with their fields, sequence diagrams, groups, labels and legends', () => {
     const items = legendItems([
       shape('t', 'text'),

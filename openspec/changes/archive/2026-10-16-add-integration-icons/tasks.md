@@ -9,7 +9,8 @@
   двух языках в `shapes.messages.ts`, слова поиска в `shapeSearch.ts`; проверка: `shapes.test.ts`, `shapeSearch.test.ts`,
   `ShapePalette.test.tsx`, `BoardPage.test.tsx`
 - [x] 1.3 frontend: `shapeOf` узнаёт картинку любой фигуры палитры, `ShapeIcon` показывает её значок без
-  `providerImage`; проверка: `imageExport.test.ts` (SVG и `.drawio` значков интеграций), `legend.test.ts`
+  `providerImage`, легенда называет картинку палитры и без `codrawShape`; проверка: `imageExport.test.ts` (SVG и
+  `.drawio` значков интеграций), `legend.test.ts`
 - [x] 1.4 frontend: раздел в теме справки о панели фигур, «Что нового» 0.55.0 и версия в `package.json`; проверка: тесты
   словарей, справки и версий, `typecheck`, `lint`, `test`
 
