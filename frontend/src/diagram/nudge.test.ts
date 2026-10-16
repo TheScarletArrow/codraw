@@ -18,7 +18,7 @@ describe('moving the selection with the keys', () => {
   }
 
   function shape(editor: DiagramEditor, x: number, y: number): Cell {
-    const cell = editor.addShape('rectangle', { x: 0, y: 0 })!
+    const cell = editor.addShape('rectangle')!
     editor.graph.getDataModel().setGeometry(cell, new Geometry(x, y, 100, 60))
     return cell
   }

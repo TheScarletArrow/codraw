@@ -27,7 +27,7 @@ describe('locked cells', () => {
   }
 
   function shape(editor: DiagramEditor, x: number, y: number, width = 100): Cell {
-    const cell = editor.addShape('rectangle', { x: 0, y: 0 })!
+    const cell = editor.addShape('rectangle')!
     editor.graph.getDataModel().setGeometry(cell, new Geometry(x, y, width, 60))
     return cell
   }

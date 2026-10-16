@@ -22,7 +22,7 @@ describe('arranging shapes', () => {
 
   /** Adds a rectangle of 100 by 60 at the point. */
   function shape(editor: DiagramEditor, x: number, y: number, width = 100): Cell {
-    const cell = editor.addShape('rectangle', { x: 0, y: 0 })!
+    const cell = editor.addShape('rectangle')!
     const model = editor.graph.getDataModel()
     model.setGeometry(cell, new Geometry(x, y, width, 60))
     return cell
