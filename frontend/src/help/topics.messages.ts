@@ -158,6 +158,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Раскладка и выравнивание',
             paragraphs: [
               '«Автораскладка» расставляет связанные фигуры слоями в выбранном направлении. Выделенное можно выровнять и распределить, при перетаскивании видны направляющие, а фигуры прилипают к сетке. Alt при перетаскивании отключает сетку и направляющие, стрелки сдвигают выделенное на пиксель, а с Shift — на шаг сетки.',
+              'Место освобождается само. «Граница» и другие рамки растут вокруг фигур внутри: новой таблицы, таблицы с новым полем, фигуры, которую поставили в рамку. Выросшая фигура или рамка отодвигает соседей напротив, сохраняя зазор, а брошенная из палитры фигура встаёт как в ряд — то, что после неё, уходит вправо или вниз. Таблица, созданная стрелкой от таблицы в рамке, попадает в ту же рамку. Вставка и дублирование кладут копию поверх и никого не толкают, закреплённые фигуры и стикеры остаются на месте, а «Отменить» возвращает и правку, и сдвиг.',
             ],
           },
           {
@@ -793,6 +794,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             title: 'Layout and alignment',
             paragraphs: [
               '“Auto layout” arranges connected shapes in layers in the chosen direction. The selection can be aligned and distributed, guides show up while dragging, and shapes snap to the grid. Alt while dragging turns off the grid and the guides, the arrow keys move the selection by a pixel, and with Shift by a step of the grid.',
+              'Room is made by itself. A “Boundary” and other frames grow around the shapes inside: a new table, a table with a new field, a shape put into the frame. A shape or a frame that grew moves the neighbours across from it away and keeps their gap, and a shape dropped from the palette goes in as into a row: what comes after it moves to the right or down. A table made with an arrow from a table in a frame goes into the same frame. Paste and duplicate put the copy on top and push nobody, locked shapes and stickies stay where they are, and “Undo” brings back both the change and the moves.',
             ],
           },
           {
