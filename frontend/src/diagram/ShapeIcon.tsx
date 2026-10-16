@@ -41,8 +41,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
-import type { ShapeId } from './shapes.ts'
-import { providerImage } from './providers.ts'
+import { shapeImage, type ShapeId } from './shapes.ts'
 
 const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
   text: Type,
@@ -93,9 +92,9 @@ const ICONS: Partial<Record<ShapeId, LucideIcon>> = {
   'c4-deployment-node': ServerCog,
 }
 
-/** Icon of a palette shape: a lucide icon, or the outline of a basic shape. */
+/** Icon of a palette shape: its picture, a lucide icon, or the outline of a basic shape. */
 export function ShapeIcon({ shape }: { shape: ShapeId }) {
-  const image = providerImage(shape)
+  const image = shapeImage(shape)
   if (image) return <img src={image} alt="" aria-hidden className="size-5 shrink-0 object-contain" />
   const Icon = ICONS[shape]
   if (Icon) return <Icon aria-hidden />

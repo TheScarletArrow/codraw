@@ -54,6 +54,10 @@ export function imageStyle(url: string): ShapeStyle {
   } as ShapeStyle
 }
 
+/** An SVG as the address of a picture, which board copies and exports carry without fetching anything. */
+export const svgImage = (svg: string): string =>
+  `data:image/svg+xml;base64,${btoa(Array.from(new TextEncoder().encode(svg), (byte) => String.fromCharCode(byte)).join(''))}`
+
 /** The cell is an image shape of draw.io or CoDraw. */
 export function isImageStyle(style: Record<string, unknown> | null | undefined): boolean {
   return style?.shape === 'image' && typeof style.image === 'string' && style.image !== ''

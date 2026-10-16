@@ -41,6 +41,18 @@ describe('searching shapes', () => {
     expect(found).toContain('Таблица')
   })
 
+  it('finds the icons of integrations by their protocols and the words for them', () => {
+    expect(labels('rest')).toEqual(['REST API'])
+    expect(labels('wsdl')).toEqual(['SOAP'])
+    expect(labels('очередь')).toEqual(['Очередь', 'Очередь сообщений', 'RabbitMQ'])
+    expect(labels('amqp')).toEqual(['Очередь сообщений'])
+    expect(labels('шина')).toEqual(['Сервисная шина (ESB)'])
+    expect(labels('smtp')).toEqual(['Email'])
+    expect(labels('уведомление')).toEqual(['Push-уведомление', 'Email', 'SMS'])
+    expect(labels('sftp')).toEqual(['Обмен файлами'])
+    expect(labels('интеграции')).toHaveLength(12)
+  })
+
   it('needs every word of the query, at the beginning of a word', () => {
     expect(labels('zzz')).toEqual([])
     expect(labels('ase')).toEqual([])
@@ -62,8 +74,10 @@ describe('searching shapes in English', () => {
     expect(labels('sticky note')).toEqual(['Sticky note'])
     expect(labels('use case')).toEqual(['Use case', 'Actor', 'UML system boundary'])
     expect(labels('c4 database')).toEqual(['C4 database'])
+    expect(labels('message queue')).toEqual(['Message queue'])
     // Russian words still find shapes in the English interface.
     expect(labels('балансир')).toEqual(['Load balancer'])
+    expect(labels('вебхук')).toEqual(['Webhook'])
   })
 
   it('finds every shape by its English name', () => {

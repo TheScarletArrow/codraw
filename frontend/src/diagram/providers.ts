@@ -8,7 +8,7 @@ import redis from './providerIcons/redis.svg?raw'
 import rabbitmq from './providerIcons/rabbitmq.svg?raw'
 import docker from './providerIcons/docker.svg?raw'
 import kubernetes from './providerIcons/kubernetes.svg?raw'
-import { imageStyle } from './images.ts'
+import { imageStyle, svgImage } from './images.ts'
 import type { ShapePreset } from './shapes.ts'
 
 const PROVIDERS = [
@@ -33,9 +33,5 @@ export const PROVIDER_SHAPES: ShapePreset[] = PROVIDERS.map(([id, label, svg]) =
   value: label,
   width: 64,
   height: 64,
-  style: imageStyle(`data:image/svg+xml;base64,${btoa(Array.from(new TextEncoder().encode(svg), (byte) => String.fromCharCode(byte)).join(''))}`),
+  style: imageStyle(svgImage(svg)),
 }))
-
-export function providerImage(id: string): string | undefined {
-  return PROVIDER_SHAPES.find((shape) => shape.id === id)?.style.image
-}

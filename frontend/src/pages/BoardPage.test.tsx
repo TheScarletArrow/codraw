@@ -1488,6 +1488,7 @@ describe('BoardPage', () => {
         'UML',
         'UML: варианты использования',
         'C4',
+        'Интеграции',
         'Провайдеры',
       ])
       const basic = within(palette).getByRole('group', { name: 'Основные' })

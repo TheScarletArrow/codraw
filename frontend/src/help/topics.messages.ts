@@ -116,7 +116,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'shapes',
             title: 'Фигуры и палитра',
             paragraphs: [
-              'Панель фигур слева разбита на разделы: «Основные», «База данных», «Структуры», «Блок-схемы», «BPMN», «Архитектура», «Инфраструктура», «Данные и сообщения», «Клиенты», «UML», «C4» и «Провайдеры». Перетащите фигуру на холст или щёлкните по ней. «Поиск фигур» находит фигуры по словам вроде «redis» или «kafka» и логотипы более трёх с половиной тысяч технологий и сервисов, в том числе российских, — и по-английски, и по-русски.',
+              'Панель фигур слева разбита на разделы: «Основные», «База данных», «Структуры», «Блок-схемы», «BPMN», «Архитектура», «Инфраструктура», «Данные и сообщения», «Клиенты», «UML», «C4», «Интеграции» и «Провайдеры». Перетащите фигуру на холст или щёлкните по ней. «Интеграции» — значки того, как системы обмениваются данными: REST API, SOAP, WebSocket, вебхук, очередь сообщений, Pub/Sub, сервисная шина, email, SMS, push-уведомление, обмен файлами и ETL; они ложатся на холст картинкой с подписью, как логотипы «Провайдеров». «Поиск фигур» находит фигуры по словам вроде «redis» или «kafka» и логотипы более трёх с половиной тысяч технологий и сервисов, в том числе российских, — и по-английски, и по-русски.',
               'Двойной щелчок по фигуре или F2 открывает подпись для правки. Выделенное копируют, вырезают, вставляют и дублируют привычными клавишами, а копировать можно и между вкладками, и из draw.io.',
             ],
           },
@@ -751,7 +751,7 @@ export const helpTopics = defineMessages<{ sections: readonly HelpSection[] }>({
             id: 'shapes',
             title: 'Shapes and the palette',
             paragraphs: [
-              'The shape panel on the left has sections: “Basic”, “Database”, “Structures”, “Flowchart”, “BPMN”, “Architecture”, “Infrastructure”, “Data and messaging”, “Clients”, “UML”, “C4” and “Providers”. Drag a shape onto the canvas or click it. “Search shapes” finds shapes by words such as “redis” or “kafka”, and the logos of more than three and a half thousand technologies and services, Russian ones too, by their English and Russian names.',
+              'The shape panel on the left has sections: “Basic”, “Database”, “Structures”, “Flowchart”, “BPMN”, “Architecture”, “Infrastructure”, “Data and messaging”, “Clients”, “UML”, “C4”, “Integrations” and “Providers”. Drag a shape onto the canvas or click it. “Integrations” has icons of the ways systems exchange data: REST API, SOAP, WebSocket, webhook, message queue, Pub/Sub, service bus, email, SMS, push notification, file transfer and ETL; they land on the canvas as a picture with a caption, like the logos of “Providers”. “Search shapes” finds shapes by words such as “redis” or “kafka”, and the logos of more than three and a half thousand technologies and services, Russian ones too, by their English and Russian names.',
               'A double click on a shape or F2 opens its label for editing. The selection is copied, cut, pasted and duplicated with the usual keys, and you can copy between tabs and from draw.io too.',
             ],
           },

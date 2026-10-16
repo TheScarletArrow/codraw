@@ -8,7 +8,7 @@ import { boardLink } from './links.ts'
 import { DEFAULT_PAGE_ID, initializeDocument } from './model.ts'
 import { embedDiagram, IMAGE_BACKGROUND, IMAGE_BORDER } from './svgExport.ts'
 import { PROVIDER_SHAPES } from './providers.ts'
-import { shapeOf } from './shapes.ts'
+import { SHAPE_SECTIONS, shapeOf } from './shapes.ts'
 
 describe('image export', () => {
   const editors: DiagramEditor[] = []
@@ -56,6 +56,29 @@ describe('image export', () => {
       expect(icon.documentElement.localName).toBe('svg')
     }
     expect(shapeOf({ shape: 'image', image: '/uploaded-picture.png' })).toBeNull()
+  })
+
+  it('keeps the icons of integrations embedded and knows them by their pictures after import', async () => {
+    const icons = SHAPE_SECTIONS.find((section) => section.id === 'integrations')!.shapes
+    const { doc, editor } = open()
+    for (const [index, preset] of icons.entries()) {
+      editor.addShape(preset.id, { x: index * 100, y: 100 })
+    }
+    const svg = new DOMParser().parseFromString(editor.exportSvg()!.svg, 'image/svg+xml')
+    const urls = Array.from(svg.getElementsByTagName('image'), (image) => image.getAttributeNS('http://www.w3.org/1999/xlink', 'href'))
+    expect(urls).toEqual(icons.map((shape) => shape.style.image))
+    for (const url of urls) {
+      const icon = new DOMParser().parseFromString(atob(url!.split(',')[1]!), 'image/svg+xml')
+      expect(icon.querySelector('parsererror')).toBeNull()
+      expect(icon.documentElement.localName).toBe('svg')
+    }
+
+    const [page] = await parseDrawio(exportDrawioPage(doc, DEFAULT_PAGE_ID)!)
+    expect(page!.cells.map((cell) => [cell.value, cell.style.codrawShape, shapeOf(cell.style)?.id])).toEqual(
+      icons.map((shape) => [shape.value, shape.id, shape.id]),
+    )
+    // A file of draw.io may lose the mark of the shape: the picture alone tells the icon.
+    expect(page!.cells.map((cell) => shapeOf({ shape: 'image', image: String(cell.style.image) })?.id)).toEqual(icons.map((shape) => shape.id))
   })
 
   it('draws the whole page at 100% with margins on white, whatever the zoom', () => {

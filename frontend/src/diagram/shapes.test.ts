@@ -11,6 +11,7 @@ import {
   markedStyle,
   SHAPE_SECTIONS,
   shapeGroup,
+  shapeImage,
   shapeGroupOf,
   shapeOf,
   SHAPES,
@@ -71,6 +72,23 @@ describe('shape presets', () => {
           'Легенда',
         ],
       ],
+      [
+        'Интеграции',
+        [
+          'REST API',
+          'SOAP',
+          'WebSocket',
+          'Вебхук',
+          'Очередь сообщений',
+          'Pub/Sub',
+          'Сервисная шина (ESB)',
+          'Email',
+          'SMS',
+          'Push-уведомление',
+          'Обмен файлами',
+          'ETL',
+        ],
+      ],
       ['Провайдеры', ['PostgreSQL', 'Oracle', 'Elasticsearch', 'Kafka', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ', 'Docker', 'Kubernetes']],
     ])
     expect(new Set(SHAPES.map((shape) => shape.id)).size).toBe(SHAPES.length)
@@ -78,6 +96,21 @@ describe('shape presets', () => {
     expect(new Set(SHAPES.map((shape) => shape.label)).size).toBe(SHAPES.length)
     // The legend of two sections is one shape of the palette.
     expect(SHAPES.filter((shape) => shape.id === 'legend')).toHaveLength(1)
+  })
+
+  it('make the icons of integrations pictures with a caption, like the logos of the providers', () => {
+    const icons = SHAPE_SECTIONS.find((section) => section.id === 'integrations')!.shapes
+    for (const icon of icons) {
+      expect(icon).toMatchObject({ width: 64, height: 64, style: { shape: 'image', verticalLabelPosition: 'bottom' } })
+      expect(shapeImage(icon.id)).toBe(icon.style.image)
+    }
+    expect(findShape('integration-message-queue')!.value).toBe('Очередь сообщений')
+    // The name tells the bus from the other buses of the palette, the caption is short.
+    expect(findShape('integration-esb')).toMatchObject({ label: 'Сервисная шина (ESB)', value: 'ESB' })
+    // A picture tells one shape: a cell of a file without the mark of its shape is known by its picture.
+    const pictures = SHAPES.map((shape) => shape.style.image).filter(Boolean)
+    expect(new Set(pictures).size).toBe(pictures.length)
+    expect(shapeImage('service')).toBeUndefined()
   })
 
   it('keep the whole style in the document', () => {
@@ -240,6 +273,7 @@ describe('shape groups', () => {
       'usecase',
       'c4',
       'system',
+      'system',
     ])
   })
 
@@ -331,6 +365,8 @@ describe('shape presets in English', () => {
     expect(findShape('text')).toMatchObject({ label: 'Text', value: 'Text' })
     expect(findShape('flow-decision')).toMatchObject({ label: 'Decision', value: 'Condition?' })
     expect(findShape('c4-container')!.value.split('\n')).toEqual(['Container', '[Container: technology]', 'Description'])
+    expect(findShape('integration-webhook')).toMatchObject({ label: 'Webhook', value: 'Webhook' })
+    expect(findShape('integration-esb')).toMatchObject({ label: 'Service bus (ESB)', value: 'ESB' })
     expect(SHAPE_SECTIONS[0]!.title).toBe('Basic')
     // A name still tells one shape.
     expect(new Set(SHAPES.map((shape) => shape.label)).size).toBe(SHAPES.length)
