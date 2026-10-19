@@ -30,7 +30,7 @@ services:
   # The S3-compatible storage of images of boards (docs/adr/0006-image-storage.md); only the backend reaches it.
   s3:
     <<: *restart
-    image: rustfs/rustfs:1.0.1
+    image: rustfs/rustfs:1.0.2
     environment:
       RUSTFS_ACCESS_KEY: ${CODRAW_S3_ACCESS_KEY:-codraw}
       RUSTFS_SECRET_KEY: ${CODRAW_S3_SECRET_KEY:?set CODRAW_S3_SECRET_KEY, the secret key of the storage of images}
