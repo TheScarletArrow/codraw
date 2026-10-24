@@ -31,6 +31,22 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.56.1',
+    date: '2026-10-24',
+    items: [
+      {
+        ru: {
+          title: 'Названия таблиц из draw.io',
+          text: 'У таблиц из файлов draw.io название стоит в шапке, как в draw.io, а не прячется посередине таблицы под строками.',
+        },
+        en: {
+          title: 'Names of tables from draw.io',
+          text: 'Tables from draw.io files show their name in the header, as in draw.io, instead of hiding it in the middle of the table under the rows.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.56.0',
     date: '2026-10-16',
     items: [
