@@ -11,6 +11,7 @@ import {
   ShapeRegistry,
   StyleDefaultsConfig,
   SvgCanvas2D,
+  SwimlaneShape,
   type AbstractCanvas2D,
   type MarkerFactoryFunction,
   type PerimeterFunction,
@@ -847,6 +848,8 @@ export function registerDiagramExtensions() {
   ShapeRegistry.add('mxgraph.c4.person2', C4PersonShape)
   // The cylinder of the draw.io palette.
   ShapeRegistry.add('cylinder3', CylinderShape)
+  // A table of draw.io is a swimlane: its name is in the header of `startSize`, above its rows.
+  ShapeRegistry.add('table', SwimlaneShape)
   for (const [name, shape] of Object.entries(SYSTEM_DESIGN_SHAPES)) ShapeRegistry.add(name, shape)
   PerimeterRegistry.add('lifelinePerimeter', lifelinePerimeter)
   for (const [name, parts] of Object.entries(CROWS_FEET)) {

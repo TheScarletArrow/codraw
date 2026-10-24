@@ -145,6 +145,14 @@ describe('diagram extensions', () => {
     expect(ShapeRegistry.get('umlActor')).toBeDefined()
   })
 
+  it('put the name of a table of draw.io in its header, not in the middle under its rows', () => {
+    registerDiagramExtensions()
+    const table = new (ShapeRegistry.get('table')!)()
+    table.style = { startSize: 68 } as never
+    table.scale = 1
+    expect(table.getLabelBounds(new Rectangle(0, 0, 620, 698))).toMatchObject({ y: 0, height: 68 })
+  })
+
   it('end edges on the dashed line of a lifeline, below its header', () => {
     registerDiagramExtensions()
     const perimeter = PerimeterRegistry.get('lifelinePerimeter')!
