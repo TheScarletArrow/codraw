@@ -30,6 +30,7 @@ export const FIELD_WORDS = new Set([
   'CHECK',
   'COLLATE',
   'GENERATED',
+  'COMMENT',
 ])
 
 /** The text of a label without markup. */
@@ -143,6 +144,7 @@ const REST_KEYWORDS = new Set([
   'AS',
   'IDENTITY',
   'STORED',
+  'COMMENT',
   'REFERENCES',
   'ON',
   'DELETE',
