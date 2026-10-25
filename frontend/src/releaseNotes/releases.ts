@@ -31,6 +31,26 @@ export interface Release {
 
 export const releases: Release[] = [
   {
+    version: '0.57.0',
+    date: '2026-10-25',
+    items: [
+      {
+        ru: {
+          title: 'Таблицы из draw.io становятся таблицами CoDraw',
+          text:
+            'Таблица из файла draw.io (shape=table) при импорте становится обычной таблицей CoDraw: строки — поля с ключами PK, FK и UQ, типом и пояснением после «·» в COMMENT, ' +
+            'вторая строка названия — комментарий таблицы, IDX и составные UQ¹ — индексы таблицы. Связи между строками остаются связями между полями.',
+        },
+        en: {
+          title: 'Tables from draw.io become CoDraw tables',
+          text:
+            'A table of a draw.io file (shape=table) becomes an ordinary CoDraw table on import: its rows become fields with their PK, FK and UQ keys, type and the note after «·» as COMMENT, ' +
+            'the second line of its name becomes the comment of the table, and IDX and numbered UQ¹ markers become indexes. Edges between rows stay edges between fields.',
+        },
+      },
+    ],
+  },
+  {
     version: '0.56.1',
     date: '2026-10-24',
     items: [

@@ -28,6 +28,7 @@ import { isLegendStyle } from '../diagram/legend.ts'
 import { htmlToText } from './labels.ts'
 import { isLegendPart, legendFromFile } from './legendDrawio.ts'
 import { parseStyle } from './style.ts'
+import { withTables } from './tableDrawio.ts'
 import { drawioMessages } from './messages.ts'
 
 /** The file is not a draw.io diagram. */
@@ -261,7 +262,7 @@ function readModel(model: Element, id: string | null, name: string): DrawioPage 
     }
   })
 
-  const cells = withLegends(read)
+  const cells = withTables(withLegends(read))
 
   // Siblings, layers too, are drawn in the order of the file.
   const siblings = new Map<string, DrawioCell[]>()
