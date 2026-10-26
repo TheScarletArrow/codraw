@@ -19,7 +19,7 @@ services:
   # The S3-compatible storage of images of boards (docs/adr/0006-image-storage.md); the backend of `./gradlew bootRun`
   # reaches it with the keys of its dev profile.
   s3:
-    image: rustfs/rustfs:1.0.1
+    image: rustfs/rustfs:1.0.3
     environment:
       RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-codraw}
       RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-codraw-secret}
