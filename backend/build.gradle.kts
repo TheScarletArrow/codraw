@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm") version "2.4.21"
     kotlin("plugin.spring") version "2.4.21"
-    id("org.springframework.boot") version "4.1.1"
+    id("org.springframework.boot") version "4.1.2"
     id("io.spring.dependency-management") version "1.1.7"
 }
 
@@ -36,7 +36,7 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     // Images of boards live in S3-compatible storage (docs/adr/0006-image-storage.md). Requests go through the client
     // of the JDK: neither Netty nor the Apache clients are needed.
-    implementation(platform("software.amazon.awssdk:bom:2.55.12"))
+    implementation(platform("software.amazon.awssdk:bom:2.57.3"))
     implementation("software.amazon.awssdk:s3") {
         exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
         exclude(group = "software.amazon.awssdk", module = "apache-client")
