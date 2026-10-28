@@ -2,6 +2,7 @@ package io.github.thescarletarrow.codraw.library
 
 import io.github.thescarletarrow.codraw.image.ImageFormats
 import io.github.thescarletarrow.codraw.image.ImageType
+import io.github.thescarletarrow.codraw.secureXmlParser
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import java.io.ByteArrayOutputStream

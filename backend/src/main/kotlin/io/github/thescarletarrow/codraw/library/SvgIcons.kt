@@ -1,5 +1,6 @@
 package io.github.thescarletarrow.codraw.library
 
+import io.github.thescarletarrow.codraw.secureXmlParser
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 import java.io.ByteArrayInputStream

@@ -1,14 +1,14 @@
 package io.github.thescarletarrow.codraw.embed
 
+import io.github.thescarletarrow.codraw.secureXmlParser
+import io.github.thescarletarrow.codraw.secureXmlTransformer
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.xml.sax.InputSource
 import java.io.StringReader
 import java.io.StringWriter
 import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
-import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 
@@ -72,7 +72,7 @@ object SvgSanitizer {
 
     fun sanitize(svg: String): String {
         val document = try {
-            factory().newDocumentBuilder().parse(InputSource(StringReader(svg)))
+            secureXmlParser(namespaceAware = true).parse(InputSource(StringReader(svg)))
         } catch (exception: Exception) {
             throw InvalidSvgException("Not an XML document: ${exception.message}")
         }
@@ -80,17 +80,6 @@ object SvgSanitizer {
         if (root.namespaceURI != SVG || root.localName != "svg") throw InvalidSvgException("The root is not <svg>")
         clean(root)
         return serialize(root)
-    }
-
-    private fun factory() = DocumentBuilderFactory.newInstance().apply {
-        isNamespaceAware = true
-        isExpandEntityReferences = false
-        isXIncludeAware = false
-        setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-        setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        setFeature("http://xml.org/sax/features/external-general-entities", false)
-        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
     }
 
     private fun allowed(element: Element): Boolean = when (element.namespaceURI) {
@@ -150,9 +139,7 @@ object SvgSanitizer {
     }
 
     private fun serialize(root: Element): String {
-        val transformer = TransformerFactory.newInstance().apply {
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-        }.newTransformer()
+        val transformer = secureXmlTransformer()
         transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no")
         transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8")
         val writer = StringWriter()
