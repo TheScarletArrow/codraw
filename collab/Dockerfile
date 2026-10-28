@@ -17,7 +17,9 @@ RUN pnpm --filter @codraw/collab build \
 
 FROM node:24-alpine
 # The fixes of the packages of Alpine that came after the base image; npm, corepack and yarn of the image, which collab
-# does not run, go with their own dependencies.
+# does not run, go with their own dependencies. The day of the build (`--build-arg`) runs the upgrade again every day:
+# otherwise the cache of layers in CI keeps the packages of the day the layer was made.
+ARG CODRAW_UPGRADE_DAY
 RUN apk upgrade --no-cache \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg

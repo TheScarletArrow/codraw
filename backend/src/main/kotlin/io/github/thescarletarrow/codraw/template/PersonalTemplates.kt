@@ -1,6 +1,7 @@
 package io.github.thescarletarrow.codraw.template
 
 import io.github.thescarletarrow.codraw.board.BoardIds
+import io.github.thescarletarrow.codraw.secureXmlParser
 import io.github.thescarletarrow.codraw.user.UserRepository
 import io.github.thescarletarrow.codraw.user.userId
 import org.springframework.http.HttpStatus
@@ -21,8 +22,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.util.UUID
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
 import java.io.StringReader
 
@@ -77,15 +76,7 @@ class PersonalTemplateService(private val templates: PersonalTemplateRepository,
         if (normalized.title.length !in 1..200 || normalized.description.length > 1000) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid template name or description")
         if (normalized.drawio.toByteArray(Charsets.UTF_8).size !in 1..MAX_BYTES) throw ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, "Template must have at most $MAX_BYTES bytes")
         try {
-            val factory = DocumentBuilderFactory.newInstance()
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
-            factory.isXIncludeAware = false
-            factory.isExpandEntityReferences = false
-            val root = factory.newDocumentBuilder().parse(InputSource(StringReader(normalized.drawio))).documentElement
+            val root = secureXmlParser(namespaceAware = false).parse(InputSource(StringReader(normalized.drawio))).documentElement
             if (root.tagName != "mxfile" || root.getElementsByTagName("diagram").length == 0) throw IllegalArgumentException("Not a diagram")
         } catch (exception: Exception) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Template must be a valid draw.io file without external entities")
