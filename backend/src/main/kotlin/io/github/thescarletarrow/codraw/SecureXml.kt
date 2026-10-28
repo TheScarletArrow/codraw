@@ -8,15 +8,16 @@ import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.Transformer
 import javax.xml.transform.TransformerFactory
 
-// The factories are set up through local variables, not in `apply`: CodeQL (java/xxe) takes a factory for safe only by
-// calls on a variable, and reports a parser set up in a lambda as resolving external entities.
+// CodeQL (java/xxe) takes a factory for safe only by calls whose receiver is a plain variable. So the factories live in
+// variables, not in `apply`, and their types are declared: a variable of the platform type `DocumentBuilderFactory!`
+// that `newInstance()` returns gets an implicit not-null check around every call on it, which hides the variable.
 
 /**
  * A parser of XML that a user sent: no DTD, so no entities that expand into gigabytes or read files, nothing loaded
  * from elsewhere, and errors thrown instead of printed.
  */
 fun secureXmlParser(namespaceAware: Boolean): DocumentBuilder {
-    val factory = DocumentBuilderFactory.newInstance()
+    val factory: DocumentBuilderFactory = DocumentBuilderFactory.newInstance()
     factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
     factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
     factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
@@ -27,14 +28,14 @@ fun secureXmlParser(namespaceAware: Boolean): DocumentBuilder {
     factory.isNamespaceAware = namespaceAware
     factory.isExpandEntityReferences = false
     factory.isXIncludeAware = false
-    val parser = factory.newDocumentBuilder()
+    val parser: DocumentBuilder = factory.newDocumentBuilder()
     parser.setErrorHandler(THROWING)
     return parser
 }
 
 /** A transformer that writes a document out as it is and loads no DTD or stylesheet from elsewhere. */
 fun secureXmlTransformer(): Transformer {
-    val factory = TransformerFactory.newInstance()
+    val factory: TransformerFactory = TransformerFactory.newInstance()
     factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
     factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
     factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "")
