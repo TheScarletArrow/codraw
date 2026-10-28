@@ -12,7 +12,9 @@ RUN CGO_ENABLED=0 go install -trimpath -ldflags="-s -w" github.com/aptible/super
 # The major version of the server of the stack, so that pg_dump and pg_restore fit it.
 FROM postgres:18-alpine
 # The fixes of the packages of Alpine that came after the base image; gosu of the image, which the backups do not run
-# (they start as postgres), goes.
+# (they start as postgres), goes. The day of the build (`--build-arg`) runs the upgrade again every day: otherwise the
+# cache of layers in CI keeps the packages of the day the layer was made.
+ARG CODRAW_UPGRADE_DAY
 RUN apk upgrade --no-cache \
     && rm -f /usr/local/bin/gosu \
     && mkdir -p /backups && chown postgres:postgres /backups

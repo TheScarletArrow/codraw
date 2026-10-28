@@ -129,8 +129,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Name the images
-        # Image names must be lower case; the owner of the repository need not be.
-        run: echo "CODRAW_IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-" >> "$GITHUB_ENV"
+        # Image names must be lower case; the owner of the repository need not be. The day of the build makes the images
+        # on Alpine upgrade their packages again past the cache of layers once a day (CODRAW_UPGRADE_DAY in Dockerfiles).
+        run: |
+          echo "CODRAW_IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/codraw-" >> "$GITHUB_ENV"
+          echo "CODRAW_UPGRADE_DAY=$(date -u +%F)" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v4
       - name: Build backend
         uses: docker/build-push-action@v7
@@ -147,6 +150,7 @@ jobs:
           file: collab/Dockerfile
           load: true
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}collab:${{ env.CODRAW_VERSION }}
+          build-args: CODRAW_UPGRADE_DAY=${{ env.CODRAW_UPGRADE_DAY }}
           cache-from: type=gha,scope=collab
           cache-to: type=gha,mode=max,scope=collab
       - name: Build frontend
@@ -156,6 +160,7 @@ jobs:
           file: frontend/Dockerfile
           load: true
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}frontend:${{ env.CODRAW_VERSION }}
+          build-args: CODRAW_UPGRADE_DAY=${{ env.CODRAW_UPGRADE_DAY }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
       - name: Build backup
@@ -164,6 +169,7 @@ jobs:
           context: deploy/backup
           load: true
           tags: ${{ env.CODRAW_IMAGE_PREFIX }}backup:${{ env.CODRAW_VERSION }}
+          build-args: CODRAW_UPGRADE_DAY=${{ env.CODRAW_UPGRADE_DAY }}
           cache-from: type=gha,scope=backup
           cache-to: type=gha,mode=max,scope=backup
       # The packages of the system and the dependencies inside the images (docs/security.md): a critical or high

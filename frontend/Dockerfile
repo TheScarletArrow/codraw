@@ -17,7 +17,9 @@ ARG CODRAW_BUILD_ID
 RUN pnpm --filter @codraw/frontend build
 
 FROM nginxinc/nginx-unprivileged:1.31-alpine
-# The fixes of the packages of Alpine that came after the base image.
+# The fixes of the packages of Alpine that came after the base image. The day of the build (`--build-arg`) runs the
+# upgrade again every day: otherwise the cache of layers in CI keeps the packages of the day the layer was made.
+ARG CODRAW_UPGRADE_DAY
 USER root
 RUN apk upgrade --no-cache
 USER 101
