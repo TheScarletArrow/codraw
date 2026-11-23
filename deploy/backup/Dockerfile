@@ -1,11 +1,11 @@
 # Backup image: dumps the database and copies the images of boards on a schedule, keeps the archives by the rule of
 # retention and restores them (docs/deploy.md, «Резервные копии»; docs/adr/0010-backups.md).
 # rclone talks to the S3-compatible storages and encrypts archives; it comes as a static binary of its own image.
-FROM rclone/rclone:1.75.2 AS rclone
+FROM rclone/rclone:1.76.0 AS rclone
 
 # The cron of containers: it runs as any user, passes the environment to its jobs and logs them to stdout. Built from its
 # module, verified by the checksum database of Go, with a current Go: the release binaries carry the Go of their day.
-FROM golang:1.26-alpine AS supercronic
+FROM golang:1.27-alpine AS supercronic
 ARG SUPERCRONIC_VERSION=0.2.49
 RUN CGO_ENABLED=0 go install -trimpath -ldflags="-s -w" github.com/aptible/supercronic@v${SUPERCRONIC_VERSION}
 
